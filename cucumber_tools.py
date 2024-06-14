@@ -239,7 +239,7 @@ class Cucumber:
         self.queue_all = self.sort_job(pd.DataFrame(result, columns=columns))
         return self.queue_all
 
-    def get_sample_capacity(self, sample, mode):
+    def get_sample_capacity(self, sample, mode, ignore_anode=True):
         """
         mode = "areal", "mass", "nominal"
         """
@@ -280,25 +280,23 @@ class Cucumber:
         if mode == "mass":
             anode_capacity_mAh_g, anode_weight_mg, anode_diameter_mm, cathode_capacity_mAh_g, cathode_weight_mg, cathode_diameter_mm = result
             anode_frac_used = min(1,cathode_diameter_mm**2 / anode_diameter_mm**2)
-            print(f"{anode_frac_used=}")
             cathode_frac_used = min(1,anode_diameter_mm**2 / cathode_diameter_mm**2)
-            print(f"{cathode_frac_used=}")
             anode_capacity_Ah = anode_frac_used * (anode_capacity_mAh_g * anode_weight_mg * 1e-6)
-            print(f"{anode_capacity_Ah=}")
             cathode_capacity_Ah = cathode_frac_used * (cathode_capacity_mAh_g * cathode_weight_mg * 1e-6)
-            print(f"{cathode_capacity_Ah=}")
-            capacity_Ah = min(anode_capacity_Ah, cathode_capacity_Ah)
+            if ignore_anode:
+                capacity_Ah = cathode_capacity_Ah
+            else:
+                capacity_Ah = min(anode_capacity_Ah, cathode_capacity_Ah)
         elif mode == "areal":
             anode_capacity_mAh_cm2, anode_diameter_mm, cathode_capacity_mAh_cm2, cathode_diameter_mm = result
             anode_frac_used = min(1,cathode_diameter_mm**2 / anode_diameter_mm**2)
-            print(f"{anode_frac_used=}")
             cathode_frac_used = min(1,anode_diameter_mm**2 / cathode_diameter_mm**2)
-            print(f"{cathode_frac_used=}")
             anode_capacity_Ah = anode_frac_used * (anode_capacity_mAh_cm2 * (anode_diameter_mm/2)**2 * 3.14159 * 1e-5)
-            print(f"{anode_capacity_Ah=}")
             cathode_capacity_Ah = cathode_frac_used * (cathode_capacity_mAh_cm2 * (cathode_diameter_mm/2)**2 * 3.14159 * 1e-5)
-            print(f"{cathode_capacity_Ah=}")
-            capacity_Ah = min(anode_capacity_Ah, cathode_capacity_Ah)
+            if ignore_anode:
+                capacity_Ah = cathode_capacity_Ah
+            else:
+                capacity_Ah = min(anode_capacity_Ah, cathode_capacity_Ah)
         elif mode == "nominal":
             capacity_Ah = result[0] * 1e-3
         return capacity_Ah
@@ -308,7 +306,7 @@ class Cucumber:
         result = self.get_from_db("samples", columns="`Sample ID`", where=f"`Sample ID` = '{sample}'")
         # Get pipeline and load
         result = self.get_from_db("pipelines", columns="`Server Label`", where=f"`Pipeline` = '{pipeline}'")
-        server = next((server for server in self.servers if server.label == result[0]), None)
+        server = next((server for server in self.servers if server.label == result[0][0]), None)
         print(f"Loading {sample} on server: {server.label}")
         output = server.load(sample, pipeline)
         return output
@@ -316,7 +314,7 @@ class Cucumber:
     def eject(self, pipeline):
         # Find server associated with pipeline
         result = self.get_from_db("pipelines", columns="`Server Label`", where=f"`Pipeline` = '{pipeline}'")
-        server = next((server for server in self.servers if server.label == result[0]), None)
+        server = next((server for server in self.servers if server.label == result[0][0]), None)
         print(f"Ejecting {pipeline} on server: {server.label}")
         output = server.eject(pipeline)
         return output
@@ -324,10 +322,8 @@ class Cucumber:
     def ready(self, pipeline):
         # find server with pipeline, if there is more than one throw an error
         result = self.get_from_db("pipelines", columns="`Server Label`", where=f"`Pipeline` = '{pipeline}'")
-        server = next((server for server in self.servers if server.label == result[0]), None)
-        if len(server) > 1:
-            raise ValueError(f"Pipeline '{pipeline}' is on multiple servers, cannot determine which one to use.")
-        print(f"Readying {pipeline} on server: {server[0].label}")
+        server = next((server for server in self.servers if server.label == result[0][0]), None)
+        print(f"Readying {pipeline} on server: {server.label}")
         output = server.ready(pipeline)
         return output
 
@@ -346,7 +342,7 @@ class Cucumber:
         
         # Find the server with the sample loaded, if there is more than one throw an error
         result = self.get_from_db("pipelines", columns="`Server Label`", where=f"`Sample ID` = '{sample}'")
-        server = next((server for server in self.servers if server.label == result[0]), None)
+        server = next((server for server in self.servers if server.label == result[0][0]), None)
 
         # Check if json_file is a string that could be a file path or a JSON string
         if isinstance(json_file, str):
@@ -368,20 +364,20 @@ class Cucumber:
         # Update the job table in the database
         with sqlite3.connect(self.db) as conn:
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO jobs (`Job ID`, `Sample ID`, `Server Label`, `Job ID on Server`, `Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, datetime('now'), ?, ?)", (full_jobid, sample, server[0].label, int(jobid), json.dumps(payload), comment))
+            cursor.execute("INSERT INTO jobs (`Job ID`, `Sample ID`, `Server Label`, `Job ID on Server`, `Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, datetime('now'), ?, ?)", (full_jobid, sample, server.label, int(jobid), json.dumps(payload), comment))
             conn.commit()
 
         return
 
     def cancel(self, jobid):
         # find server with the jobid, if there is more than one throw an error
-        result = self.get_from_db("jobs", columns="`Server Label`, `Job ID on Sever`", where=f"`Job ID` = '{jobid}'")
-        server_label, jobid_on_server = result
+        result = self.get_from_db("jobs", columns="`Server Label`, `Job ID on Server`", where=f"`Job ID` = '{jobid}'")
+        server_label, jobid_on_server = result[0]
         server = next((server for server in self.servers if server.label == server_label), None)
         output = server.cancel(jobid_on_server)
         return output
     
-    def snapshot(self, samp_or_jobid, get_raw=False, update_mode="new_data"):
+    def snapshot(self, samp_or_jobid, get_raw=False, mode="new_data"):
         """
         Run snapshots of a sample or job, save the data locally as a json and hdf5, return the data 
         as a list of pandas DataFrame.
@@ -392,7 +388,7 @@ class Cucumber:
             The sample ID or (cucumber) job ID to snapshot.
         get_raw : bool, optional
             If True, get raw data. If False, get processed data. Default is False.
-        update_mode : str, optional
+        mode : str, optional
             When to make a new snapshot. Can be one of the following:
                 - 'always': Force a snapshot even if job is already done and data is downloaded.
                 - 'new_data': Snapshot if there is new data.
@@ -416,16 +412,17 @@ class Cucumber:
         dfs=[]
         for sampleid, jobid, server_name, jobid_on_server, snapshot_status in result:
             # Check if the snapshot should be skipped
-            files_exist = (os.path.exists(f"./snapshots/{sampleid}/snapshot.{jobid}.h5") 
-                           and os.path.exists(f"./snapshots/{sampleid}/snapshot.{jobid}.json"))
-            if files_exist and update_mode != "always":
-                if update_mode == "if_not_exists":
+            batchid = sampleid.rsplit("_", 1)[0]
+            files_exist = (os.path.exists(f"./snapshots/{batchid}/{sampleid}/snapshot.{jobid}.h5") 
+                           and os.path.exists(f"./snapshots/{batchid}/{sampleid}/snapshot.{jobid}.json"))
+            if files_exist and mode != "always":
+                if mode == "if_not_exists":
                     print(f"Snapshot {jobid} already exists, skipping.")
-                    dfs.append(pd.read_hdf(f"./snapshots/{sampleid}/snapshot.{jobid}.h5"))
+                    dfs.append(pd.read_hdf(f"./snapshots/{batchid}/{sampleid}/snapshot.{jobid}.h5"))
                     continue
-                if update_mode == "new_data" and snapshot_status is not None and snapshot_status.startswith("c"):
+                if mode == "new_data" and snapshot_status is not None and snapshot_status.startswith("c"):
                     print(f"Snapshot {jobid} already complete.")
-                    dfs.append(pd.read_hdf(f"./snapshots/{sampleid}/snapshot.{jobid}.h5"))
+                    dfs.append(pd.read_hdf(f"./snapshots/{batchid}/{sampleid}/snapshot.{jobid}.h5"))
                     continue
 
             # Otherwise snapshot the job
@@ -438,19 +435,28 @@ class Cucumber:
                 with sqlite3.connect(self.db) as conn:
                     cursor = conn.cursor()
                     cursor.execute("UPDATE jobs SET `Snapshot Status` = ?, `Last Snapshot` = datetime('now')  WHERE `Job ID` = ?", (snapshot_status, jobid))
+                    print("Updating database")
                     conn.commit()
             except ValueError as e:
                 warnings.warn(f"Error snapshotting {jobid}: {e}", RuntimeWarning)
         return dfs
     
-    def snapshot_all(self):
+    def snapshot_all(self, sampleid_contains = "", mode = "new_data"):
+        # TODO include 'cd', 'ce', in status, find a way to set snapshot status to cd, ce if they fail to find file
+        where = "`Status` IN ( 'c', 'r', 'rd') AND (`Snapshot Status` NOT LIKE 'c%' OR `Snapshot Status` IS NULL)"
+        if sampleid_contains:
+            where += f" AND `Sample ID` LIKE '%{sampleid_contains}%'"
         result = self.get_from_db("jobs", columns="`Job ID`",
-                                  where="`Status` IN ('cd', 'ce', 'c', 'r', 'rd') AND `Snapshot Status` IS NULL OR `Snapshot Status` NOT LIKE 'c%'")
+                                  where=where)
         total_jobs = len(result)
-        print(f"Snapshotting {total_jobs} jobs")
+        print(f"Snapshotting {total_jobs} jobs:")
+        print([jobid for jobid, in result])
         t0 = time()
         for i, (jobid,) in enumerate(result):
-            self.snapshot(jobid)
+            try:
+                self.snapshot(jobid, mode=mode)
+            except Exception as e:
+                warnings.warn(f"Error snapshotting {jobid}: {e}", RuntimeWarning)
             percent_done = (i + 1) / total_jobs * 100
             time_elapsed = time() - t0
             time_remaining = time_elapsed / (i + 1) * (total_jobs - i - 1)
