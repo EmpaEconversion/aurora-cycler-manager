@@ -29,14 +29,11 @@ class CyclerServer():
             output = stdout.read().decode('utf-8')
             error = stderr.read().decode('utf-8')
         if error:
-            if error.startswith("WARNING"):
-                # Ignore certain warnings
-                if error.startswith("WARNING:yadg.main:You are using an out-of-date version"):
-                    pass
-                elif error.endswith("has been completed. Will create snapshot."):
-                    pass
-                else:
-                    warnings.warn(error, RuntimeWarning)
+            if "Error" in error:
+                print(f"Error running '{command}' on {self.label}")
+                raise ValueError(error)
+            elif error.startswith("WARNING"):
+                warnings.warn(error, RuntimeWarning)
             else:
                 print(f"Error running '{command}' on {self.label}")
                 raise ValueError(error)
@@ -149,16 +146,34 @@ class TomatoServer(CyclerServer):
         return queue_all_dict
 
     def snapshot(self, sampleid, jobid, jobid_on_server, get_raw=False):
+        # Save a snapshot on the remote machine
         save_location = f"{self.save_location}/{jobid_on_server}"
         self.command(f"if (!(Test-Path \"{save_location}\")) {{ New-Item -ItemType Directory -Path \"{save_location}\" }}")
         output = self.command(f"{self.tomato_scripts_path}ketchup status -J {jobid_on_server}")
         json_output = json.loads(output)
         snapshot_status = json_output["status"][0]
-        self.command(f"cd {save_location} ; {self.tomato_scripts_path}ketchup snapshot {jobid_on_server}")
 
-        # Specify your local directory where you want to save the file
-        folder = sampleid.rsplit("_", 1)[0]
-        local_directory = f"./snapshots/{folder}/{sampleid}"
+        # Catch errors
+        try:
+            with warnings.catch_warnings(record=True) as w:
+                self.command(f"cd {save_location} ; {self.tomato_scripts_path}ketchup snapshot {jobid_on_server}")
+                for warning in w:
+                    if "out-of-date version" in str(warning.message):
+                        continue
+                    elif "has been completed" in str(warning.message):
+                        continue
+                    else:
+                        print(f"Warning: {warning.message}")
+        except ValueError as e:
+            emsg = str(e)
+            if "AssertionError" in emsg and "os.path.isdir(jobdir)" in emsg:
+                print("File not found, job likely not running")
+            else:
+                raise e
+
+        # Get local directory to save the snapshot data
+        batchid = sampleid.rsplit("_", 1)[0]
+        local_directory = f"./snapshots/{batchid}/{sampleid}"
         if not os.path.exists(local_directory):
             os.makedirs(local_directory)
 
@@ -168,9 +183,6 @@ class TomatoServer(CyclerServer):
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
         with SCPClient(ssh.get_transport()) as scp:
-            print("Downloading snapshot file from/to")
-            print(f"{save_location}/snapshot.{jobid_on_server}.json")
-            print(f"{local_directory}/snapshot.{jobid}.json")
             scp.get(
                 f"{save_location}/snapshot.{jobid_on_server}.json",
                 f"{local_directory}/snapshot.{jobid}.json",
