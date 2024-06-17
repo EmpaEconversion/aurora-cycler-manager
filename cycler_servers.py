@@ -78,7 +78,7 @@ class TomatoServer(CyclerServer):
                 payload = json.loads(json_file)
             except json.JSONDecodeError:
                 # If it fails, assume json_file is a file path
-                with open(json_file, 'r') as f:
+                with open(json_file, "r", encoding="utf-8") as f:
                     payload = json.load(f)
         elif isinstance(json_file, dict):
             # If json_file is already a dictionary, use it directly
@@ -96,7 +96,7 @@ class TomatoServer(CyclerServer):
 
         if send_file: # Write the json string to a file, send it, run it on the server
             # Write file locally
-            with open("temp.json", "w") as f:
+            with open("temp.json", "w", encoding="utf-8") as f:
                 f.write(json_string)
 
             # Send file to server
@@ -201,7 +201,7 @@ class TomatoServer(CyclerServer):
     
     def convert_data(self,snapshot_file):
         """Saves data as .h5 file and returns the DataFrame"""
-        with open(snapshot_file) as f:
+        with open(snapshot_file, "r", encoding="utf-8") as f:
             input_dict = json.load(f)
         n_steps = len(input_dict["steps"])
         data = []
@@ -221,7 +221,7 @@ class TomatoServer(CyclerServer):
         hdf5_file = snapshot_file.replace(".json", ".h5")
         data = pd.concat(data, ignore_index=True)
         # Save the DataFrame to an HDF5 file
-        data.to_hdf(hdf5_file, key='df', mode='w')
+        data.to_hdf(hdf5_file, key='df', mode='w', index=False, complevel=2, complib='blosc')
         return data
 
 
