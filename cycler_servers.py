@@ -167,9 +167,8 @@ class TomatoServer(CyclerServer):
         except ValueError as e:
             emsg = str(e)
             if "AssertionError" in emsg and "os.path.isdir(jobdir)" in emsg:
-                print("File not found, job likely not running")
-            else:
-                raise e
+                raise FileNotFoundError from e
+            raise e
 
         # Get local directory to save the snapshot data
         batchid = sampleid.rsplit("_", 1)[0]
