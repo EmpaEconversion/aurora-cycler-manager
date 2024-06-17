@@ -2,15 +2,15 @@ import os
 import warnings
 import json
 import sqlite3
+from time import time
 import pandas as pd
 import paramiko
 from cycler_servers import TomatoServer
-from time import time
 
 
 class Cucumber:
     def __init__(self):
-        with open('config.json') as f:
+        with open("./config.json", "r", encoding="utf-8") as f:
             self.config = json.load(f)
         self.db = self.config["Database Path"]
 
@@ -34,7 +34,7 @@ class Cucumber:
 
     def get_servers(self):
         """ Create the cycler server objects from the config file """
-        with open("./config.json", "r") as f:
+        with open("./config.json", "r", encoding="utf-8") as f:
             self.config = json.load(f)
         server_list = self.config["Servers"]
 
@@ -54,7 +54,7 @@ class Cucumber:
     def insert_sample_file(self, csv_file):
         """ Add a sample csv file to the database """
         df = pd.read_csv(csv_file,delimiter=';')
-        with open('config.json', 'r') as f:
+        with open("./config.json", "r", encoding="utf-8") as f:
             self.config = json.load(f)
         column_config = self.config["Sample Database"]
 
@@ -74,13 +74,13 @@ class Cucumber:
         for col in df.columns:
             if col not in col_names:
                 warnings.warn(f"Column '{col}' in the sample file {csv_file} is not in the database. Skipping this column.", RuntimeWarning)
-            
+
         # Check that all essential columns exist
         essential_keys = ["Sample ID"]
         for key in essential_keys:
             if key not in df.columns:
                 raise ValueError(f"Essential column '{key}' was not found in the sample file {csv_file}. Please double check the file!")
-        
+
         # Check if database exists
         if not os.path.exists(self.db):
             from database_setup import create_database
@@ -208,7 +208,7 @@ class Cucumber:
         df.sort_values(by="Pipeline", key = lambda x: x.map(custom_sort),inplace=True)
         df.reset_index(drop=True, inplace=True)
         return df
-    
+
     @staticmethod
     def sort_job(df):
         def custom_sort(x):
@@ -335,11 +335,11 @@ class Cucumber:
         # Get the sample capacity
         if capacity_Ah in ["areal", "mass", "nominal"]:
             capacity_Ah = self.get_sample_capacity(sample, capacity_Ah)
-        elif type(capacity_Ah) != float:
+        elif not isinstance(capacity_Ah, float):
             raise ValueError(f"Capacity {capacity_Ah} must be 'areal', 'mass', or a float in Ah.")
         if capacity_Ah > 0.05:
             raise ValueError(f"Capacity {capacity_Ah} too large - value must be in Ah, not mAh")
-        
+
         # Find the server with the sample loaded, if there is more than one throw an error
         result = self.get_from_db("pipelines", columns="`Server Label`", where=f"`Sample ID` = '{sample}'")
         server = next((server for server in self.servers if server.label == result[0][0]), None)
@@ -351,7 +351,7 @@ class Cucumber:
                 payload = json.loads(json_file)
             except json.JSONDecodeError:
                 # If it fails, assume json_file is a file path
-                with open(json_file, 'r') as f:
+                with open("./config.json", "r", encoding="utf-8") as f:
                     payload = json.load(f)
         elif not isinstance(json_file, dict):
             raise ValueError("json_file must be a file path, a JSON string, or a dictionary")
@@ -376,7 +376,7 @@ class Cucumber:
         server = next((server for server in self.servers if server.label == server_label), None)
         output = server.cancel(jobid_on_server)
         return output
-    
+
     def snapshot(self, samp_or_jobid, get_raw=False, mode="new_data"):
         """
         Run snapshots of a sample or job, save the data locally as a json and hdf5, return the data 
@@ -398,7 +398,7 @@ class Cucumber:
         # Check if the input is a sample ID
         columns = ["Sample ID", "Job ID", "Server Label", "Job ID on Server", "Snapshot Status"]
         columns_sql = ", ".join([f"`{c}`" for c in columns])
-        
+
         # Define the column names to check
         column_checks = ["Job ID", "Sample ID", "Job ID on Server"]
 
@@ -437,13 +437,19 @@ class Cucumber:
                     cursor.execute("UPDATE jobs SET `Snapshot Status` = ?, `Last Snapshot` = datetime('now')  WHERE `Job ID` = ?", (snapshot_status, jobid))
                     print("Updating database")
                     conn.commit()
+            except FileNotFoundError as e:
+                warnings.warn(f"Error snapshotting {jobid}: {e}", RuntimeWarning)
+                warnings.warn("Likely the job was cancelled before starting. Setting `Snapshot Status` to 'ce' in the database.")
+                with sqlite3.connect(self.db) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("UPDATE jobs SET `Snapshot Status` = 'ce' WHERE `Job ID` = ?", (jobid,))
+                    conn.commit()
             except ValueError as e:
                 warnings.warn(f"Error snapshotting {jobid}: {e}", RuntimeWarning)
         return dfs
-    
+
     def snapshot_all(self, sampleid_contains = "", mode = "new_data"):
-        # TODO include 'cd', 'ce', in status, find a way to set snapshot status to cd, ce if they fail to find file
-        where = "`Status` IN ( 'c', 'r', 'rd') AND (`Snapshot Status` NOT LIKE 'c%' OR `Snapshot Status` IS NULL)"
+        where = "`Status` IN ( 'c', 'r', 'rd', 'cd', 'ce') AND (`Snapshot Status` NOT LIKE 'c%' OR `Snapshot Status` IS NULL)"
         if sampleid_contains:
             where += f" AND `Sample ID` LIKE '%{sampleid_contains}%'"
         result = self.get_from_db("jobs", columns="`Job ID`",
@@ -455,7 +461,7 @@ class Cucumber:
         for i, (jobid,) in enumerate(result):
             try:
                 self.snapshot(jobid, mode=mode)
-            except Exception as e:
+            except (ValueError, FileNotFoundError) as e:
                 warnings.warn(f"Error snapshotting {jobid}: {e}", RuntimeWarning)
             percent_done = (i + 1) / total_jobs * 100
             time_elapsed = time() - t0
