@@ -8,9 +8,13 @@ def create_config():
         print("Config file not found. Creating config.json file in the same directory as this script.")
         with open('config.json', 'w') as f:
             json.dump({
-                "Database Path" : "./database.db",
+                "Database Path" : "./database/database.db",
+                "Database Backup Folder Path" : "./database/backup",
                 "Samples Folder Path" : "./samples",
                 "Snapshots Folder Path" : "./snapshots",
+                "Processed Snapshots Folder Path" : "./snapshots",
+                "Graphs Folder Path" : "./snapshots",
+
                 "Servers" : [
                     {
                         "label": "example-server",
