@@ -128,12 +128,12 @@ class Cucumber:
 
     def update_samples(self):
         """ Add all csv files in samples folder to the db """
-        samples_folder = "./samples/"
+        samples_folder = self.config["Samples Folder Path"]
         if not os.path.exists(samples_folder):
             os.makedirs(samples_folder)
         for file in os.listdir(samples_folder):
             if file.endswith(".csv"):
-                self.insert_sample_file(samples_folder + file)
+                self.insert_sample_file(os.path.join(samples_folder,file))
             else:
                 warnings.warn(f"File {file} in samples folder is not a csv file, skipping", RuntimeWarning)
         return
@@ -413,24 +413,25 @@ class Cucumber:
         for sampleid, jobid, server_name, jobid_on_server, snapshot_status in result:
             # Check if the snapshot should be skipped
             batchid = sampleid.rsplit("_", 1)[0]
-            files_exist = (os.path.exists(f"./snapshots/{batchid}/{sampleid}/snapshot.{jobid}.h5") 
-                           and os.path.exists(f"./snapshots/{batchid}/{sampleid}/snapshot.{jobid}.json"))
+            local_save_location = f"{self.config["Snapshots Folder Path"]}/{batchid}/{sampleid}"
+            local_save_location_processed = f"{self.config["Processed Snapshots Folder Path"]}/{batchid}/{sampleid}"
+            
+            files_exist = (os.path.exists(f"{local_save_location}/snapshot.{jobid}.h5")
+                           and os.path.exists(f"{local_save_location_processed}/snapshot.{jobid}.json"))
             if files_exist and mode != "always":
                 if mode == "if_not_exists":
                     print(f"Snapshot {jobid} already exists, skipping.")
-                    dfs.append(pd.read_hdf(f"./snapshots/{batchid}/{sampleid}/snapshot.{jobid}.h5"))
                     continue
                 if mode == "new_data" and snapshot_status is not None and snapshot_status.startswith("c"):
                     print(f"Snapshot {jobid} already complete.")
-                    dfs.append(pd.read_hdf(f"./snapshots/{batchid}/{sampleid}/snapshot.{jobid}.h5"))
                     continue
 
             # Otherwise snapshot the job
             server = next((server for server in self.servers if server.label == server_name), None)
+            
             print(f"Snapshotting sample {sampleid} job {jobid}")
             try:
-                snapshot_df, snapshot_status = server.snapshot(sampleid, jobid, jobid_on_server, get_raw)
-                dfs.append(snapshot_df)
+                snapshot_status = server.snapshot(sampleid, jobid, jobid_on_server, local_save_location, get_raw)
                 # Update the snapshot status in the database
                 with sqlite3.connect(self.db) as conn:
                     cursor = conn.cursor()
@@ -444,12 +445,22 @@ class Cucumber:
                     cursor = conn.cursor()
                     cursor.execute("UPDATE jobs SET `Snapshot Status` = 'ce' WHERE `Job ID` = ?", (jobid,))
                     conn.commit()
+                continue
             except ValueError as e:
                 warnings.warn(f"Error snapshotting {jobid}: {e}", RuntimeWarning)
-        return dfs
+            
+            # Process the file and save to processed snapshots folder
+            data = server.convert_data(f"{local_save_location}/snapshot.{jobid}.json")
+            if not os.path.exists(local_save_location_processed):
+                os.makedirs(local_save_location_processed)
+            data.to_hdf(f"{local_save_location_processed}/snapshot.{jobid}.h5", key="cycling", complib="blosc", complevel=2)
+        return
 
     def snapshot_all(self, sampleid_contains = "", mode = "new_data"):
-        where = "`Status` IN ( 'c', 'r', 'rd', 'cd', 'ce') AND (`Snapshot Status` NOT LIKE 'c%' OR `Snapshot Status` IS NULL)"
+        assert mode in ["always", "new_data", "if_not_exists"]
+        where = "`Status` IN ( 'c', 'r', 'rd', 'cd', 'ce')"
+        if mode in ["new_data"]:
+            where += " AND (`Snapshot Status` NOT LIKE 'c%' OR `Snapshot Status` IS NULL)"
         if sampleid_contains:
             where += f" AND `Sample ID` LIKE '%{sampleid_contains}%'"
         result = self.get_from_db("jobs", columns="`Job ID`",
@@ -461,7 +472,7 @@ class Cucumber:
         for i, (jobid,) in enumerate(result):
             try:
                 self.snapshot(jobid, mode=mode)
-            except (ValueError, FileNotFoundError) as e:
+            except Exception as e:
                 warnings.warn(f"Error snapshotting {jobid}: {e}", RuntimeWarning)
             percent_done = (i + 1) / total_jobs * 100
             time_elapsed = time() - t0

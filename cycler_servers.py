@@ -145,10 +145,10 @@ class TomatoServer(CyclerServer):
         self.last_queue_all = queue_all_dict
         return queue_all_dict
 
-    def snapshot(self, sampleid, jobid, jobid_on_server, get_raw=False):
+    def snapshot(self, sampleid, jobid, jobid_on_server, local_save_location, get_raw=False):
         # Save a snapshot on the remote machine
-        save_location = f"{self.save_location}/{jobid_on_server}"
-        self.command(f"if (!(Test-Path \"{save_location}\")) {{ New-Item -ItemType Directory -Path \"{save_location}\" }}")
+        remote_save_location = f"{self.save_location}/{jobid_on_server}"
+        self.command(f"if (!(Test-Path \"{remote_save_location}\")) {{ New-Item -ItemType Directory -Path \"{remote_save_location}\" }}")
         output = self.command(f"{self.tomato_scripts_path}ketchup status -J {jobid_on_server}")
         json_output = json.loads(output)
         snapshot_status = json_output["status"][0]
@@ -156,7 +156,7 @@ class TomatoServer(CyclerServer):
         # Catch errors
         try:
             with warnings.catch_warnings(record=True) as w:
-                self.command(f"cd {save_location} ; {self.tomato_scripts_path}ketchup snapshot {jobid_on_server}")
+                self.command(f"cd {remote_save_location} ; {self.tomato_scripts_path}ketchup snapshot {jobid_on_server}")
                 for warning in w:
                     if "out-of-date version" in str(warning.message):
                         continue
@@ -171,10 +171,9 @@ class TomatoServer(CyclerServer):
             raise e
 
         # Get local directory to save the snapshot data
-        batchid = sampleid.rsplit("_", 1)[0]
-        local_directory = f"./snapshots/{batchid}/{sampleid}"
-        if not os.path.exists(local_directory):
-            os.makedirs(local_directory)
+
+        if not os.path.exists(local_save_location):
+            os.makedirs(local_save_location)
 
         # Use SCPClient to transfer the file from the remote machine
         ssh = paramiko.SSHClient()
@@ -183,24 +182,21 @@ class TomatoServer(CyclerServer):
         ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
         with SCPClient(ssh.get_transport()) as scp:
             scp.get(
-                f"{save_location}/snapshot.{jobid_on_server}.json",
-                f"{local_directory}/snapshot.{jobid}.json",
+                f"{remote_save_location}/snapshot.{jobid_on_server}.json",
+                f"{local_save_location}/snapshot.{jobid}.json",
             )
             if get_raw:
                 print("Downloading snapshot raw data")
                 scp.get(
-                    f"{save_location}/snapshot.{jobid_on_server}.zip",
-                    f"{local_directory}/snapshot.{jobid}.zip"
+                    f"{remote_save_location}/snapshot.{jobid_on_server}.zip",
+                    f"{local_save_location}/snapshot.{jobid}.zip"
                 )
         ssh.close()
 
-        # Convert the snapshot data to hdf5
-        snapshot_df = self.convert_data(f"{local_directory}/snapshot.{jobid}.json")
-
-        return snapshot_df, snapshot_status
+        return snapshot_status
     
     def convert_data(self,snapshot_file):
-        """Saves data as .h5 file and returns the DataFrame"""
+        """Transposes DataFrame and reduces memory usage"""
         with open(snapshot_file, "r", encoding="utf-8") as f:
             input_dict = json.load(f)
         n_steps = len(input_dict["steps"])
@@ -218,10 +214,7 @@ class TomatoServer(CyclerServer):
                 "technique" : [technique_code.get(row["raw"]["technique"], -1) if "technique" in row["raw"] else -1 for row in step_data],
             }
             data.append(pd.DataFrame(step_dict))
-        hdf5_file = snapshot_file.replace(".json", ".h5")
         data = pd.concat(data, ignore_index=True)
-        # Save the DataFrame to an HDF5 file
-        data.to_hdf(hdf5_file, key='df', mode='w', index=False, complevel=2, complib='blosc')
         return data
 
 
