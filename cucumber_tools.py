@@ -3,6 +3,7 @@ import warnings
 import json
 import sqlite3
 from time import time
+import traceback
 import pandas as pd
 import paramiko
 from cycler_servers import TomatoServer
@@ -416,8 +417,7 @@ class Cucumber:
             local_save_location = f"{self.config["Snapshots Folder Path"]}/{batchid}/{sampleid}"
             local_save_location_processed = f"{self.config["Processed Snapshots Folder Path"]}/{batchid}/{sampleid}"
             
-            files_exist = (os.path.exists(f"{local_save_location}/snapshot.{jobid}.h5")
-                           and os.path.exists(f"{local_save_location_processed}/snapshot.{jobid}.json"))
+            files_exist = (os.path.exists(f"{local_save_location_processed}/snapshot.{jobid}.h5"))
             if files_exist and mode != "always":
                 if mode == "if_not_exists":
                     print(f"Snapshot {jobid} already exists, skipping.")
@@ -473,7 +473,9 @@ class Cucumber:
             try:
                 self.snapshot(jobid, mode=mode)
             except Exception as e:
-                warnings.warn(f"Error snapshotting {jobid}: {e}", RuntimeWarning)
+                tb = traceback.format_exc()
+                error_message = str(e) if str(e) else "An error occurred but no message was provided."
+                warnings.warn(f"Error snapshotting {jobid}: {error_message}\n{tb}", RuntimeWarning)
             percent_done = (i + 1) / total_jobs * 100
             time_elapsed = time() - t0
             time_remaining = time_elapsed / (i + 1) * (total_jobs - i - 1)
