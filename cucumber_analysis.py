@@ -141,7 +141,10 @@ def plot_batch(plot_name,batch):
 
     # Save individual plots
     fig.tight_layout()
-    fig.savefig(f'{save_location}/{plot_name}_V(t).pdf',bbox_inches='tight')
+    try:
+        fig.savefig(f'{save_location}/{plot_name}_V(t).pdf',bbox_inches='tight')
+    except PermissionError:
+        print(f"Permission error saving {save_location}/{plot_name}_V(t).pdf")
     plt.close('all')
 
     # Get number of cycles, only plot around 10 cycles
@@ -153,8 +156,8 @@ def plot_batch(plot_name,batch):
     
     plot_data = all_cap_data[all_cap_data["Cycle"].isin(cycles_to_plot)]
 
-    # Swarm plot capacity
-    fig, ax = plt.subplots(2,1,sharex=True,figsize=(6,4),dpi=300)
+    # Strip plot capacity
+    fig, ax = plt.subplots(2,1,sharex=True,figsize=(8,5),dpi=300)
     ax[0].set_ylabel("Discharge\nCapacity (mAh/g)")
     sns.stripplot(
         ax=ax[0],
@@ -175,11 +178,44 @@ def plot_batch(plot_name,batch):
         **kwargs,
     )
     fig.tight_layout()
-    fig.savefig(f'{save_location}/{plot_name}_Capacity_swarm.pdf',bbox_inches='tight')
+    try:
+        fig.savefig(f'{save_location}/{plot_name}_Capacity_strip.pdf',bbox_inches='tight')
+    except PermissionError:
+        print(f"Permission error saving {save_location}/{plot_name}_Capacity_strip.pdf")
+    plt.close('all')
+
+    # Swarm plot capacity
+    fig, ax = plt.subplots(2,1,sharex=True,figsize=(8,5),dpi=300)
+    ax[0].set_ylabel("Discharge\nCapacity (mAh/g)")
+    sns.swarmplot(
+        ax=ax[0],
+        data=plot_data,
+        x="Cycle",
+        y="Specific Discharge Capacity (mAh/g)",
+        size=3,
+        dodge=True,
+        edgecolor='k',
+        **kwargs,
+    )
+    sns.swarmplot(
+        ax=ax[1],
+        data=plot_data,
+        x="Cycle",
+        y="Efficiency (%)",
+        size=3,
+        dodge=True,
+        edgecolor='k',
+        **kwargs,
+    )
+    fig.tight_layout()
+    try:
+        fig.savefig(f'{save_location}/{plot_name}_Capacity_swarm.pdf',bbox_inches='tight')
+    except PermissionError:
+        print(f"Permission error saving {save_location}/{plot_name}_Capacity_swarm.pdf")
     plt.close('all')
 
     # Violin plot capacity
-    fig, ax = plt.subplots(2,1,sharex=True,figsize=(6,4),dpi=300)
+    fig, ax = plt.subplots(2,1,sharex=True,figsize=(8,5),dpi=300)
     ax[0].set_ylabel("Discharge\nCapacity (mAh/g)")
     sns.violinplot(
         ax=ax[0],
@@ -196,11 +232,14 @@ def plot_batch(plot_name,batch):
         **kwargs,
     )
     fig.tight_layout()
-    fig.savefig(f'{save_location}/{plot_name}_Capacity_violin.pdf',bbox_inches='tight')
+    try:
+        fig.savefig(f'{save_location}/{plot_name}_Capacity_violin.pdf',bbox_inches='tight')
+    except PermissionError:
+        print(f"Permission error saving {save_location}/{plot_name}_Capacity_violin.pdf")
     plt.close('all')
 
     # Box plot capacity
-    fig, ax = plt.subplots(2,1,sharex=True,figsize=(6,4),dpi=300)
+    fig, ax = plt.subplots(2,1,sharex=True,figsize=(8,5),dpi=300)
     ax[0].set_ylabel("Discharge\nCapacity (mAh/g)")
     sns.boxplot(
         ax=ax[0],
@@ -219,7 +258,34 @@ def plot_batch(plot_name,batch):
         **kwargs,
     )
     fig.tight_layout()
-    fig.savefig(f'{save_location}/{plot_name}_Capacity_box.pdf',bbox_inches='tight')
+    try:
+        fig.savefig(f'{save_location}/{plot_name}_Capacity_box.pdf',bbox_inches='tight')
+    except PermissionError:
+        print(f"Permission error saving {save_location}/{plot_name}_Capacity_box.pdf")
+    plt.close('all')
+
+    # Point plot capacity
+    fig, ax = plt.subplots(2,1,sharex=True,figsize=(8,5),dpi=300)
+    ax[0].set_ylabel("Discharge\nCapacity (mAh/g)")
+    sns.pointplot(
+        ax=ax[0],
+        data=plot_data,
+        x="Cycle",
+        y="Specific Discharge Capacity (mAh/g)",
+        **kwargs,
+    )
+    sns.pointplot(
+        ax=ax[1],
+        data=plot_data,
+        x="Cycle",
+        y="Efficiency (%)",
+        **kwargs,
+    )
+    fig.tight_layout()
+    try:
+        fig.savefig(f'{save_location}/{plot_name}_Capacity_point.pdf',bbox_inches='tight')
+    except PermissionError:
+        print(f"Permission error saving {save_location}/{plot_name}_Capacity_point.pdf")
     plt.close('all')
 
 def plot_batches_from_file(file_path = "K:/Aurora/cucumber/graph_config.yml"):
@@ -255,7 +321,10 @@ def plot_cycles(folder,save_location,sampleid):
     ax[1].set_ylabel('Efficiency (%)')
     ax[1].set_xlabel('Cycle')
     ax[0].set_title(sampleid)
-    fig.savefig(f'{save_location}/{sampleid}_Capacity.png',bbox_inches='tight')
+    try:
+        fig.savefig(f'{save_location}/{sampleid}_Capacity.png',bbox_inches='tight')
+    except PermissionError:
+        print(f"Permission error saving {save_location}/{sampleid}_Capacity.png")
     plt.close()
 
 def plot_all_samples(snapshot_folder=None):
