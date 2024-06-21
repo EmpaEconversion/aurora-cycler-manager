@@ -171,3 +171,4 @@ config.json
 *.db
 *.log
 *.ipynb
+*.code-workspace
