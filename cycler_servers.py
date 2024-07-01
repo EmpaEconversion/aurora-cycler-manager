@@ -1,3 +1,16 @@
+""" Server classes used by cucumber_tools, currently only tomato servers are implemented.
+
+Server configs are stored in ./config.json and must include the following fields:
+- label (str): A unique label for the server
+- hostname (str): The hostname of the server
+- username (str): The username for the server
+- server_type (str): The type of server, currently only "tomato" is implemented
+- command_prefix (str): The prefix to be added to all commands run on the server
+
+Additionally, tomato servers must include the following fields:
+- tomato_scripts_path (str): The path to the tomato scripts on the server
+"""
+
 import os
 import warnings
 import json
@@ -8,20 +21,26 @@ import pandas as pd
 
 
 class CyclerServer():
+    """ Base class for server objects, should not be instantiated directly. """
+
     def __init__(self, server_config, local_private_key):
         self.label = server_config["label"]
         self.hostname = server_config["hostname"]
         self.username = server_config["username"]
         self.server_type = server_config["server_type"]
         self.command_prefix = server_config["command_prefix"]
-        self.tomato_scripts_path = server_config["tomato_scripts_path"]
         self.local_private_key = local_private_key
         self.last_status = None
         self.last_queue = None
         self.last_queue_all = None
         self.check_connection()
 
-    def command(self, command):
+    def command(self, command: str) -> str:
+        """ Send a command to the server and return the output.
+        
+        The command is prefixed with the command_prefix specified in the server_config, is run on
+        the server's default shell, the standard output is returned as a string.
+        """
         with paramiko.SSHClient() as ssh:
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
@@ -38,8 +57,16 @@ class CyclerServer():
                 print(f"Error running '{command}' on {self.label}")
                 raise ValueError(error)
         return output
-    
-    def check_connection(self):
+
+    def check_connection(self) -> bool:
+        """ Check if the server is reachable by running a simple command.
+        
+        Returns:
+            bool: True if the server is reachable
+        
+        Raises:
+            ValueError: If the server is unreachable
+        """
         test_phrase = "hellothere"
         output = self.command(f"echo {test_phrase}")
         if output != test_phrase+"\r\n":
@@ -47,43 +74,96 @@ class CyclerServer():
         print(f"Succesfully connected to {self.label}")
         return True
 
-    def get_status(self):
+    def eject(self, pipeline):
         raise NotImplementedError
 
-    def get_queue(self):
+    def load(self, sample, pipeline):
+        raise NotImplementedError
+
+    def ready(self, pipeline):
+        raise NotImplementedError
+
+    def submit(self, sample: str, capacity_Ah: float, payload: str | dict):
+        raise NotImplementedError
+
+    def cancel(self, job_id_on_server: str):
+        raise NotImplementedError
+
+    def get_pipelines(self):
+        raise NotImplementedError
+
+    def get_jobs(self):
+        raise NotImplementedError
+
+    def snapshot(
+            self,
+            jobid: str,
+            jobid_on_server: str,
+            local_save_location: str,
+            get_raw: bool
+        ):
         raise NotImplementedError
 
 class TomatoServer(CyclerServer):
+    """ Server class for Tomato servers, implements all the methods in CyclerServer.
+    
+    Used by cucumber_tools to interact with Tomato servers, should not be instantiated directly.
+
+    Attributes:
+        save_location (str): The location on the server where snapshots are saved.
+    """
     def __init__(self, server_config, local_private_key):
         super().__init__(server_config, local_private_key)
+        self.tomato_scripts_path = server_config["tomato_scripts_path"]
         self.save_location = "C:/tomato/cucumber_scratch"
 
-    def eject(self, pipeline):
+    def eject(self, pipeline: str) -> str:
+        """ Eject any sample from the pipeline. """
         output = self.command(f"{self.tomato_scripts_path}ketchup eject {pipeline}")
         return output
 
-    def load(self, sample, pipeline):
+    def load(self, sample: str, pipeline: str) -> str:
+        """ Load a sample into a pipeline. """
         output = self.command(f"{self.tomato_scripts_path}ketchup load {sample} {pipeline}")
         return output
 
-    def ready(self, pipeline):
+    def ready(self, pipeline: str) -> str:
+        """ Ready a pipeline for use. """
         output = self.command(f"{self.tomato_scripts_path}ketchup ready {pipeline}")
         return output
 
-    def submit(self, sample, capacity_Ah, json_file, send_file=False):
+    def submit(
+            self,
+            sample: str,
+            capacity_Ah: float,
+            payload: str | dict,
+            send_file: bool = False
+        ) -> str:
+        """ Submit a job to the server.
+
+        Args:
+            sample (str): The name of the sample to be tested
+            capacity_Ah (float): The capacity of the sample in Ah
+            payload (str | dict): The JSON payload to be submitted, can include '$NAME' which is
+                replaced with the actual sample ID
+            send_file (bool): If True, the payload is written to a file and sent to the server
+
+        Returns:
+            str: The jobid of the submitted job with the server prefix
+            str: The jobid of the submitted job on the server (without the prefix)
+            str: The JSON string of the submitted payload
+        """
         # Check if json_file is a string that could be a file path or a JSON string
-        if isinstance(json_file, str):
+        if isinstance(payload, str):
             try:
                 # Attempt to load json_file as JSON string
-                payload = json.loads(json_file)
+                payload = json.loads(payload)
             except json.JSONDecodeError:
                 # If it fails, assume json_file is a file path
-                with open(json_file, "r", encoding="utf-8") as f:
+                with open(payload, "r", encoding="utf-8") as f:
                     payload = json.load(f)
-        elif isinstance(json_file, dict):
-            # If json_file is already a dictionary, use it directly
-            payload = json_file
-        else:
+        # If json_file is already a dictionary, use it directly
+        elif not isinstance(payload, dict):
             raise ValueError("json_file must be a file path, a JSON string, or a dictionary")
 
         # Add the sample name and capacity to the payload
@@ -104,7 +184,7 @@ class TomatoServer(CyclerServer):
             ssh.load_system_host_keys()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
-            with SCPClient(ssh.get_transport()) as scp:
+            with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
                 scp.put("temp.json", f"{self.save_location}/temp.json")
             ssh.close()
 
@@ -115,48 +195,76 @@ class TomatoServer(CyclerServer):
             encoded_json_string = base64.b64encode(json_string.encode()).decode()
             output = self.command(f'{self.tomato_scripts_path}ketchup submit -J {encoded_json_string}')
         if "jobid: " in output:
+            # TODO this will not work on non-windows servers, unix servers will have \n instead of \r\n
             jobid = output.split("jobid: ")[1].split("\r\n")[0]
             print(f"Sample {sample} submitted on server {self.label} with jobid {jobid}")
             full_jobid = f"{self.label}-{jobid}"
             print(f"Full jobid: {full_jobid}")
-            return full_jobid, jobid
+            return full_jobid, jobid, json_string
 
         raise ValueError(f"Error submitting job: {output}")
-        
-    def cancel(self, job_id):
-        output = self.command(f"{self.tomato_scripts_path}ketchup cancel {job_id}")
+
+    def cancel(self, job_id_on_server: str) -> str:
+        """ Cancel a job on the server. """
+        output = self.command(f"{self.tomato_scripts_path}ketchup cancel {job_id_on_server}")
         return output
 
-    def get_status(self):
+    def get_pipelines(self) -> dict:
+        """ Get the status of all pipelines on the server. """
         output = self.command(f"{self.tomato_scripts_path}ketchup status -J")
         status_dict = json.loads(output)
         self.last_status = status_dict
         return status_dict
 
-    def get_queue(self):
+    def get_queue(self) -> dict:
+        """ Get running and queued jobs from server. """
         output = self.command(f"{self.tomato_scripts_path}ketchup status queue -J")
         queue_dict = json.loads(output)
         self.last_queue = queue_dict
         return queue_dict
 
-    def get_queue_all(self):
+    def get_jobs(self) -> dict:
+        """ Get all jobs from server. """
         output = self.command(f"{self.tomato_scripts_path}ketchup status queue -v -J")
         queue_all_dict = json.loads(output)
         self.last_queue_all = queue_all_dict
         return queue_all_dict
 
-    def snapshot(self, sampleid, jobid, jobid_on_server, local_save_location, get_raw=False):
+    def snapshot(
+            self,
+            jobid: str,
+            jobid_on_server: str,
+            local_save_location: str,
+            get_raw: bool = False
+        ) -> str:
+        """ Save a snapshot of a job on the server and download it to the local machine.
+        
+        Args:
+            jobid (str): The jobid of the job on the local machine
+            jobid_on_server (str): The jobid of the job on the server
+            local_save_location (str): The directory to save the snapshot data to
+            get_raw (bool): If True, download the raw data as well as the snapshot data
+            
+        Returns:
+            str: The status of the snapshot (e.g. "c", "r", "ce", "cd")
+        """
         # Save a snapshot on the remote machine
         remote_save_location = f"{self.save_location}/{jobid_on_server}"
-        self.command(f"if (!(Test-Path \"{remote_save_location}\")) {{ New-Item -ItemType Directory -Path \"{remote_save_location}\" }}")
+        self.command(
+            f"if (!(Test-Path \"{remote_save_location}\")) "
+            f"{{ New-Item -ItemType Directory -Path \"{remote_save_location}\" }}"
+        )
         output = self.command(f"{self.tomato_scripts_path}ketchup status -J {jobid_on_server}")
+        print(f"Got job status on remote server {self.label}")
         json_output = json.loads(output)
         snapshot_status = json_output["status"][0]
-
         # Catch errors
         try:
             with warnings.catch_warnings(record=True) as w:
-                self.command(f"cd {remote_save_location} ; {self.tomato_scripts_path}ketchup snapshot {jobid_on_server}")
+                self.command(
+                    f"cd {remote_save_location} ; "
+                    f"{self.tomato_scripts_path}ketchup snapshot {jobid_on_server}"
+                )
                 for warning in w:
                     if "out-of-date version" in str(warning.message):
                         continue
@@ -169,7 +277,7 @@ class TomatoServer(CyclerServer):
             if "AssertionError" in emsg and "os.path.isdir(jobdir)" in emsg:
                 raise FileNotFoundError from e
             raise e
-
+        print(f"Snapshotted file on remote server {self.label}")
         # Get local directory to save the snapshot data
 
         if not os.path.exists(local_save_location):
@@ -179,24 +287,43 @@ class TomatoServer(CyclerServer):
         ssh = paramiko.SSHClient()
         ssh.load_system_host_keys()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        print(f"Connecting to {self.label}: host {self.hostname} user {self.username}")
         ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
-        with SCPClient(ssh.get_transport()) as scp:
-            scp.get(
-                f"{remote_save_location}/snapshot.{jobid_on_server}.json",
-                f"{local_save_location}/snapshot.{jobid}.json",
+        try:
+            print(
+                f"Downloading file {remote_save_location}/snapshot.{jobid_on_server}.json to "
+                "{local_save_location}/snapshot.{jobid}.json"
             )
-            if get_raw:
-                print("Downloading snapshot raw data")
+            with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
                 scp.get(
-                    f"{remote_save_location}/snapshot.{jobid_on_server}.zip",
-                    f"{local_save_location}/snapshot.{jobid}.zip"
+                    f"{remote_save_location}/snapshot.{jobid_on_server}.json",
+                    f"{local_save_location}/snapshot.{jobid}.json"
                 )
-        ssh.close()
+                if get_raw:
+                    print("Downloading snapshot raw data")
+                    scp.get(
+                        f"{remote_save_location}/snapshot.{jobid_on_server}.zip",
+                        f"{local_save_location}/snapshot.{jobid}.zip"
+                    )
+        finally:
+            ssh.close()
 
         return snapshot_status
-    
-    def convert_data(self,snapshot_file):
-        """Transposes DataFrame and reduces memory usage"""
+
+    def convert_data(self,snapshot_file: str) -> pd.DataFrame:
+        """ Transposes data into columns and returns a DataFrame.
+
+        TODO: move to a separate module for data handling
+        
+        Columns in output DataFrame:
+        - uts: UTS Timestamp in seconds
+        - Ewe: Voltage in V
+        - I: Current in A
+        - loop_number: how many loops have been completed
+        - cycle_number: used if there is a loop of loops
+        - index: index of the method in the payload
+        - technique: e.g. "OCV", "CPLIMIT", "CALIMIT"
+        """
         with open(snapshot_file, "r", encoding="utf-8") as f:
             input_dict = json.load(f)
         n_steps = len(input_dict["steps"])
