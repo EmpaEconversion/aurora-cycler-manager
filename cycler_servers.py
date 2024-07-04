@@ -292,7 +292,7 @@ class TomatoServer(CyclerServer):
         try:
             print(
                 f"Downloading file {remote_save_location}/snapshot.{jobid_on_server}.json to "
-                "{local_save_location}/snapshot.{jobid}.json"
+                f"{local_save_location}/snapshot.{jobid}.json"
             )
             with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
                 scp.get(
