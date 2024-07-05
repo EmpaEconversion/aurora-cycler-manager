@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import logging
 import traceback
 import cucumber_tools as ct
-from cucumber_analysis import plot_all_samples, plot_batches_from_file
+from cucumber_analysis import plot_all_samples, plot_all_batches
 
 STOP_FLAG = False
 
@@ -76,7 +76,7 @@ def daemon_loop(update_time: float = None, snapshot_times: list = None):
                 logging.info("Snapshotting complete")
             try:
                 plot_all_samples()
-                plot_batches_from_file()
+                plot_all_batches()
             except Exception as e:
                 logging.critical("Error plotting graphs: %s", e)
                 logging.debug(traceback.format_exc())
