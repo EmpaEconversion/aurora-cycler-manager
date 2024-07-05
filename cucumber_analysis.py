@@ -22,6 +22,9 @@ import h5py
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 import seaborn as sns
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 from version import __version__
 
 def convert_tomato_json(
@@ -83,7 +86,7 @@ def convert_tomato_json(
             json_filename = os.path.basename(snapshot_file)
             jobid = "".join(json_filename.split(".")[1:-1])
             # look up jobid in the database
-            with open('config.json', encoding = 'utf-8') as f:
+            with open('./config.json', encoding = 'utf-8') as f:
                 config = json.load(f)
             db_path = config["Database Path"]
             with sqlite3.connect(db_path) as conn:
@@ -125,7 +128,7 @@ def convert_all_tomato_jsons() -> None:
     
     TODO: Add option to only convert files with new data.
     """
-    with open('config.json') as f:
+    with open('./config.json') as f:
         config = json.load(f)
     raw_folder = config["Snapshots Folder Path"]
     processed_folder = config["Processed Snapshots Folder Path"]
@@ -158,6 +161,7 @@ def analyse_cycles(
             files will be saved in the same folder as the first input file
     
     TODO: Add save location as an argument.
+    TODO: Check if status of all jobs is 'c', if so don't skip last discharge
     """
 
     # Get the metadata from the files
@@ -185,6 +189,7 @@ def analyse_cycles(
                 print(f"Metadata not found in {f}")
                 raise KeyError from exc
     assert len(set(sampleids)) == 1, "All files must be from the same sample"
+    sampleid = sampleids[0]
     order = np.argsort(job_starts)
     dfs = [dfs[i] for i in order]
     h5_files = [h5_files[i] for i in order]
@@ -200,7 +205,7 @@ def analyse_cycles(
 
     # Extract useful information from the metadata
     sample_data = json.loads(metadatas[0]['sample_data'])
-    mass_g = sample_data['Cathode Active Material Weight (mg)'] * 1e-3
+    mass_mg = sample_data['Cathode Active Material Weight (mg)']
     max_V = 0
     formation_C = 0 
     for payload in payloads:
@@ -253,19 +258,25 @@ def analyse_cycles(
             charge_capacity_mAh = charge_data['dQ (mAh)'].sum()
             discharge_capacity_mAh = -discharge_data['dQ (mAh)'].sum()       
             cycle_dicts.append({
+                'Sample ID': sampleid,
                 'Cycle': cycle,
                 'Charge Capacity (mAh)': charge_capacity_mAh,
                 'Discharge Capacity (mAh)': discharge_capacity_mAh,
                 'Efficiency (%)': discharge_capacity_mAh/charge_capacity_mAh*100,
-                'Specific Charge Capacity (mAh/g)': charge_capacity_mAh/mass_g,
-                'Specific Discharge Capacity (mAh/g)': discharge_capacity_mAh/mass_g,
-                'Cathode Mass (g)': mass_g,
+                'Specific Charge Capacity (mAh/g)': charge_capacity_mAh/(mass_mg*1e-3),
+                'Specific Discharge Capacity (mAh/g)': discharge_capacity_mAh/(mass_mg*1e-3),
+                'Cathode Mass (mg)': mass_mg,
                 'Max Voltage (V)': max_V,
                 'Formation C': formation_C,
                 # 'Cycle C': cycle_C, # TODO extract cycle C-rate
             })
             group_df['Cycle'] = cycle
             cycle += 1
+    # Remove the last discharge and efficiency values as they are not complete
+    cycle_dicts[-1]['Discharge Capacity (mAh)'] = np.nan
+    cycle_dicts[-1]['Efficiency (%)'] = np.nan
+    cycle_dicts[-1]['Specific Discharge Capacity (mAh/g)'] = np.nan
+
     cycle_df = pd.DataFrame(cycle_dicts)
 
     if save_files:
@@ -279,7 +290,7 @@ def analyse_cycles(
             f'{save_folder}/cycles.{sampleids[0]}.h5',
             key="cycles",
             complib="blosc",
-            complevel=2
+            complevel=9
         )
     return df, cycle_df
 
@@ -288,7 +299,7 @@ def analyse_all_cycles() -> None:
     
     TODO: Only analyse files with new data since last analysis
     """
-    with open('config.json') as f:
+    with open('./config.json') as f:
         config = json.load(f)
     snapshot_folder = config["Processed Snapshots Folder Path"]
     for batch_folder in os.listdir(snapshot_folder):
@@ -298,8 +309,8 @@ def analyse_all_cycles() -> None:
             try:
                 analyse_cycles(h5_files, save_files=True)
                 print(f"Analysed {sample_folder}")
-            except:
-                print(f"Failed to analyse {sample_folder}")
+            except Exception as e:
+                print(f"Failed to analyse {sample_folder} with error {e}")
 
 def plot_sample(sample: str) -> None:
     """ Plot the data for a single sample.
@@ -308,7 +319,7 @@ def plot_sample(sample: str) -> None:
     and capacity(cycle).
     """
     batch = sample.rsplit('_',1)[0]
-    with open('config.json') as f:
+    with open('./config.json') as f:
         config = json.load(f)
     data_folder = config["Processed Snapshots Folder Path"]
     file_location = f"{data_folder}/{batch}/{sample}"
@@ -347,7 +358,7 @@ def plot_all_samples(snapshot_folder: str = None) -> None:
 
     TODO: Only plot samples with new data since last plot
     """
-    with open('config.json') as f:
+    with open('./config.json') as f:
         config = json.load(f)
     if not snapshot_folder:
         snapshot_folder = config["Processed Snapshots Folder Path"]
@@ -355,7 +366,9 @@ def plot_all_samples(snapshot_folder: str = None) -> None:
         for sample in os.listdir(f'{snapshot_folder}/{batch_folder}'):
             plot_sample(sample)
 
-def parse_sample_plotting_file(file_path: str = "K:/Aurora/cucumber/graph_config.yml") -> dict:
+def parse_sample_plotting_file(
+        file_path: str = "K:/Aurora/cucumber/graph_config.yml"
+    ) -> dict:
     """ Reads the graph config file and returns a dictionary of the batches to plot.
     
     Args: file_path (str): path to the yaml file containing the plotting configuration
@@ -364,8 +377,10 @@ def parse_sample_plotting_file(file_path: str = "K:/Aurora/cucumber/graph_config
     Returns: dict: dictionary of the batches to plot
         Dictionary contains the plot name as the key and a dictionary of the batch details as the
         value. Batch dict contains the samples to plot and any other plotting options.
+
+    TODO: Put the graph config location in the config file.
     """
-    with open('config.json') as f:
+    with open('./config.json') as f:
         config = json.load(f)
     data_folder = config["Processed Snapshots Folder Path"]
 
@@ -417,8 +432,10 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         plot_name (str): name of the plot
         batch (dict): dict with 'samples' key containing list of samples to plot
             and any other plotting options e.g. group_by, palette, etc.
+
+    TODO: make robust to missing data, raise warning instead of errors
     """
-    with open('config.json') as f:
+    with open('./config.json') as f:
         config = json.load(f)
     data_folder = config["Processed Snapshots Folder Path"]
     save_location = os.path.join(config['Graphs Folder Path'],plot_name)
@@ -438,19 +455,16 @@ def plot_batch(plot_name: str, batch: dict) -> None:
             if cycle_df.empty:
                 print(f"Empty dataframe for {sample}")
                 continue
-            ncycles = cycle_df['Cycle'].max()
-            print(f"{sample} has {ncycles} cycles")
             cycle_dfs.append(cycle_df)
         except StopIteration:
             # Handle the case where no file starts with 'cycles', e.g., by logging, raising a custom error, or setting analysed_file to None
             print(f"No files starting with 'cycles' found in {sample_folder}.")
         
-    cycle_df = pd.concat(cycle_dfs)
+    cycle_df = pd.concat(cycle_dfs).reset_index(drop=True)
 
-    # Get the 90th percentile cycle number
     n_cycles = max(cycle_df["Cycle"])
-    if n_cycles > 15:
-        cycles_to_plot = [1] + list(range(0, n_cycles, n_cycles // 15))[1:]
+    if n_cycles > 12:
+        cycles_to_plot = [1] + list(range(0, n_cycles, n_cycles // 12))[1:]
     else:
         cycles_to_plot = list(range(1, n_cycles + 1))
     plot_data = cycle_df[cycle_df["Cycle"].isin(cycles_to_plot)]
@@ -486,14 +500,13 @@ def plot_batch(plot_name: str, batch: dict) -> None:
     new_bottom = 0 if current_bottom < 0 else current_bottom
     new_top = 105 if current_top > 105 else current_top
     ax[1].set_ylim(new_bottom, new_top)
-
     fig.tight_layout()
     try:
         fig.savefig(f'{save_location}/{plot_name}_Capacity_strip.pdf',bbox_inches='tight')
     except PermissionError:
         print(f"Permission error saving {save_location}/{plot_name}_Capacity_strip.pdf")
     plt.close('all')
-    
+
     ### Swarm plot ###
     fig, ax = plt.subplots(2,1,sharex=True,figsize=(8,5),dpi=300)
     ax[0].set_ylabel("Discharge\nCapacity (mAh/g)")
@@ -539,6 +552,7 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         x="Cycle",
         y="Specific Discharge Capacity (mAh/g)",
         hue = group_by,
+        linewidth=0,
         **kwargs,
     )
     sns.violinplot(
@@ -547,6 +561,8 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         x="Cycle",
         y="Efficiency (%)",
         hue = group_by,
+        inner="point",
+        linewidth=0,
         **kwargs,
     )
     ymin, ymax = ax[1].get_ylim()
@@ -631,6 +647,49 @@ def plot_batch(plot_name: str, batch: dict) -> None:
     except PermissionError:
         print(f"Permission error saving {save_location}/{plot_name}_Capacity_point.pdf")
     plt.close('all')
+
+    ### Interative plot ###
+    # TODO make the jitter consistent for one sample - use sampleid as seed? or cathode mass?
+    cycle_df['Jittered Cycle'] = cycle_df['Cycle'] + np.random.uniform(-0.2,0.2,len(cycle_df))
+    cycle_df["Max Voltage (V)"] = cycle_df["Max Voltage (V)"].astype(str)
+    # sort the df by the Cycle and group_by columns
+    cycle_df = cycle_df.sort_values(by=['Cycle',group_by])
+
+    hover_columns = ['Sample ID', 'Cycle', 'Max Voltage (V)', 'Cathode Mass (mg)', 'Formation C']
+    hover_data = {col: True for col in hover_columns}
+    hover_data['Cycle'] = False  # Exclude jittered 'Cycle' from hover data
+
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,vertical_spacing=0.1)
+
+    scatter1 = px.scatter(cycle_df, x='Jittered Cycle', y='Specific Discharge Capacity (mAh/g)', color=group_by, hover_data=hover_data)
+    for trace in scatter1.data:
+        trace.hovertemplate = 'Sample ID: %{customdata[0]}<br>Cycle: %{customdata[1]}<br>Max Voltage (V): %{customdata[2]}<br>Cathode Mass (mg): %{customdata[3]}<br>Formation C/%{customdata[4]}<extra></extra>'
+        fig.add_trace(trace, row=1, col=1)
+
+    scatter2 = px.scatter(cycle_df, x='Jittered Cycle', y='Efficiency (%)', color=group_by, hover_data=hover_data)
+    for trace in scatter2.data:
+        trace.showlegend = False
+        trace.hovertemplate = 'Sample ID: %{customdata[0]}<br>Cycle: %{customdata[1]}<br>Max Voltage (V): %{customdata[2]}<br>Cathode Mass (mg): %{customdata[3]}<br>Formation C/%{customdata[4]}<extra></extra>'
+        fig.add_trace(trace, row=2, col=1)
+
+    fig.update_xaxes(title_text="Cycle", row=2, col=1)
+    ymin = max(0, cycle_df['Specific Discharge Capacity (mAh/g)'].min())
+
+    ymax = cycle_df['Specific Discharge Capacity (mAh/g)'].max()*1.05
+    fig.update_yaxes(title_text="Specific Discharge<br>Capacity (mAh/g)", row=1, col=1)
+    ymin = max(70, cycle_df['Efficiency (%)'].min())
+    ymax = min(101, cycle_df['Efficiency (%)'].max())
+    fig.update_yaxes(title_text="Efficiency (%)", row=2, col=1, range=[ymin, ymax])
+    fig.update_layout(
+        legend_title_text='Max Voltage (V)',
+        template='plotly_white',
+        )
+
+    # save the plot
+    try:
+        fig.write_html(os.path.join(save_location,f'{plot_name}_interactive.html'))
+    except PermissionError:
+        print(f"Permission error saving {os.path.join(save_location,f'{plot_name}_interactive.html')}")
 
 def plot_all_batches(
         file_path: str= "K:/Aurora/cucumber/graph_config.yml"
