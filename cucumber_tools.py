@@ -524,7 +524,7 @@ class Cucumber:
                 payload = json.loads(json_file)
             except json.JSONDecodeError:
                 # If it fails, assume json_file is a file path
-                with open("./config.json", "r", encoding="utf-8") as f:
+                with open(json_file, "r", encoding="utf-8") as f:
                     payload = json.load(f)
         elif not isinstance(json_file, dict):
             raise ValueError("json_file must be a file path, a JSON string, or a dictionary")
