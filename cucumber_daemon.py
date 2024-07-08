@@ -9,8 +9,11 @@ from time import sleep
 from datetime import datetime, timedelta
 import logging
 import traceback
+import matplotlib
 import cucumber_tools as ct
-from cucumber_analysis import plot_all_samples, plot_all_batches
+from cucumber_analysis import plot_all_samples, plot_all_batches, analyse_all_cycles
+
+matplotlib.use('Agg')
 
 STOP_FLAG = False
 
@@ -75,10 +78,11 @@ def daemon_loop(update_time: float = None, snapshot_times: list = None):
             else:
                 logging.info("Snapshotting complete")
             try:
+                analyse_all_cycles()
                 plot_all_samples()
                 plot_all_batches()
             except Exception as e:
-                logging.critical("Error plotting graphs: %s", e)
+                logging.critical("Error analysing and plotting: %s", e)
                 logging.debug(traceback.format_exc())
             else:
                 logging.info("Plotting complete")
