@@ -1,19 +1,32 @@
+""" Functions to create config and database files.
+
+Config and database files are created if they do not exist during Cucumber
+initialisation. The config file is created with some default values for
+file paths and server information. The database samples table is created
+with columns specified in the config file, with alternative names for handling
+different naming conventions in output files.
+"""
 import os
 import json
 import sqlite3
 
+base_dir = os.path.dirname(os.path.abspath(__file__))
+config_path = os.path.join(base_dir, 'config.json')
 
-def create_config():
-    if not os.path.exists('config.json'):
-        print("Config file not found. Creating config.json file in the same directory as this script.")
-        with open('config.json', 'w') as f:
+def create_config() -> None:
+    """ Create a config file if it doesn't exist. """
+    if not os.path.exists(config_path):
+        print(
+            "Config file not found. Creating config.json file in the same directory as this script."
+        )
+        with open(config_path, 'w', encoding='utf-8') as f:
             json.dump({
-                "Database Path" : "./database/database.db",
-                "Database Backup Folder Path" : "./database/backup",
-                "Samples Folder Path" : "./samples",
-                "Snapshots Folder Path" : "./snapshots",
-                "Processed Snapshots Folder Path" : "./snapshots",
-                "Graphs Folder Path" : "./snapshots",
+                "Database Path": os.path.join(base_dir, "database", "database.db"),
+                "Database Backup Folder Path": os.path.join(base_dir, "database", "backup"),
+                "Samples Folder Path": os.path.join(base_dir, "samples"),
+                "Snapshots Folder Path": os.path.join(base_dir, "snapshots"),
+                "Processed Snapshots Folder Path": os.path.join(base_dir, "snapshots"),
+                "Graphs Folder Path": os.path.join(base_dir, "snapshots"),
 
                 "Servers" : [
                     {
@@ -22,7 +35,7 @@ def create_config():
                         "username": "user name on remote server",
                         "server_type": "tomato",
                         "command_prefix" : "this is put before any command, e.g. conda activate tomato ; ",
-                        "tomato_scripts_path": "this is put before ketchup in the command",
+                        "tomato_scripts_path": "tomato-specific: this is put before ketchup in the command",
                     }
                 ],
                 "Sample Database" : [
@@ -88,11 +101,12 @@ def create_config():
                 ],
             }, f, indent=4)
     return
-   
 
-def create_database():
+
+def create_database() -> None:
+    """ Create a database file if it doesn't exist. """
     # Load the configuration
-    with open('config.json') as f:
+    with open(config_path, encoding='utf-8') as f:
         config = json.load(f)
     database_path = config["Database Path"]
     database_folder, _ = os.path.split(database_path)
@@ -150,13 +164,26 @@ def create_database():
         cursor.execute("PRAGMA table_info(samples)")
         existing_columns = cursor.fetchall()
         existing_columns = [col[1] for col in existing_columns]
-        new_columns = [col["Name"] for col in config["Sample Database"] if col["Name"] not in existing_columns]
-        removed_columns = [col for col in existing_columns if col not in [col["Name"] for col in config["Sample Database"]]]
+        new_columns = [
+            col["Name"]
+            for col in config["Sample Database"]
+            if col["Name"] not in existing_columns
+        ]
+        removed_columns = [
+            col
+            for col in existing_columns
+            if col not in [col["Name"] for col in config["Sample Database"]]
+        ]
         if removed_columns:
             print(f"Database config would remove columns: {', '.join(removed_columns)}")
             # Ask user to type 'yes' to confirm
-            if input("Are you sure you want to delete these columns? Type 'yes' to confirm: ") == "yes":
-                if input("Are you really sure? This will delete all data in these columns. Type 'really' to confirm: ") == "really":
+            if input(
+                "Are you sure you want to delete these columns? Type 'yes' to confirm: "
+            ) == "yes":
+                if input(
+                    "Are you really sure? This will delete all data in these columns. "
+                    "Type 'really' to confirm: "
+                ) == "really":
                     # Remove columns
                     for col in removed_columns:
                         cursor.execute(f'ALTER TABLE samples DROP COLUMN "{col}"')
@@ -171,21 +198,6 @@ def create_database():
             conn.commit()
         else:
             print("No changes to configuration")
-    
-        # Check if there are new rows to add in jobs table
-        with open('manual_job_tracking.json', 'r') as f:
-            manual_job_tracking = json.load(f)
-        
-        cursor.execute("PRAGMA table_info(jobs)")
-        # add new rows if they don't exist
-        for job in manual_job_tracking:
-            cursor.execute(
-                'INSERT OR IGNORE INTO jobs (`Job ID`, `Sample ID`, `Server Label`, `Server Hostname`, `Job ID on Server`) VALUES (?, ?, ?, ?, ?)',
-                (job['Job ID'], job['Sample ID'], job['Server Label'], job['Server Hostname'], job['Job ID on Server'])
-            )
-            if cursor.rowcount == 1:
-                print(f"Added job {job['Job ID']} to jobs table")
-        conn.commit()
 
 
 if __name__ == "__main__":
