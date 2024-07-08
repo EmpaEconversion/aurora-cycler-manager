@@ -18,13 +18,14 @@ import os
 import warnings
 import json
 import sqlite3
-from time import time
+from time import time, sleep
 import traceback
 from typing import Literal
 import pandas as pd
 import paramiko
 from cycler_servers import TomatoServer
 from database_setup import create_config, create_database
+from cucumber_analysis import convert_tomato_json
 
 
 class Cucumber:
@@ -604,7 +605,7 @@ class Cucumber:
 
         for sampleid, jobid, server_name, jobid_on_server, snapshot_status in result:
             if not sampleid:
-                print(f"Job {jobid} not associated with a sample, skipping.")
+                print(f"Job {jobid} not associated with a sample, skipping.") # TODO should this update the db as well?
                 print(f"sql results: {sampleid=}, {jobid=}, {server_name=}, {jobid_on_server=}, {snapshot_status=}")
                 continue
             # Check if the snapshot should be skipped
@@ -652,15 +653,11 @@ class Cucumber:
                 warnings.warn(f"Error snapshotting {jobid}: {e}", RuntimeWarning)
 
             # Process the file and save to processed snapshots folder
-            data = server.convert_data(f"{local_save_location}/snapshot.{jobid}.json")
-            if not os.path.exists(local_save_location_processed):
-                os.makedirs(local_save_location_processed)
-            data.to_hdf(
+            convert_tomato_json(
+                f"{local_save_location}/snapshot.{jobid}.json",
                 f"{local_save_location_processed}/snapshot.{jobid}.h5",
-                key="cycling",
-                complib="blosc",
-                complevel=2
             )
+
         return
 
     def snapshot_all(
@@ -703,6 +700,7 @@ class Cucumber:
             percent_done = (i + 1) / total_jobs * 100
             time_elapsed = time() - t0
             time_remaining = time_elapsed / (i + 1) * (total_jobs - i - 1)
+            sleep(20) # to not overload the server
             print(f"{percent_done:.2f}% done, {int(time_remaining/60)} minutes remaining")
         return
 
