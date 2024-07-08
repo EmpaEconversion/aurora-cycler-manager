@@ -159,6 +159,28 @@ def create_database() -> None:
             ')'
         )
         conn.commit()
+        cursor.execute(
+            'CREATE TABLE IF NOT EXISTS results ('
+            '`Sample ID` VARCHAR(255) PRIMARY KEY,'
+            '`Pipeline` VARCHAR(50),'
+            '`Number of cycles` INT,'
+            '`Capacity loss (%)` FLOAT,'
+            '`Max voltage (V)` FLOAT,'
+            '`Formation C` FLOAT,'
+            '`Cycling C` FLOAT,'
+            '`Flag` VARCHAR(3),'
+            '`First formation efficiency (%)` FLOAT,'
+            '`Initial discharge specific capacity (mAh/g)` FLOAT,'
+            '`Initial efficiency (%)` FLOAT,'
+            '`Last discharge specific capacity (mAh/g)` FLOAT,'
+            '`Last efficiency (%)` FLOAT,'
+            '`Last analysis` DATETIME,'
+            '`Last plotted` DATETIME,'
+            'FOREIGN KEY(`Sample ID`) REFERENCES samples(`Sample ID`), '
+            'FOREIGN KEY(`Pipeline`) REFERENCES pipelines(`Pipeline`)'
+            ')'
+        )
+        conn.commit()
 
         # Check if there are new columns to add in samples table
         cursor.execute("PRAGMA table_info(samples)")
