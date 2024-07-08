@@ -207,7 +207,8 @@ def analyse_cycles(
     sample_data = json.loads(metadatas[0]['sample_data'])
     mass_mg = sample_data['Cathode Active Material Weight (mg)']
     max_V = 0
-    formation_C = 0 
+    formation_C = 0
+    cycle_C = 0
     for payload in payloads:
         for method in payload['method']:
             voltage = method.get('limit_voltage_max',0)
@@ -215,9 +216,9 @@ def analyse_cycles(
                 max_V = voltage
 
             for payload in payloads:
-                if len(payload['method']) <= 4:
-                    for method in payload['method']:
-                        if method['technique'] == 'loop' and method['n_gotos'] < 4: # it is probably formation
+                for method in payload['method']:
+                    if method['technique'] == 'loop':
+                        if method['n_gotos'] < 4: # it is probably formation
                             for m in payload['method']:
                                 if 'current' in m and 'C' in m['current']:
                                     try:
@@ -226,7 +227,18 @@ def analyse_cycles(
                                         print(f"Not a valid C-rate: {m['current']}")
                                         formation_C = 0
                                     break
-
+                        if method['n_gotos'] > 10: # it is probably cycling
+                            for m in payload['method']:
+                                if 'current' in m and 'C' in m['current']:
+                                    try:
+                                        cycle_C = float(m['current'][2:])
+                                    except ValueError:
+                                        print(f"Not a valid C-rate: {m['current']}")
+                                        cycle_C = 0
+                                    break
+    if not formation_C:
+        print(f"No formation C found for {sampleid}, using cycle_C")
+        formation_C = cycle_C
     df = df.sort_values('uts')
     # Detect whenever job, cycle or loop changes
     # Necessary because the cycle number is not always recorded correctly so
@@ -268,9 +280,8 @@ def analyse_cycles(
                 'Cathode Mass (mg)': mass_mg,
                 'Max Voltage (V)': max_V,
                 'Formation C': formation_C,
-                # 'Cycle C': cycle_C, # TODO extract cycle C-rate
+                'Cycle C': cycle_C,
             })
-            group_df['Cycle'] = cycle
             cycle += 1
     # Remove the last discharge and efficiency values as they are not complete
     cycle_dicts[-1]['Discharge Capacity (mAh)'] = np.nan
@@ -278,6 +289,10 @@ def analyse_cycles(
     cycle_dicts[-1]['Specific Discharge Capacity (mAh/g)'] = np.nan
 
     cycle_df = pd.DataFrame(cycle_dicts)
+
+    if cycle_df.empty:
+        print(f"No cycles found for {sampleid}")
+        return df, cycle_df
 
     if save_files:
         save_folder = os.path.dirname(h5_files[0])
@@ -328,6 +343,9 @@ def plot_sample(sample: str) -> None:
     # plot V(t)
     files = os.listdir(file_location)
     cycling_files = [f for f in files if (f.startswith('snapshot') and f.endswith('.h5'))]
+    if not cycling_files:
+        print(f"No cycling files found in {file_location}")
+        return
     dfs = [pd.read_hdf(f'{file_location}/{f}') for f in cycling_files]
     df = pd.concat(dfs)
     df.sort_values('uts', inplace=True)
@@ -336,11 +354,19 @@ def plot_sample(sample: str) -> None:
     plt.ylabel('Voltage (V)')
     plt.xticks(rotation=45)
     plt.title(sample)
+    if not os.path.exists(save_location):
+        os.makedirs(save_location)
     fig.savefig(f'{save_location}/{sample}_V(t).png',bbox_inches='tight')
 
     # plot capacity
-    analysed_file = next(f for f in files if f.startswith('cycles'))
+    try:
+        analysed_file = next(f for f in files if f.startswith('cycles'))
+    except StopIteration:
+        print(f"No files starting with 'cycles' found in {file_location}.")
+        return
     cycle_df = pd.read_hdf(f'{file_location}/{analysed_file}')
+    assert not cycle_df.empty, f"Empty dataframe for {sample}"
+    assert 'Cycle' in cycle_df.columns, f"No 'Cycle' column in {sample}"
     fig, ax = plt.subplots(2,1,sharex=True,figsize=(6,4),dpi=72)
     ax[0].plot(cycle_df['Cycle'][:-1],cycle_df['Discharge Capacity (mAh)'][:-1],'.-')
     ax[1].plot(cycle_df['Cycle'][:-1],cycle_df['Efficiency (%)'][:-1],'.-')
@@ -364,7 +390,11 @@ def plot_all_samples(snapshot_folder: str = None) -> None:
         snapshot_folder = config["Processed Snapshots Folder Path"]
     for batch_folder in os.listdir(snapshot_folder):
         for sample in os.listdir(f'{snapshot_folder}/{batch_folder}'):
-            plot_sample(sample)
+            try:
+                plot_sample(sample)
+                plt.close('all')
+            except Exception as e:
+                print(f"Failed to plot {sample} with error {e}")
 
 def parse_sample_plotting_file(
         file_path: str = "K:/Aurora/cucumber/graph_config.yml"
@@ -706,6 +736,7 @@ def plot_all_batches(
     batches = parse_sample_plotting_file(file_path)
     for plot_name, batch in batches.items():
         plot_batch(plot_name,batch)
+        plt.close('all')
 
 def _c_to_float(c_rate: str) -> float:
     """ Convert a C-rate string to a float.
