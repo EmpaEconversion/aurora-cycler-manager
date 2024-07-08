@@ -166,12 +166,12 @@ class Cucumber:
                 if "Sample ID" not in row:
                     continue
                 placeholders = ', '.join('?' * len(row))
-                columns = ', '.join(f"'{key}'" for key in row.keys())
+                columns = ', '.join(f"`{key}`" for key in row.keys())
                 # Insert or ignore the row
                 sql = f"INSERT OR IGNORE INTO samples ({columns}) VALUES ({placeholders})"
                 cursor.execute(sql, tuple(row))
                 # Update the row
-                updates = ", ".join(f"'{column}' = ?" for column in row.keys())
+                updates = ", ".join(f"`{column}` = ?" for column in row.keys())
                 sql = f"UPDATE samples SET {updates} WHERE `Sample ID` = ?"
                 cursor.execute(sql, (*tuple(row), row['Sample ID']))
             conn.commit()
