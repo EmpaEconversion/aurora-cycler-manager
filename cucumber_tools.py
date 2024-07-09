@@ -246,11 +246,26 @@ class Cucumber:
                         )
                     conn.commit()
 
+    def update_flags(self) -> None:
+        """ Update the flags in the pipelines table from the results table. """
+        with sqlite3.connect(r"K:\Aurora\cucumber\database\database.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE pipelines SET `Flag` = NULL")
+            cursor.execute("SELECT `Pipeline`, `Flag`, `Sample ID` FROM results")
+            results = cursor.fetchall()
+            for pipeline, flag, sampleid in results:
+                cursor.execute(
+                    "UPDATE pipelines SET `Flag` = ? WHERE `Pipeline` = ? AND `Sample ID` = ?",
+                    (flag, pipeline, sampleid)
+                )
+            conn.commit()
+
     def update_db(self) -> None:
         """ Update all tables in the database """
         self.update_samples()
         self.update_status()
         self.update_jobs()
+        self.update_flags()
 
     def get_from_db(self, table: str, columns: str = "*", where: str = "") -> list:
         """ Get data from the database.
