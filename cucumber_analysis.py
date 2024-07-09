@@ -14,6 +14,7 @@ import re
 import sqlite3
 from typing import List
 from datetime import datetime
+import traceback
 import json
 import yaml
 import numpy as np
@@ -160,9 +161,13 @@ def analyse_cycles(
         save_files (bool, optional): whether to save the output files
             files will be saved in the same folder as the first input file
     
+    TODO: Take a sampleID instead of a list of files
     TODO: Add save location as an argument.
-    TODO: Check if status of all jobs is 'c', if so don't skip last discharge
+    TODO: Update results table of database
     """
+    with open('./config.json') as f:
+        config = json.load(f)
+    db_path = config["Database Path"]
 
     # Get the metadata from the files
     dfs = []
@@ -176,10 +181,9 @@ def analyse_cycles(
             try:
                 metadata=dict(file['cycling'].attrs)
                 job_data = json.loads(metadata['job_data'])
-                sample_data = json.loads(metadata['sample_data'])
                 metadatas.append(metadata)
                 sampleids.append(
-                    sample_data['Sample ID']
+                    json.loads(metadata['sample_data'])['Sample ID']
                 )
                 job_starts.append(
                     datetime.strptime(job_data['Submitted'], '%Y-%m-%d %H:%M:%S')
@@ -196,6 +200,26 @@ def analyse_cycles(
     metadatas = [metadatas[i] for i in order]
     payloads = [payloads[i] for i in order]
 
+    metadata = metadatas[-1]
+    job_data = json.loads(metadata['job_data'])
+    snapshot_status = job_data['Snapshot Status']
+    snapshot_pipeline = job_data['Pipeline']
+    last_snapshot = job_data['Last Snapshot']
+
+    pipeline = None
+    status = None
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT `Pipeline`, `Job ID`, `Server Label` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
+        row = cursor.fetchone()
+        if row:
+            pipeline = row[0]
+            job_id = row[1]
+            server_label = row[2]
+            if job_id:
+                cursor.execute("SELECT `Status` FROM jobs WHERE `Job ID` = ?", (f"{server_label}-{job_id}",))
+                status = cursor.fetchone()[0]
+
     for i,df in enumerate(dfs):
         df["job_number"] = i
     df = pd.concat(dfs)
@@ -204,7 +228,7 @@ def analyse_cycles(
     df["dQ (mAh)"] = 1e3 * df["Iavg (A)"] * df["dt (s)"] / 3600
 
     # Extract useful information from the metadata
-    sample_data = json.loads(metadatas[0]['sample_data'])
+    sample_data = json.loads(metadata['sample_data'])
     mass_mg = sample_data['Cathode Active Material Weight (mg)']
     max_V = 0
     formation_C = 0
@@ -222,7 +246,7 @@ def analyse_cycles(
                             for m in payload['method']:
                                 if 'current' in m and 'C' in m['current']:
                                     try:
-                                        formation_C = float(m['current'][2:])
+                                        formation_C = _c_to_float(m['current'])
                                     except ValueError:
                                         print(f"Not a valid C-rate: {m['current']}")
                                         formation_C = 0
@@ -231,7 +255,7 @@ def analyse_cycles(
                             for m in payload['method']:
                                 if 'current' in m and 'C' in m['current']:
                                     try:
-                                        cycle_C = float(m['current'][2:])
+                                        cycle_C = _c_to_float(m['current'])
                                     except ValueError:
                                         print(f"Not a valid C-rate: {m['current']}")
                                         cycle_C = 0
@@ -244,8 +268,8 @@ def analyse_cycles(
     # Necessary because the cycle number is not always recorded correctly so
     # the combination of job, cycle, loop is not necessarily unique
     df['group_id'] = (
-        (df['loop_number'] < df['loop_number'].shift(1)) | 
-        (df['cycle_number'] < df['cycle_number'].shift(1)) | 
+        (df['loop_number'] < df['loop_number'].shift(1)) |
+        (df['cycle_number'] < df['cycle_number'].shift(1)) |
         (df['job_number'] < df['job_number'].shift(1))
     ).cumsum()
     df['global_idx'] = df.groupby(['job_number', 'group_id', 'cycle_number', 'loop_number']).ngroup()
@@ -266,9 +290,11 @@ def analyse_cycles(
         ]
 
         # Only consider cycles with more than 10 data points
-        if len(charge_data)>10 and len(discharge_data)>10:
+        started_charge=len(charge_data)>10
+        started_discharge=len(discharge_data)>10
+        if started_charge and started_discharge:
             charge_capacity_mAh = charge_data['dQ (mAh)'].sum()
-            discharge_capacity_mAh = -discharge_data['dQ (mAh)'].sum()       
+            discharge_capacity_mAh = -discharge_data['dQ (mAh)'].sum()
             cycle_dicts.append({
                 'Sample ID': sampleid,
                 'Cycle': cycle,
@@ -283,16 +309,76 @@ def analyse_cycles(
                 'Cycle C': cycle_C,
             })
             cycle += 1
-    # Remove the last discharge and efficiency values as they are not complete
-    cycle_dicts[-1]['Discharge Capacity (mAh)'] = np.nan
-    cycle_dicts[-1]['Efficiency (%)'] = np.nan
-    cycle_dicts[-1]['Specific Discharge Capacity (mAh/g)'] = np.nan
+    # A dict is made if charge data is complete and discharge started
+    # Last dict may have incomplete discharge data
+    if snapshot_status != 'c':
+        if started_charge and started_discharge:
+            # Probably recorded an incomplete discharge for last recorded cycle
+            cycle_dicts[-1]['Discharge Capacity (mAh)'] = np.nan
+            cycle_dicts[-1]['Efficiency (%)'] = np.nan
+            cycle_dicts[-1]['Specific Discharge Capacity (mAh/g)'] = np.nan
+            complete = 0
+        else:
+            # Last recorded cycle is complete
+            complete = 1
+    else:
+        complete = 1
 
     cycle_df = pd.DataFrame(cycle_dicts)
-
+    n_cycles = len(cycle_df)
     if cycle_df.empty:
         print(f"No cycles found for {sampleid}")
         return df, cycle_df
+    if len(cycle_df) == 1 and not complete:
+        print(f"No complete cycles found for {sampleid}")
+        return df, cycle_df
+    last_complete_cycle = cycle_df.iloc[-1] if complete else cycle_df.iloc[-2]
+    form_eff = round(cycle_df.iloc[0]['Efficiency (%)'],3)
+    init_dis_cap = round(cycle_df.iloc[4]['Specific Discharge Capacity (mAh/g)'],3) if n_cycles > 5 else None
+    init_eff = round(cycle_df.iloc[4]['Efficiency (%)'],3) if n_cycles > 5 else None
+    last_dis_cap = round(last_complete_cycle['Specific Discharge Capacity (mAh/g)'],3)
+    last_eff = round(last_complete_cycle['Efficiency (%)'],3)
+    cap_loss = round((init_dis_cap - last_dis_cap) / init_dis_cap * 100, 3) if init_dis_cap else None
+    flag = None
+    job_complete = status and status.endswith('c')
+    if cap_loss and cap_loss > 20 and not job_complete:
+        flag = 'Cap loss'
+    if form_eff < 50 and not job_complete:
+        flag = 'Form eff'
+    if init_eff and init_eff < 50 and not job_complete:
+        flag = 'Init eff'
+    if init_dis_cap and init_dis_cap< 50 and not job_complete:
+        flag = 'Init cap'
+    if job_complete and pipeline:
+        flag = 'Complete'
+
+    update_row = {
+        'Pipeline': pipeline,
+        'Status': status,
+        'Flag': flag,
+        'Number of cycles': int(last_complete_cycle['Cycle']),
+        'Capacity loss (%)': cap_loss,
+        'Max Voltage (V)': last_complete_cycle['Max Voltage (V)'],
+        'Formation C': last_complete_cycle['Formation C'],
+        'Cycling C': last_complete_cycle['Cycle C'],
+        'First formation efficiency (%)': form_eff,
+        'Initial discharge specific capacity (mAh/g)': init_dis_cap,
+        'Initial efficiency (%)': init_eff,
+        'Last discharge specific capacity (mAh/g)': last_dis_cap,
+        'Last efficiency (%)': last_eff,
+        'Last Snapshot': last_snapshot,
+        'Last analysis': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        #'Last plotted' # do not update this column here
+        'Snapshot status': snapshot_status,
+        'Snapshot pipeline': snapshot_pipeline,
+    }
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        # insert a row with sampleid if it doesn't exist
+        cursor.execute("INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)", (sampleid,))
+        # update the row
+        columns = ", ".join([f"`{k}` = ?" for k in update_row.keys()])
+        cursor.execute(f"UPDATE results SET {columns} WHERE `Sample ID` = ?", (*update_row.values(), sampleid))
 
     if save_files:
         save_folder = os.path.dirname(h5_files[0])
@@ -309,8 +395,25 @@ def analyse_cycles(
         )
     return df, cycle_df
 
-def analyse_all_cycles() -> None:
-    """ Analyse all cycles in the processed snapshots folder.
+def analyse_sample(sample: str) -> None:
+    """ Analyse a single sample.
+    
+    Will search for the sample in the processed snapshots folder and analyse the cycling data.
+    """
+    batch = sample.rsplit('_',1)[0]
+    with open('./config.json', encoding='utf-8') as f:
+        config = json.load(f)
+    data_folder = config["Processed Snapshots Folder Path"]
+    file_location = os.path.join(data_folder, batch, sample)
+    h5_files = [
+        os.path.join(file_location,f) for f in os.listdir(file_location)
+        if (f.startswith('snapshot') and f.endswith('.h5'))
+    ]
+    df, cycle_df = analyse_cycles(h5_files, save_files=True)
+    return df, cycle_df
+
+def analyse_all_samples() -> None:
+    """ Analyse all samples in the processed snapshots folder.
     
     TODO: Only analyse files with new data since last analysis
     """
@@ -318,14 +421,14 @@ def analyse_all_cycles() -> None:
         config = json.load(f)
     snapshot_folder = config["Processed Snapshots Folder Path"]
     for batch_folder in os.listdir(snapshot_folder):
-        for sample_folder in os.listdir(f'{snapshot_folder}/{batch_folder}'):
-            source_folder = os.path.join(snapshot_folder, batch_folder, sample_folder)
-            h5_files = [os.path.join(source_folder,f) for f in os.listdir(source_folder) if (f.startswith('snapshot') and f.endswith('.h5'))]
+        for sample in os.listdir(os.path.join(snapshot_folder, batch_folder)):
             try:
-                analyse_cycles(h5_files, save_files=True)
-                print(f"Analysed {sample_folder}")
+                analyse_sample(sample)
+            except KeyError as e:
+                print(f"No metadata found for {sample}")
             except Exception as e:
-                print(f"Failed to analyse {sample_folder} with error {e}")
+                tb = traceback.format_exc()
+                print(f"Failed to analyse {sample} with error {e}\n{tb}")
 
 def plot_sample(sample: str) -> None:
     """ Plot the data for a single sample.
@@ -339,7 +442,7 @@ def plot_sample(sample: str) -> None:
     data_folder = config["Processed Snapshots Folder Path"]
     file_location = f"{data_folder}/{batch}/{sample}"
     save_location = f"{config['Graphs Folder Path']}/{batch}"
-    
+
     # plot V(t)
     files = os.listdir(file_location)
     cycling_files = [f for f in files if (f.startswith('snapshot') and f.endswith('.h5'))]
@@ -368,8 +471,8 @@ def plot_sample(sample: str) -> None:
     assert not cycle_df.empty, f"Empty dataframe for {sample}"
     assert 'Cycle' in cycle_df.columns, f"No 'Cycle' column in {sample}"
     fig, ax = plt.subplots(2,1,sharex=True,figsize=(6,4),dpi=72)
-    ax[0].plot(cycle_df['Cycle'][:-1],cycle_df['Discharge Capacity (mAh)'][:-1],'.-')
-    ax[1].plot(cycle_df['Cycle'][:-1],cycle_df['Efficiency (%)'][:-1],'.-')
+    ax[0].plot(cycle_df['Cycle'],cycle_df['Discharge Capacity (mAh)'],'.-')
+    ax[1].plot(cycle_df['Cycle'],cycle_df['Efficiency (%)'],'.-')
     ax[0].set_ylabel('Discharge Capacity (mAh)')
     ax[1].set_ylabel('Efficiency (%)')
     ax[1].set_xlabel('Cycle')
@@ -434,7 +537,7 @@ def parse_sample_plotting_file(
                 elif sample_range == 'all':
                     # Check the folders
                     if os.path.exists(f"{data_folder}/{batch_name}"):
-                        transformed_samples.extend(os.listdir(f"{data_folder}/{batch_name}"))   
+                        transformed_samples.extend(os.listdir(f"{data_folder}/{batch_name}"))  
                     else:
                         print(f"Folder {data_folder}/{batch_name} does not exist")
                 else:
@@ -487,10 +590,14 @@ def plot_batch(plot_name: str, batch: dict) -> None:
                 continue
             cycle_dfs.append(cycle_df)
         except StopIteration:
-            # Handle the case where no file starts with 'cycles', e.g., by logging, raising a custom error, or setting analysed_file to None
+            # Handle the case where no file starts with 'cycles'
             print(f"No files starting with 'cycles' found in {sample_folder}.")
-        
+            continue
+
     cycle_df = pd.concat(cycle_dfs).reset_index(drop=True)
+
+    # Save the data
+    cycle_df.to_excel(f'{save_location}/{plot_name}_data.xlsx',index=False)
 
     n_cycles = max(cycle_df["Cycle"])
     if n_cycles > 12:
@@ -665,8 +772,8 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         markersize=3,
         **kwargs,
     )
-    ax[0].xaxis.set_major_locator(MaxNLocator(integer=True, nbins=10)) 
-    ax[1].xaxis.set_major_locator(MaxNLocator(integer=True, nbins=10)) 
+    ax[0].xaxis.set_major_locator(MaxNLocator(integer=True, nbins=10))
+    ax[1].xaxis.set_major_locator(MaxNLocator(integer=True, nbins=10))
     ymin, ymax = ax[1].get_ylim()
     ymin = max(70,ymin)
     ymax = min(105,ymax)
@@ -714,7 +821,7 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         legend_title_text='Max Voltage (V)',
         template='plotly_white',
         )
-
+    
     # save the plot
     try:
         fig.write_html(os.path.join(save_location,f'{plot_name}_interactive.html'))
