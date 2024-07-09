@@ -19,6 +19,7 @@ import warnings
 import json
 import sqlite3
 from time import time, sleep
+from datetime import datetime
 import traceback
 from typing import Literal
 import pandas as pd
@@ -209,6 +210,7 @@ class Cucumber:
         """ Update the jobs table in the database with the current job status. """
         for server in self.servers:
             jobs = server.get_jobs()
+            dt = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             label = server.label
             hostname = server.hostname
             if jobs:
@@ -221,9 +223,9 @@ class Cucumber:
                             "UPDATE jobs "
                             "SET `Status` = ?, `Pipeline` = ?, `Jobname` = ?, `Server Label` = ?, "
                             "`Server Hostname` = ?, `Job ID on Server` = ?, "
-                            "`Last Checked` = datetime('now') "
+                            "`Last Checked` = ? "
                             "WHERE `Job ID` = ?",
-                            (status, pipeline, jobname, label, hostname, jobid, f"{label}-{jobid}")
+                            (status, pipeline, jobname, label, hostname, jobid, dt, f"{label}-{jobid}")
                         )
                     conn.commit()
 
@@ -231,6 +233,7 @@ class Cucumber:
         """ Update the pipelines table in the database with the current status """
         for server in self.servers:
             status = server.get_pipelines()
+            dt = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             label = server.label
             hostname = server.hostname
             if status:
@@ -241,8 +244,8 @@ class Cucumber:
                             "INSERT OR REPLACE INTO pipelines "
                             "(`Pipeline`, `Sample ID`, `Job ID`, `Server Label`, "
                             "`Server Hostname`, `Last Checked`) "
-                            "VALUES (?, ?, ?, ?, ?, datetime('now'))",
-                            (pipeline, sampleid, jobid, label, hostname)
+                            "VALUES (?, ?, ?, ?, ?, ?)",
+                            (pipeline, sampleid, jobid, label, hostname, dt)
                         )
                     conn.commit()
 
@@ -549,14 +552,15 @@ class Cucumber:
 
         print(f"Submitting job to {sample} with capacity {capacity_Ah:.5f} Ah")
         full_jobid, jobid, json_string = server.submit(sample, capacity_Ah, payload)
+        dt = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         # Update the job table in the database
         with sqlite3.connect(self.db) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server Label`, `Job ID on Server`, "
-                "`Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, datetime('now'), ?, ?)",
-                (full_jobid, sample, server.label, int(jobid), json_string, comment)
+                "`Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (full_jobid, sample, server.label, int(jobid), dt, json_string, comment)
             )
             conn.commit()
 
@@ -643,13 +647,14 @@ class Cucumber:
             print(f"Snapshotting sample {sampleid} job {jobid}")
             try:
                 snapshot_status = server.snapshot(jobid, jobid_on_server, local_save_location, get_raw)
+                dt = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 # Update the snapshot status in the database
                 with sqlite3.connect(self.db) as conn:
                     cursor = conn.cursor()
                     cursor.execute(
-                        "UPDATE jobs SET `Snapshot Status` = ?, `Last Snapshot` = datetime('now') "
+                        "UPDATE jobs SET `Snapshot Status` = ?, `Last Snapshot` = ? "
                         "WHERE `Job ID` = ?",
-                        (snapshot_status, jobid)
+                        (snapshot_status, dt, jobid)
                         )
                     print("Updating database")
                     conn.commit()
