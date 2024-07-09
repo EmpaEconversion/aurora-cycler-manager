@@ -151,6 +151,7 @@ def create_database() -> None:
             '`Pipeline` VARCHAR(50) PRIMARY KEY, '
             '`Sample ID` VARCHAR(255),'
             '`Job ID` VARCHAR(255), '
+            '`Flag` VARCHAR(10), '
             '`Last Checked` DATETIME, '
             '`Server Label` VARCHAR(255), '
             '`Server Hostname` VARCHAR(255), '
