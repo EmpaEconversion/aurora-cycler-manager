@@ -16,6 +16,7 @@ from typing import List
 from datetime import datetime
 import traceback
 import json
+import fractions
 import yaml
 import numpy as np
 import pandas as pd
@@ -341,16 +342,18 @@ def analyse_cycles(
     cap_loss = round((init_dis_cap - last_dis_cap) / init_dis_cap * 100, 3) if init_dis_cap else None
     flag = None
     job_complete = status and status.endswith('c')
-    if cap_loss and cap_loss > 20 and not job_complete:
-        flag = 'Cap loss'
-    if form_eff < 50 and not job_complete:
-        flag = 'Form eff'
-    if init_eff and init_eff < 50 and not job_complete:
-        flag = 'Init eff'
-    if init_dis_cap and init_dis_cap< 50 and not job_complete:
-        flag = 'Init cap'
-    if job_complete and pipeline:
-        flag = 'Complete'
+    if pipeline:
+        if not job_complete:
+            if cap_loss and cap_loss > 20:
+                flag = 'Cap loss'
+            if form_eff < 50:
+                flag = 'Form eff'
+            if init_eff and init_eff < 50:
+                flag = 'Init eff'
+            if init_dis_cap and init_dis_cap< 50:
+                flag = 'Init cap'
+        else:
+            flag = 'Complete'
 
     update_row = {
         'Pipeline': pipeline,
@@ -789,10 +792,16 @@ def plot_batch(plot_name: str, batch: dict) -> None:
     # TODO make the jitter consistent for one sample - use sampleid as seed? or cathode mass?
     cycle_df['Jittered Cycle'] = cycle_df['Cycle'] + np.random.uniform(-0.2,0.2,len(cycle_df))
     cycle_df["Max Voltage (V)"] = cycle_df["Max Voltage (V)"].astype(str)
+    cycle_df["Formation C/"] = cycle_df["Formation C"].apply(
+        lambda x: str(fractions.Fraction(x).limit_denominator())
+        )
+    cycle_df["Cycle C/"] = cycle_df["Cycle C"].apply(
+        lambda x: str(fractions.Fraction(x).limit_denominator())
+        )
     # sort the df by the Cycle and group_by columns
     cycle_df = cycle_df.sort_values(by=['Cycle',group_by])
 
-    hover_columns = ['Sample ID', 'Cycle', 'Max Voltage (V)', 'Cathode Mass (mg)', 'Formation C']
+    hover_columns = ['Sample ID', 'Cycle', 'Max Voltage (V)', 'Cathode Mass (mg)', 'Formation C/', 'Cycle C/']
     hover_data = {col: True for col in hover_columns}
     hover_data['Cycle'] = False  # Exclude jittered 'Cycle' from hover data
 
@@ -800,13 +809,13 @@ def plot_batch(plot_name: str, batch: dict) -> None:
 
     scatter1 = px.scatter(cycle_df, x='Jittered Cycle', y='Specific Discharge Capacity (mAh/g)', color=group_by, hover_data=hover_data)
     for trace in scatter1.data:
-        trace.hovertemplate = 'Sample ID: %{customdata[0]}<br>Cycle: %{customdata[1]}<br>Max Voltage (V): %{customdata[2]}<br>Cathode Mass (mg): %{customdata[3]}<br>Formation C/%{customdata[4]}<extra></extra>'
+        trace.hovertemplate = 'Sample ID: %{customdata[0]}<br>Cycle: %{customdata[1]}<br>Max Voltage (V): %{customdata[2]}<br>Cathode Mass (mg): %{customdata[3]}<br>Formation C-rate: %{customdata[4]}<br>Cycle C-rate: %{customdata[5]}<extra></extra>'
         fig.add_trace(trace, row=1, col=1)
 
     scatter2 = px.scatter(cycle_df, x='Jittered Cycle', y='Efficiency (%)', color=group_by, hover_data=hover_data)
     for trace in scatter2.data:
         trace.showlegend = False
-        trace.hovertemplate = 'Sample ID: %{customdata[0]}<br>Cycle: %{customdata[1]}<br>Max Voltage (V): %{customdata[2]}<br>Cathode Mass (mg): %{customdata[3]}<br>Formation C/%{customdata[4]}<extra></extra>'
+        trace.hovertemplate = 'Sample ID: %{customdata[0]}<br>Cycle: %{customdata[1]}<br>Max Voltage (V): %{customdata[2]}<br>Cathode Mass (mg): %{customdata[3]}<br>Formation C-rate: %{customdata[4]}<br>Cycle C-rate: %{customdata[5]}<extra></extra>'
         fig.add_trace(trace, row=2, col=1)
 
     fig.update_xaxes(title_text="Cycle", row=2, col=1)
