@@ -11,7 +11,7 @@ import logging
 import traceback
 import matplotlib
 import cucumber_tools as ct
-from cucumber_analysis import plot_all_samples, plot_all_batches, analyse_all_cycles
+from cucumber_analysis import plot_all_samples, plot_all_batches, analyse_all_samples
 
 matplotlib.use('Agg')
 
@@ -78,7 +78,7 @@ def daemon_loop(update_time: float = None, snapshot_times: list = None):
             else:
                 logging.info("Snapshotting complete")
             try:
-                analyse_all_cycles()
+                analyse_all_samples()
                 plot_all_samples()
                 plot_all_batches()
             except Exception as e:
