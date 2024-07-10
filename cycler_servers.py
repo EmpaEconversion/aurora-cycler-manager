@@ -28,7 +28,9 @@ class CyclerServer():
         self.hostname = server_config["hostname"]
         self.username = server_config["username"]
         self.server_type = server_config["server_type"]
-        self.command_prefix = server_config["command_prefix"]
+        self.shell_type = server_config.get("shell_type", "")
+        self.command_prefix = server_config.get("command_prefix", "")
+        self.command_suffix = server_config.get("command_suffix", "")
         self.local_private_key = local_private_key
         self.last_status = None
         self.last_queue = None
@@ -44,7 +46,7 @@ class CyclerServer():
         with paramiko.SSHClient() as ssh:
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
-            stdin, stdout, stderr = ssh.exec_command(self.command_prefix + " " + command)
+            stdin, stdout, stderr = ssh.exec_command(self.command_prefix + command + self.command_suffix)
             output = stdout.read().decode('utf-8')
             error = stderr.read().decode('utf-8')
         if error:
@@ -114,7 +116,7 @@ class TomatoServer(CyclerServer):
     """
     def __init__(self, server_config, local_private_key):
         super().__init__(server_config, local_private_key)
-        self.tomato_scripts_path = server_config["tomato_scripts_path"]
+        self.tomato_scripts_path = server_config.get("tomato_scripts_path", None)
         self.save_location = "C:/tomato/cucumber_scratch"
 
     def eject(self, pipeline: str) -> str:
@@ -250,10 +252,20 @@ class TomatoServer(CyclerServer):
         """
         # Save a snapshot on the remote machine
         remote_save_location = f"{self.save_location}/{jobid_on_server}"
-        self.command(
-            f"if (!(Test-Path \"{remote_save_location}\")) "
-            f"{{ New-Item -ItemType Directory -Path \"{remote_save_location}\" }}"
-        )
+        if self.shell_type == "powershell":
+            self.command(
+                f"if (!(Test-Path \"{remote_save_location}\")) "
+                f"{{ New-Item -ItemType Directory -Path \"{remote_save_location}\" }}"
+            )
+        elif self.shell_type == "cmd":
+            self.command(
+                f"if not exist \"{remote_save_location}\" "
+                f"mkdir \"{remote_save_location}\""
+            )
+        else:
+            raise ValueError(
+                "Shell type not recognised, must be 'powershell' or 'cmd', check config.json"
+            )
         output = self.command(f"{self.tomato_scripts_path}ketchup status -J {jobid_on_server}")
         print(f"Got job status on remote server {self.label}")
         json_output = json.loads(output)
@@ -261,10 +273,16 @@ class TomatoServer(CyclerServer):
         # Catch errors
         try:
             with warnings.catch_warnings(record=True) as w:
-                self.command(
-                    f"cd {remote_save_location} ; "
-                    f"{self.tomato_scripts_path}ketchup snapshot {jobid_on_server}"
-                )
+                if self.shell_type == "powershell":
+                    self.command(
+                        f"cd {remote_save_location} ; "
+                        f"{self.tomato_scripts_path}ketchup snapshot {jobid_on_server}"
+                    )
+                elif self.shell_type == "cmd":
+                    self.command(
+                        f"cd {remote_save_location} && "
+                        f"{self.tomato_scripts_path}ketchup snapshot {jobid_on_server}"
+                    )
                 for warning in w:
                     if "out-of-date version" in str(warning.message):
                         continue
