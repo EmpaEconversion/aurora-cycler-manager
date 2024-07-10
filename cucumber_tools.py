@@ -251,7 +251,7 @@ class Cucumber:
 
     def update_flags(self) -> None:
         """ Update the flags in the pipelines table from the results table. """
-        with sqlite3.connect(r"K:\Aurora\cucumber\database\database.db") as conn:
+        with sqlite3.connect(self.db) as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE pipelines SET `Flag` = NULL")
             cursor.execute("SELECT `Pipeline`, `Flag`, `Sample ID` FROM results")
