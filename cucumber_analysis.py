@@ -12,7 +12,7 @@ from the sample database such as cathode mass.
 import os
 import re
 import sqlite3
-from typing import List
+from typing import List, Tuple
 from datetime import datetime
 import traceback
 import json
@@ -22,9 +22,7 @@ import numpy as np
 import pandas as pd
 import h5py
 import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator
 import seaborn as sns
-import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 from version import __version__
@@ -130,7 +128,7 @@ def convert_all_tomato_jsons() -> None:
     
     TODO: Add option to only convert files with new data.
     """
-    with open('./config.json') as f:
+    with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
     raw_folder = config["Snapshots Folder Path"]
     processed_folder = config["Processed Snapshots Folder Path"]
@@ -152,7 +150,7 @@ def analyse_cycles(
         voltage_lower_cutoff: float = 0,
         voltage_upper_cutoff: float = 5,
         save_files: bool = False,
-    ) -> pd.DataFrame:
+    ) -> Tuple[pd.DataFrame, dict]:
     """ Take multiple dataframes, merge and analyse the cycling data.
     
     Args:
@@ -162,11 +160,9 @@ def analyse_cycles(
         save_files (bool, optional): whether to save the output files
             files will be saved in the same folder as the first input file
     
-    TODO: Take a sampleID instead of a list of files
     TODO: Add save location as an argument.
-    TODO: Update results table of database
     """
-    with open('./config.json') as f:
+    with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
     db_path = config["Database Path"]
 
@@ -274,8 +270,8 @@ def analyse_cycles(
         (df['job_number'] < df['job_number'].shift(1))
     ).cumsum()
     df['global_idx'] = df.groupby(['job_number', 'group_id', 'cycle_number', 'loop_number']).ngroup()
-    cycle_dicts = []
-    cycle = 1
+    charge_capacity_mAh = []
+    discharge_capacity_mAh = []
     for _, group_df in df.groupby('global_idx'):
         charge_data = group_df[
             (group_df['Iavg (A)'] > 0) &
@@ -289,35 +285,34 @@ def analyse_cycles(
             (group_df['Ewe'] < voltage_upper_cutoff) &
             (group_df['dt (s)'] < 600)
         ]
-
         # Only consider cycles with more than 10 data points
         started_charge=len(charge_data)>10
         started_discharge=len(discharge_data)>10
+
         if started_charge and started_discharge:
-            charge_capacity_mAh = charge_data['dQ (mAh)'].sum()
-            discharge_capacity_mAh = -discharge_data['dQ (mAh)'].sum()
-            cycle_dicts.append({
-                'Sample ID': sampleid,
-                'Cycle': cycle,
-                'Charge Capacity (mAh)': charge_capacity_mAh,
-                'Discharge Capacity (mAh)': discharge_capacity_mAh,
-                'Efficiency (%)': discharge_capacity_mAh/charge_capacity_mAh*100,
-                'Specific Charge Capacity (mAh/g)': charge_capacity_mAh/(mass_mg*1e-3),
-                'Specific Discharge Capacity (mAh/g)': discharge_capacity_mAh/(mass_mg*1e-3),
-                'Cathode Mass (mg)': mass_mg,
-                'Max Voltage (V)': max_V,
-                'Formation C': formation_C,
-                'Cycle C': cycle_C,
-            })
-            cycle += 1
+            charge_capacity_mAh.append(charge_data['dQ (mAh)'].sum())
+            discharge_capacity_mAh.append(-discharge_data['dQ (mAh)'].sum())
+    cycle_dict = {
+        'Sample ID': sampleid,
+        'Cycle': list(range(1,len(charge_capacity_mAh)+1)),
+        'Charge Capacity (mAh)': charge_capacity_mAh,
+        'Discharge Capacity (mAh)': discharge_capacity_mAh,
+        'Efficiency (%)': [100*d/c for d,c in zip(discharge_capacity_mAh,charge_capacity_mAh)],
+        'Specific Charge Capacity (mAh/g)': [c/(mass_mg*1e-3) for c in charge_capacity_mAh],
+        'Specific Discharge Capacity (mAh/g)': [d/(mass_mg*1e-3) for d in discharge_capacity_mAh],
+        'Cathode Mass (mg)': mass_mg,
+        'Max Voltage (V)': max_V,
+        'Formation C': formation_C,
+        'Cycle C': cycle_C,
+    }
     # A dict is made if charge data is complete and discharge started
     # Last dict may have incomplete discharge data
     if snapshot_status != 'c':
         if started_charge and started_discharge:
             # Probably recorded an incomplete discharge for last recorded cycle
-            cycle_dicts[-1]['Discharge Capacity (mAh)'] = np.nan
-            cycle_dicts[-1]['Efficiency (%)'] = np.nan
-            cycle_dicts[-1]['Specific Discharge Capacity (mAh/g)'] = np.nan
+            cycle_dict['Discharge Capacity (mAh)'][-1] = np.nan
+            cycle_dict['Efficiency (%)'][-1] = np.nan
+            cycle_dict['Specific Discharge Capacity (mAh/g)'][-1] = np.nan
             complete = 0
         else:
             # Last recorded cycle is complete
@@ -325,21 +320,31 @@ def analyse_cycles(
     else:
         complete = 1
 
-    cycle_df = pd.DataFrame(cycle_dicts)
-    n_cycles = len(cycle_df)
-    if cycle_df.empty:
+    if not cycle_dict['Cycle']:
         print(f"No cycles found for {sampleid}")
-        return df, cycle_df
-    if len(cycle_df) == 1 and not complete:
+        return df, cycle_dict
+    if len(cycle_dict['Cycle']) == 1 and not complete:
         print(f"No complete cycles found for {sampleid}")
-        return df, cycle_df
-    last_complete_cycle = cycle_df.iloc[-1] if complete else cycle_df.iloc[-2]
-    form_eff = round(cycle_df.iloc[0]['Efficiency (%)'],3)
-    init_dis_cap = round(cycle_df.iloc[4]['Specific Discharge Capacity (mAh/g)'],3) if n_cycles > 5 else None
-    init_eff = round(cycle_df.iloc[4]['Efficiency (%)'],3) if n_cycles > 5 else None
-    last_dis_cap = round(last_complete_cycle['Specific Discharge Capacity (mAh/g)'],3)
-    last_eff = round(last_complete_cycle['Efficiency (%)'],3)
-    cap_loss = round((init_dis_cap - last_dis_cap) / init_dis_cap * 100, 3) if init_dis_cap else None
+        return df, cycle_dict
+    last_idx = -1 if complete else -2
+    form_eff = round(cycle_dict['Efficiency (%)'][last_idx],3)
+    init_dis_cap = (
+        round(cycle_dict['Specific Discharge Capacity (mAh/g)'][4],3)
+        if len(cycle_dict['Cycle']) > 5
+        else None
+    )
+    init_eff = (
+        round(cycle_dict['Efficiency (%)'][4],3)
+        if len(cycle_dict['Cycle']) > 5
+        else None
+    )
+    last_dis_cap = round(cycle_dict['Specific Discharge Capacity (mAh/g)'][last_idx],3)
+    last_eff = round(cycle_dict['Efficiency (%)'][last_idx],3)
+    cap_loss = (
+        round((init_dis_cap - last_dis_cap) / init_dis_cap * 100, 3)
+        if init_dis_cap
+        else None
+    )
     flag = None
     job_complete = status and status.endswith('c')
     if pipeline:
@@ -359,11 +364,11 @@ def analyse_cycles(
         'Pipeline': pipeline,
         'Status': status,
         'Flag': flag,
-        'Number of cycles': int(last_complete_cycle['Cycle']),
+        'Number of cycles': int(max(cycle_dict['Cycle'])),
         'Capacity loss (%)': cap_loss,
-        'Max Voltage (V)': last_complete_cycle['Max Voltage (V)'],
-        'Formation C': last_complete_cycle['Formation C'],
-        'Cycling C': last_complete_cycle['Cycle C'],
+        'Max Voltage (V)': cycle_dict['Max Voltage (V)'],
+        'Formation C': cycle_dict['Formation C'],
+        'Cycling C': cycle_dict['Cycle C'],
         'First formation efficiency (%)': form_eff,
         'Initial discharge specific capacity (mAh/g)': init_dis_cap,
         'Initial efficiency (%)': init_eff,
@@ -381,7 +386,10 @@ def analyse_cycles(
         cursor.execute("INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)", (sampleid,))
         # update the row
         columns = ", ".join([f"`{k}` = ?" for k in update_row.keys()])
-        cursor.execute(f"UPDATE results SET {columns} WHERE `Sample ID` = ?", (*update_row.values(), sampleid))
+        cursor.execute(
+            f"UPDATE results SET {columns} WHERE `Sample ID` = ?",
+            (*update_row.values(), sampleid)
+        )
 
     if save_files:
         save_folder = os.path.dirname(h5_files[0])
@@ -390,10 +398,10 @@ def analyse_cycles(
         if not os.path.exists(save_folder):
             os.makedirs(save_folder)
         with open(f'{save_folder}/cycles.{sampleids[0]}.json','w',encoding='utf-8') as f:
-            json.dump(_transpose_dict_list(cycle_dicts),f)
-    return df, cycle_df
+            json.dump(cycle_dict,f)
+    return df, cycle_dict
 
-def analyse_sample(sample: str) -> None:
+def analyse_sample(sample: str) -> Tuple[pd.DataFrame, dict]:
     """ Analyse a single sample.
     
     Will search for the sample in the processed snapshots folder and analyse the cycling data.
@@ -407,22 +415,22 @@ def analyse_sample(sample: str) -> None:
         os.path.join(file_location,f) for f in os.listdir(file_location)
         if (f.startswith('snapshot') and f.endswith('.h5'))
     ]
-    df, cycle_df = analyse_cycles(h5_files, save_files=True)
-    return df, cycle_df
+    df, cycle_dict = analyse_cycles(h5_files, save_files=True)
+    return df, cycle_dict
 
 def analyse_all_samples() -> None:
     """ Analyse all samples in the processed snapshots folder.
     
     TODO: Only analyse files with new data since last analysis
     """
-    with open('./config.json') as f:
+    with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
     snapshot_folder = config["Processed Snapshots Folder Path"]
     for batch_folder in os.listdir(snapshot_folder):
         for sample in os.listdir(os.path.join(snapshot_folder, batch_folder)):
             try:
                 analyse_sample(sample)
-            except KeyError as e:
+            except KeyError:
                 print(f"No metadata found for {sample}")
             except Exception as e:
                 tb = traceback.format_exc()
@@ -435,7 +443,7 @@ def plot_sample(sample: str) -> None:
     and capacity(cycle).
     """
     batch = sample.rsplit('_',1)[0]
-    with open('./config.json') as f:
+    with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
     data_folder = config["Processed Snapshots Folder Path"]
     file_location = f"{data_folder}/{batch}/{sample}"
@@ -487,7 +495,7 @@ def plot_all_samples(snapshot_folder: str = None) -> None:
 
     TODO: Only plot samples with new data since last plot
     """
-    with open('./config.json') as f:
+    with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
     if not snapshot_folder:
         snapshot_folder = config["Processed Snapshots Folder Path"]
@@ -513,11 +521,11 @@ def parse_sample_plotting_file(
 
     TODO: Put the graph config location in the config file.
     """
-    with open('./config.json') as f:
+    with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
     data_folder = config["Processed Snapshots Folder Path"]
 
-    with open(file_path, 'r') as file:
+    with open(file_path, 'r', encoding = 'utf-8') as file:
         batches = yaml.safe_load(file)
 
     for plot_name, batch in batches.items():
@@ -537,7 +545,7 @@ def parse_sample_plotting_file(
                 elif sample_range == 'all':
                     # Check the folders
                     if os.path.exists(f"{data_folder}/{batch_name}"):
-                        transformed_samples.extend(os.listdir(f"{data_folder}/{batch_name}"))  
+                        transformed_samples.extend(os.listdir(f"{data_folder}/{batch_name}"))
                     else:
                         print(f"Folder {data_folder}/{batch_name} does not exist")
                 else:
@@ -568,17 +576,17 @@ def plot_batch(plot_name: str, batch: dict) -> None:
 
     TODO: make robust to missing data, raise warning instead of errors
     """
-    with open('./config.json') as f:
+    with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
     data_folder = config["Processed Snapshots Folder Path"]
-    save_location = os.path.join(config['Graphs Folder Path'],plot_name)
+    save_location = os.path.join(config['Batches Folder Path'],plot_name)
     if not os.path.exists(save_location):
         os.makedirs(save_location)
     samples = batch.pop('samples')
     group_by = batch.pop('group_by', None)
     kwargs = batch
-    cycle_dfs = []
-    for i,sample in enumerate(samples):
+    cycle_dicts = []
+    for sample in samples:
         # get the anaylsed data
         batch = sample.rsplit('_',1)[0]
         sample_folder = os.path.join(data_folder,batch,sample)
@@ -588,24 +596,29 @@ def plot_batch(plot_name: str, batch: dict) -> None:
                 if (f.startswith('cycles') and f.endswith('.json'))
             )
             with open(f'{sample_folder}/{analysed_file}', 'r', encoding='utf-8') as f:
-                cycle_df = pd.DataFrame(json.load(f))
-            if cycle_df.empty:
-                print(f"Empty dataframe for {sample}")
+                cycle_dict = json.load(f)
+            if cycle_dict.get('Cycle') and cycle_dict['Cycle']:
+                cycle_dicts.append(cycle_dict)
+                print(f"Appending dict: {cycle_dict}")
+            else:
+                print(f"No cycling data for {sample}")
                 continue
-            cycle_dfs.append(cycle_df)
         except StopIteration:
             # Handle the case where no file starts with 'cycles'
             print(f"No files starting with 'cycles' found in {sample_folder}.")
             continue
-
-    cycle_df = pd.concat(cycle_dfs).reset_index(drop=True)
+    cycle_df = pd.concat(
+        [pd.DataFrame(d) for d in cycle_dicts],
+    ).reset_index(drop=True)
 
     # Save the data
     cycle_df.to_excel(f'{save_location}/{plot_name}_data.xlsx',index=False)
+    with open(f'{save_location}/{plot_name}_data.json','w',encoding='utf-8') as f:
+        json.dump(cycle_dicts,f)
 
     n_cycles = max(cycle_df["Cycle"])
-    if n_cycles > 12:
-        cycles_to_plot = [1] + list(range(0, n_cycles, n_cycles // 12))[1:]
+    if n_cycles > 10:
+        cycles_to_plot = [1] + list(range(0, n_cycles, n_cycles // 10))[1:]
     else:
         cycles_to_plot = list(range(1, n_cycles + 1))
     plot_data = cycle_df[cycle_df["Cycle"].isin(cycles_to_plot)]
@@ -684,39 +697,6 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         print(f"Permission error saving {save_location}/{plot_name}_Capacity_swarm.pdf")
     plt.close('all')
 
-    ### Violin plot ###
-    fig, ax = plt.subplots(2,1,sharex=True,figsize=(8,5),dpi=300)
-    ax[0].set_ylabel("Discharge\nCapacity (mAh/g)")
-    sns.violinplot(
-        ax=ax[0],
-        data=plot_data,
-        x="Cycle",
-        y="Specific Discharge Capacity (mAh/g)",
-        hue = group_by,
-        linewidth=0,
-        **kwargs,
-    )
-    sns.violinplot(
-        ax=ax[1],
-        data=plot_data,
-        x="Cycle",
-        y="Efficiency (%)",
-        hue = group_by,
-        inner="point",
-        linewidth=0,
-        **kwargs,
-    )
-    ymin, ymax = ax[1].get_ylim()
-    ymin = max(70,ymin)
-    ymax = min(105,ymax)
-    ax[1].set_ylim(ymin, ymax)
-    fig.tight_layout()
-    try:
-        fig.savefig(f'{save_location}/{plot_name}_Capacity_violin.pdf',bbox_inches='tight')
-    except PermissionError:
-        print(f"Permission error saving {save_location}/{plot_name}_Capacity_violin.pdf")
-    plt.close('all')
-
     ### Box plot ###
     fig, ax = plt.subplots(2,1,sharex=True,figsize=(8,5),dpi=300)
     ax[0].set_ylabel("Discharge\nCapacity (mAh/g)")
@@ -749,46 +729,6 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         print(f"Permission error saving {save_location}/{plot_name}_Capacity_box.pdf")
     plt.close('all')
 
-    # Point plot capacity
-    fig, ax = plt.subplots(2,1,sharex=True,figsize=(8,5),dpi=300)
-    ax[0].set_ylabel("Discharge\nCapacity (mAh/g)")
-    sns.pointplot(
-        ax=ax[0],
-        data=cycle_df,
-        x="Cycle",
-        y="Specific Discharge Capacity (mAh/g)",
-        linewidth=0.7,
-        capsize=0.7,
-        estimator='median',
-        markersize=3,
-        hue = group_by,
-        **kwargs,
-    )
-    sns.pointplot(
-        ax=ax[1],
-        data=cycle_df,
-        x="Cycle",
-        y="Efficiency (%)",
-        hue = group_by,
-        linewidth=0.7,
-        capsize=0.7,
-        estimator='median',
-        markersize=3,
-        **kwargs,
-    )
-    ax[0].xaxis.set_major_locator(MaxNLocator(integer=True, nbins=10))
-    ax[1].xaxis.set_major_locator(MaxNLocator(integer=True, nbins=10))
-    ymin, ymax = ax[1].get_ylim()
-    ymin = max(70,ymin)
-    ymax = min(105,ymax)
-    ax[1].set_ylim(ymin, ymax)
-    fig.tight_layout()
-    try:
-        fig.savefig(f'{save_location}/{plot_name}_Capacity_point.pdf',bbox_inches='tight')
-    except PermissionError:
-        print(f"Permission error saving {save_location}/{plot_name}_Capacity_point.pdf")
-    plt.close('all')
-
     ### Interative plot ###
     # TODO make the jitter consistent for one sample - use sampleid as seed? or cathode mass?
     cycle_df['Jittered Cycle'] = cycle_df['Cycle'] + np.random.uniform(-0.2,0.2,len(cycle_df))
@@ -802,21 +742,48 @@ def plot_batch(plot_name: str, batch: dict) -> None:
     # sort the df by the Cycle and group_by columns
     cycle_df = cycle_df.sort_values(by=['Cycle',group_by])
 
-    hover_columns = ['Sample ID', 'Cycle', 'Max Voltage (V)', 'Cathode Mass (mg)', 'Formation C/', 'Cycle C/']
+    hover_columns = [
+        'Sample ID',
+        'Cycle',
+        'Max Voltage (V)',
+        'Cathode Mass (mg)',
+        'Formation C/',
+        'Cycle C/'
+    ]
     hover_data = {col: True for col in hover_columns}
     hover_data['Cycle'] = False  # Exclude jittered 'Cycle' from hover data
+    hover_template = (
+        'Sample ID: %{customdata[0]}<br>'
+        'Cycle: %{customdata[1]}<br>'
+        'Max Voltage (V): %{customdata[2]}<br>'
+        'Cathode Mass (mg): %{customdata[3]}<br>'
+        'Formation C-rate: %{customdata[4]}<br>'
+        'Cycle C-rate: %{customdata[5]}<extra></extra>'
+    )
 
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True,vertical_spacing=0.1)
 
-    scatter1 = px.scatter(cycle_df, x='Jittered Cycle', y='Specific Discharge Capacity (mAh/g)', color=group_by, hover_data=hover_data)
+    scatter1 = px.scatter(
+        cycle_df,
+        x='Jittered Cycle',
+        y='Specific Discharge Capacity (mAh/g)',
+        color=group_by,
+        hover_data=hover_data
+    )
     for trace in scatter1.data:
-        trace.hovertemplate = 'Sample ID: %{customdata[0]}<br>Cycle: %{customdata[1]}<br>Max Voltage (V): %{customdata[2]}<br>Cathode Mass (mg): %{customdata[3]}<br>Formation C-rate: %{customdata[4]}<br>Cycle C-rate: %{customdata[5]}<extra></extra>'
+        trace.hovertemplate = hover_template
         fig.add_trace(trace, row=1, col=1)
 
-    scatter2 = px.scatter(cycle_df, x='Jittered Cycle', y='Efficiency (%)', color=group_by, hover_data=hover_data)
+    scatter2 = px.scatter(
+        cycle_df,
+        x='Jittered Cycle',
+        y='Efficiency (%)',
+        color=group_by,
+        hover_data=hover_data
+    )
     for trace in scatter2.data:
         trace.showlegend = False
-        trace.hovertemplate = 'Sample ID: %{customdata[0]}<br>Cycle: %{customdata[1]}<br>Max Voltage (V): %{customdata[2]}<br>Cathode Mass (mg): %{customdata[3]}<br>Formation C-rate: %{customdata[4]}<br>Cycle C-rate: %{customdata[5]}<extra></extra>'
+        trace.hovertemplate = hover_template
         fig.add_trace(trace, row=2, col=1)
 
     fig.update_xaxes(title_text="Cycle", row=2, col=1)
@@ -831,12 +798,15 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         legend_title_text='Max Voltage (V)',
         template='plotly_white',
         )
-    
+
     # save the plot
     try:
         fig.write_html(os.path.join(save_location,f'{plot_name}_interactive.html'))
     except PermissionError:
-        print(f"Permission error saving {os.path.join(save_location,f'{plot_name}_interactive.html')}")
+        print(
+            "Permission error saving "
+            f"{os.path.join(save_location,f'{plot_name}_interactive.html')}"
+        )
 
 def plot_all_batches(
         file_path: str= "K:/Aurora/cucumber/graph_config.yml"
@@ -883,30 +853,3 @@ def _c_to_float(c_rate: str) -> float:
         return sign * float(num) / float(denom)
     else:
         return sign * float(number)
-
-def _transpose_dict_list(dict_list: list) -> dict:
-    """ Transpose a list of dictionaries to a dictionary of lists.
-    
-    Convert lists with identical elements to a single value.
-    
-    Args:
-        dict_list (List[Dict]): list of dictionaries
-        
-    Returns:
-        Dict: dictionary of lists and single values
-    """
-    transposed_dict = {}
-    # Transpose the list of dicts to a dict of lists
-    for row in dict_list:
-        for key, value in row.items():
-            if key not in transposed_dict:
-                transposed_dict[key] = [value]
-            else:
-                transposed_dict[key].append(value)
-
-    # Convert lists with identical elements to a single value
-    for key, values in transposed_dict.items():
-        if all(value == values[0] for value in values):
-            transposed_dict[key] = values[0]
-
-    return transposed_dict
