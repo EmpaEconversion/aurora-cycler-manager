@@ -389,13 +389,8 @@ def analyse_cycles(
             save_folder = '.'
         if not os.path.exists(save_folder):
             os.makedirs(save_folder)
-        # Saving the merged df is probably a waste of space
-        cycle_df.to_hdf(
-            f'{save_folder}/cycles.{sampleids[0]}.h5',
-            key="cycles",
-            complib="blosc",
-            complevel=9
-        )
+        with open(f'{save_folder}/cycles.{sampleids[0]}.json','w',encoding='utf-8') as f:
+            json.dump(_transpose_dict_list(cycle_dicts),f)
     return df, cycle_df
 
 def analyse_sample(sample: str) -> None:
@@ -466,11 +461,13 @@ def plot_sample(sample: str) -> None:
 
     # plot capacity
     try:
-        analysed_file = next(f for f in files if f.startswith('cycles'))
+        analysed_file = next(f for f in files if (f.startswith('cycles') and f.endswith('.json')))
     except StopIteration:
         print(f"No files starting with 'cycles' found in {file_location}.")
         return
-    cycle_df = pd.read_hdf(f'{file_location}/{analysed_file}')
+    with open(f'{file_location}/{analysed_file}', 'r', encoding='utf-8') as f:
+        print(f"Reading {file_location}/{analysed_file}")
+        cycle_df = pd.DataFrame(json.load(f))
     assert not cycle_df.empty, f"Empty dataframe for {sample}"
     assert 'Cycle' in cycle_df.columns, f"No 'Cycle' column in {sample}"
     fig, ax = plt.subplots(2,1,sharex=True,figsize=(6,4),dpi=72)
@@ -586,8 +583,12 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         batch = sample.rsplit('_',1)[0]
         sample_folder = os.path.join(data_folder,batch,sample)
         try:
-            analysed_file = next(f for f in os.listdir(sample_folder) if f.startswith('cycles'))
-            cycle_df = pd.read_hdf(f'{sample_folder}/{analysed_file}')
+            analysed_file = next(
+                f for f in os.listdir(sample_folder)
+                if (f.startswith('cycles') and f.endswith('.json'))
+            )
+            with open(f'{sample_folder}/{analysed_file}', 'r', encoding='utf-8') as f:
+                cycle_df = pd.DataFrame(json.load(f))
             if cycle_df.empty:
                 print(f"Empty dataframe for {sample}")
                 continue
@@ -882,3 +883,30 @@ def _c_to_float(c_rate: str) -> float:
         return sign * float(num) / float(denom)
     else:
         return sign * float(number)
+
+def _transpose_dict_list(dict_list: list) -> dict:
+    """ Transpose a list of dictionaries to a dictionary of lists.
+    
+    Convert lists with identical elements to a single value.
+    
+    Args:
+        dict_list (List[Dict]): list of dictionaries
+        
+    Returns:
+        Dict: dictionary of lists and single values
+    """
+    transposed_dict = {}
+    # Transpose the list of dicts to a dict of lists
+    for row in dict_list:
+        for key, value in row.items():
+            if key not in transposed_dict:
+                transposed_dict[key] = [value]
+            else:
+                transposed_dict[key].append(value)
+
+    # Convert lists with identical elements to a single value
+    for key, values in transposed_dict.items():
+        if all(value == values[0] for value in values):
+            transposed_dict[key] = values[0]
+
+    return transposed_dict
