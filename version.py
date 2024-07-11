@@ -1,4 +1,4 @@
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 __author__ = 'Graham Kimbell'
 __title__ = 'Cucumber'
 __description__ = """
