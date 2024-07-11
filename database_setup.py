@@ -26,6 +26,7 @@ def create_config() -> None:
                 "Samples Folder Path": os.path.join(base_dir, "samples"),
                 "Snapshots Folder Path": os.path.join(base_dir, "snapshots"),
                 "Processed Snapshots Folder Path": os.path.join(base_dir, "snapshots"),
+                "Batches Folder Path": os.path.join(base_dir, "batches"),
                 "Graphs Folder Path": os.path.join(base_dir, "snapshots"),
 
                 "Servers" : [
@@ -33,9 +34,12 @@ def create_config() -> None:
                         "label": "example-server",
                         "hostname": "example-hostname",
                         "username": "user name on remote server",
-                        "server_type": "tomato",
+                        "server_type": "tomato (only supported type at the moment)",
+                        "shell_type": "powershell or cmd - changes some commands",
                         "command_prefix" : "this is put before any command, e.g. conda activate tomato ; ",
+                        "command_suffix" : "",
                         "tomato_scripts_path": "tomato-specific: this is put before ketchup in the command",
+                        "tomato_data_path": "tomato-specific: the folder where data is stored, usually AppData/local/dgbowl/tomato/version/jobs",
                     }
                 ],
                 "Sample Database" : [
