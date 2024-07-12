@@ -599,7 +599,6 @@ def plot_batch(plot_name: str, batch: dict) -> None:
                 cycle_dict = json.load(f)
             if cycle_dict.get('Cycle') and cycle_dict['Cycle']:
                 cycle_dicts.append(cycle_dict)
-                print(f"Appending dict: {cycle_dict}")
             else:
                 print(f"No cycling data for {sample}")
                 continue
