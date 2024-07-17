@@ -65,10 +65,10 @@ class Cucumber:
             )
         with open("./config.json", "r", encoding="utf-8") as f:
             self.config = json.load(f)
-        self.db = self.config["Database Path"]
+        self.db = self.config["Database path"]
 
         # get the private key
-        if not self.config["SSH Private Key Path"]:
+        if not self.config["SSH private key path"]:
             warnings.warn(
                 "No SSH private key path specified in config.json."
                 "Using default path ~/.ssh/id_rsa",
@@ -76,7 +76,7 @@ class Cucumber:
             )
             private_key_path = os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa")
         else:
-            private_key_path = self.config["SSH Private Key Path"]
+            private_key_path = self.config["SSH private key path"]
         self.private_key = paramiko.RSAKey.from_private_key_file(private_key_path)
 
         self.status = None
@@ -121,12 +121,12 @@ class Cucumber:
         df = pd.read_csv(csv_file,delimiter=';')
         with open("./config.json", "r", encoding="utf-8") as f:
             self.config = json.load(f)
-        column_config = self.config["Sample Database"]
+        column_config = self.config["Sample database"]
 
         # Create a dictionary for easy lookup of alternative names
         col_names = [col["Name"] for col in column_config]
         alt_name_dict = {
-            alt_name: item["Name"] for item in column_config for alt_name in item["Alternative Names"]
+            alt_name: item["Name"] for item in column_config for alt_name in item["Alternative names"]
         }
 
         # Check each column in the DataFrame
@@ -154,6 +154,22 @@ class Cucumber:
                     f"Essential column '{key}' was not found in the sample file {csv_file}. "
                     "Please double check the file."
                 )
+            
+        # Check that timestamps are in the correct format
+        for col in df.columns:
+            if "Timestamp" in col:
+                try:
+                    pd.to_datetime(df[col], errors='raise', format='%Y-%m-%d %H:%M:%S')
+                except ValueError:
+                    try:
+                        # Attempt conversion with a different format if the first fails
+                        df[col] = pd.to_datetime(df[col], errors='raise', format='%d.%m.%Y %H:%M')
+                        df[col] = df[col].dt.strftime('%Y-%m-%d %H:%M:%S')
+                    except ValueError as exc:
+                        raise ValueError(
+                            f"Timestamp column '{col}' in the sample file is not in the correct format. "
+                            "Please use the format 'YYYY-MM-DD HH:MM:SS'."
+                        ) from exc
 
         # Insert the new data into the database
         with sqlite3.connect(self.db) as conn:
@@ -194,7 +210,7 @@ class Cucumber:
 
     def update_samples(self) -> None:
         """ Add all csv files in samples folder to the db. """
-        samples_folder = self.config["Samples Folder Path"]
+        samples_folder = self.config["Samples folder path"]
         if not os.path.exists(samples_folder):
             os.makedirs(samples_folder)
         for file in os.listdir(samples_folder):
@@ -216,20 +232,30 @@ class Cucumber:
             if jobs:
                 with sqlite3.connect(self.db) as conn:
                     cursor = conn.cursor()
-                    for jobid, jobname, status, pipeline in zip(
+                    for jobid_on_server, jobname, status, pipeline in zip(
                         jobs['jobid'], jobs['jobname'], jobs['status'], jobs['pipeline']
                         ):
-                        cursor.execute(
-                            "UPDATE jobs "
-                            "SET `Status` = ?, `Pipeline` = ?, `Jobname` = ?, `Server Label` = ?, "
-                            "`Server Hostname` = ?, `Job ID on Server` = ?, "
-                            "`Last Checked` = ? "
-                            "WHERE `Job ID` = ?",
-                            (status, pipeline, jobname, label, hostname, jobid, dt, f"{label}-{jobid}")
-                        )
+                        # If pipeline is none, do not update (keep old value)
+                        if pipeline is None:
+                            cursor.execute(
+                                "UPDATE jobs "
+                                "SET `Status` = ?, `Jobname` = ?, `Server label` = ?, "
+                                "`Server hostname` = ?, `Last checked` = ? "
+                                "WHERE `Job ID` = ?",
+                                (status, jobname, label, hostname, dt, f"{label}-{jobid_on_server}")
+                            )
+                        else:
+                            cursor.execute(
+                                "UPDATE jobs "
+                                "SET `Status` = ?, `Pipeline` = ?, `Jobname` = ?, `Server label` = ?, "
+                                "`Server Hostname` = ?, `Job ID on server` = ?, "
+                                "`Last Checked` = ? "
+                                "WHERE `Job ID` = ?",
+                                (status, pipeline, jobname, label, hostname, jobid_on_server, dt, f"{label}-{jobid_on_server}")
+                            )
                     conn.commit()
 
-    def update_status(self) -> None:
+    def update_pipelines(self) -> None:
         """ Update the pipelines table in the database with the current status """
         for server in self.servers:
             status = server.get_pipelines()
@@ -239,13 +265,14 @@ class Cucumber:
             if status:
                 with sqlite3.connect(self.db) as conn:
                     cursor = conn.cursor()
-                    for pipeline, sampleid, jobid in zip(status['pipeline'], status['sampleid'], status['jobid']):
+                    for pipeline, sampleid, jobid_on_server in zip(status['pipeline'], status['sampleid'], status['jobid']):
+                        jobid = f"{label}-{jobid_on_server}" if jobid_on_server else None
                         cursor.execute(
                             "INSERT OR REPLACE INTO pipelines "
-                            "(`Pipeline`, `Sample ID`, `Job ID`, `Server Label`, "
-                            "`Server Hostname`, `Last Checked`) "
-                            "VALUES (?, ?, ?, ?, ?, ?)",
-                            (pipeline, sampleid, jobid, label, hostname, dt)
+                            "(`Pipeline`, `Sample ID`, `Job ID`, `Job ID on server`, "
+                            "`Server label`, `Server Hostname`, `Last Checked`) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (pipeline, sampleid, jobid, jobid_on_server, label, hostname, dt)
                         )
                     conn.commit()
 
@@ -266,7 +293,7 @@ class Cucumber:
     def update_db(self) -> None:
         """ Update all tables in the database """
         self.update_samples()
-        self.update_status()
+        self.update_pipelines()
         self.update_jobs()
         self.update_flags()
 
@@ -323,14 +350,14 @@ class Cucumber:
 
     def get_status(self) -> pd.DataFrame:
         """ Return the status of all pipelines as a DataFrame. """
-        columns = ["Pipeline", "Sample ID", "Job ID", "Server Label"]
+        columns = ["Pipeline", "Sample ID", "Job ID on server", "Server label"]
         result = self.get_from_db("pipelines", columns=", ".join([f"`{c}`" for c in columns]))
         self.status = self.sort_pipeline(pd.DataFrame(result, columns=columns))
         return self.status
 
     def get_queue(self) -> pd.DataFrame:
         """ Return all running and queued jobs as a DataFrame. """
-        columns = ["Job ID", "Sample ID", "Status", "Server Label"]
+        columns = ["Job ID", "Sample ID", "Status", "Server label"]
         result = self.get_from_db("jobs", columns=", ".join([f"`{c}`" for c in columns]),
                                   where="`Status` IN ('q', 'qw', 'r', 'rd')")
         self.queue = self.sort_job(pd.DataFrame(result, columns=columns))
@@ -338,7 +365,7 @@ class Cucumber:
 
     def get_queue_all(self) -> pd.DataFrame:
         """ Return all jobs as a DataFrame. """
-        columns = ["Job ID", "Sample ID", "Status", "Server Label"]
+        columns = ["Job ID", "Sample ID", "Status", "Server label"]
         result = self.get_from_db("jobs", columns=", ".join([f"`{c}`" for c in columns]),
                                   where="`Status` IN ('q', 'qw', 'r', 'rd', 'c', 'cd')")
         self.queue_all = self.sort_job(pd.DataFrame(result, columns=columns))
@@ -357,11 +384,11 @@ class Cucumber:
                 The sample ID to get the capacity for
             mode : str
                 The mode to calculate the capacity. Must be 'areal', 'mass', or 'nominal'
-                areal: calculate fromAnode/Cathode C-rate Definition Areal Capacity (mAh/cm2) and
-                    Anode/Cathode Diameter (mm)
-                mass: calculate from Anode/Cathode C-rate Definition Specific Capacity (mAh/g) and 
-                    Anode/Cathode Active Material Weight (mg)
-                nominal: use C-rate Definition Capacity (mAh)
+                areal: calculate from anode/cathode C-rate definition areal capacity (mAh/cm2) and
+                    anode/cathode Diameter (mm)
+                mass: calculate from anode/cathode C-rate definition specific capacity (mAh/g) and 
+                    anode/cathode active material mass (mg)
+                nominal: use C-rate definition capacity (mAh)
             ignore_anode : bool, optional
                 If True, only use the cathode capacity. Default is True.
         
@@ -373,27 +400,27 @@ class Cucumber:
             if mode == "mass":
                 cursor.execute("""
                                SELECT 
-                               `Anode C-rate Definition Specific Capacity (mAh/g)`, 
-                               `Anode Active Material Weight (mg)`, 
-                               `Anode Diameter (mm)`, 
-                               `Cathode C-rate Definition Specific Capacity (mAh/g)`, 
-                               `Cathode Active Material Weight (mg)`,
-                               `Cathode Diameter (mm)`
+                               `Anode C-rate definition specific capacity (mAh/g)`, 
+                               `Anode active material mass (mg)`, 
+                               `Anode diameter (mm)`, 
+                               `Cathode C-rate definition specific capacity (mAh/g)`, 
+                               `Cathode active material mass (mg)`,
+                               `Cathode diameter (mm)`
                                 FROM samples WHERE `Sample ID` = ?
                                """, (sample,))
             elif mode == "areal":
                 cursor.execute("""
                                SELECT
-                               `Anode C-rate Definition Areal Capacity (mAh/cm2)`,
-                               `Anode Diameter (mm)`,
-                               `Cathode C-rate Definition Areal Capacity (mAh/cm2)`,
-                               `Cathode Diameter (mm)`
+                               `Anode C-rate definition areal capacity (mAh/cm2)`,
+                               `Anode diameter (mm)`,
+                               `Cathode C-rate definition areal capacity (mAh/cm2)`,
+                               `Cathode diameter (mm)`
                                FROM samples WHERE `Sample ID` = ?
                                """, (sample,))
             elif mode == "nominal":
                 cursor.execute("""
                                SELECT
-                               `C-rate Definition Capacity (mAh)`
+                               `C-rate definition capacity (mAh)`
                                FROM samples WHERE `Sample ID` = ?
                                """, (sample,))
             else:
@@ -452,7 +479,7 @@ class Cucumber:
         # Get pipeline and load
         result = self.get_from_db(
             "pipelines",
-            columns="`Server Label`",
+            columns="`Server label`",
             where=f"`Pipeline` = '{pipeline}'"
         )
         server = next((server for server in self.servers if server.label == result[0][0]), None)
@@ -472,7 +499,7 @@ class Cucumber:
         # Find server associated with pipeline
         result = self.get_from_db(
             "pipelines",
-            columns="`Server Label`",
+            columns="`Server label`",
             where=f"`Pipeline` = '{pipeline}'"
         )
         server = next((server for server in self.servers if server.label == result[0][0]), None)
@@ -492,7 +519,7 @@ class Cucumber:
         # find server with pipeline, if there is more than one throw an error
         result = self.get_from_db(
             "pipelines",
-            columns="`Server Label`",
+            columns="`Server label`",
             where=f"`Pipeline` = '{pipeline}'"
         )
         server = next((server for server in self.servers if server.label == result[0][0]), None)
@@ -531,7 +558,7 @@ class Cucumber:
         # Find the server with the sample loaded, if there is more than one throw an error
         result = self.get_from_db(
             "pipelines",
-            columns="`Server Label`",
+            columns="`Server label`",
             where=f"`Sample ID` = '{sample}'"
         )
         server = next((server for server in self.servers if server.label == result[0][0]), None)
@@ -558,7 +585,7 @@ class Cucumber:
         with sqlite3.connect(self.db) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server Label`, `Job ID on Server`, "
+                "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Job ID on server`, "
                 "`Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (full_jobid, sample, server.label, int(jobid), dt, json_string, comment)
             )
@@ -577,7 +604,7 @@ class Cucumber:
         """
         result = self.get_from_db(
             "jobs",
-            columns="`Server Label`,`Job ID on Server`",
+            columns="`Server label`,`Job ID on server`",
             where=f"`Job ID` = '{jobid}'"
         )
         server_label, jobid_on_server = result[0]
@@ -609,11 +636,11 @@ class Cucumber:
             Default is 'new_data'.
         """
         # Check if the input is a sample ID
-        columns = ["Sample ID", "Job ID", "Server Label", "Job ID on Server", "Snapshot Status"]
+        columns = ["Sample ID", "Job ID", "Server label", "Job ID on server", "Snapshot status"]
         columns_sql = ", ".join([f"`{c}`" for c in columns])
 
         # Define the column names to check
-        column_checks = ["Job ID", "Sample ID", "Job ID on Server"]
+        column_checks = ["Job ID", "Sample ID", "Job ID on server"]
 
         for column_check in column_checks:
             result = self.get_from_db("jobs", columns=columns_sql, where=f"`{column_check}` = '{samp_or_jobid}'")
@@ -629,8 +656,8 @@ class Cucumber:
                 continue
             # Check if the snapshot should be skipped
             batchid = sampleid.rsplit("_", 1)[0]
-            local_save_location = f"{self.config["Snapshots Folder Path"]}/{batchid}/{sampleid}"
-            local_save_location_processed = f"{self.config["Processed Snapshots Folder Path"]}/{batchid}/{sampleid}"
+            local_save_location = f"{self.config["Snapshots folder path"]}/{batchid}/{sampleid}"
+            local_save_location_processed = f"{self.config["Processed snapshots folder path"]}/{batchid}/{sampleid}"
 
             files_exist = os.path.exists(f"{local_save_location_processed}/snapshot.{jobid}.h5")
             if files_exist and mode != "always":
@@ -652,7 +679,7 @@ class Cucumber:
                 with sqlite3.connect(self.db) as conn:
                     cursor = conn.cursor()
                     cursor.execute(
-                        "UPDATE jobs SET `Snapshot Status` = ?, `Last Snapshot` = ? "
+                        "UPDATE jobs SET `Snapshot status` = ?, `Last snapshot` = ? "
                         "WHERE `Job ID` = ?",
                         (snapshot_status, dt, jobid)
                         )
@@ -666,7 +693,7 @@ class Cucumber:
                 )
                 with sqlite3.connect(self.db) as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE jobs SET `Snapshot Status` = 'ce' WHERE `Job ID` = ?", (jobid,))
+                    cursor.execute("UPDATE jobs SET `Snapshot status` = 'ce' WHERE `Job ID` = ?", (jobid,))
                     conn.commit()
                 continue
             except ValueError as e:
@@ -701,7 +728,7 @@ class Cucumber:
         assert mode in ["always", "new_data", "if_not_exists"]
         where = "`Status` IN ( 'c', 'r', 'rd', 'cd', 'ce')"
         if mode in ["new_data"]:
-            where += " AND (`Snapshot Status` NOT LIKE 'c%' OR `Snapshot Status` IS NULL)"
+            where += " AND (`Snapshot status` NOT LIKE 'c%' OR `Snapshot status` IS NULL)"
         if sampleid_contains:
             where += f" AND `Sample ID` LIKE '%{sampleid_contains}%'"
         result = self.get_from_db("jobs", columns="`Job ID`",

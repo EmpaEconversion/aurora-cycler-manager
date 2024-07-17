@@ -14,6 +14,7 @@ import re
 import sqlite3
 from typing import List, Tuple
 from datetime import datetime
+import pytz
 import traceback
 import json
 import fractions
@@ -88,7 +89,7 @@ def convert_tomato_json(
             # look up jobid in the database
             with open('./config.json', encoding = 'utf-8') as f:
                 config = json.load(f)
-            db_path = config["Database Path"]
+            db_path = config["Database path"]
             with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
@@ -130,8 +131,8 @@ def convert_all_tomato_jsons() -> None:
     """
     with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
-    raw_folder = config["Snapshots Folder Path"]
-    processed_folder = config["Processed Snapshots Folder Path"]
+    raw_folder = config["Snapshots folder path"]
+    processed_folder = config["Processed snapshots folder path"]
     for batch_folder in os.listdir(raw_folder):
         for sample_folder in os.listdir(os.path.join(raw_folder, batch_folder)):
             for snapshot_file in os.listdir(os.path.join(raw_folder, batch_folder, sample_folder)):
@@ -164,7 +165,7 @@ def analyse_cycles(
     """
     with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
-    db_path = config["Database Path"]
+    db_path = config["Database path"]
 
     # Get the metadata from the files
     dfs = []
@@ -187,6 +188,8 @@ def analyse_cycles(
                 raise KeyError from exc
     assert len(set(sampleids)) == 1, "All files must be from the same sample"
     sampleid = sampleids[0]
+    dfs = [df for df in dfs if 'uts' in df.columns and not df['uts'].empty]
+    assert dfs, "No 'uts' timestamp found in any of the files"
     order = np.argsort([df['uts'].iloc[0] for df in dfs])
     dfs = [dfs[i] for i in order]
     h5_files = [h5_files[i] for i in order]
@@ -196,22 +199,21 @@ def analyse_cycles(
     metadata = metadatas[-1]
     sample_data = json.loads(metadata['sample_data'])
     job_data = json.loads(metadata.get('job_data','{}'))
-    snapshot_status = job_data.get('Snapshot Status',None)
+    snapshot_status = job_data.get('Snapshot status',None)
     snapshot_pipeline = job_data.get('Pipeline',None)
-    last_snapshot = job_data.get('Last Snapshot',None)
+    last_snapshot = job_data.get('Last snapshot',None)
 
     pipeline = None
     status = None
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT `Pipeline`, `Job ID`, `Server Label` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
+        cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
         row = cursor.fetchone()
         if row:
             pipeline = row[0]
             job_id = row[1]
-            server_label = row[2]
             if job_id:
-                cursor.execute("SELECT `Status` FROM jobs WHERE `Job ID` = ?", (f"{server_label}-{job_id}",))
+                cursor.execute("SELECT `Status` FROM jobs WHERE `Job ID` = ?", (f"{job_id}",))
                 status = cursor.fetchone()[0]
 
     for i,df in enumerate(dfs):
@@ -222,7 +224,7 @@ def analyse_cycles(
     df["dQ (mAh)"] = 1e3 * df["Iavg (A)"] * df["dt (s)"] / 3600
 
     # Extract useful information from the metadata
-    mass_mg = sample_data['Cathode Active Material Weight (mg)']
+    mass_mg = sample_data['Cathode active material mass (mg)']
     max_V = 0
     formation_C = 0
     cycle_C = 0
@@ -300,35 +302,15 @@ def analyse_cycles(
         if started_charge and started_discharge:
             charge_capacity_mAh.append(charge_data['dQ (mAh)'].sum())
             discharge_capacity_mAh.append(-discharge_data['dQ (mAh)'].sum())
-    cycle_dict = {
-        'Sample ID': sampleid,
-        'Cycle': list(range(1,len(charge_capacity_mAh)+1)),
-        'Charge Capacity (mAh)': charge_capacity_mAh,
-        'Discharge Capacity (mAh)': discharge_capacity_mAh,
-        'Efficiency (%)': [100*d/c for d,c in zip(discharge_capacity_mAh,charge_capacity_mAh)],
-        'Specific Charge Capacity (mAh/g)': [c/(mass_mg*1e-3) for c in charge_capacity_mAh],
-        'Specific Discharge Capacity (mAh/g)': [d/(mass_mg*1e-3) for d in discharge_capacity_mAh],
-        'Cathode Mass (mg)': mass_mg,
-        'Max Voltage (V)': max_V,
-        'Formation C': formation_C,
-        'Cycle C': cycle_C,
-    }
-    # Add other columns from sample table to cycle_dict
-    sample_cols_to_add = [
-        "Actual N:P Ratio",
-        "Electrolyte Name",
-    ]
-    for col in sample_cols_to_add:
-        cycle_dict[col] = sample_data.get(col, None)
 
-    # A dict is made if charge data is complete and discharge started
+    formed = len(charge_capacity_mAh) >= 5
+    # A row is added if charge data is complete and discharge started
     # Last dict may have incomplete discharge data
+    # TODO remove incomplete cycles based on voltage limits
     if snapshot_status != 'c':
         if started_charge and started_discharge:
             # Probably recorded an incomplete discharge for last recorded cycle
-            cycle_dict['Discharge Capacity (mAh)'][-1] = np.nan
-            cycle_dict['Efficiency (%)'][-1] = np.nan
-            cycle_dict['Specific Discharge Capacity (mAh/g)'][-1] = np.nan
+            discharge_capacity_mAh[-1] = np.nan
             complete = 0
         else:
             # Last recorded cycle is complete
@@ -336,6 +318,37 @@ def analyse_cycles(
     else:
         complete = 1
 
+    # Create a dictionary with the cycling data
+    cycle_dict = {
+        'Sample ID': sampleid,
+        'Cycle': list(range(1,len(charge_capacity_mAh)+1)),
+        'Charge capacity (mAh)': charge_capacity_mAh,
+        'Discharge capacity (mAh)': discharge_capacity_mAh,
+        'Efficiency (%)': [100*d/c for d,c in zip(discharge_capacity_mAh,charge_capacity_mAh)],
+        'Specific charge capacity (mAh/g)': [c/(mass_mg*1e-3) for c in charge_capacity_mAh],
+        'Specific discharge capacity (mAh/g)': [d/(mass_mg*1e-3) for d in discharge_capacity_mAh],
+        'Normalised discharge capacity (%)': [100*d/discharge_capacity_mAh[3] for d in discharge_capacity_mAh] if formed else None,
+        'Cathode mass (mg)': mass_mg,
+        'Max voltage (V)': max_V,
+        'Formation C': formation_C,
+        'Cycle C': cycle_C,
+    }
+
+    # Add other columns from sample table to cycle_dict
+    sample_cols_to_add = [
+        "Actual N:P ratio",
+        "Anode type",
+        "Cathode type",
+        "Anode active material mass (mg)",
+        "Cathode active material mass (mg)",
+        "Electrolyte name",
+        "Electrolyte amount (uL)",
+        "Rack position",
+    ]
+    for col in sample_cols_to_add:
+        cycle_dict[col] = sample_data.get(col, None)
+
+    # Calculate additional quantities from cycling data and add to cycle_dict
     if not cycle_dict['Cycle']:
         print(f"No cycles found for {sampleid}")
         return df, cycle_dict
@@ -343,35 +356,51 @@ def analyse_cycles(
         print(f"No complete cycles found for {sampleid}")
         return df, cycle_dict
     last_idx = -1 if complete else -2
-    form_eff = round(cycle_dict['Efficiency (%)'][last_idx],3)
-    init_dis_cap = (
-        round(cycle_dict['Specific Discharge Capacity (mAh/g)'][4],3)
-        if len(cycle_dict['Cycle']) > 5
-        else None
-    )
-    init_eff = (
-        round(cycle_dict['Efficiency (%)'][4],3)
-        if len(cycle_dict['Cycle']) > 5
-        else None
-    )
-    last_dis_cap = round(cycle_dict['Specific Discharge Capacity (mAh/g)'][last_idx],3)
-    last_eff = round(cycle_dict['Efficiency (%)'][last_idx],3)
-    cap_loss = (
-        round((init_dis_cap - last_dis_cap) / init_dis_cap * 100, 3)
-        if init_dis_cap
-        else None
-    )
+    
+    cycle_dict['First formation efficiency (%)'] = cycle_dict['Efficiency (%)'][0]
+    cycle_dict['First formation specific discharge capacity (mAh/g)'] = cycle_dict['Specific discharge capacity (mAh/g)'][0]
+    cycle_dict['Initial specific discharge capacity (mAh/g)'] = cycle_dict['Specific discharge capacity (mAh/g)'][3] if formed else None
+    cycle_dict['Initial efficiency (%)'] = cycle_dict['Efficiency (%)'][3] if formed else None
+    cycle_dict['Capacity loss (%)'] = 100 - cycle_dict['Normalised discharge capacity (%)'][last_idx] if formed else None
+    cycle_dict['Last specific discharge capacity (mAh/g)'] = cycle_dict['Specific discharge capacity (mAh/g)'][last_idx]
+    cycle_dict['Last efficiency (%)'] = cycle_dict['Efficiency (%)'][last_idx]
+
+    # Calculate cycles to x% of initial discharge capacity
+    pcents = [95,90,85,80,75,70,60,50]
+    norm = cycle_dict['Normalised discharge capacity (%)']
+    for pcent in pcents:
+        cycle_dict[f'Cycles to {pcent}%'] = next((i for i in range(len(norm) - 1)
+                            if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
+        
+    # Add times to cycle_dict
+    timezone = pytz.timezone(config["Time zone"])
+    uts_steps = {}
+    for step in [3,5,6,10]:
+        datetime_str = json.loads(metadata['sample_data'])[f"Timestamp step {step}"]
+        if not datetime_str:
+            uts_steps[step] = np.nan
+            continue
+        datetime_object = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M:%S')
+        datetime_object = timezone.localize(datetime_object)
+        uts_steps[step] = datetime_object.timestamp()
+    job_start = df['uts'].iloc[0]
+    cycle_dict['Electrolyte to press (s)'] = round(uts_steps[10] - np.nanmin([uts_steps[3],uts_steps[5]]))
+    cycle_dict['Electrolyte to electrode (s)'] = round(uts_steps[6] - np.nanmin([uts_steps[3],uts_steps[5]]))
+    cycle_dict['Electrode to protection (s)'] = round(job_start - uts_steps[6])
+    cycle_dict['Press to protection (s)'] = round(job_start - uts_steps[10])
+
+    # Update the database with some of the results
     flag = None
     job_complete = status and status.endswith('c')
     if pipeline:
         if not job_complete:
-            if cap_loss and cap_loss > 20:
+            if formed and cycle_dict['Capacity loss (%)'] > 20:
                 flag = 'Cap loss'
-            if form_eff < 50:
+            if cycle_dict['First formation efficiency (%)'] < 60:
                 flag = 'Form eff'
-            if init_eff and init_eff < 50:
+            if formed and cycle_dict['Initial efficiency (%)'] < 50:
                 flag = 'Init eff'
-            if init_dis_cap and init_dis_cap< 50:
+            if formed and cycle_dict['Initial specific discharge capacity (mAh/g)'] < 100:
                 flag = 'Init cap'
         else:
             flag = 'Complete'
@@ -381,21 +410,26 @@ def analyse_cycles(
         'Status': status,
         'Flag': flag,
         'Number of cycles': int(max(cycle_dict['Cycle'])),
-        'Capacity loss (%)': cap_loss,
-        'Max Voltage (V)': cycle_dict['Max Voltage (V)'],
+        'Capacity loss (%)': cycle_dict['Capacity loss (%)'],
+        'Max voltage (V)': cycle_dict['Max voltage (V)'],
         'Formation C': cycle_dict['Formation C'],
         'Cycling C': cycle_dict['Cycle C'],
-        'First formation efficiency (%)': form_eff,
-        'Initial discharge specific capacity (mAh/g)': init_dis_cap,
-        'Initial efficiency (%)': init_eff,
-        'Last discharge specific capacity (mAh/g)': last_dis_cap,
-        'Last efficiency (%)': last_eff,
-        'Last Snapshot': last_snapshot,
+        'First formation efficiency (%)': cycle_dict['First formation efficiency (%)'],
+        'Initial specific discharge capacity (mAh/g)': cycle_dict['Initial specific discharge capacity (mAh/g)'],
+        'Initial efficiency (%)': cycle_dict['Initial efficiency (%)'],
+        'Last specific discharge capacity (mAh/g)': cycle_dict['Last specific discharge capacity (mAh/g)'],
+        'Last efficiency (%)': cycle_dict['Last efficiency (%)'],
+        'Last snapshot': last_snapshot,
         'Last analysis': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         #'Last plotted' # do not update this column here
         'Snapshot status': snapshot_status,
         'Snapshot pipeline': snapshot_pipeline,
     }
+    # round any floats to 3 decimal places
+    for k,v in update_row.items():
+        if isinstance(v, float):
+            update_row[k] = round(v,3)
+
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
         # insert a row with sampleid if it doesn't exist
@@ -425,7 +459,7 @@ def analyse_sample(sample: str) -> Tuple[pd.DataFrame, dict]:
     batch = sample.rsplit('_',1)[0]
     with open('./config.json', encoding='utf-8') as f:
         config = json.load(f)
-    data_folder = config["Processed Snapshots Folder Path"]
+    data_folder = config["Processed snapshots folder path"]
     file_location = os.path.join(data_folder, batch, sample)
     h5_files = [
         os.path.join(file_location,f) for f in os.listdir(file_location)
@@ -441,13 +475,13 @@ def analyse_all_samples() -> None:
     """
     with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
-    snapshot_folder = config["Processed Snapshots Folder Path"]
+    snapshot_folder = config["Processed snapshots folder path"]
     for batch_folder in os.listdir(snapshot_folder):
         for sample in os.listdir(os.path.join(snapshot_folder, batch_folder)):
             try:
                 analyse_sample(sample)
-            except KeyError:
-                print(f"No metadata found for {sample}")
+            except KeyError as e:
+                print(f"No metadata found for {sample}: {e}")
             except Exception as e:
                 tb = traceback.format_exc()
                 print(f"Failed to analyse {sample} with error {e}\n{tb}")
@@ -461,9 +495,9 @@ def plot_sample(sample: str) -> None:
     batch = sample.rsplit('_',1)[0]
     with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
-    data_folder = config["Processed Snapshots Folder Path"]
+    data_folder = config["Processed snapshots folder path"]
     file_location = f"{data_folder}/{batch}/{sample}"
-    save_location = f"{config['Graphs Folder Path']}/{batch}"
+    save_location = f"{config['Graphs folder path']}/{batch}"
 
     # plot V(t)
     files = os.listdir(file_location)
@@ -494,9 +528,9 @@ def plot_sample(sample: str) -> None:
     assert not cycle_df.empty, f"Empty dataframe for {sample}"
     assert 'Cycle' in cycle_df.columns, f"No 'Cycle' column in {sample}"
     fig, ax = plt.subplots(2,1,sharex=True,figsize=(6,4),dpi=72)
-    ax[0].plot(cycle_df['Cycle'],cycle_df['Discharge Capacity (mAh)'],'.-')
+    ax[0].plot(cycle_df['Cycle'],cycle_df['Discharge capacity (mAh)'],'.-')
     ax[1].plot(cycle_df['Cycle'],cycle_df['Efficiency (%)'],'.-')
-    ax[0].set_ylabel('Discharge Capacity (mAh)')
+    ax[0].set_ylabel('Discharge capacity (mAh)')
     ax[1].set_ylabel('Efficiency (%)')
     ax[1].set_xlabel('Cycle')
     ax[0].set_title(sample)
@@ -513,7 +547,7 @@ def plot_all_samples(snapshot_folder: str = None) -> None:
     with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
     if not snapshot_folder:
-        snapshot_folder = config["Processed Snapshots Folder Path"]
+        snapshot_folder = config["Processed snapshots folder path"]
     for batch_folder in os.listdir(snapshot_folder):
         for sample in os.listdir(f'{snapshot_folder}/{batch_folder}'):
             try:
@@ -538,7 +572,7 @@ def parse_sample_plotting_file(
     """
     with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
-    data_folder = config["Processed Snapshots Folder Path"]
+    data_folder = config["Processed snapshots folder path"]
 
     with open(file_path, 'r', encoding = 'utf-8') as file:
         batches = yaml.safe_load(file)
@@ -594,8 +628,8 @@ def plot_batch(plot_name: str, batch: dict) -> None:
     """
     with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
-    data_folder = config["Processed Snapshots Folder Path"]
-    save_location = os.path.join(config['Batches Folder Path'],plot_name)
+    data_folder = config["Processed snapshots folder path"]
+    save_location = os.path.join(config['Batches folder path'],plot_name)
     if not os.path.exists(save_location):
         os.makedirs(save_location)
     samples = batch.get('samples')
@@ -644,8 +678,8 @@ def plot_batch(plot_name: str, batch: dict) -> None:
     if discharge_ylim:
         d_ymin, d_ymax = sorted(discharge_ylim)
     else:
-        d_ymin = max(0, 0.95*cycle_df['Specific Discharge Capacity (mAh/g)'].min())
-        d_ymax = cycle_df['Specific Discharge Capacity (mAh/g)'].max()*1.05
+        d_ymin = max(0, 0.95*cycle_df['Specific discharge capacity (mAh/g)'].min())
+        d_ymax = cycle_df['Specific discharge capacity (mAh/g)'].max()*1.05
     efficiency_ylim = batch.get('efficiency_ylim', None)
     if efficiency_ylim:
         e_ymin, e_ymax = sorted(efficiency_ylim)
@@ -655,12 +689,12 @@ def plot_batch(plot_name: str, batch: dict) -> None:
 
     ### STRIP PLOT ###
     fig, ax = plt.subplots(2,1,sharex=True,figsize=(8,5),dpi=300)
-    ax[0].set_ylabel("Discharge\nCapacity (mAh/g)")
+    ax[0].set_ylabel("Discharge\ncapacity (mAh/g)")
     sns.stripplot(
         ax=ax[0],
         data=plot_data,
         x="Cycle",
-        y="Specific Discharge Capacity (mAh/g)",
+        y="Specific discharge capacity (mAh/g)",
         size=3,
         edgecolor='k',
         palette=palette,
@@ -687,12 +721,12 @@ def plot_batch(plot_name: str, batch: dict) -> None:
 
     ### Swarm plot ###
     fig, ax = plt.subplots(2,1,sharex=True,figsize=(8,5),dpi=300)
-    ax[0].set_ylabel("Discharge\nCapacity (mAh/g)")
+    ax[0].set_ylabel("Discharge\ncapacity (mAh/g)")
     sns.swarmplot(
         ax=ax[0],
         data=plot_data,
         x="Cycle",
-        y="Specific Discharge Capacity (mAh/g)",
+        y="Specific discharge capacity (mAh/g)",
         size=3,
         dodge=True,
         edgecolor='k',
@@ -721,12 +755,12 @@ def plot_batch(plot_name: str, batch: dict) -> None:
 
     ### Box plot ###
     fig, ax = plt.subplots(2,1,sharex=True,figsize=(8,5),dpi=300)
-    ax[0].set_ylabel("Discharge\nCapacity (mAh/g)")
+    ax[0].set_ylabel("Discharge\ncapacity (mAh/g)")
     sns.boxplot(
         ax=ax[0],
         data=plot_data,
         x="Cycle",
-        y="Specific Discharge Capacity (mAh/g)",
+        y="Specific discharge capacity (mAh/g)",
         fill=False,
         palette=palette,
         hue = group_by,
@@ -780,24 +814,24 @@ def plot_batch(plot_name: str, batch: dict) -> None:
     hover_columns = [
         'Sample ID',
         'Cycle',
-        'Max Voltage (V)',
-        'Cathode Mass (mg)',
+        'Max voltage (V)',
+        'Cathode mass (mg)',
         'Formation C/',
         'Cycle C/',
-        'Electrolyte Name',
-        'Actual N:P Ratio',
+        'Electrolyte name',
+        'Actual N:P ratio',
     ]
     hover_data = {col: True for col in hover_columns}
     hover_data['Cycle'] = False  # Exclude jittered 'Cycle' from hover data
     hover_template = (
         'Sample ID: %{customdata[0]}<br>'
         'Cycle: %{customdata[1]}<br><extra></extra>'
-        'Max Voltage (V): %{customdata[2]}<br>'
-        'Cathode Mass (mg): %{customdata[3]}<br>'
+        'Max voltage (V): %{customdata[2]}<br>'
+        'Cathode mass (mg): %{customdata[3]}<br>'
         'Formation C-rate: %{customdata[4]}<br>'
         'Cycle C-rate: %{customdata[5]}<br>'
         'Electrolyte: %{customdata[6]}<br>'
-        'N:P Ratio: %{customdata[7]}'
+        'N:P ratio: %{customdata[7]}'
     )
 
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True,vertical_spacing=0.1)
@@ -807,8 +841,8 @@ def plot_batch(plot_name: str, batch: dict) -> None:
     hex_colours = sns.color_palette(palette, num_combinations).as_hex()
     scatter1 = px.scatter(
         cycle_df,
-        x='Jittered Cycle',
-        y='Specific Discharge Capacity (mAh/g)',
+        x='Jittered cycle',
+        y='Specific discharge capacity (mAh/g)',
         color=group_by,
         color_discrete_sequence=hex_colours,
         hover_data=hover_data,
@@ -834,9 +868,9 @@ def plot_batch(plot_name: str, batch: dict) -> None:
     if discharge_ylim:
         ymin, ymax = sorted(discharge_ylim)
     else:
-        ymin = max(0, 0.95*cycle_df['Specific Discharge Capacity (mAh/g)'].min())
-        ymax = cycle_df['Specific Discharge Capacity (mAh/g)'].max()*1.05
-    fig.update_yaxes(title_text="Specific Discharge<br>Capacity (mAh/g)", row=1, col=1, range=[ymin, ymax])
+        ymin = max(0, 0.95*cycle_df['Specific discharge capacity (mAh/g)'].min())
+        ymax = cycle_df['Specific discharge capacity (mAh/g)'].max()*1.05
+    fig.update_yaxes(title_text="Specific discharge<br>capacity (mAh/g)", row=1, col=1, range=[ymin, ymax])
     ymin = max(70, cycle_df['Efficiency (%)'].min())
     ymax = min(101, 1.05*cycle_df['Efficiency (%)'].max())
     fig.update_yaxes(title_text="Efficiency (%)", row=2, col=1, range=[ymin, ymax])

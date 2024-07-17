@@ -34,8 +34,8 @@ eclab_config = {
             "EC-lab copy location": "C:/Users/lab131/eclabcopy/"
         }
     ],
-    "Snapshots Folder Path": "C:/", # will add 'eclab' folder to this path
-    "Processed Snapshots Folder Path": "K:/Aurora/cucumber/ec-lab snapshots/"
+    "Snapshots folder path": "C:/", # will add 'eclabcopy' folder to this path
+    "Processed snapshots folder path": "K:/Aurora/cucumber/ec-lab snapshots/"
 }
 
 def get_mprs(
@@ -77,10 +77,10 @@ def get_mprs_from_folders() -> None:
         get_mprs(
             server_config["hostname"],
             server_config["username"],
-            paramiko.RSAKey.from_private_key_file(config["SSH Private Key Path"]),
+            paramiko.RSAKey.from_private_key_file(config["SSH private key path"]),
             server["EC-lab folder location"],
             server["EC-lab copy location"],
-            eclab_config["Snapshots Folder Path"],
+            eclab_config["Snapshots folder path"],
         )
 
 def convert_mpr_to_hdf(
@@ -143,7 +143,7 @@ def convert_mpr_to_hdf(
         try:
             with open('./config.json', encoding = 'utf-8') as f:
                 config = json.load(f)
-            db_path = config["Database Path"]
+            db_path = config["Database path"]
             with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
@@ -180,8 +180,8 @@ def convert_all_mprs() -> None:
     """ Converts all raw eclab files to hdf5 files. """
     with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
-    raw_folder = os.path.join(eclab_config["Snapshots Folder Path"], "eclab")
-    processed_folder = config["Processed Snapshots Folder Path"]
+    raw_folder = os.path.join(eclab_config["Snapshots folder path"], "eclabcopy")
+    processed_folder = config["Processed snapshots folder path"]
 
     # HACK - lookup table for run IDs from incorrectly named folders
     # it is not possible to change folder names while data is being collected
@@ -198,7 +198,7 @@ def convert_all_mprs() -> None:
         # Try looking up in the database if not found in the lookup table
         if not run_id:
             try:
-                with sqlite3.connect(config["Database Path"]) as conn:
+                with sqlite3.connect(config["Database path"]) as conn:
                     conn.row_factory = sqlite3.Row
                     cursor = conn.cursor()
                     cursor.execute(f"SELECT * FROM samples WHERE `Sample ID`='{run_folder}'")
@@ -260,5 +260,5 @@ def convert_all_mprs() -> None:
                     print(f"Error processing {mpr}: {e}")
 
 if __name__ == "__main__":
-    get_mprs_from_folders()
+    # get_mprs_from_folders()
     convert_all_mprs()
