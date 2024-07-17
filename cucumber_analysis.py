@@ -171,7 +171,6 @@ def analyse_cycles(
     metadatas = []
     payloads = []
     sampleids = []
-    job_starts = []
     for f in h5_files:
         dfs.append(pd.read_hdf(f))
         with h5py.File(f, 'r') as file:
@@ -182,16 +181,13 @@ def analyse_cycles(
                 sampleids.append(
                     json.loads(metadata['sample_data'])['Sample ID']
                 )
-                job_starts.append(
-                    datetime.strptime(job_data.get('Submitted','1970-01-01 00:00:00'), '%Y-%m-%d %H:%M:%S')
-                )
                 payloads.append(json.loads(job_data.get('Payload','{}')))
             except KeyError as exc:
                 print(f"Metadata not found in {f}")
                 raise KeyError from exc
     assert len(set(sampleids)) == 1, "All files must be from the same sample"
     sampleid = sampleids[0]
-    order = np.argsort(job_starts)
+    order = np.argsort([df['uts'].iloc[0] for df in dfs])
     dfs = [dfs[i] for i in order]
     h5_files = [h5_files[i] for i in order]
     metadatas = [metadatas[i] for i in order]
