@@ -12,6 +12,7 @@ import traceback
 import matplotlib
 import cucumber_tools as ct
 from cucumber_analysis import plot_all_samples, plot_all_batches, analyse_all_samples
+from cucumber_eclab_harvester import get_mprs_from_folders, convert_all_mprs
 
 matplotlib.use('Agg')
 
@@ -77,6 +78,14 @@ def daemon_loop(update_time: float = None, snapshot_times: list = None):
                 logging.debug(traceback.format_exc())
             else:
                 logging.info("Snapshotting complete")
+            try:
+                get_mprs_from_folders()
+                convert_all_mprs()
+            except Exception as e:
+                logging.critical("Error converting mprs: %s", e)
+                logging.debug(traceback.format_exc())
+            else:
+                logging.info("mprs downloaded and converted")
             try:
                 analyse_all_samples()
                 plot_all_samples()
