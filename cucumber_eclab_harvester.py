@@ -12,6 +12,8 @@ import os
 import re
 import json
 import sqlite3
+from datetime import datetime
+import pytz
 import paramiko
 from scp import SCPClient
 import numpy as np
@@ -112,10 +114,31 @@ def convert_mpr_to_hdf(
     TODO: use capacity to define C rate
 
     """
+    with open('./config.json', encoding = 'utf-8') as f:
+        config = json.load(f)
+
     data = yadg.extractors.extract('eclab.mpr', mpr_file)
 
     df = pd.DataFrame()
     df['uts'] = data.coords['uts'].values
+    # Check if the time is incorrect and fix it
+    if df['uts'].values[0] < 1000000000: # the measurement started before 2001
+        # grab the start time from mpl file
+        mpl_file = mpr_file.replace(".mpr",".mpl")
+        try:
+            with open(mpl_file, encoding='ANSI') as f:
+                lines = f.readlines()
+        except FileNotFoundError:
+            print(f"Incorrect start time in {mpr_file} and no mpl file found.")
+        # find the date from line with Acquisition started on : 07/17/2024 11:36:40.528
+        for line in lines:
+            if line.startswith("Acquisition started on : "):
+                datetime_str = line.split(":",1)[1].strip()
+                datetime_object = datetime.strptime(datetime_str, '%m/%d/%Y %H:%M:%S.%f')
+                timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
+                uts_timestamp = timezone.localize(datetime_object).timestamp()
+                df['uts'] = df['uts'] + uts_timestamp
+
     df['Ewe'] = data.data_vars['Ewe'].values
     df['I'] = (
         (3600 / 1000) * data.data_vars['dq'].values /
@@ -192,20 +215,22 @@ def convert_all_mprs() -> None:
         "100724_Gen8": "240709_svfe_gen8",
     }
     for run_folder in os.listdir(raw_folder):
+        print("Processing run", run_folder)
         if not os.path.isdir(os.path.join(raw_folder, run_folder)):
+            print(f"Skipping {run_folder} - not a folder")
             continue
         run_id = run_id_lookup.get(run_folder, None)
         # Try looking up in the database if not found in the lookup table
         if not run_id:
-            try:
-                with sqlite3.connect(config["Database path"]) as conn:
-                    conn.row_factory = sqlite3.Row
-                    cursor = conn.cursor()
-                    cursor.execute(f"SELECT * FROM samples WHERE `Sample ID`='{run_folder}'")
-                    sample_data = dict(cursor.fetchone())
-                    run_id = sample_data["Run ID"]
-            except Exception:
-                print(f"Skipping {run_folder} - could not find a run ID")
+            print(f"{run_folder}")
+            with sqlite3.connect(config["Database path"]) as conn:
+                cursor = conn.cursor()
+                cursor.execute(f"SELECT `Run ID` FROM samples WHERE `Sample ID` LIKE '%{run_folder}%'")
+                result = cursor.fetchone()
+            if result:
+                run_id = result[0]
+            else:
+                print(f"Found run ID {run_id} for {run_folder}")
                 continue
         print("Processing run", run_id)
 
@@ -260,5 +285,5 @@ def convert_all_mprs() -> None:
                     print(f"Error processing {mpr}: {e}")
 
 if __name__ == "__main__":
-    # get_mprs_from_folders()
+    get_mprs_from_folders()
     convert_all_mprs()
