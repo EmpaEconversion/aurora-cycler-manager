@@ -79,15 +79,9 @@ class Cucumber:
             private_key_path = self.config["SSH private key path"]
         self.private_key = paramiko.RSAKey.from_private_key_file(private_key_path)
 
-        self.status = None
-        self.queue = None
-        self.queue_all = None
-
         print("Creating cycler server objects")
         self.get_servers()
-        print("Updating the database")
-        self.update_db()
-        print("Cucumber complete")
+        print("Cucumber complete, consider updating database with update_db()")
 
     def get_servers(self) -> None:
         """ Create the cycler server objects from the config file. """
@@ -154,7 +148,7 @@ class Cucumber:
                     f"Essential column '{key}' was not found in the sample file {csv_file}. "
                     "Please double check the file."
                 )
-            
+
         # Check that timestamps are in the correct format
         for col in df.columns:
             if "Timestamp" in col:
@@ -297,7 +291,7 @@ class Cucumber:
         self.update_jobs()
         self.update_flags()
 
-    def query_db(self, query, params=None):
+    def execute_sql(self, query, params=None):
         """ Execute a query on the database.
 
         Args:
@@ -309,40 +303,17 @@ class Cucumber:
         Returns:
             The result of the query as a list of tuples
         """
+        commit_keywords = ['UPDATE', 'INSERT', 'DELETE', 'REPLACE', 'CREATE', 'DROP', 'ALTER']
+        commit = any(keyword in query.upper() for keyword in commit_keywords)
         with sqlite3.connect(self.db) as conn:
             cursor = conn.cursor()
             if params is not None:
                 cursor.execute(query, params)
             else:
                 cursor.execute(query)
+            if commit:
+                conn.commit()
             result = cursor.fetchall()
-        return result
-
-    def get_from_db(self, table: str, columns: str = "*", where: str = "") -> list:
-        """ Get data from the database.
-        
-        Args:
-            table : str
-                The table to get data from
-            columns : str, optional
-                The columns to get from the table, by default all columns
-            where : str, optional
-                The where clause to filter the data
-        
-        Returns:
-            The result of the query as a list of tuples
-        """
-        with sqlite3.connect(self.db) as conn:
-            cursor = conn.cursor()
-            if not where:
-                cursor.execute(f"SELECT {columns} FROM {table}")
-            else:
-                cursor.execute(f"SELECT {columns} FROM {table} WHERE {where}")
-            result = cursor.fetchall()
-        if result is None:
-            raise ValueError(
-                f"No results found in table '{table}' with columns '{columns}' and where '{where}'"
-            )
         return result
 
     @staticmethod
@@ -369,28 +340,23 @@ class Cucumber:
                 return (x, 0)
         return df.sort_values(by="Job ID", key=lambda x: x.map(custom_sort))
 
-    def get_status(self) -> pd.DataFrame:
+    def get_pipelines(self) -> pd.DataFrame:
         """ Return the status of all pipelines as a DataFrame. """
         columns = ["Pipeline", "Sample ID", "Job ID on server", "Server label"]
-        result = self.get_from_db("pipelines", columns=", ".join([f"`{c}`" for c in columns]))
-        self.status = self.sort_pipeline(pd.DataFrame(result, columns=columns))
-        return self.status
+        result = self.execute_sql("SELECT `Pipeline`, `Sample ID`, `Job ID on server`, `Server label` FROM pipelines")
+        return self.sort_pipeline(pd.DataFrame(result, columns=columns))
 
     def get_queue(self) -> pd.DataFrame:
         """ Return all running and queued jobs as a DataFrame. """
         columns = ["Job ID", "Sample ID", "Status", "Server label"]
-        result = self.get_from_db("jobs", columns=", ".join([f"`{c}`" for c in columns]),
-                                  where="`Status` IN ('q', 'qw', 'r', 'rd')")
-        self.queue = self.sort_job(pd.DataFrame(result, columns=columns))
-        return self.queue
+        result = self.execute_sql("SELECT `Job ID`, `Sample ID`, `Status`, `Server label` FROM jobs WHERE `Status` IN ('q', 'qw', 'r', 'rd')")
+        return self.sort_job(pd.DataFrame(result, columns=columns))
 
-    def get_queue_all(self) -> pd.DataFrame:
+    def get_jobs(self) -> pd.DataFrame:
         """ Return all jobs as a DataFrame. """
         columns = ["Job ID", "Sample ID", "Status", "Server label"]
-        result = self.get_from_db("jobs", columns=", ".join([f"`{c}`" for c in columns]),
-                                  where="`Status` IN ('q', 'qw', 'r', 'rd', 'c', 'cd')")
-        self.queue_all = self.sort_job(pd.DataFrame(result, columns=columns))
-        return self.queue_all
+        result = self.execute_sql("SELECT `Job ID`, `Sample ID`, `Status`, `Server label` FROM jobs WHERE `Status` IN ('q', 'qw', 'r', 'rd', 'c', 'cd')")
+        return  self.sort_job(pd.DataFrame(result, columns=columns))
 
     def get_sample_capacity(
             self,
@@ -416,41 +382,39 @@ class Cucumber:
         Returns:
             float: The capacity of the sample in Ah
         """
-        with sqlite3.connect(self.db) as conn:
-            cursor = conn.cursor()
-            if mode == "mass":
-                cursor.execute("""
-                               SELECT 
-                               `Anode C-rate definition specific capacity (mAh/g)`, 
-                               `Anode active material mass (mg)`, 
-                               `Anode diameter (mm)`, 
-                               `Cathode C-rate definition specific capacity (mAh/g)`, 
-                               `Cathode active material mass (mg)`,
-                               `Cathode diameter (mm)`
-                                FROM samples WHERE `Sample ID` = ?
-                               """, (sample,))
-            elif mode == "areal":
-                cursor.execute("""
-                               SELECT
-                               `Anode C-rate definition areal capacity (mAh/cm2)`,
-                               `Anode diameter (mm)`,
-                               `Cathode C-rate definition areal capacity (mAh/cm2)`,
-                               `Cathode diameter (mm)`
-                               FROM samples WHERE `Sample ID` = ?
-                               """, (sample,))
-            elif mode == "nominal":
-                cursor.execute("""
-                               SELECT
-                               `C-rate definition capacity (mAh)`
-                               FROM samples WHERE `Sample ID` = ?
-                               """, (sample,))
-            else:
-                raise ValueError(f"Mode '{mode}' not recognized. Must be 'mass' or 'areal'")
-            result = cursor.fetchone()
+        if mode == "mass":
+            result = self.execute_sql(
+                "SELECT "
+                "`Anode C-rate definition specific capacity (mAh/g)`, "
+                "`Anode active material mass (mg)`, "
+                "`Anode diameter (mm)`, "
+                "`Cathode C-rate definition specific capacity (mAh/g)`, "
+                "`Cathode active material mass (mg)`, "
+                "`Cathode diameter (mm)` "
+                "FROM samples WHERE `Sample ID` = ?",
+                (sample,)
+            )
+        elif mode == "areal":
+            result = self.execute_sql(
+                "SELECT "
+                "`Anode C-rate definition areal capacity (mAh/cm2)`, "
+                "`Anode diameter (mm)`, "
+                "`Cathode C-rate definition areal capacity (mAh/cm2)`, "
+                "`Cathode diameter (mm)` "
+                "FROM samples WHERE `Sample ID` = ?",
+                (sample,)
+            )
+        elif mode == "nominal":
+            result = self.execute_sql(
+                "SELECT "
+                "`C-rate definition capacity (mAh)` "
+                "FROM samples WHERE `Sample ID` = ?",
+                (sample,)
+            )
         if result is None:
             raise ValueError(f"Sample '{sample}' not found in the database.")
         if mode == "mass":
-            anode_capacity_mAh_g, anode_weight_mg, anode_diameter_mm, cathode_capacity_mAh_g, cathode_weight_mg, cathode_diameter_mm = result
+            anode_capacity_mAh_g, anode_weight_mg, anode_diameter_mm, cathode_capacity_mAh_g, cathode_weight_mg, cathode_diameter_mm = result[0]
             anode_frac_used = min(1,cathode_diameter_mm**2 / anode_diameter_mm**2)
             cathode_frac_used = min(1,anode_diameter_mm**2 / cathode_diameter_mm**2)
             anode_capacity_Ah = anode_frac_used * (anode_capacity_mAh_g * anode_weight_mg * 1e-6)
@@ -460,7 +424,7 @@ class Cucumber:
             else:
                 capacity_Ah = min(anode_capacity_Ah, cathode_capacity_Ah)
         elif mode == "areal":
-            anode_capacity_mAh_cm2, anode_diameter_mm, cathode_capacity_mAh_cm2, cathode_diameter_mm = result
+            anode_capacity_mAh_cm2, anode_diameter_mm, cathode_capacity_mAh_cm2, cathode_diameter_mm = result[0]
             anode_frac_used = min(1,cathode_diameter_mm**2 / anode_diameter_mm**2)
             cathode_frac_used = min(1,anode_diameter_mm**2 / cathode_diameter_mm**2)
             anode_capacity_Ah = (
@@ -474,7 +438,7 @@ class Cucumber:
             else:
                 capacity_Ah = min(anode_capacity_Ah, cathode_capacity_Ah)
         elif mode == "nominal":
-            capacity_Ah = result[0] * 1e-3
+            capacity_Ah = result[0][0] * 1e-3
         return capacity_Ah
 
     def load(self, sample: str, pipeline: str) -> str:
@@ -492,17 +456,9 @@ class Cucumber:
             The output from the server load command as a string
         """
         # Check if sample exists in database
-        result = self.get_from_db(
-            "samples",
-            columns="`Sample ID`",
-            where=f"`Sample ID` = '{sample}'"
-        )
+        result = self.execute_sql("SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?", (sample,))
         # Get pipeline and load
-        result = self.get_from_db(
-            "pipelines",
-            columns="`Server label`",
-            where=f"`Pipeline` = '{pipeline}'"
-        )
+        result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
         server = next((server for server in self.servers if server.label == result[0][0]), None)
         print(f"Loading {sample} on server: {server.label}")
         output = server.load(sample, pipeline)
@@ -518,11 +474,7 @@ class Cucumber:
             The output from the server eject command as a string
         """
         # Find server associated with pipeline
-        result = self.get_from_db(
-            "pipelines",
-            columns="`Server label`",
-            where=f"`Pipeline` = '{pipeline}'"
-        )
+        result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
         server = next((server for server in self.servers if server.label == result[0][0]), None)
         print(f"Ejecting {pipeline} on server: {server.label}")
         output = server.eject(pipeline)
@@ -538,11 +490,7 @@ class Cucumber:
             The output from the server ready command as a string
         """
         # find server with pipeline, if there is more than one throw an error
-        result = self.get_from_db(
-            "pipelines",
-            columns="`Server label`",
-            where=f"`Pipeline` = '{pipeline}'"
-        )
+        result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
         server = next((server for server in self.servers if server.label == result[0][0]), None)
         print(f"Readying {pipeline} on server: {server.label}")
         output = server.ready(pipeline)
@@ -577,11 +525,7 @@ class Cucumber:
             raise ValueError(f"Capacity {capacity_Ah} too large - value must be in Ah, not mAh")
 
         # Find the server with the sample loaded, if there is more than one throw an error
-        result = self.get_from_db(
-            "pipelines",
-            columns="`Server label`",
-            where=f"`Sample ID` = '{sample}'"
-        )
+        result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Sample ID` = ?", (sample,))
         server = next((server for server in self.servers if server.label == result[0][0]), None)
 
         # Check if json_file is a string that could be a file path or a JSON string
@@ -603,14 +547,11 @@ class Cucumber:
         dt = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         # Update the job table in the database
-        with sqlite3.connect(self.db) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Job ID on server`, "
-                "`Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (full_jobid, sample, server.label, int(jobid), dt, json_string, comment)
-            )
-            conn.commit()
+        self.execute_sql(
+            "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Job ID on server`, "
+            "`Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (full_jobid, sample, server.label, int(jobid), dt, json_string, comment)
+        )
 
         return
 
@@ -623,11 +564,7 @@ class Cucumber:
         Returns:
             The output from the server cancel command as a string
         """
-        result = self.get_from_db(
-            "jobs",
-            columns="`Server label`,`Job ID on server`",
-            where=f"`Job ID` = '{jobid}'"
-        )
+        result = self.execute_sql("SELECT `Server label`, `Job ID on server` FROM jobs WHERE `Job ID` = ?", (jobid,))
         server_label, jobid_on_server = result[0]
         server = next((server for server in self.servers if server.label == server_label), None)
         output = server.cancel(jobid_on_server)
@@ -656,24 +593,27 @@ class Cucumber:
                 - 'if_not_exists': Snapshot only if the file doesn't exist locally.
             Default is 'new_data'.
         """
-        # Check if the input is a sample ID
-        columns = ["Sample ID", "Job ID", "Server label", "Job ID on server", "Snapshot status"]
-        columns_sql = ", ".join([f"`{c}`" for c in columns])
-
-        # Define the column names to check
-        column_checks = ["Job ID", "Sample ID", "Job ID on server"]
-
-        for column_check in column_checks:
-            result = self.get_from_db("jobs", columns=columns_sql, where=f"`{column_check}` = '{samp_or_jobid}'")
-            if len(result) > 0:
-                break
-        if len(result) == 0:
+        # check if the input is a sample ID
+        result = self.execute_sql("SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?", (samp_or_jobid,))
+        if result:  # it's a sample
+            result = self.execute_sql(
+                "SELECT `Sample ID`, `Job ID on server`, `Server label`, `Snapshot Status` "
+                "FROM jobs WHERE `Sample ID` = ? ",
+                (samp_or_jobid,)
+            )
+        else:  # it's a job ID
+            result = self.execute_sql(
+                "SELECT `Sample ID`, `Job ID on server`, `Server label`, `Snapshot Status` "
+                "FROM jobs WHERE `Job ID` = ?",
+                (samp_or_jobid,)
+            )
+        if not result:
             raise ValueError(f"Sample or job ID '{samp_or_jobid}' not found in the database.")
 
-        for sampleid, jobid, server_name, jobid_on_server, snapshot_status in result:
-            if not sampleid:
-                print(f"Job {jobid} not associated with a sample, skipping.") # TODO should this update the db as well?
-                print(f"sql results: {sampleid=}, {jobid=}, {server_name=}, {jobid_on_server=}, {snapshot_status=}")
+        for sampleid, jobid_on_server, server_label, snapshot_status in result:
+            jobid = f"{server_label}-{jobid_on_server}"
+            if not sampleid: # TODO should this update the db as well?
+                print(f"Job {server_label}-{jobid_on_server} has no sample, skipping.")
                 continue
             # Check if the snapshot should be skipped
             batchid = sampleid.rsplit("_", 1)[0]
@@ -690,33 +630,28 @@ class Cucumber:
                     continue
 
             # Otherwise snapshot the job
-            server = next((server for server in self.servers if server.label == server_name), None)
+            server = next((server for server in self.servers if server.label == server_label), None)
+            assert server is not None, f"Server {server_label} not found"
 
             print(f"Snapshotting sample {sampleid} job {jobid}")
             try:
                 snapshot_status = server.snapshot(jobid, jobid_on_server, local_save_location, get_raw)
                 dt = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 # Update the snapshot status in the database
-                with sqlite3.connect(self.db) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "UPDATE jobs SET `Snapshot status` = ?, `Last snapshot` = ? "
-                        "WHERE `Job ID` = ?",
-                        (snapshot_status, dt, jobid)
-                        )
-                    print("Updating database")
-                    conn.commit()
+                self.execute_sql(
+                    "UPDATE jobs SET `Snapshot status` = ?, `Last snapshot` = ? WHERE `Job ID` = ?",
+                    (snapshot_status, dt, jobid)
+                )
             except FileNotFoundError as e:
                 warnings.warn(f"Error snapshotting {jobid}: {e}", RuntimeWarning)
                 warnings.warn(
                     "Likely the job was cancelled before starting. "
                     "Setting `Snapshot Status` to 'ce' in the database."
                 )
-                with sqlite3.connect(self.db) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("UPDATE jobs SET `Snapshot status` = 'ce' WHERE `Job ID` = ?", (jobid,))
-                    conn.commit()
-                continue
+                self.execute_sql(
+                    "UPDATE jobs SET `Snapshot status` = 'ce' WHERE `Job ID` = ?",
+                    (jobid,)
+                )
             except ValueError as e:
                 warnings.warn(f"Error snapshotting {jobid}: {e}", RuntimeWarning)
 
@@ -752,8 +687,7 @@ class Cucumber:
             where += " AND (`Snapshot status` NOT LIKE 'c%' OR `Snapshot status` IS NULL)"
         if sampleid_contains:
             where += f" AND `Sample ID` LIKE '%{sampleid_contains}%'"
-        result = self.get_from_db("jobs", columns="`Job ID`",
-                                  where=where)
+        result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE " + where)
         total_jobs = len(result)
         print(f"Snapshotting {total_jobs} jobs:")
         print([jobid for jobid, in result])
@@ -783,15 +717,15 @@ class Cucumber:
             dict: The last data as a dictionary
         """
         # check if the input is a sample ID
-        result = self.get_from_db("samples", columns="`Sample ID`", where=f"`Sample ID` = '{samp_or_jobid}'")
+        result = self.execute_sql("SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?", (samp_or_jobid,))
         if result:  # it's a sample
-            result = self.query_db(
+            result = self.execute_sql(
                 "SELECT `Job ID on server`, `Server label` FROM jobs WHERE `Sample ID` = ? "
                 "ORDER BY `Submitted` DESC LIMIT 1",
                 (samp_or_jobid,)
             )
         else:  # it's a job ID
-            result = self.query_db(
+            result = self.execute_sql(
                 "SELECT `Job ID on server`, `Server label` FROM jobs WHERE `Job ID` = ?",
                 (samp_or_jobid,)
             )
