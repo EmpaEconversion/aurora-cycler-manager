@@ -896,7 +896,10 @@ def plot_batch(plot_name: str, batch: dict) -> None:
 
     # save the plot
     try:
-        fig.write_html(os.path.join(save_location,f'{plot_name}_interactive.html'))
+        fig.write_html(
+            os.path.join(save_location,f'{plot_name}_interactive.html'),
+            config={'scrollZoom':True, 'displaylogo': False}
+        )
     except PermissionError:
         print(
             "Permission error saving "
