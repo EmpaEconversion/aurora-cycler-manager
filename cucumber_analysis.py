@@ -7,7 +7,7 @@ which can be saved to compressed hdf5 files.
 Also includes functions for analysing the cycling data, extracting the
 charge, discharge and efficiency of each cycle, and links this to various
 quantities extracted from the cycling, such as C-rate and max voltage, and
-from the sample database such as cathode mass.
+from the sample database such as cathode active material mass.
 """
 import os
 import re
@@ -328,7 +328,6 @@ def analyse_cycles(
         'Specific charge capacity (mAh/g)': [c/(mass_mg*1e-3) for c in charge_capacity_mAh],
         'Specific discharge capacity (mAh/g)': [d/(mass_mg*1e-3) for d in discharge_capacity_mAh],
         'Normalised discharge capacity (%)': [100*d/discharge_capacity_mAh[3] for d in discharge_capacity_mAh] if formed else None,
-        'Cathode mass (mg)': mass_mg,
         'Max voltage (V)': max_V,
         'Formation C': formation_C,
         'Cycle C': cycle_C,
@@ -823,7 +822,7 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         )
     cycle_df["Cycle C"] = 1/cycle_df["Cycle C"]
     cycle_df["Formation C"] = pd.to_numeric(cycle_df["Formation C"], errors='coerce')
-    # ['Sample ID', 'Cycle', 'Charge capacity (mAh)', 'Discharge capacity (mAh)', 'Efficiency (%)', 'Specific charge capacity (mAh/g)', 'Specific discharge capacity (mAh/g)', 'Normalised discharge capacity (%)', 'Cathode mass (mg)', 'Max voltage (V)', 'Formation C', 'Cycle C', 'Actual N:P ratio', 'Anode type', 'Cathode type', 'Anode active material mass (mg)', 'Cathode active material mass (mg)', 'Electrolyte name', 'Electrolyte amount (uL)', 'Rack position', 'First formation efficiency (%)', 'First formation specific discharge capacity (mAh/g)', 'Initial specific discharge capacity (mAh/g)', 'Initial efficiency (%)', 'Capacity loss (%)', 'Last specific discharge capacity (mAh/g)', 'Last efficiency (%)', 'Cycles to 95%', 'Cycles to 90%', 'Cycles to 85%', 'Cycles to 80%', 'Cycles to 75%', 'Cycles to 70%', 'Cycles to 60%', 'Cycles to 50%', 'Electrolyte to press (s)', 'Electrolyte to electrode (s)', 'Electrode to protection (s)', 'Press to protection (s)', 'Offset', 'Jittered cycle', 'Formation C/', 'Cycle C/']
+    # ['Sample ID', 'Cycle', 'Charge capacity (mAh)', 'Discharge capacity (mAh)', 'Efficiency (%)', 'Specific charge capacity (mAh/g)', 'Specific discharge capacity (mAh/g)', 'Normalised discharge capacity (%)', 'Max voltage (V)', 'Formation C', 'Cycle C', 'Actual N:P ratio', 'Anode type', 'Cathode type', 'Anode active material mass (mg)', 'Cathode active material mass (mg)', 'Electrolyte name', 'Electrolyte amount (uL)', 'Rack position', 'First formation efficiency (%)', 'First formation specific discharge capacity (mAh/g)', 'Initial specific discharge capacity (mAh/g)', 'Initial efficiency (%)', 'Capacity loss (%)', 'Last specific discharge capacity (mAh/g)', 'Last efficiency (%)', 'Cycles to 95%', 'Cycles to 90%', 'Cycles to 85%', 'Cycles to 80%', 'Cycles to 75%', 'Cycles to 70%', 'Cycles to 60%', 'Cycles to 50%', 'Electrolyte to press (s)', 'Electrolyte to electrode (s)', 'Electrode to protection (s)', 'Press to protection (s)', 'Offset', 'Jittered cycle', 'Formation C/', 'Cycle C/']
     hover_columns = [
         'Sample ID',
         'Cycle',
@@ -832,7 +831,7 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         'Max voltage (V)',
         'Formation C/',
         'Cycle C/',
-        'Cathode mass (mg)',
+        'Cathode active material mass (mg)',
         'Electrolyte name',
         'Actual N:P ratio',
     ]
@@ -844,7 +843,7 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         'Max voltage (V): %{customdata[4]}<br>'
         'Formation C-rate: %{customdata[5]}<br>'
         'Cycle C-rate: %{customdata[6]}<br>'
-        'Cathode mass (mg): %{customdata[7]:.4f}<br>'
+        'Cathode active material mass (mg): %{customdata[7]:.4f}<br>'
         'Electrolyte: %{customdata[8]}<br>'
         'N:P ratio: %{customdata[9]:.4f}<br><extra></extra>'
     )
