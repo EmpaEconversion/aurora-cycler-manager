@@ -21,7 +21,7 @@ import sqlite3
 from time import time, sleep
 from datetime import datetime
 import traceback
-from typing import Literal
+from typing import Literal, Tuple
 import pandas as pd
 import paramiko
 from cycler_servers import TomatoServer
@@ -296,6 +296,27 @@ class Cucumber:
         self.update_pipelines()
         self.update_jobs()
         self.update_flags()
+
+    def query_db(self, query, params=None):
+        """ Execute a query on the database.
+
+        Args:
+            query : str
+                The query to execute
+            params : tuple, optional
+                The parameters to pass to the query
+
+        Returns:
+            The result of the query as a list of tuples
+        """
+        with sqlite3.connect(self.db) as conn:
+            cursor = conn.cursor()
+            if params is not None:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+            result = cursor.fetchall()
+        return result
 
     def get_from_db(self, table: str, columns: str = "*", where: str = "") -> list:
         """ Get data from the database.
@@ -751,6 +772,35 @@ class Cucumber:
             print(f"{percent_done:.2f}% done, {int(time_remaining/60)} minutes remaining")
         return
 
+    def get_last_data(self, samp_or_jobid: str) -> Tuple[str,dict]:
+        """ Get the last data from a sample or job. 
+        
+        Args:
+            samp_or_jobid : str
+                The sample ID or job ID (with server label) to get the last data for
+        Returns:
+            str: The filename of the last json
+            dict: The last data as a dictionary
+        """
+        # check if the input is a sample ID
+        result = self.get_from_db("samples", columns="`Sample ID`", where=f"`Sample ID` = '{samp_or_jobid}'")
+        if result:  # it's a sample
+            result = self.query_db(
+                "SELECT `Job ID on server`, `Server label` FROM jobs WHERE `Sample ID` = ? "
+                "ORDER BY `Submitted` DESC LIMIT 1",
+                (samp_or_jobid,)
+            )
+        else:  # it's a job ID
+            result = self.query_db(
+                "SELECT `Job ID on server`, `Server label` FROM jobs WHERE `Job ID` = ?",
+                (samp_or_jobid,)
+            )
+        if not result:
+            raise ValueError(f"Job {samp_or_jobid} not found in the database")
+
+        jobid_on_server, server_label = result[0]
+        server = next((server for server in self.servers if server.label == server_label), None)
+        return server.get_last_data(jobid_on_server)
 
 if __name__ == "__main__":
     pass

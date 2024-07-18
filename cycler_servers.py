@@ -15,6 +15,7 @@ import os
 import warnings
 import json
 import base64
+from typing import Tuple
 import paramiko
 from scp import SCPClient
 import pandas as pd
@@ -118,6 +119,7 @@ class TomatoServer(CyclerServer):
         super().__init__(server_config, local_private_key)
         self.tomato_scripts_path = server_config.get("tomato_scripts_path", None)
         self.save_location = "C:/tomato/cucumber_scratch"
+        self.tomato_data_path = server_config.get("tomato_data_path", None)
 
     def eject(self, pipeline: str) -> str:
         """ Eject any sample from the pipeline. """
@@ -362,6 +364,46 @@ class TomatoServer(CyclerServer):
         data = pd.concat(data, ignore_index=True)
         return data
 
+    def get_last_data(self, job_id_on_server: int) -> Tuple[str,dict]:
+        """ Get the last data from a job snapshot.
+
+        Args:
+            jobid : str
+                The job ID on the server as an integer
+        Returns:
+            The file name of the last snapshot as a string
+            The data from the last snapshot as a dictionary
+        """
+
+        if not self.tomato_data_path:
+            raise ValueError("tomato_data_path not set for this server in config file")
+
+        # get the last data file in the job folder and read out the json string
+        ps_command = (
+            f"$file = Get-ChildItem -Path '{self.tomato_data_path}\\{job_id_on_server}' -Filter 'MPG2*data.json' "
+            f"| Sort-Object LastWriteTime -Descending "
+            f"| Select-Object -First 1; "
+            f"if ($file) {{ Write-Output $file.FullName; Get-Content $file.FullName }}"
+        )
+        assert self.shell_type in ["powershell", "cmd"]
+        if self.shell_type == "powershell":
+            command = ps_command
+        elif self.shell_type == "cmd":
+            command = (
+                f"powershell.exe -Command \"{ps_command}\""
+            )
+
+        with paramiko.SSHClient() as ssh:
+            ssh.load_system_host_keys()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+            stdin, stdout, stderr = ssh.exec_command(command)
+            if stderr.read():
+                raise ValueError(stderr.read())
+        file_name = stdout.readline().strip()
+        file_content = stdout.readline().strip()
+        file_content_json = json.loads(file_content)
+        return file_name, file_content_json
 
 if __name__ == "__main__":
     pass
