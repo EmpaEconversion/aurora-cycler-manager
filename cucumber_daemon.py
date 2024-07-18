@@ -11,7 +11,7 @@ import logging
 import traceback
 import matplotlib
 import cucumber_tools as ct
-from cucumber_analysis import plot_all_samples, plot_all_batches, analyse_all_samples
+from cucumber_analysis import plot_all_samples, plot_all_batches, analyse_all_samples, analyse_all_batches
 from cucumber_eclab_harvester import get_mprs_from_folders, convert_all_mprs
 
 matplotlib.use('Agg')
@@ -89,6 +89,7 @@ def daemon_loop(update_time: float = None, snapshot_times: list = None):
             try:
                 analyse_all_samples()
                 plot_all_samples()
+                analyse_all_batches()
                 plot_all_batches()
             except Exception as e:
                 logging.critical("Error analysing and plotting: %s", e)

@@ -615,17 +615,8 @@ def parse_sample_plotting_file(
 
     return batches
 
-def plot_batch(plot_name: str, batch: dict) -> None:
-    """ Plots the data for a batch of samples.
-    
-    Args:
-        plot_name (str): name of the plot
-        batch (dict): dict with 'samples' key containing list of samples to plot
-            and any other plotting options e.g. group_by, palette, etc.
-
-    TODO: make robust to missing data, raise warning instead of errors
-    TODO: split into two functions, one to save the data and one to plot
-    """
+def analyse_batch(plot_name: str, batch: dict) -> None:
+    """ Combines data for a batch of samples. """
     with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
     data_folder = config["Processed snapshots folder path"]
@@ -633,8 +624,6 @@ def plot_batch(plot_name: str, batch: dict) -> None:
     if not os.path.exists(save_location):
         os.makedirs(save_location)
     samples = batch.get('samples')
-    group_by = batch.get('group_by', None)
-    palette = batch.get('palette', 'deep')
     cycle_dicts = []
     for sample in samples:
         # get the anaylsed data
@@ -656,15 +645,39 @@ def plot_batch(plot_name: str, batch: dict) -> None:
             # Handle the case where no file starts with 'cycles'
             print(f"No files starting with 'cycles' found in {sample_folder}.")
             continue
+    cycle_dicts = [d for d in cycle_dicts if d.get('Cycle') and d['Cycle']]
     assert len(cycle_dicts) > 0, "No cycling data found for any sample"
     cycle_df = pd.concat(
         [pd.DataFrame(d) for d in cycle_dicts],
     ).reset_index(drop=True)
 
     # Save the data
-    cycle_df.to_excel(f'{save_location}/{plot_name}_data.xlsx',index=False)
-    with open(f'{save_location}/{plot_name}_data.json','w',encoding='utf-8') as f:
+    cycle_df.to_excel(f'{save_location}/batch.{plot_name}.xlsx',index=False)
+    with open(f'{save_location}/batch.{plot_name}.json','w',encoding='utf-8') as f:
         json.dump(cycle_dicts,f)
+
+def plot_batch(plot_name: str, batch: dict) -> None:
+    """ Plots the data for a batch of samples.
+    
+    Args:
+        plot_name (str): name of the plot
+        batch (dict): dict with 'samples' key containing list of samples to plot
+            and any other plotting options e.g. group_by, palette, etc.
+    """
+    # Load the data
+    with open('./config.json', encoding = 'utf-8') as f:
+        config = json.load(f)
+    save_location = os.path.join(config['Batches folder path'],plot_name)
+    filename = next((f for f in os.listdir(save_location) if f.startswith('batch') and f.endswith('.json')), None)
+    if not filename:
+        raise FileNotFoundError(f"No batch data found for {plot_name}")
+    with open(os.path.join(save_location,filename),'r',encoding='utf-8') as f:
+        data = json.load(f)
+    data = [pd.DataFrame(d) for d in data if not pd.DataFrame(d).dropna(how='all').empty]
+    cycle_df = pd.concat(pd.DataFrame(d) for d in data).reset_index(drop=True)
+
+    palette = batch.get('palette', 'deep')
+    group_by = batch.get('group_by', None)
 
     n_cycles = max(cycle_df["Cycle"])
     if n_cycles > 10:
@@ -684,8 +697,8 @@ def plot_batch(plot_name: str, batch: dict) -> None:
     if efficiency_ylim:
         e_ymin, e_ymax = sorted(efficiency_ylim)
     else:
-        e_ymin = max(70, 0.95*cycle_df['Efficiency (%)'].min())
-        e_ymax = min(101, cycle_df['Efficiency (%)'].max()*1.05)
+        e_ymin = max(70, 0.9*cycle_df['Efficiency (%)'].min())
+        e_ymax = min(101, cycle_df['Efficiency (%)'].max()*1.1)
 
     ### STRIP PLOT ###
     fig, ax = plt.subplots(2,1,sharex=True,figsize=(8,5),dpi=300)
@@ -810,28 +823,30 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         )
     cycle_df["Cycle C"] = 1/cycle_df["Cycle C"]
     cycle_df["Formation C"] = pd.to_numeric(cycle_df["Formation C"], errors='coerce')
-
+    # ['Sample ID', 'Cycle', 'Charge capacity (mAh)', 'Discharge capacity (mAh)', 'Efficiency (%)', 'Specific charge capacity (mAh/g)', 'Specific discharge capacity (mAh/g)', 'Normalised discharge capacity (%)', 'Cathode mass (mg)', 'Max voltage (V)', 'Formation C', 'Cycle C', 'Actual N:P ratio', 'Anode type', 'Cathode type', 'Anode active material mass (mg)', 'Cathode active material mass (mg)', 'Electrolyte name', 'Electrolyte amount (uL)', 'Rack position', 'First formation efficiency (%)', 'First formation specific discharge capacity (mAh/g)', 'Initial specific discharge capacity (mAh/g)', 'Initial efficiency (%)', 'Capacity loss (%)', 'Last specific discharge capacity (mAh/g)', 'Last efficiency (%)', 'Cycles to 95%', 'Cycles to 90%', 'Cycles to 85%', 'Cycles to 80%', 'Cycles to 75%', 'Cycles to 70%', 'Cycles to 60%', 'Cycles to 50%', 'Electrolyte to press (s)', 'Electrolyte to electrode (s)', 'Electrode to protection (s)', 'Press to protection (s)', 'Offset', 'Jittered cycle', 'Formation C/', 'Cycle C/']
     hover_columns = [
         'Sample ID',
         'Cycle',
+        'Specific discharge capacity (mAh/g)',
+        'Efficiency (%)',
         'Max voltage (V)',
-        'Cathode mass (mg)',
         'Formation C/',
         'Cycle C/',
+        'Cathode mass (mg)',
         'Electrolyte name',
         'Actual N:P ratio',
     ]
-    hover_data = {col: True for col in hover_columns}
-    hover_data['Cycle'] = False  # Exclude jittered 'Cycle' from hover data
     hover_template = (
         'Sample ID: %{customdata[0]}<br>'
-        'Cycle: %{customdata[1]}<br><extra></extra>'
-        'Max voltage (V): %{customdata[2]}<br>'
-        'Cathode mass (mg): %{customdata[3]}<br>'
-        'Formation C-rate: %{customdata[4]}<br>'
-        'Cycle C-rate: %{customdata[5]}<br>'
-        'Electrolyte: %{customdata[6]}<br>'
-        'N:P ratio: %{customdata[7]}'
+        'Cycle: %{customdata[1]}<br>'
+        'Specific discharge capacity (mAh/g): %{customdata[2]:.2f}<br>'
+        'Efficiency (%): %{customdata[3]:.3f}<br>'
+        'Max voltage (V): %{customdata[4]}<br>'
+        'Formation C-rate: %{customdata[5]}<br>'
+        'Cycle C-rate: %{customdata[6]}<br>'
+        'Cathode mass (mg): %{customdata[7]:.4f}<br>'
+        'Electrolyte: %{customdata[8]}<br>'
+        'N:P ratio: %{customdata[9]:.4f}<br><extra></extra>'
     )
 
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True,vertical_spacing=0.1)
@@ -845,7 +860,7 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         y='Specific discharge capacity (mAh/g)',
         color=group_by,
         color_discrete_sequence=hex_colours,
-        hover_data=hover_data,
+        custom_data=cycle_df[hover_columns],
     )
     for trace in scatter1.data:
         trace.hovertemplate = hover_template
@@ -857,7 +872,7 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         y='Efficiency (%)',
         color=group_by,
         color_discrete_sequence=hex_colours,
-        hover_data=hover_data,
+        custom_data=cycle_df[hover_columns],
     )
     for trace in scatter2.data:
         trace.showlegend = False
@@ -889,8 +904,27 @@ def plot_batch(plot_name: str, batch: dict) -> None:
             f"{os.path.join(save_location,f'{plot_name}_interactive.html')}"
         )
 
+def analyse_all_batches(
+        graph_config_path: str= "K:/Aurora/cucumber/graph_config.yml"
+    ) -> None:
+    """ Analyses all the batches according to the configuration file.
+
+    Args:
+        file_path (str): path to the yaml file containing the plotting config
+            Defaults to "K:/Aurora/cucumber/graph_config.yml"
+    
+    Will search for analysed data in the processed snapshots folder and plot and
+    save the capacity and efficiency vs cycle for each batch of samples.
+    """
+    batches = parse_sample_plotting_file(graph_config_path)
+    for plot_name, batch in batches.items():
+        try:
+            analyse_batch(plot_name,batch)
+        except Exception as e:
+            print(f"Failed to analyse {plot_name} with error {e}")
+
 def plot_all_batches(
-        file_path: str= "K:/Aurora/cucumber/graph_config.yml"
+        graph_config_path: str= "K:/Aurora/cucumber/graph_config.yml"
     ) -> None:
     """ Plots all the batches according to the configuration file.
 
@@ -901,7 +935,7 @@ def plot_all_batches(
     Will search for analysed data in the processed snapshots folder and plot and
     save the capacity and efficiency vs cycle for each batch of samples.
     """
-    batches = parse_sample_plotting_file(file_path)
+    batches = parse_sample_plotting_file(graph_config_path)
     for plot_name, batch in batches.items():
         try:
             plot_batch(plot_name,batch)
