@@ -795,11 +795,11 @@ def plot_batch(plot_name: str, batch: dict) -> None:
     offsets = np.linspace(-0.25, 0.25, num_combinations)
     group_to_offset = dict(zip(sorted_df['Group_Number'].unique(), offsets))
     sorted_df['Offset'] = sorted_df['Group_Number'].map(group_to_offset)
-    sorted_df['Jittered Cycle'] = sorted_df['Cycle'] + sorted_df['Offset']
+    sorted_df['Jittered cycle'] = sorted_df['Cycle'] + sorted_df['Offset']
     cycle_df = sorted_df.drop(columns=['Group_Number'])  # drop the temporary column
 
     # We usually want voltage as a categorical
-    cycle_df["Max Voltage (V)"] = cycle_df["Max Voltage (V)"].astype(str)
+    cycle_df["Max voltage (V)"] = cycle_df["Max voltage (V)"].astype(str)
     # C-rate should be a fraction
     cycle_df["Formation C/"] = cycle_df["Formation C"].apply(
         lambda x: str(fractions.Fraction(x).limit_denominator())
@@ -853,7 +853,7 @@ def plot_batch(plot_name: str, batch: dict) -> None:
 
     scatter2 = px.scatter(
         cycle_df,
-        x='Jittered Cycle',
+        x='Jittered cycle',
         y='Efficiency (%)',
         color=group_by,
         color_discrete_sequence=hex_colours,
