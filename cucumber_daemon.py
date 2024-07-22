@@ -59,6 +59,11 @@ def daemon_loop(update_time: float = None, snapshot_times: list = None):
     logging.info("Next snapshot at %s", next_run_time)
 
     cucumber=ct.Cucumber()
+    try:
+        cucumber.update_db()
+    except Exception as e:
+        logging.critical("Error updating database: %s", e)
+        logging.debug(traceback.format_exc())
     logging.info("Cucumber complete, entering main loop...")
     while not STOP_FLAG:
         sleep(update_time)
@@ -98,7 +103,12 @@ def daemon_loop(update_time: float = None, snapshot_times: list = None):
                 logging.info("Plotting complete")
 
             # Calculate the next run time for the snapshot
-            next_run_time = min(t + timedelta(days=1) for t in snapshot_datetimes if t + timedelta(days=1) > now)
+            next_run_times = (
+                snapshot_datetimes +
+                [t + timedelta(days=1) for t in snapshot_datetimes] +
+                [t + timedelta(days=2) for t in snapshot_datetimes]
+            )
+            next_run_time = min([t for t in next_run_times if t > now])
             logging.info("Next snapshot at %s", next_run_time)
 
 if __name__ == "__main__":
