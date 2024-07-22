@@ -108,6 +108,7 @@ def daemon_loop(update_time: float = None, snapshot_times: list = None):
                 [t + timedelta(days=1) for t in snapshot_datetimes] +
                 [t + timedelta(days=2) for t in snapshot_datetimes]
             )
+            now = datetime.now()
             next_run_time = min([t for t in next_run_times if t > now])
             logging.info("Next snapshot at %s", next_run_time)
 
