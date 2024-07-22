@@ -12,12 +12,12 @@ from the sample database such as cathode active material mass.
 import os
 import re
 import sqlite3
-from typing import List, Tuple
+from typing import List, Tuple, Literal
 from datetime import datetime
-import pytz
 import traceback
 import json
 import fractions
+import pytz
 import yaml
 import numpy as np
 import pandas as pd
@@ -124,17 +124,18 @@ def convert_tomato_json(
                 print("Dataset 'cycling' not found.")
     return data
 
-def convert_all_tomato_jsons() -> None:
-    """ Goes through all the raw json files in the snapshots folder and converts them to hdf5.
-    
-    TODO: Add option to only convert files with new data.
-    """
+def convert_all_tomato_jsons(
+    sampleid_contains: str = ""
+    ) -> None:
+    """ Goes through all the raw json files in the snapshots folder and converts them to hdf5. """
     with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
     raw_folder = config["Snapshots folder path"]
     processed_folder = config["Processed snapshots folder path"]
     for batch_folder in os.listdir(raw_folder):
         for sample_folder in os.listdir(os.path.join(raw_folder, batch_folder)):
+            if sampleid_contains and sampleid_contains not in sample_folder:
+                continue
             for snapshot_file in os.listdir(os.path.join(raw_folder, batch_folder, sample_folder)):
                 if snapshot_file.startswith('snapshot') and snapshot_file.endswith('.json'):
                     output_folder = os.path.join(processed_folder,batch_folder,sample_folder)
@@ -355,7 +356,7 @@ def analyse_cycles(
         print(f"No complete cycles found for {sampleid}")
         return df, cycle_dict
     last_idx = -1 if complete else -2
-    
+
     cycle_dict['First formation efficiency (%)'] = cycle_dict['Efficiency (%)'][0]
     cycle_dict['First formation specific discharge capacity (mAh/g)'] = cycle_dict['Specific discharge capacity (mAh/g)'][0]
     cycle_dict['Initial specific discharge capacity (mAh/g)'] = cycle_dict['Specific discharge capacity (mAh/g)'][3] if formed else None
@@ -370,7 +371,7 @@ def analyse_cycles(
     for pcent in pcents:
         cycle_dict[f'Cycles to {pcent}%'] = next((i for i in range(len(norm) - 1)
                             if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
-        
+
     # Add times to cycle_dict
     timezone = pytz.timezone(config["Time zone"])
     uts_steps = {}
@@ -465,18 +466,59 @@ def analyse_sample(sample: str) -> Tuple[pd.DataFrame, dict]:
         if (f.startswith('snapshot') and f.endswith('.h5'))
     ]
     df, cycle_dict = analyse_cycles(h5_files, save_files=True)
+    with sqlite3.connect(config["Database path"]) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE results SET `Last analysis` = ? WHERE `Sample ID` = ?",
+            (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), sample)
+        )
     return df, cycle_dict
 
-def analyse_all_samples() -> None:
+def analyse_all_samples(
+        sampleid_contains: str = "",
+        mode: Literal['always','new_data','if_not_exists'] = 'new_data',
+    ) -> None:
     """ Analyse all samples in the processed snapshots folder.
+
+    Args: sampleid_contains (str, optional): only analyse samples with this
+        string in the sampleid
     
     TODO: Only analyse files with new data since last analysis
     """
     with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
     snapshot_folder = config["Processed snapshots folder path"]
+
+    if mode == 'new_data':
+        with sqlite3.connect(config["Database path"]) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT `Sample ID`, `Last snapshot`, `Last analysis` FROM results")
+            results = cursor.fetchall()
+        dtformat = '%Y-%m-%d %H:%M:%S'
+        print([r for r in results])
+        samples_to_analyse = [
+            r[0] for r in results
+            if r[0] and (
+                not r[1] or
+                not r[2] or
+                datetime.strptime(r[1], dtformat) > datetime.strptime(r[2], dtformat)
+            )
+        ]
+        print(f"Analyzing: {samples_to_analyse}")
+    if mode == 'if_not_exists':
+        with sqlite3.connect(config["Database path"]) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT `Sample ID` FROM results WHERE `Last analysis` IS NULL")
+            results = cursor.fetchall()
+        samples_to_analyse = [r[0] for r in results]
+        print(f"Analyzing: {samples_to_analyse}")
+
     for batch_folder in os.listdir(snapshot_folder):
         for sample in os.listdir(os.path.join(snapshot_folder, batch_folder)):
+            if sampleid_contains and sampleid_contains not in sample:
+                continue
+            if mode != "always" and sample not in samples_to_analyse:
+                continue
             try:
                 analyse_sample(sample)
             except KeyError as e:
@@ -534,22 +576,57 @@ def plot_sample(sample: str) -> None:
     ax[1].set_xlabel('Cycle')
     ax[0].set_title(sample)
     fig.savefig(f'{save_location}/{sample}_Capacity.png',bbox_inches='tight')
+    with sqlite3.connect(config["Database path"]) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE results SET `Last plotted` = ? WHERE `Sample ID` = ?",
+            (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), sample)
+        )
+        conn.commit()
+        cursor.close()
 
-def plot_all_samples(snapshot_folder: str = None) -> None:
+def plot_all_samples(
+        snapshot_folder: str = None,
+        sampleid_contains: str = None,
+        mode: Literal['always','new_data','if_not_exists'] = 'new_data',
+    ) -> None:
     """ Plots all samples in the processed snapshots folder.
 
     Args: snapshot_folder (str): path to the folder containing the processed 
         snapshots. Defaults to the path in the config file.
-
-    TODO: Only plot samples with new data since last plot
     """
     with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
     if not snapshot_folder:
         snapshot_folder = config["Processed snapshots folder path"]
+    if mode == 'new_data':
+        with sqlite3.connect(config["Database path"]) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT `Sample ID`, `Last analysis`, `Last plotted` FROM results")
+            results = cursor.fetchall()
+        dtformat = '%Y-%m-%d %H:%M:%S'
+        samples_to_plot = [
+            r[0] for r in results
+            if r[0] and (
+                not r[1] or
+                not r[2] or
+                datetime.strptime(r[1], dtformat) > datetime.strptime(r[2], dtformat)
+            )
+        ]
+    if mode == 'if_not_exists':
+        with sqlite3.connect(config["Database path"]) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT `Sample ID` FROM results WHERE `Last plotted` IS NULL")
+            results = cursor.fetchall()
+        samples_to_plot = [r[0] for r in results]
     for batch_folder in os.listdir(snapshot_folder):
         for sample in os.listdir(f'{snapshot_folder}/{batch_folder}'):
+            if sampleid_contains and sampleid_contains not in sample:
+                continue
+            if mode != "always" and sample not in samples_to_plot:
+                continue
             try:
+                print("Plotting", sample)
                 plot_sample(sample)
                 plt.close('all')
             except Exception as e:
@@ -822,7 +899,6 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         )
     cycle_df["Cycle C"] = 1/cycle_df["Cycle C"]
     cycle_df["Formation C"] = pd.to_numeric(cycle_df["Formation C"], errors='coerce')
-    # ['Sample ID', 'Cycle', 'Charge capacity (mAh)', 'Discharge capacity (mAh)', 'Efficiency (%)', 'Specific charge capacity (mAh/g)', 'Specific discharge capacity (mAh/g)', 'Normalised discharge capacity (%)', 'Max voltage (V)', 'Formation C', 'Cycle C', 'Actual N:P ratio', 'Anode type', 'Cathode type', 'Anode active material mass (mg)', 'Cathode active material mass (mg)', 'Electrolyte name', 'Electrolyte amount (uL)', 'Rack position', 'First formation efficiency (%)', 'First formation specific discharge capacity (mAh/g)', 'Initial specific discharge capacity (mAh/g)', 'Initial efficiency (%)', 'Capacity loss (%)', 'Last specific discharge capacity (mAh/g)', 'Last efficiency (%)', 'Cycles to 95%', 'Cycles to 90%', 'Cycles to 85%', 'Cycles to 80%', 'Cycles to 75%', 'Cycles to 70%', 'Cycles to 60%', 'Cycles to 50%', 'Electrolyte to press (s)', 'Electrolyte to electrode (s)', 'Electrode to protection (s)', 'Press to protection (s)', 'Offset', 'Jittered cycle', 'Formation C/', 'Cycle C/']
     hover_columns = [
         'Sample ID',
         'Cycle',
