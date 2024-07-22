@@ -56,19 +56,18 @@ def get_mprs(
         server_private_key (str): Private key for ssh
         folder (str): Folder to search for MPR files
     """
-    ssh = paramiko.SSHClient()
-    ssh.load_system_host_keys()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    print(f"Connecting to host {server_hostname} user {server_username}")
-    ssh.connect(server_hostname, username=server_username, pkey=local_private_key)
-    _, _, stderr = ssh.exec_command(
-        f"robocopy {server_eclab_folder} {server_copy_folder} "
-        "/E /Z /NP /NC /NS /NFL /NDL /NJH /NJS"
-        )
-    assert not stderr.read(), f"Error copying folder: {stderr.read()}"
-    with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
-        scp.get(server_copy_folder, recursive=True, local_path=local_folder)
-    ssh.close()
+    with paramiko.SSHClient() as ssh:
+        ssh.load_system_host_keys()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        print(f"Connecting to host {server_hostname} user {server_username}")
+        ssh.connect(server_hostname, username=server_username, pkey=local_private_key)
+        _, _, stderr = ssh.exec_command(
+            f"robocopy {server_eclab_folder} {server_copy_folder} "
+            "/E /Z /NP /NC /NS /NFL /NDL /NJH /NJS"
+            )
+        assert not stderr.read(), f"Error copying folder: {stderr.read()}"
+        with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
+            scp.get(server_copy_folder, recursive=True, local_path=local_folder)
 
 def get_mprs_from_folders() -> None:
     """ Get all mpr files from all servers using the config file """
