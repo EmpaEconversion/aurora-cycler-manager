@@ -115,6 +115,11 @@ def convert_mpr_to_hdf(
     """
     with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
+    db_path = config["Database path"]
+
+    creation_date = datetime.fromtimestamp(
+        os.path.getmtime(mpr_file)
+    ).strftime('%Y-%m-%d %H:%M:%S')
 
     data = yadg.extractors.extract('eclab.mpr', mpr_file)
 
@@ -163,14 +168,12 @@ def convert_mpr_to_hdf(
 
         # Try get sample data from database
         try:
-            with open('./config.json', encoding = 'utf-8') as f:
-                config = json.load(f)
-            db_path = config["Database path"]
             with sqlite3.connect(db_path) as conn:
-                conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
                 cursor.execute(f"SELECT * FROM samples WHERE `Sample ID`='{sampleid}'")
-                sample_data = dict(cursor.fetchone())
+                row = cursor.fetchone()
+                columns = [column[0] for column in cursor.description]
+                sample_data = dict(zip(columns, row))
         except Exception as e:
             print(f"Error getting job and sample data from database: {e}")
             sample_data = None
@@ -196,6 +199,21 @@ def convert_mpr_to_hdf(
                     file['cycling'].attrs[key] = value
             else:
                 print("Dataset 'cycling' not found.")
+    # Update the database
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
+            (sampleid,)
+        )
+        cursor.execute(
+            "UPDATE results "
+            "SET `Last snapshot` = ? "
+            "WHERE `Sample ID` = ?",
+            (creation_date, sampleid)
+        )
+        cursor.close()
+
     return df
 
 def convert_all_mprs() -> None:
@@ -204,6 +222,7 @@ def convert_all_mprs() -> None:
         config = json.load(f)
     raw_folder = os.path.join(eclab_config["Snapshots folder path"], "eclabcopy")
     processed_folder = config["Processed snapshots folder path"]
+    db_path = config["Database path"]
 
     # HACK - lookup table for run IDs from incorrectly named folders
     # it is not possible to change folder names while data is being collected
@@ -214,24 +233,25 @@ def convert_all_mprs() -> None:
         "100724_Gen8": "240709_svfe_gen8",
     }
     for run_folder in os.listdir(raw_folder):
-        print("Processing run", run_folder)
+        print("Processing folder", run_folder)
         if not os.path.isdir(os.path.join(raw_folder, run_folder)):
             print(f"Skipping {run_folder} - not a folder")
             continue
         run_id = run_id_lookup.get(run_folder, None)
         # Try looking up in the database if not found in the lookup table
         if not run_id:
-            print(f"{run_folder}")
-            with sqlite3.connect(config["Database path"]) as conn:
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute(f"SELECT `Run ID` FROM samples WHERE `Sample ID` LIKE '%{run_folder}%'")
                 result = cursor.fetchone()
+                cursor.close()
             if result:
                 run_id = result[0]
+                print(f"Found Run ID '{run_id}' for {run_folder}")
             else:
-                print(f"Found run ID {run_id} for {run_folder}")
+                print(f"Skipping {run_folder} - could not find a Run ID")
                 continue
-        print("Processing run", run_id)
+        print(f"Found Run ID '{run_id}'")
 
         # Check for loose .mpr in folder
         mprs = [f for f in os.listdir(os.path.join(raw_folder, run_folder)) if f.endswith('.mpr')]
