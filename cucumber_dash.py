@@ -30,6 +30,80 @@ def get_batch_names() -> list:
         graph_config = yaml.safe_load(f)
     return list(graph_config.keys())
 
+def cramers_v(x, y):
+    confusion_matrix = pd.crosstab(x, y)
+    chi2 = stats.chi2_contingency(confusion_matrix)[0]
+    n = confusion_matrix.sum().sum()
+    phi2 = chi2 / n
+    r, k = confusion_matrix.shape
+    phi2corr = max(0, phi2 - ((k-1)*(r-1))/(n-1))
+    rcorr = r - ((r-1)**2)/(n-1)
+    kcorr = k - ((k-1)**2)/(n-1)
+    return np.sqrt(phi2corr / min((kcorr-1), (rcorr-1)))
+
+def anova_test(x, y):
+    """
+    Perform ANOVA test between a categorical variable (x) and a continuous variable (y).
+    Returns the F-statistic from the ANOVA test.
+    """
+    categories = x.unique()
+    groups = [y[x == category] for category in categories]
+    f_stat, p_value = stats.f_oneway(*groups)
+    return p_value
+
+def point_biserial(x, y):
+    """
+    Perform point biserial correlation between a continuous variable (x) and a categorical variable (y).
+    Returns the point biserial correlation coefficient.
+    """
+    return stats.pointbiserialr(x, y).correlation
+
+def correlation_ratio(categories, measurements):
+    fcat, _ = pd.factorize(categories)
+    cat_num = np.max(fcat)+1
+    y_avg_array = np.zeros(cat_num)
+    n_array = np.zeros(cat_num)
+    for i in range(0,cat_num):
+        cat_measures = measurements[np.argwhere(fcat == i).flatten()]
+        n_array[i] = len(cat_measures)
+        y_avg_array[i] = np.average(cat_measures)
+    y_total_avg = np.sum(np.multiply(y_avg_array,n_array))/np.sum(n_array)
+    numerator = np.sum(np.multiply(n_array,np.power(np.subtract(y_avg_array,y_total_avg),2)))
+    denominator = np.sum(np.power(np.subtract(measurements,y_total_avg),2))
+    if numerator == 0:
+        eta = 0.0
+    else:
+        eta = np.sqrt(numerator/denominator)
+    return eta
+
+def correlation_matrix(
+        df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Calculate the correlation matrix for a DataFrame including categorical columns.
+    For continuous-continuous use Pearson correlation
+    For continuous-categorical use correlation ratio
+    For categorical-categorical use Cramer's V
+
+    Args:
+        df (pd.DataFrame): The DataFrame to calculate the correlation matrix for.
+    """
+    corr = pd.DataFrame(index=df.columns, columns=df.columns)
+    # Calculate the correlation matrix
+    for col1 in df.columns:
+        for col2 in df.columns:
+            if col1 == col2:
+                corr.loc[col1, col2] = 1.0
+            elif pd.api.types.is_numeric_dtype(df[col1]) and pd.api.types.is_numeric_dtype(df[col2]):
+                corr.loc[col1, col2] = df[[col1, col2]].corr().iloc[0, 1]
+            elif pd.api.types.is_numeric_dtype(df[col1]) and pd.api.types.is_object_dtype(df[col2]):
+                corr.loc[col1, col2] = correlation_ratio(df[col2], df[col1])
+            elif pd.api.types.is_object_dtype(df[col1]) and pd.api.types.is_numeric_dtype(df[col2]):
+                corr.loc[col1, col2] = correlation_ratio(df[col1], df[col2])
+            elif pd.api.types.is_object_dtype(df[col1]) and pd.api.types.is_object_dtype(df[col2]):
+                corr.loc[col1, col2] = cramers_v(df[col1], df[col2])
+    return corr
+
 #======================================================================================================================#
 #======================================================= LAYOUT =======================================================#
 #======================================================================================================================#
@@ -333,10 +407,8 @@ def update_time_graph(data, xvar, xunits, yvar):
     for sample, data_dict in data['data_sample_time'].items():
         uts = np.array(data_dict['uts'])
         if xvar == 'From protection':
-            print('From protection')
             offset=uts[0]
         elif xvar == 'From formation':
-            print('From formation')
             # first index where Ewe is over 2.5
             offset=uts[next(i for i, x in enumerate(data_dict['Ewe']) if x > 3)]
         else:
@@ -478,16 +550,13 @@ def update_correlation_map(data):
     ]
     df = df.drop(columns=columns_not_needed)
 
-    # TEMPORARY: remove anything non-numeric
-    df = df.select_dtypes(include=[np.number])
-
     def customwrap(s,width=30):
         return "<br>".join(textwrap.wrap(s,width=width))
 
     df.columns = [customwrap(col) for col in df.columns]
 
     # Calculate the correlation matrix
-    corr = df.corr()
+    corr = correlation_matrix(df)
 
     # Use Plotly Express to create the heatmap
     fig = px.imshow(corr, color_continuous_scale='balance', aspect="auto", zmin=-1, zmax=1)
