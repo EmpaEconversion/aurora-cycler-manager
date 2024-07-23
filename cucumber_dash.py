@@ -37,8 +37,6 @@ def get_batch_names() -> list:
 colorscales = px.colors.named_colorscales()
 
 app.layout = html.Div([
-    dcc.Store(id='samples-data-store', data={'data_top': [], 'data_bottom': []}),
-    dcc.Store(id='batches-data-store', data={'data_top': [], 'data_bottom': []}),
     html.Div(
         [
             dcc.Tabs(id="tabs", value='tab-1', children=[
@@ -67,6 +65,11 @@ app.layout = html.Div([
                                     value='uts',
                                     multi=False,
                                 ),
+                                dcc.Dropdown(
+                                    id='samples-time-units',
+                                    options=['Seconds','Minutes','Hours','Days'],
+                                    value='Seconds',
+                                ),
                                 html.Label('Y-axis', htmlFor='samples-time-y'),
                                 dcc.Dropdown(
                                     id='samples-time-y',
@@ -92,8 +95,17 @@ app.layout = html.Div([
                         ),
                         html.Div(
                             [
-                                dcc.Graph(id='time-graph',figure={'data': [],'layout': go.Layout(title='vs time',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'})}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
-                                dcc.Graph(id='cycles-graph',figure={'data': [],'layout': go.Layout(title='vs cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'})}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
+                                dcc.Loading(
+                                    id='loading-samples-data-store',
+                                    type='circle',
+                                    overlay_style={"visibility":"visible", "filter": "blur(2px)"},
+                                    children=[
+                                        dcc.Store(id='samples-data-store', data={'data_sample_time': {}, 'data_sample_cycle': {}}),
+                                        dcc.Graph(id='time-graph',figure={'data': [],'layout': go.Layout(title='vs time',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'})}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
+                                        dcc.Graph(id='cycles-graph',figure={'data': [],'layout': go.Layout(title='vs cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'})}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
+                                    ],
+                                    fullscreen=False,
+                                ),
                             ],
                         style={'width': '75%', 'display': 'inline-block', 'paddingLeft': '20px', 'horizontalAlign': 'right', 'height': '90vh'}
                         ),
@@ -104,6 +116,13 @@ app.layout = html.Div([
                     label='Batches',
                     value='tab-2',
                     children=[
+                        dcc.Loading(
+                            id='loading-page',
+                            overlay_style={"visibility":"visible", "filter": "blur(2px)"},
+                            type='circle',
+                            fullscreen=True,
+                            children=[ dcc.Store(id='batches-data-store', data={'data_batch_cycle': {}}),],
+                        ),   
                         html.Div(
                             [
                                 html.P("Select batches to plot:"),
@@ -240,12 +259,21 @@ app.layout = html.Div([
 @app.callback(
     Output('samples-data-store', 'data'),
     Input('samples-dropdown', 'value'),
+    Input('samples-data-store', 'data'),
 )
-def update_sample_data(samples):
-    data_sample_time = {}
-    data_sample_cycle = {}
+def update_sample_data(samples, data):
+    # Get rid of samples that are no longer selected
+    for sample in list(data['data_sample_time'].keys()):
+        if sample not in samples:
+            data['data_sample_time'].pop(sample)
+            data['data_sample_cycle'].pop(sample)
+
     for sample in samples:
-        # Get the raw file
+        # Check if already in data store
+        if sample in data['data_sample_time'].keys():
+            continue
+
+        # Otherwise import the data
         run_id = sample.rsplit('_',1)[0]
         data_folder = "K:/Aurora/cucumber/snapshots" # hardcoded for now
         file_location = os.path.join(data_folder,run_id,sample)
@@ -260,7 +288,7 @@ def update_sample_data(samples):
         dfs = [df for df in dfs if 'uts' in df.columns and df['uts'].nunique() > 1]
         dfs.sort(key=lambda df: df['uts'].iloc[0])
         df = pd.concat(dfs)
-        data_sample_time[sample] = df.to_dict(orient='list')
+        data['data_sample_time'][sample] = df.to_dict(orient='list')
 
         # Get the analysed file
         try:
@@ -271,8 +299,9 @@ def update_sample_data(samples):
             cycle_dict = json.load(f)
         if not cycle_dict or 'Cycle' not in cycle_dict.keys():
             continue
-        data_sample_cycle[sample] = cycle_dict
-    return {'data_sample_time': data_sample_time, 'data_sample_cycle': data_sample_cycle}
+        data['data_sample_cycle'][sample] = cycle_dict
+    
+    return data
 
 
 # Update the time graph
@@ -280,22 +309,27 @@ def update_sample_data(samples):
     Output('time-graph', 'figure'),
     Input('samples-data-store', 'data'),
     Input('samples-time-x', 'value'),
+    Input('samples-time-units', 'value'),
     Input('samples-time-y', 'value'),
 )
-def update_time_graph(data, xvar, yvar):
+def update_time_graph(data, xvar, xunits, yvar):
     if not data['data_sample_time']:
         return {'data': [], 'layout': go.Layout(title=f'No data...', xaxis={'title': 'Time (s)'},)}
     traces = []
+    multiplier = {'Seconds': 1, 'Minutes': 60, 'Hours': 3600, 'Days': 86400}[xunits]
     for sample, data_dict in data['data_sample_time'].items():
         uts = np.array(data_dict['uts'])
         if xvar == 'From protection':
+            print('From protection')
             offset=uts[0]
-        if xvar == 'From formation':
-            offset=uts[0]
+        elif xvar == 'From formation':
+            print('From formation')
+            # first index where Ewe is over 2.5
+            offset=uts[next(i for i, x in enumerate(data_dict['Ewe']) if x > 3)]
         else:
             offset=0
-        traces.append(go.Scatter(x=np.array(data_dict['uts'])-offset, y=data_dict[yvar], mode='lines', name=sample))
-    return {'data': traces, 'layout': go.Layout(title=f'{yvar} vs time', xaxis={'title': 'Time (s)'}, yaxis={'title': yvar})}
+        traces.append(go.Scatter(x=(np.array(data_dict['uts'])-offset)/multiplier, y=data_dict[yvar], mode='lines', name=sample))
+    return {'data': traces, 'layout': go.Layout(title=f'{yvar} vs time', xaxis={'title': f'Time ({xunits.lower()})'}, yaxis={'title': yvar})}
 
 
 # Update the cycles graph
@@ -318,11 +352,19 @@ def update_cycles_graph(data, yvar):
 @app.callback(
     Output('batches-data-store', 'data'),
     Input('batches-dropdown', 'value'),
+    Input('batches-data-store', 'data'),
 )
-def update_batch_data(batches):
+def update_batch_data(batches, data):
+    # Remove batches no longer in dropdown
+    for batch in list(data['data_batch_cycle'].keys()):
+        if batch not in batches:
+            data['data_batch_cycle'].pop(batch)
+
     data_folder = "K:/Aurora/cucumber/batches" # Hardcoded for now
-    data = []
+
     for batch in batches:
+        if batch in data['data_batch_cycle'].keys():
+            continue
         file_location = os.path.join(data_folder, batch)
         files = os.listdir(file_location)
         try:
@@ -331,8 +373,8 @@ def update_batch_data(batches):
             continue
         with open(f'{file_location}/{analysed_file}', 'r', encoding='utf-8') as f:
             json_data = json.load(f)
-        data += json_data
-    return {'data_batch_cycle': data}
+        data['data_batch_cycle'][batch] = json_data
+    return data
 
 
 # Update the batch cycle graph
@@ -345,12 +387,17 @@ def update_batch_data(batches):
 )
 def update_batch_cycle_graph(data, variable, color, colormap):
     if not data['data_batch_cycle']:
-        fig = px.scatter().update_layout(title=f'{variable} vs cycle', xaxis_title='Cycle', yaxis_title=variable)
+        fig = px.scatter().update_layout(title='No data...', xaxis_title='Cycle', yaxis_title='')
         fig.update_layout(template = 'ggplot2')
         return fig
 
-    df = pd.concat([pd.DataFrame(sample) for sample in data['data_batch_cycle']])
-    
+    # data['data_batch_cycle'] is a dict with keys as batch names and values as dicts
+    data_list = []
+    for key, value in data['data_batch_cycle'].items():
+        data_list += value
+    data_list
+    df = pd.concat(pd.DataFrame(d) for d in data_list)
+
     if df.empty:
         return px.scatter().update_layout(title=f'{variable} vs cycle', xaxis_title='Cycle', yaxis_title=variable)
     
@@ -375,9 +422,13 @@ def update_correlation_map(data):
         fig = px.imshow([[0]], color_continuous_scale='balance', aspect="auto", zmin=-1, zmax=1)
         fig.update_layout(template = 'ggplot2')
         return fig
-    data = [{k: v for k, v in d.items() if not isinstance(v, list) and v} for d in data['data_batch_cycle']]
+    data_list = []
+    for key, value in data['data_batch_cycle'].items():
+        data_list += value
+    data = [{k: v for k, v in d.items() if not isinstance(v, list) and v} for d in data_list]
     dfs = [pd.DataFrame(d, index=[0]) for d in data]
     df = pd.concat(dfs, ignore_index=True)
+
     df['1/Formation C'] = 1 / df['Formation C']
 
     # remove columns where all values are the same
@@ -429,8 +480,10 @@ def update_correlation_graph(clickData, data, color, colormap):
         return fig
     # clickData is a dict with keys 'points' and 'event'
     # 'points' is a list of dicts with keys 'curveNumber', 'pointNumber', 'pointIndex', 'x', 'y', 'text'
-
-    data = [{k: v for k, v in d.items() if not isinstance(v, list) and v} for d in data['data_batch_cycle']]
+    data_list = []
+    for key, value in data['data_batch_cycle'].items():
+        data_list += value
+    data = [{k: v for k, v in d.items() if not isinstance(v, list) and v} for d in data_list]
     dfs = [pd.DataFrame(d, index=[0]) for d in data]
     df = pd.concat(dfs, ignore_index=True)
 
