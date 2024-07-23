@@ -9,6 +9,7 @@ import numpy as np
 import json
 import sqlite3
 import pandas as pd
+from scipy import stats
 
 app = dash.Dash(__name__)
 
@@ -31,6 +32,7 @@ def get_batch_names() -> list:
     return list(graph_config.keys())
 
 def cramers_v(x, y):
+    """ Calculate Cramer's V for two categorical variables. """
     confusion_matrix = pd.crosstab(x, y)
     chi2 = stats.chi2_contingency(confusion_matrix)[0]
     n = confusion_matrix.sum().sum()
@@ -42,23 +44,14 @@ def cramers_v(x, y):
     return np.sqrt(phi2corr / min((kcorr-1), (rcorr-1)))
 
 def anova_test(x, y):
-    """
-    Perform ANOVA test between a categorical variable (x) and a continuous variable (y).
-    Returns the F-statistic from the ANOVA test.
-    """
+    """ ANOVA test between categorical and continuous variables."""
     categories = x.unique()
     groups = [y[x == category] for category in categories]
     f_stat, p_value = stats.f_oneway(*groups)
     return p_value
 
-def point_biserial(x, y):
-    """
-    Perform point biserial correlation between a continuous variable (x) and a categorical variable (y).
-    Returns the point biserial correlation coefficient.
-    """
-    return stats.pointbiserialr(x, y).correlation
-
 def correlation_ratio(categories, measurements):
+    """ Measure of the relationship between a categorical and numerical variable. """
     fcat, _ = pd.factorize(categories)
     cat_num = np.max(fcat)+1
     y_avg_array = np.zeros(cat_num)
