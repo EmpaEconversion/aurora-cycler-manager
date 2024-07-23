@@ -58,7 +58,7 @@ app.layout = html.Div([
                                 ),
                                 html.Div(style={'margin-top': '20px'}),
                                 html.P("Time graph"),
-                                html.Label('X-axis', htmlFor='samples-time-y'),
+                                html.Label('X-axis', htmlFor='samples-time-x'),
                                 dcc.Dropdown(
                                     id='samples-time-x',
                                     options=['uts','From protection','From formation','From cycling'],
@@ -120,7 +120,7 @@ app.layout = html.Div([
                             id='loading-page',
                             overlay_style={"visibility":"visible", "filter": "blur(2px)"},
                             type='circle',
-                            fullscreen=True,
+                            fullscreen=False,
                             children=[ dcc.Store(id='batches-data-store', data={'data_batch_cycle': {}}),],
                         ),   
                         html.Div(
@@ -258,6 +258,8 @@ app.layout = html.Div([
 # Update the samples data store
 @app.callback(
     Output('samples-data-store', 'data'),
+    Output('samples-time-y', 'options'),
+    Output('samples-cycle-y', 'options'),
     Input('samples-dropdown', 'value'),
     Input('samples-data-store', 'data'),
 )
@@ -301,8 +303,18 @@ def update_sample_data(samples, data):
             continue
         data['data_sample_cycle'][sample] = cycle_dict
     
-    return data
+    # Update the y-axis options
+    time_y_vars = set(['Ewe'])
+    for sample, data_dict in data['data_sample_time'].items():
+        time_y_vars.update(data_dict.keys())
+    time_y_vars = list(time_y_vars)
 
+    cycle_y_vars = set(['Specific discharge capacity (mAh/g)', 'Normalised discharge capacity (%)', 'Efficiency (%)'])
+    for sample, data_dict in data['data_sample_cycle'].items():
+        cycle_y_vars.update([k for k,v in data_dict.items() if isinstance(v,list)])
+    cycle_y_vars = list(cycle_y_vars)
+    
+    return data, time_y_vars, cycle_y_vars
 
 # Update the time graph
 @app.callback(
@@ -351,6 +363,9 @@ def update_cycles_graph(data, yvar):
 # Update the batches data store
 @app.callback(
     Output('batches-data-store', 'data'),
+    Output('batch-cycle-y', 'options'),
+    Output('batch-cycle-color', 'options'),
+    Output('batch-correlation-color', 'options'),
     Input('batches-dropdown', 'value'),
     Input('batches-data-store', 'data'),
 )
@@ -374,7 +389,26 @@ def update_batch_data(batches, data):
         with open(f'{file_location}/{analysed_file}', 'r', encoding='utf-8') as f:
             json_data = json.load(f)
         data['data_batch_cycle'][batch] = json_data
-    return data
+    
+    data_list = []
+    for key, value in data['data_batch_cycle'].items():
+        data_list += value
+    data_list
+
+    data['data_all_samples'] = data_list
+    
+    # Update the y-axis options
+    y_vars = set(['Normalised discharge capacity (%)'])
+    for data_dict in data_list:
+        y_vars.update([k for k,v in data_dict.items() if isinstance(v,list)])
+    y_vars = list(y_vars)
+
+    color_vars = set(['Max voltage (V)', 'Actual N:P ratio', '1/Formation C', 'Electrolyte name'])
+    for data_dict in data['data_all_samples']:
+        color_vars.update([k for k,v in data_dict.items() if not isinstance(v,list)])
+    color_vars = list(color_vars)
+
+    return data, y_vars, color_vars, color_vars
 
 
 # Update the batch cycle graph
