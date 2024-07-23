@@ -171,7 +171,8 @@ app.layout = html.Div([
                                         'data': [],
                                         'layout': go.Layout(title='vs cycle', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
                                     }, 
-                                    config={'scrollZoom': True, 'displaylogo':False}
+                                    config={'scrollZoom': True, 'displaylogo':False},
+                                    style={'height': '40vh'}
                                 ),
                             ],
                         style={'width': '75%', 'display': 'inline-block', 'paddingLeft': '20px', 'horizontalAlign': 'right', 'height': '40vh'}
@@ -190,7 +191,7 @@ app.layout = html.Div([
                                         config={'scrollZoom': False, 'displayModeBar': False},
                                         style={'height': '50vh'},
                                     ),
-                                    style={'width': '50%', 'display': 'inline-block', 'height': '45vh'}
+                                    style={'width': '50%', 'display': 'inline-block', 'height': '50vh'}
                                 ),
                                 # Second graph on the right
                                 html.Div(
@@ -233,19 +234,19 @@ app.layout = html.Div([
                                                 'layout': go.Layout(title='params', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
                                             },
                                             config={'scrollZoom': True, 'displaylogo':False},
-                                            style={'height': '40vh'},
+                                            style={'height': '45vh'},
                                         ),
                                     ],
                                     style={'width': '50%', 'display': 'inline-block', 'verticalAlign': 'top'}
                                 ),
                             ],
-                            style={'height': '45vh'}
+                            style={'height': '50vh'}
                         ),
                     ],
                 ),
             ]),
         ],
-        style={'height': '100vh'},
+        style={'height': '90vh'},
     ),
 ])
 
