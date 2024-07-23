@@ -369,7 +369,7 @@ def analyse_cycles(
     pcents = [95,90,85,80,75,70,60,50]
     norm = cycle_dict['Normalised discharge capacity (%)']
     for pcent in pcents:
-        cycle_dict[f'Cycles to {pcent}%'] = next((i for i in range(len(norm) - 1)
+        cycle_dict[f'Cycles to {pcent}%'] = next((i for i in range(3, len(norm) - 1)
                             if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
 
     # Add times to cycle_dict
