@@ -112,13 +112,14 @@ def convert_tomato_json(
             "n_steps": n_steps,
             "tomato_metadata": json.dumps(input_dict["metadata"]),
             "conversion_method": f"cucumber_analysis.py convert_tomato_json v{__version__}",
-            "job_data": json.dumps(job_data) if job_data is not None else None,
-            "sample_data": json.dumps(sample_data) if sample_data is not None else None,
+            "job_data": json.dumps(job_data) if job_data is not None else "{}",
+            "sample_data": json.dumps(sample_data) if sample_data is not None else "{}",
         }
         # Open the HDF5 file with h5py and add metadata
         with h5py.File(output_hdf_file, 'a') as file:
             if 'cycling' in file:
                 for key, value in metadata.items():
+                    print(f"Adding metadata: {key} = {value} of type {type(value)}")
                     file['cycling'].attrs[key] = value
             else:
                 print("Dataset 'cycling' not found.")
@@ -198,7 +199,7 @@ def analyse_cycles(
     payloads = [payloads[i] for i in order]
 
     metadata = metadatas[-1]
-    sample_data = json.loads(metadata['sample_data'])
+    sample_data = json.loads(metadata.get('sample_data',{}))
     job_data = json.loads(metadata.get('job_data','{}'))
     snapshot_status = job_data.get('Snapshot status',None)
     snapshot_pipeline = job_data.get('Pipeline',None)
@@ -225,7 +226,7 @@ def analyse_cycles(
     df["dQ (mAh)"] = 1e3 * df["Iavg (A)"] * df["dt (s)"] / 3600
 
     # Extract useful information from the metadata
-    mass_mg = sample_data['Cathode active material mass (mg)']
+    mass_mg = sample_data.get('Cathode active material mass (mg)',np.nan)
     max_V = 0
     formation_C = 0
     cycle_C = 0
@@ -376,7 +377,7 @@ def analyse_cycles(
     timezone = pytz.timezone(config["Time zone"])
     uts_steps = {}
     for step in [3,5,6,10]:
-        datetime_str = json.loads(metadata['sample_data'])[f"Timestamp step {step}"]
+        datetime_str = sample_data.get(f"Timestamp step {step}", None)
         if not datetime_str:
             uts_steps[step] = np.nan
             continue
@@ -533,12 +534,12 @@ def plot_sample(sample: str) -> None:
     Will search for the sample in the processed snapshots folder and plot V(t) 
     and capacity(cycle).
     """
-    batch = sample.rsplit('_',1)[0]
+    run_id = _run_from_sample(sample)
     with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
     data_folder = config["Processed snapshots folder path"]
-    file_location = f"{data_folder}/{batch}/{sample}"
-    save_location = f"{config['Graphs folder path']}/{batch}"
+    file_location = f"{data_folder}/{run_id}/{sample}"
+    save_location = f"{config['Graphs folder path']}/{run_id}"
 
     # plot V(t)
     files = os.listdir(file_location)
@@ -619,8 +620,8 @@ def plot_all_samples(
             cursor.execute("SELECT `Sample ID` FROM results WHERE `Last plotted` IS NULL")
             results = cursor.fetchall()
         samples_to_plot = [r[0] for r in results]
-    for batch_folder in os.listdir(snapshot_folder):
-        for sample in os.listdir(f'{snapshot_folder}/{batch_folder}'):
+    for run_folder in os.listdir(snapshot_folder):
+        for sample in os.listdir(f'{snapshot_folder}/{run_folder}'):
             if sampleid_contains and sampleid_contains not in sample:
                 continue
             if mode != "always" and sample not in samples_to_plot:
@@ -659,30 +660,30 @@ def parse_sample_plotting_file(
         for sample in samples:
             split_name = sample.split(' ',1)
             if len(split_name) == 1:  # the batch is a single sample
-                sample_name = sample
-                batch_name = sample.rsplit('_',1)[0]
-                transformed_samples.append(sample_name)
+                sample_id = sample
+                run_id = _run_from_sample(sample_id)
+                transformed_samples.append(sample_id)
             else:
-                batch_name, sample_range = split_name
+                run_id, sample_range = split_name
                 if sample_range.strip().startswith('[') and sample_range.strip().endswith(']'):
                     sample_numbers = json.loads(sample_range)
-                    transformed_samples.extend([f"{batch_name}_{i:02d}" for i in sample_numbers])
+                    transformed_samples.extend([f"{run_id}_{i:02d}" for i in sample_numbers])
                 elif sample_range == 'all':
                     # Check the folders
-                    if os.path.exists(f"{data_folder}/{batch_name}"):
-                        transformed_samples.extend(os.listdir(f"{data_folder}/{batch_name}"))
+                    if os.path.exists(f"{data_folder}/{run_id}"):
+                        transformed_samples.extend(os.listdir(f"{data_folder}/{run_id}"))
                     else:
-                        print(f"Folder {data_folder}/{batch_name} does not exist")
+                        print(f"Folder {data_folder}/{run_id} does not exist")
                 else:
                     numbers = re.findall(r'\d+', sample_range)
                     start, end = map(int, numbers) if len(numbers) == 2 else (int(numbers[0]), int(numbers[0]))
-                    transformed_samples.extend([f"{batch_name}_{i:02d}" for i in range(start, end+1)])
+                    transformed_samples.extend([f"{run_id}_{i:02d}" for i in range(start, end+1)])
 
         # Check if individual sample folders exist
         for sample in transformed_samples:
-            batch_name = sample.rsplit('_',1)[0]
-            if not os.path.exists(f"{data_folder}/{batch_name}/{sample}"):
-                print(f"Folder {data_folder}/{batch_name}/{sample} does not exist")
+            run_id = _run_from_sample(sample)
+            if not os.path.exists(f"{data_folder}/{run_id}/{sample}"):
+                print(f"Folder {data_folder}/{run_id}/{sample} does not exist")
                 # remove this element from the list
                 transformed_samples.remove(sample)
 
@@ -703,8 +704,8 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
     cycle_dicts = []
     for sample in samples:
         # get the anaylsed data
-        batch_name = sample.rsplit('_',1)[0]
-        sample_folder = os.path.join(data_folder,batch_name,sample)
+        run_id = _run_from_sample(sample)
+        sample_folder = os.path.join(data_folder,run_id,sample)
         try:
             analysed_file = next(
                 f for f in os.listdir(sample_folder)
@@ -1049,3 +1050,10 @@ def _c_to_float(c_rate: str) -> float:
         return sign * float(num) / float(denom)
     else:
         return sign * float(number)
+
+def _run_from_sample(sampleid: str) -> str:
+    """ Get the run_id from a sample_id. """
+    if len(sampleid.split("_")) < 2 or not sampleid.split("_")[-1].isdigit():
+        return "misc"
+    else:
+        return sampleid.rsplit('_', 1)[0]
