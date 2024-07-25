@@ -40,7 +40,7 @@ class CyclerServer():
 
     def command(self, command: str) -> str:
         """ Send a command to the server and return the output.
-        
+
         The command is prefixed with the command_prefix specified in the server_config, is run on
         the server's default shell, the standard output is returned as a string.
         """
@@ -109,7 +109,7 @@ class CyclerServer():
 
 class TomatoServer(CyclerServer):
     """ Server class for Tomato servers, implements all the methods in CyclerServer.
-    
+
     Used by cucumber_tools to interact with Tomato servers, should not be instantiated directly.
 
     Attributes:
@@ -242,13 +242,13 @@ class TomatoServer(CyclerServer):
             get_raw: bool = False
         ) -> str:
         """ Save a snapshot of a job on the server and download it to the local machine.
-        
+
         Args:
             jobid (str): The jobid of the job on the local machine
             jobid_on_server (str): The jobid of the job on the server
             local_save_location (str): The directory to save the snapshot data to
             get_raw (bool): If True, download the raw data as well as the snapshot data
-            
+
         Returns:
             str: The status of the snapshot (e.g. "c", "r", "ce", "cd")
         """
@@ -334,7 +334,7 @@ class TomatoServer(CyclerServer):
         """ Transposes data into columns and returns a DataFrame.
 
         TODO: move to a separate module for data handling
-        
+
         Columns in output DataFrame:
         - uts: UTS Timestamp in seconds
         - Ewe: Voltage in V
@@ -404,6 +404,39 @@ class TomatoServer(CyclerServer):
         file_content = stdout.readline().strip()
         file_content_json = json.loads(file_content)
         return file_name, file_content_json
+
+    def get_job_data(self, jobid_on_server: int) -> dict:
+        """ Get the jobdata dict for a job. """
+        if not self.tomato_data_path:
+            raise ValueError("tomato_data_path not set for this server in config file")
+        ps_command = (
+            f"if (Test-Path -Path '{self.tomato_data_path}\\{jobid_on_server}\\jobdata.json') {{ "
+            f"Get-Content '{self.tomato_data_path}\\{jobid_on_server}\\jobdata.json' "
+            f"}} else {{ "
+            f"Write-Output 'File not found.' "
+            f"}}"
+        )
+        assert self.shell_type in ["powershell", "cmd"]
+        if self.shell_type == "powershell":
+            command = ps_command
+        elif self.shell_type == "cmd":
+            command = (
+                f"powershell.exe -Command \"{ps_command}\""
+            )
+        with paramiko.SSHClient() as ssh:
+            ssh.load_system_host_keys()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+            stdin, stdout, stderr = ssh.exec_command(command)
+            stdout = stdout.read().decode('utf-8')
+            stderr = stderr.read().decode('utf-8')
+        if stderr:
+            raise ValueError(stderr)
+        if "File not found." in stdout:
+            raise FileNotFoundError(f"jobdata.json not found for job {jobid_on_server}")
+        file_content_json = json.loads(stdout)
+        return file_content_json
+
 
 if __name__ == "__main__":
     pass
