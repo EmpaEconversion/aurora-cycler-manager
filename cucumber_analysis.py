@@ -51,6 +51,11 @@ def convert_tomato_json(
     - technique: code of technique using Biologic convention
         100 = OCV, 101 = CA, 102 = CP, 103 = CV, 155 = CPLIMIT, 157 = CALIMIT, 
         -1 = Unknown to Cucumber
+
+    The dataframe is saved to 'cycling' key in the hdf5 file.
+    Metadata is added to the 'cycling' attributes in hdf5 file.
+    The metadata crucially includes json dumps of the job data and sample data
+    extracted from the database.
     """
     with open(snapshot_file, "r", encoding="utf-8") as f:
         input_dict = json.load(f)
@@ -108,10 +113,15 @@ def convert_tomato_json(
         # add metadata to the hdf5 file
         # Metadata to add
         metadata = {
-            "snapshot_file": snapshot_file,
-            "n_steps": n_steps,
-            "tomato_metadata": json.dumps(input_dict["metadata"]),
-            "conversion_method": f"cucumber_analysis.py convert_tomato_json v{__version__}",
+            "provenance": {
+                "snapshot_file": snapshot_file,
+                "tomato_metadata": json.dumps(input_dict["metadata"]),
+                "cucumber_metadata": {
+                    "cucumber_version": __version__,
+                    "conversion_method": "cucumber_analysis.py convert_tomato_json",
+                    "conversion_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                },
+            },
             "job_data": json.dumps(job_data) if job_data is not None else "{}",
             "sample_data": json.dumps(sample_data) if sample_data is not None else "{}",
         }

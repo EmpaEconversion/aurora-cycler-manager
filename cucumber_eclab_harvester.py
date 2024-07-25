@@ -90,7 +90,7 @@ def convert_mpr_to_hdf(
         output_hdf_file: str = None,
         capacity_Ah: float = None,
         ) -> pd.DataFrame:
-    """ Convert a raw json file from tomato to a pandas dataframe.
+    """ Convert a tomato json to dataframe, optionally save as hdf5 file.
 
     Args:
         sampleid (str): sample ID from robot output
@@ -186,16 +186,26 @@ def convert_mpr_to_hdf(
 
         # Metadata to add
         metadata = {
-            "snapshot_file": mpr_file,
+            "provenance": {
+                "snapshot_file": mpr_file,
+                "yadg_metadata": yadg_metadata,
+                "cucumber_metadata": {
+                    "cucumber_version": __version__,
+                    "conversion_method": "cucumber_eclab_harvester.py convert_mpr_to_hdf",
+                    "conversion_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                }
+            },
             "mpr_metadata": mpr_metadata,
-            "yadg_metadata": yadg_metadata,
-            "conversion_method": f"cucumber_eclab_harvester.py convert_mpr_to_hdf v{__version__}",
             "sample_data": json.dumps(sample_data) if sample_data is not None else "",
         }
         # Open the HDF5 file with h5py and add metadata
         with h5py.File(output_hdf_file, 'a') as file:
             if 'cycling' in file:
                 for key, value in metadata.items():
+                    if value is None:
+                        value=""
+                    if isinstance(value, [dict, list]):
+                        value = json.dumps(value)
                     file['cycling'].attrs[key] = value
             else:
                 print("Dataset 'cycling' not found.")
