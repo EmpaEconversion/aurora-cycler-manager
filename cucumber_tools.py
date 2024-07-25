@@ -290,6 +290,7 @@ class Cucumber:
         self.update_pipelines()
         self.update_jobs()
         self.update_flags()
+        self.update_all_payloads()
 
     def execute_sql(self, query, params=None):
         """ Execute a query on the database.
@@ -683,6 +684,7 @@ class Cucumber:
         """
         assert mode in ["always", "new_data", "if_not_exists"]
         where = "`Status` IN ( 'c', 'r', 'rd', 'cd', 'ce')"
+        where += " AND `Sample ID` IS NOT 'Unknown'"
         if mode in ["new_data"]:
             where += " AND (`Snapshot status` NOT LIKE 'c%' OR `Snapshot status` IS NULL)"
         if sampleid_contains:
@@ -735,6 +737,34 @@ class Cucumber:
         jobid_on_server, server_label = result[0]
         server = next((server for server in self.servers if server.label == server_label), None)
         return server.get_last_data(jobid_on_server)
+
+    def update_payload(self, jobid: str) -> None:
+        """ Get the payload information from a job ID. """
+        result = self.execute_sql("SELECT `Job ID on server`, `Server label` FROM jobs WHERE `Job ID` = ?", (jobid,))
+        jobid_on_server, server_label = result[0]
+        server = next((server for server in self.servers if server.label == server_label), None)
+        try:
+            jobdata = server.get_job_data(jobid_on_server)
+        except FileNotFoundError:
+            print(f"Job data not found on remote PC for {jobid}")
+            self.execute_sql(
+                "UPDATE jobs SET `Payload` = ?, `Sample ID` = ? WHERE `Job ID` = ?",
+                (json.dumps("Unknown"), "Unknown", jobid)
+            )
+            return
+        payload = jobdata['payload']
+        sampleid = jobdata['payload']['sample']['name']
+        self.execute_sql(
+            "UPDATE jobs SET `Payload` = ?, `Sample ID` = ? WHERE `Job ID` = ?",
+            (json.dumps(payload), sampleid, jobid)
+        )
+
+    def update_all_payloads(self) -> None:
+        """ Update the payload information for all jobs in the database. """
+        result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE `Payload` IS NULL")
+        for jobid, in result:
+            self.update_payload(jobid)
+        return
 
 if __name__ == "__main__":
     pass
