@@ -26,7 +26,7 @@ import pandas as pd
 import paramiko
 from cycler_servers import TomatoServer
 from database_setup import create_config, create_database
-from cucumber_analysis import convert_tomato_json
+from cucumber_analysis import convert_tomato_json, _run_from_sample
 
 
 class Cucumber:
@@ -611,15 +611,19 @@ class Cucumber:
         if not result:
             raise ValueError(f"Sample or job ID '{samp_or_jobid}' not found in the database.")
 
-        for sampleid, jobid_on_server, server_label, snapshot_status in result:
+        for sample_id, jobid_on_server, server_label, snapshot_status in result:
             jobid = f"{server_label}-{jobid_on_server}"
-            if not sampleid: # TODO should this update the db as well?
+            if not sample_id: # TODO should this update the db as well?
                 print(f"Job {server_label}-{jobid_on_server} has no sample, skipping.")
                 continue
-            # Check if the snapshot should be skipped
-            batchid = sampleid.rsplit("_", 1)[0]
-            local_save_location = f"{self.config["Snapshots folder path"]}/{batchid}/{sampleid}"
-            local_save_location_processed = f"{self.config["Processed snapshots folder path"]}/{batchid}/{sampleid}"
+            # Check that sample is known
+            if sample_id == "Unknown":
+                print(f"Job {server_label}-{jobid_on_server} has no sample name or payload, skipping.")
+                continue
+            run_id = _run_from_sample(sample_id)
+
+            local_save_location = f"{self.config["Snapshots folder path"]}/{run_id}/{sample_id}"
+            local_save_location_processed = f"{self.config["Processed snapshots folder path"]}/{run_id}/{sample_id}"
 
             files_exist = os.path.exists(f"{local_save_location_processed}/snapshot.{jobid}.h5")
             if files_exist and mode != "always":
@@ -634,7 +638,7 @@ class Cucumber:
             server = next((server for server in self.servers if server.label == server_label), None)
             assert server is not None, f"Server {server_label} not found"
 
-            print(f"Snapshotting sample {sampleid} job {jobid}")
+            print(f"Snapshotting sample {sample_id} job {jobid}")
             try:
                 snapshot_status = server.snapshot(jobid, jobid_on_server, local_save_location, get_raw)
                 dt = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
