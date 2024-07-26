@@ -68,8 +68,8 @@ def convert_tomato_json(
             "uts" : [row["uts"] for row in step_data],
             "Ewe" : [row["raw"]["Ewe"]["n"] for row in step_data],
             "I": [row["raw"]["I"]["n"] if "I" in row["raw"] else 0 for row in step_data],
-            "cycle_number": [row["raw"]["cycle number"] if "cycle number" in row["raw"] else -1 for row in step_data],
-            "loop_number": [row["raw"]["loop number"] if "cycle number" in row["raw"] else -1 for row in step_data],
+            "cycle_number": [row["raw"]["cycle number"] if "cycle number" in row["raw"] else 0 for row in step_data],
+            "loop_number": [row["raw"]["loop number"] if "loop number" in row["raw"] else 0 for row in step_data],
             "index" : [row["raw"]["index"] if "index" in row["raw"] else -1 for row in step_data],
             "technique" : [technique_code.get(row["raw"]["technique"], -1) if "technique" in row["raw"] else -1 for row in step_data],
         }
@@ -129,7 +129,8 @@ def convert_tomato_json(
         with h5py.File(output_hdf_file, 'a') as file:
             if 'cycling' in file:
                 for key, value in metadata.items():
-                    print(f"Adding metadata: {key} = {value} of type {type(value)}")
+                    if isinstance(value, (dict, list)):
+                        value = json.dumps(value)
                     file['cycling'].attrs[key] = value
             else:
                 print("Dataset 'cycling' not found.")
@@ -158,6 +159,84 @@ def convert_all_tomato_jsons(
                     )
                     print(f"Converted {snapshot_file}")
 
+def combine_hdfs(
+        h5_files: List[str],
+) -> Tuple[pd.DataFrame, dict]:
+    """ Read multiple hdf5 files and return a single dataframe.
+
+    Merges the data, identifies cycle numbers and changes column names.
+    Columns are now 'V (V)', 'I (A)', 'uts (s)', 'dt (s)', 'Iavg (A)', 
+    'dQ (mAh)', 'Step', 'Cycle'.
+
+    Args:
+        h5_files (List[str]): list of paths to the hdf5 files
+
+    Returns:
+        pd.DataFrame: DataFrame containing the cycling data
+        dict: metadata from the files
+    """
+    # Get the metadata from the files
+    dfs = []
+    metadatas = []
+    sampleids = []
+    for f in h5_files:
+        dfs.append(pd.read_hdf(f))
+        with h5py.File(f, 'r') as file:
+            try:
+                metadata=dict(file['cycling'].attrs)
+                metadatas.append(metadata)
+                sampleids.append(
+                    json.loads(metadata['sample_data'])['Sample ID']
+                )
+            except KeyError as exc:
+                print(f"Metadata not found in {f}")
+                raise KeyError from exc
+    assert len(set(sampleids)) == 1, "All files must be from the same sample"
+    dfs = [df for df in dfs if 'uts' in df.columns and not df['uts'].empty]
+    assert dfs, "No 'uts' timestamp found in any of the files"
+    order = np.argsort([df['uts'].iloc[0] for df in dfs])
+    dfs = [dfs[i] for i in order]
+    h5_files = [h5_files[i] for i in order]
+    metadatas = [metadatas[i] for i in order]
+
+    for i,df in enumerate(dfs):
+        df["job_number"] = i
+    df = pd.concat(dfs)
+    df = df.sort_values('uts')
+    # rename columns
+    df = df.rename(columns={
+        'V (V)': 'Ewe',
+        'I (A)': 'I',
+        'uts (s)': 'uts',
+    })
+    df["dt (s)"] = np.concatenate([[0],df["uts"].values[1:] - df["uts"].values[:-1]])
+    df["Iavg (A)"] = np.concatenate([[0],(df["I"].values[1:] + df["I"].values[:-1]) / 2])
+    df["dQ (mAh)"] = 1e3 * df["Iavg (A)"] * df["dt (s)"] / 3600
+
+    df['group_id'] = (
+        (df['loop_number'].shift(-1) < df['loop_number']) |
+        (df['cycle_number'].shift(-1) < df['cycle_number']) |
+        (df['job_number'].shift(-1) < df['job_number'])
+    ).cumsum()
+    df['Step'] = df.groupby(['job_number','group_id','cycle_number','loop_number']).ngroup()
+    df.drop(columns=['job_number', 'group_id', 'cycle_number', 'loop_number','index'], inplace=True)
+    df['Cycle']=0
+    cycle=1
+    for step, group_df in df.groupby('Step'):
+        # To be considered a cycle (subject to change):
+        # - more than 10 data points
+        # - total change in charge less than 50% of absolute total charge
+        # - e.g. 1 mAh charge and 0.3 mAh discharge gives 0.7 mAh change and 1.3 mAh total = 54%
+        #        this would not be considered a cycle
+        # - e.g. 1 mAh charge and 0.5 mAh discharge gives 0.5 mAh change and 1.5 mAh total = 33%
+        #        this would be considered a cycle
+        if len(group_df) > 10:
+            if abs(group_df["dQ (mAh)"].sum()) < 0.3 * group_df["dQ (mAh)"].abs().sum():
+                df.loc[df['Step'] == step, 'Cycle'] = cycle
+                cycle += 1
+
+    return df, metadatas
+
 def analyse_cycles(
         h5_files: List[str],
         voltage_lower_cutoff: float = 0,
@@ -179,132 +258,106 @@ def analyse_cycles(
         config = json.load(f)
     db_path = config["Database path"]
 
-    # Get the metadata from the files
-    dfs = []
-    metadatas = []
-    payloads = []
-    sampleids = []
-    for f in h5_files:
-        dfs.append(pd.read_hdf(f))
-        with h5py.File(f, 'r') as file:
-            try:
-                metadata=dict(file['cycling'].attrs)
-                job_data = json.loads(metadata.get('job_data','{}'))
-                metadatas.append(metadata)
-                sampleids.append(
-                    json.loads(metadata['sample_data'])['Sample ID']
-                )
-                payloads.append(json.loads(job_data.get('Payload','{}')))
-            except KeyError as exc:
-                print(f"Metadata not found in {f}")
-                raise KeyError from exc
-    assert len(set(sampleids)) == 1, "All files must be from the same sample"
-    sampleid = sampleids[0]
-    dfs = [df for df in dfs if 'uts' in df.columns and not df['uts'].empty]
-    assert dfs, "No 'uts' timestamp found in any of the files"
-    order = np.argsort([df['uts'].iloc[0] for df in dfs])
-    dfs = [dfs[i] for i in order]
-    h5_files = [h5_files[i] for i in order]
-    metadatas = [metadatas[i] for i in order]
-    payloads = [payloads[i] for i in order]
+    df, metadatas = combine_hdfs(h5_files)
 
-    metadata = metadatas[-1]
-    sample_data = json.loads(metadata.get('sample_data',{}))
-    job_data = json.loads(metadata.get('job_data','{}'))
-    snapshot_status = job_data.get('Snapshot status',None)
-    snapshot_pipeline = job_data.get('Pipeline',None)
-    last_snapshot = job_data.get('Last snapshot',None)
-
-    pipeline = None
-    status = None
-    with sqlite3.connect(db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
-        row = cursor.fetchone()
-        if row:
-            pipeline = row[0]
-            job_id = row[1]
-            if job_id:
-                cursor.execute("SELECT `Status` FROM jobs WHERE `Job ID` = ?", (f"{job_id}",))
-                status = cursor.fetchone()[0]
-
-    for i,df in enumerate(dfs):
-        df["job_number"] = i
-    df = pd.concat(dfs)
-    df["dt (s)"] = np.concatenate([[0],df["uts"].values[1:] - df["uts"].values[:-1]])
-    df["Iavg (A)"] = np.concatenate([[0],(df["I"].values[1:] + df["I"].values[:-1]) / 2])
-    df["dQ (mAh)"] = 1e3 * df["Iavg (A)"] * df["dt (s)"] / 3600
+    last_metadata = metadatas[-1]
+    sample_data = json.loads(last_metadata.get('sample_data',{}))
+    sampleid = sample_data.get('Sample ID',None)
+    job_data = [json.loads(m.get('job_data','{}')) for m in metadatas]
+    mpr_data = [json.loads(m.get('mpr_metadata','{}')) for m in metadatas]
+    snapshot_status = job_data[-1].get('Snapshot status',None)
+    snapshot_pipeline = job_data[-1].get('Pipeline',None)
+    last_snapshot = job_data[-1].get('Last snapshot',None)
 
     # Extract useful information from the metadata
     mass_mg = sample_data.get('Cathode active material mass (mg)',np.nan)
+
+    # Extract information from the tomato or mpr job data
+    assert not (any(job_data) and any(mpr_data)), "Both tomato job and mpr data found, cucumber cannot process this"
+
     max_V = 0
     formation_C = 0
     cycle_C = 0
-    for payload in payloads:
-        for method in payload.get('method',[]):
-            voltage = method.get('limit_voltage_max',0)
-            if voltage > max_V:
-                max_V = voltage
+    
+    # TOMATO DATA
+    # TODO separate max voltage in formation and cycling
+    if any(job_data):
+        print(job_data)
+        payloads = [json.loads(j.get('Payload',"[]")) for j in job_data]
+        print(payloads)
+        pipeline = None
+        status = None
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
+            row = cursor.fetchone()
+            if row:
+                pipeline = row[0]
+                job_id = row[1]
+                if job_id:
+                    cursor.execute("SELECT `Status` FROM jobs WHERE `Job ID` = ?", (f"{job_id}",))
+                    status = cursor.fetchone()[0]
+    
+        for payload in payloads:
+            for method in payload.get('method',[]):
+                voltage = method.get('limit_voltage_max',0)
+                if voltage > max_V:
+                    max_V = voltage
 
-            for payload in payloads:
-                for method in payload.get('method',[]):
-                    if method.get('technique',None) == 'loop':
-                        if method['n_gotos'] < 4: # it is probably formation
-                            for m in payload.get('method',[]):
-                                if 'current' in m and 'C' in m['current']:
-                                    try:
-                                        formation_C = _c_to_float(m['current'])
-                                    except ValueError:
-                                        print(f"Not a valid C-rate: {m['current']}")
-                                        formation_C = 0
-                                    break
-                        if method.get('n_gotos',0) > 10: # it is probably cycling
-                            for m in payload.get('method',[]):
-                                if 'current' in m and 'C' in m['current']:
-                                    try:
-                                        cycle_C = _c_to_float(m['current'])
-                                    except ValueError:
-                                        print(f"Not a valid C-rate: {m['current']}")
-                                        cycle_C = 0
-                                    break
+        for payload in payloads:
+            for method in payload.get('method',[]):
+                if method.get('technique',None) == 'loop':
+                    if method['n_gotos'] < 4: # it is probably formation
+                        for m in payload.get('method',[]):
+                            if 'current' in m and 'C' in m['current']:
+                                try:
+                                    formation_C = _c_to_float(m['current'])
+                                except ValueError:
+                                    print(f"Not a valid C-rate: {m['current']}")
+                                    formation_C = 0
+                                break
+                    if method.get('n_gotos',0) > 10: # it is probably cycling
+                        for m in payload.get('method',[]):
+                            if 'current' in m and 'C' in m['current']:
+                                try:
+                                    cycle_C = _c_to_float(m['current'])
+                                except ValueError:
+                                    print(f"Not a valid C-rate: {m['current']}")
+                                    cycle_C = 0
+                                break
+
+    # MPR DATA
+    # TODO get formation and cycle C, separate max voltage in formation and cycling
+    if any(mpr_data):
+        mpr_metadatas = [json.loads(metadata['mpr_metadata']) for metadata in metadatas]
+        for mpr_metadata in mpr_metadatas:
+            for params in mpr_metadata.get('params',[]):
+                V = round(params.get("EM",0),3)
+                if V > max_V:
+                    max_V = V
+
+    # Fill some missing values
     if not formation_C:
         if not cycle_C:
             print(f"No formation C or cycle C found for {sampleid}, using 0")
         else:
             print(f"No formation C found for {sampleid}, using cycle_C")
             formation_C = cycle_C
-
-    # If converted from an mpr file, get the max voltage from the metadata
-    if 'mpr_metadata' in metadata:
-        mpr_metadata = json.loads(metadata['mpr_metadata'])
-        for params in mpr_metadata.get('params',[]):
-            V = round(params.get("EM",0),3)
-            if V > max_V:
-                max_V = V
-
-    # Detect whenever job, cycle or loop changes
-    # Necessary because the cycle number is not always recorded correctly so
-    # the combination of job, cycle, loop is not necessarily unique
-    df = df.sort_values('uts')
-    df['group_id'] = (
-        (df['loop_number'] < df['loop_number'].shift(1)) |
-        (df['cycle_number'] < df['cycle_number'].shift(1)) |
-        (df['job_number'] < df['job_number'].shift(1))
-    ).cumsum()
-    df['global_idx'] = df.groupby(['job_number', 'group_id', 'cycle_number', 'loop_number']).ngroup()
+    
+    # Analyse each cycle in the cycling data
     charge_capacity_mAh = []
     discharge_capacity_mAh = []
-    for _, group_df in df.groupby('global_idx'):
+    for _, group_df in df.groupby('Cycle'):
         charge_data = group_df[
             (group_df['Iavg (A)'] > 0) &
-            (group_df['Ewe'] > voltage_lower_cutoff) &
-            (group_df['Ewe'] < voltage_upper_cutoff) &
+            (group_df['V (V)'] > voltage_lower_cutoff) &
+            (group_df['V (V)'] < voltage_upper_cutoff) &
             (group_df['dt (s)'] < 600)
         ]
         discharge_data = group_df[
             (group_df['Iavg (A)'] < 0) &
-            (group_df['Ewe'] > voltage_lower_cutoff) &
-            (group_df['Ewe'] < voltage_upper_cutoff) &
+            (group_df['V (V)'] > voltage_lower_cutoff) &
+            (group_df['V (V)'] < voltage_upper_cutoff) &
             (group_df['dt (s)'] < 600)
         ]
         # Only consider cycles with more than 10 data points
@@ -394,7 +447,7 @@ def analyse_cycles(
         datetime_object = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M:%S')
         datetime_object = timezone.localize(datetime_object)
         uts_steps[step] = datetime_object.timestamp()
-    job_start = df['uts'].iloc[0]
+    job_start = df['uts (s)'].iloc[0]
     cycle_dict['Electrolyte to press (s)'] = round(uts_steps[10] - np.nanmin([uts_steps[3],uts_steps[5]]))
     cycle_dict['Electrolyte to electrode (s)'] = round(uts_steps[6] - np.nanmin([uts_steps[3],uts_steps[5]]))
     cycle_dict['Electrode to protection (s)'] = round(job_start - uts_steps[6])
@@ -458,7 +511,7 @@ def analyse_cycles(
             save_folder = '.'
         if not os.path.exists(save_folder):
             os.makedirs(save_folder)
-        with open(f'{save_folder}/cycles.{sampleids[0]}.json','w',encoding='utf-8') as f:
+        with open(f'{save_folder}/cycles.{sampleid}.json','w',encoding='utf-8') as f:
             json.dump(cycle_dict,f)
     return df, cycle_dict
 
@@ -734,12 +787,14 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
             continue
     cycle_dicts = [d for d in cycle_dicts if d.get('Cycle') and d['Cycle']]
     assert len(cycle_dicts) > 0, "No cycling data found for any sample"
-    cycle_df = pd.concat(
-        [pd.DataFrame(d) for d in cycle_dicts],
-    ).reset_index(drop=True)
 
-    # Save the data
-    cycle_df.to_excel(f'{save_location}/batch.{plot_name}.xlsx',index=False)
+    # make another df where we only keep the lists from the dictionaries in the list
+    only_lists = pd.concat([pd.DataFrame({k:v for k,v in cycle_dict.items() if isinstance(v, list) or k=="Sample ID"}) for cycle_dict in cycle_dicts])
+    only_vals = pd.DataFrame([{k:v for k,v in cycle_dict.items() if not isinstance(v, list)} for cycle_dict in cycle_dicts])
+
+    with pd.ExcelWriter(f'{save_location}/batch.{plot_name}.xlsx') as writer:
+        only_lists.to_excel(writer, sheet_name='Data by cycle', index=False)
+        only_vals.to_excel(writer, sheet_name='Results by sample', index=False)
     with open(f'{save_location}/batch.{plot_name}.json','w',encoding='utf-8') as f:
         json.dump(cycle_dicts,f)
 
