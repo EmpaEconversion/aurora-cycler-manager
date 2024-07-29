@@ -205,13 +205,14 @@ def combine_hdfs(
     df = df.sort_values('uts')
     # rename columns
     df = df.rename(columns={
-        'V (V)': 'Ewe',
-        'I (A)': 'I',
-        'uts (s)': 'uts',
+        'Ewe': 'V (V)',
+        'I': 'I (A)',
+        'uts': 'uts (s)',
     })
-    df["dt (s)"] = np.concatenate([[0],df["uts"].values[1:] - df["uts"].values[:-1]])
-    df["Iavg (A)"] = np.concatenate([[0],(df["I"].values[1:] + df["I"].values[:-1]) / 2])
+    df["dt (s)"] = np.concatenate([[0],df["uts (s)"].values[1:] - df["uts (s)"].values[:-1]])
+    df["Iavg (A)"] = np.concatenate([[0],(df["I (A)"].values[1:] + df["I (A)"].values[:-1]) / 2])
     df["dQ (mAh)"] = 1e3 * df["Iavg (A)"] * df["dt (s)"] / 3600
+    df.loc[df["dt (s)"] > 600, "dQ (mAh)"] = 0
 
     df['group_id'] = (
         (df['loop_number'].shift(-1) < df['loop_number']) |
@@ -282,9 +283,7 @@ def analyse_cycles(
     # TOMATO DATA
     # TODO separate max voltage in formation and cycling
     if any(job_data):
-        print(job_data)
         payloads = [json.loads(j.get('Payload',"[]")) for j in job_data]
-        print(payloads)
         pipeline = None
         status = None
         with sqlite3.connect(db_path) as conn:
@@ -384,6 +383,7 @@ def analyse_cycles(
         complete = 1
 
     # Create a dictionary with the cycling data
+    # TODO add datetime of every cycle
     cycle_dict = {
         'Sample ID': sampleid,
         'Cycle': list(range(1,len(charge_capacity_mAh)+1)),
@@ -435,6 +435,10 @@ def analyse_cycles(
     for pcent in pcents:
         cycle_dict[f'Cycles to {pcent}%'] = next((i for i in range(3, len(norm) - 1)
                             if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
+        
+    # TODO add average voltage (weighted by charge) for each cycle
+    # TODO add average current for each cycle
+    # TODO add energy density/fade
 
     # Add times to cycle_dict
     timezone = pytz.timezone(config["Time zone"])
@@ -520,11 +524,11 @@ def analyse_sample(sample: str) -> Tuple[pd.DataFrame, dict]:
     
     Will search for the sample in the processed snapshots folder and analyse the cycling data.
     """
-    batch = sample.rsplit('_',1)[0]
+    run_id = _run_from_sample(sample)
     with open('./config.json', encoding='utf-8') as f:
         config = json.load(f)
     data_folder = config["Processed snapshots folder path"]
-    file_location = os.path.join(data_folder, batch, sample)
+    file_location = os.path.join(data_folder, run_id, sample)
     h5_files = [
         os.path.join(file_location,f) for f in os.listdir(file_location)
         if (f.startswith('snapshot') and f.endswith('.h5'))
@@ -546,8 +550,6 @@ def analyse_all_samples(
 
     Args: sampleid_contains (str, optional): only analyse samples with this
         string in the sampleid
-    
-    TODO: Only analyse files with new data since last analysis
     """
     with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
