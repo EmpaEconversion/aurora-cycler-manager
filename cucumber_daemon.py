@@ -103,13 +103,10 @@ def daemon_loop(update_time: float = None, snapshot_times: list = None):
                 logging.info("Plotting complete")
 
             # Calculate the next run time for the snapshot
-            next_run_times = (
-                snapshot_datetimes +
-                [t + timedelta(days=1) for t in snapshot_datetimes] +
-                [t + timedelta(days=2) for t in snapshot_datetimes]
-            )
             now = datetime.now()
-            next_run_time = min([t for t in next_run_times if t > now])
+            snapshot_datetimes = [datetime.combine(now, datetime.strptime(t, '%H:%M').time()) for t in snapshot_times]
+            snapshot_datetimes = [t if t > now else t + timedelta(days=1) for t in snapshot_datetimes]
+            next_run_time = min(snapshot_datetimes)
             logging.info("Next snapshot at %s", next_run_time)
 
 if __name__ == "__main__":
