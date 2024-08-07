@@ -42,9 +42,9 @@ def convert_tomato_json(
         pd.DataFrame: DataFrame containing the cycling data
 
     Columns in output DataFrame:
-    - uts: UTS Timestamp in seconds
-    - Ewe: Voltage in V
-    - I: Current in A
+    - uts: Unix time stamp in seconds
+    - V (V): Cell voltage in volts
+    - I (A): Current in amps
     - loop_number: how many loops have been completed
     - cycle_number: used if there is a loop of loops
     - index: index of the method in the payload
@@ -66,8 +66,8 @@ def convert_tomato_json(
         step_data = input_dict["steps"][i]["data"]
         step_dict = {
             "uts" : [row["uts"] for row in step_data],
-            "Ewe" : [row["raw"]["Ewe"]["n"] for row in step_data],
-            "I": [row["raw"]["I"]["n"] if "I" in row["raw"] else 0 for row in step_data],
+            "V (V)" : [row["raw"]["Ewe"]["n"] for row in step_data],
+            "I (A)": [row["raw"]["I"]["n"] if "I" in row["raw"] else 0 for row in step_data],
             "cycle_number": [row["raw"]["cycle number"] if "cycle number" in row["raw"] else 0 for row in step_data],
             "loop_number": [row["raw"]["loop number"] if "loop number" in row["raw"] else 0 for row in step_data],
             "index" : [row["raw"]["index"] if "index" in row["raw"] else -1 for row in step_data],
@@ -165,7 +165,7 @@ def combine_hdfs(
     """ Read multiple hdf5 files and return a single dataframe.
 
     Merges the data, identifies cycle numbers and changes column names.
-    Columns are now 'V (V)', 'I (A)', 'uts (s)', 'dt (s)', 'Iavg (A)', 
+    Columns are now 'V (V)', 'I (A)', 'uts', 'dt (s)', 'Iavg (A)', 
     'dQ (mAh)', 'Step', 'Cycle'.
 
     Args:
@@ -193,7 +193,7 @@ def combine_hdfs(
                 raise KeyError from exc
     assert len(set(sampleids)) == 1, "All files must be from the same sample"
     dfs = [df for df in dfs if 'uts' in df.columns and not df['uts'].empty]
-    assert dfs, "No 'uts' timestamp found in any of the files"
+    assert dfs, "No 'uts' column found in any of the files"
     order = np.argsort([df['uts'].iloc[0] for df in dfs])
     dfs = [dfs[i] for i in order]
     h5_files = [h5_files[i] for i in order]
@@ -207,9 +207,9 @@ def combine_hdfs(
     df = df.rename(columns={
         'Ewe': 'V (V)',
         'I': 'I (A)',
-        'uts': 'uts (s)',
+        'uts': 'uts',
     })
-    df["dt (s)"] = np.concatenate([[0],df["uts (s)"].values[1:] - df["uts (s)"].values[:-1]])
+    df["dt (s)"] = np.concatenate([[0],df["uts"].values[1:] - df["uts"].values[:-1]])
     df["Iavg (A)"] = np.concatenate([[0],(df["I (A)"].values[1:] + df["I (A)"].values[:-1]) / 2])
     df["dQ (mAh)"] = 1e3 * df["Iavg (A)"] * df["dt (s)"] / 3600
     df.loc[df["dt (s)"] > 600, "dQ (mAh)"] = 0
@@ -282,10 +282,10 @@ def analyse_cycles(
     
     # TOMATO DATA
     # TODO separate max voltage in formation and cycling
+    pipeline = None
+    status = None
     if any(job_data):
         payloads = [json.loads(j.get('Payload',"[]")) for j in job_data]
-        pipeline = None
-        status = None
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
@@ -346,7 +346,17 @@ def analyse_cycles(
     # Analyse each cycle in the cycling data
     charge_capacity_mAh = []
     discharge_capacity_mAh = []
-    for _, group_df in df.groupby('Cycle'):
+    charge_avg_V = []
+    discharge_avg_V = []
+    charge_energy_mWh = []
+    discharge_energy_mWh = []
+    charge_avg_I = []
+    discharge_avg_I = []
+    started_charge = False
+    started_discharge = False
+    for cycle, group_df in df.groupby('Cycle'):
+        if cycle <= 0:
+            continue
         charge_data = group_df[
             (group_df['Iavg (A)'] > 0) &
             (group_df['V (V)'] > voltage_lower_cutoff) &
@@ -365,7 +375,13 @@ def analyse_cycles(
 
         if started_charge and started_discharge:
             charge_capacity_mAh.append(charge_data['dQ (mAh)'].sum())
+            charge_avg_V.append((charge_data['V (V)']*charge_data['dQ (mAh)']).sum()/charge_data['dQ (mAh)'].sum())
+            charge_energy_mWh.append((charge_data['V (V)']*charge_data['dQ (mAh)']).sum())
+            charge_avg_I.append((charge_data['Iavg (A)']*charge_data['dQ (mAh)']).sum()/charge_data['dQ (mAh)'].sum())
             discharge_capacity_mAh.append(-discharge_data['dQ (mAh)'].sum())
+            discharge_avg_V.append((discharge_data['V (V)']*discharge_data['dQ (mAh)']).sum()/discharge_data['dQ (mAh)'].sum())
+            discharge_energy_mWh.append((-discharge_data['V (V)']*discharge_data['dQ (mAh)']).sum())
+            discharge_avg_I.append((-discharge_data['Iavg (A)']*discharge_data['dQ (mAh)']).sum()/discharge_data['dQ (mAh)'].sum())
 
     formed = len(charge_capacity_mAh) >= 5
     # A row is added if charge data is complete and discharge started
@@ -393,6 +409,13 @@ def analyse_cycles(
         'Specific charge capacity (mAh/g)': [c/(mass_mg*1e-3) for c in charge_capacity_mAh],
         'Specific discharge capacity (mAh/g)': [d/(mass_mg*1e-3) for d in discharge_capacity_mAh],
         'Normalised discharge capacity (%)': [100*d/discharge_capacity_mAh[3] for d in discharge_capacity_mAh] if formed else None,
+        'Normalised discharge energy (%)': [100*d/discharge_energy_mWh[3] for d in discharge_energy_mWh] if formed else None,
+        'Charge average voltage (V)': charge_avg_V,
+        'Discharge average voltage (V)': discharge_avg_V,
+        'Charge average current (A)': charge_avg_I,
+        'Discharge average current (A)': discharge_avg_I,
+        'Charge energy (mWh)': charge_energy_mWh,
+        'Discharge energy (mWh)': discharge_energy_mWh,
         'Max voltage (V)': max_V,
         'Formation C': formation_C,
         'Cycle C': cycle_C,
@@ -428,12 +451,18 @@ def analyse_cycles(
     cycle_dict['Capacity loss (%)'] = 100 - cycle_dict['Normalised discharge capacity (%)'][last_idx] if formed else None
     cycle_dict['Last specific discharge capacity (mAh/g)'] = cycle_dict['Specific discharge capacity (mAh/g)'][last_idx]
     cycle_dict['Last efficiency (%)'] = cycle_dict['Efficiency (%)'][last_idx]
+    cycle_dict['Formation average voltage (V)'] = np.mean(cycle_dict['Charge average voltage (V)'][:3]) if formed else None
+    cycle_dict['Formation average current (A)'] = np.mean(cycle_dict['Charge average current (A)'][:3]) if formed else None
 
     # Calculate cycles to x% of initial discharge capacity
     pcents = [95,90,85,80,75,70,60,50]
     norm = cycle_dict['Normalised discharge capacity (%)']
     for pcent in pcents:
-        cycle_dict[f'Cycles to {pcent}%'] = next((i for i in range(3, len(norm) - 1)
+        cycle_dict[f'Cycles to {pcent}% capacity'] = next((i for i in range(3, len(norm) - 1)
+                            if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
+    norm = cycle_dict['Normalised discharge energy (%)']
+    for pcent in pcents:
+        cycle_dict[f'Cycles to {pcent}% energy'] = next((i for i in range(3, len(norm) - 1)
                             if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
         
     # TODO add average voltage (weighted by charge) for each cycle
@@ -451,7 +480,7 @@ def analyse_cycles(
         datetime_object = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M:%S')
         datetime_object = timezone.localize(datetime_object)
         uts_steps[step] = datetime_object.timestamp()
-    job_start = df['uts (s)'].iloc[0]
+    job_start = df['uts'].iloc[0]
     cycle_dict['Electrolyte to press (s)'] = round(uts_steps[10] - np.nanmin([uts_steps[3],uts_steps[5]]))
     cycle_dict['Electrolyte to electrode (s)'] = round(uts_steps[6] - np.nanmin([uts_steps[3],uts_steps[5]]))
     cycle_dict['Electrode to protection (s)'] = round(job_start - uts_steps[6])
@@ -616,7 +645,7 @@ def plot_sample(sample: str) -> None:
     df = pd.concat(dfs)
     df.sort_values('uts', inplace=True)
     fig, ax = plt.subplots(figsize=(6,4),dpi=72)
-    plt.plot(pd.to_datetime(df["uts"], unit="s"),df["Ewe"])
+    plt.plot(pd.to_datetime(df["uts"], unit="s"),df["V (V)"])
     plt.ylabel('Voltage (V)')
     plt.xticks(rotation=45)
     plt.title(sample)
