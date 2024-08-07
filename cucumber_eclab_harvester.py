@@ -103,8 +103,8 @@ def convert_mpr_to_hdf(
 
     Columns in output DataFrame:
     - uts: timestamp, starting from 0
-    - Ewe: Voltage in V
-    - I: Current in A
+    - V (V): Cell voltage in volts
+    - I (A): Current in amps
     - loop_number: how many loops have been completed
     - cycle_number: not used here
     - index: index of the method in the payload, not used here
@@ -143,8 +143,8 @@ def convert_mpr_to_hdf(
                 uts_timestamp = timezone.localize(datetime_object).timestamp()
                 df['uts'] = df['uts'] + uts_timestamp
 
-    df['Ewe'] = data.data_vars['Ewe'].values
-    df['I'] = (
+    df['V (V)'] = data.data_vars['Ewe'].values
+    df['I (A)'] = (
         (3600 / 1000) * data.data_vars['dq'].values /
         np.diff(data.coords['uts'].values,prepend=[np.inf])
     )
@@ -204,7 +204,7 @@ def convert_mpr_to_hdf(
                 for key, value in metadata.items():
                     if value is None:
                         value=""
-                    if isinstance(value, [dict, list]):
+                    if isinstance(value, (dict, list)):
                         value = json.dumps(value)
                     file['cycling'].attrs[key] = value
             else:
