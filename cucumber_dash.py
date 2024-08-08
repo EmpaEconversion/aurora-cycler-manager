@@ -10,6 +10,7 @@ import json
 import sqlite3
 import pandas as pd
 from scipy import stats
+from cucumber_analysis import combine_hdfs, _run_from_sample
 
 app = dash.Dash(__name__)
 
@@ -97,6 +98,33 @@ def correlation_matrix(
                 corr.loc[col1, col2] = cramers_v(df[col1], df[col2])
     return corr
 
+def moving_average(x, npoints=11):
+    if npoints % 2 == 0:
+        npoints += 1  # Ensure npoints is odd for a symmetric window
+    window = np.ones(npoints) / npoints
+    xav = np.convolve(x, window, mode='same')
+    xav[:npoints // 2] = np.nan
+    xav[-npoints // 2:] = np.nan
+    return xav
+
+def deriv(x, y):
+    dydx = np.zeros(len(y))
+    dydx[0] = (y[1] - y[0]) / (x[1] - x[0])
+    dydx[-1] = (y[-1] - y[-2]) / (x[-1] - x[-2])
+    dydx[1:-1] = (y[2:] - y[:-2]) / (x[2:] - x[:-2])
+
+    # for any 3 points where x direction changes sign set to nan
+    mask = (x[1:-1] - x[:-2]) * (x[2:] - x[1:-1]) < 0
+    dydx[1:-1][mask] = np.nan
+    return dydx
+
+def smoothed_derivative(x, y, npoints=21):
+    x_smooth = moving_average(x, npoints)
+    y_smooth = moving_average(y, npoints)
+    dydx_smooth = deriv(x_smooth, y_smooth)
+    dydx_smooth[dydx_smooth > 20] = np.nan
+    return dydx_smooth
+
 #======================================================================================================================#
 #======================================================= LAYOUT =======================================================#
 #======================================================================================================================#
@@ -128,8 +156,8 @@ app.layout = html.Div([
                                 html.Label('X-axis', htmlFor='samples-time-x'),
                                 dcc.Dropdown(
                                     id='samples-time-x',
-                                    options=['uts','From protection','From formation','From cycling'],
-                                    value='uts',
+                                    options=['Unix time','From protection','From formation','From cycling'],
+                                    value='From formation',
                                     multi=False,
                                 ),
                                 dcc.Dropdown(
@@ -140,15 +168,15 @@ app.layout = html.Div([
                                 html.Label('Y-axis', htmlFor='samples-time-y'),
                                 dcc.Dropdown(
                                     id='samples-time-y',
-                                    options=['Ewe'],
-                                    value='Ewe',
+                                    options=['V (V)'],
+                                    value='V (V)',
                                     multi=False,
                                 ),
                                 html.P("Cycles graph"),
                                 html.P("X-axis: Cycle"),
-                                html.Label('Y-axis', htmlFor='samples-cycle-y'),
+                                html.Label('Y-axis', htmlFor='samples-cycles-y'),
                                 dcc.Dropdown(
-                                    id='samples-cycle-y',
+                                    id='samples-cycles-y',
                                     options=[
                                         'Specific discharge capacity (mAh/g)',
                                         'Normalised discharge capacity (%)',
@@ -156,6 +184,17 @@ app.layout = html.Div([
                                     ],
                                     value='Specific discharge capacity (mAh/g)',
                                     multi=False,
+                                ),
+                                html.P("One cycle graph"),
+                                dcc.Dropdown(
+                                    id='samples-cycle-x',
+                                    options=['Q (mAh)', 'V (V)', 'dQdV (mAh/V)'],
+                                    value='Q (mAh)',
+                                ),
+                                dcc.Dropdown(
+                                    id='samples-cycle-y',
+                                    options=['Q (mAh)', 'V (V)', 'dQdV (mAh/V)'],
+                                    value='V (V)',
                                 ),
                             ],
                         style={'width': '20%', 'display': 'inline-block', 'verticalAlign': 'top', 'horizontalAlign': 'left', 'height': '90vh'}
@@ -169,7 +208,25 @@ app.layout = html.Div([
                                     children=[
                                         dcc.Store(id='samples-data-store', data={'data_sample_time': {}, 'data_sample_cycle': {}}),
                                         dcc.Graph(id='time-graph',figure={'data': [],'layout': go.Layout(title='vs time',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'})}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
-                                        dcc.Graph(id='cycles-graph',figure={'data': [],'layout': go.Layout(title='vs cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'})}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
+                                        # two graphs side by side
+                                        html.Div(
+                                            [
+                                                # First graph on the left
+                                                html.Div(
+                                                    dcc.Graph(id='cycles-graph',figure={'data': [],'layout': go.Layout(title='vs cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'})}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
+                                                ),
+                                            ],
+                                            style={'width': '50%', 'display': 'inline-block', 'height': '45vh'}
+                                        ),
+                                        html.Div(
+                                            [
+                                                # First graph on the left
+                                                html.Div(
+                                                    dcc.Graph(id='cycle-graph',figure={'data': [],'layout': go.Layout(title='One cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'})}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
+                                                ),
+                                            ],
+                                            style={'width': '50%', 'display': 'inline-block', 'height': '45vh'}
+                                        ),
                                     ],
                                     fullscreen=False,
                                 ),
@@ -212,6 +269,7 @@ app.layout = html.Div([
                                 html.P("Colormap of top graph"),
                                 dcc.Dropdown(
                                     id='batch-cycle-color',
+                                    # TODO remove these default options, change to run ID
                                     options=[
                                         'Max voltage (V)',
                                         'Actual N:P ratio',
@@ -238,7 +296,7 @@ app.layout = html.Div([
                                         'data': [],
                                         'layout': go.Layout(title='vs cycle', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
                                     }, 
-                                    config={'scrollZoom': True, 'displaylogo':False},
+                                    config={'scrollZoom': True, 'displaylogo':False,  'toImageButtonOptions': {'format': 'svg',}},
                                     style={'height': '40vh'}
                                 ),
                             ],
@@ -255,7 +313,7 @@ app.layout = html.Div([
                                             'data': [],
                                             'layout': go.Layout(title='heatmap', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
                                         }, 
-                                        config={'scrollZoom': False, 'displayModeBar': False},
+                                        config={'scrollZoom': False, 'displaylogo':False, 'toImageButtonOptions': {'format': 'png', 'width': 1000, 'height': 800}},
                                         style={'height': '50vh'},
                                     ),
                                     style={'width': '50%', 'display': 'inline-block', 'height': '50vh'}
@@ -300,7 +358,7 @@ app.layout = html.Div([
                                                 'data': [],
                                                 'layout': go.Layout(title='params', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
                                             },
-                                            config={'scrollZoom': True, 'displaylogo':False},
+                                            config={'scrollZoom': True, 'displaylogo':False, 'toImageButtonOptions': {'format': 'svg'}},
                                             style={'height': '45vh'},
                                         ),
                                     ],
@@ -323,11 +381,13 @@ app.layout = html.Div([
 
 #----------------------------- SAMPLES CALLBACKS ------------------------------#
 
+# TODO fix errors when data does not include any Formation C values
+
 # Update the samples data store
 @app.callback(
     Output('samples-data-store', 'data'),
     Output('samples-time-y', 'options'),
-    Output('samples-cycle-y', 'options'),
+    Output('samples-cycles-y', 'options'),
     Input('samples-dropdown', 'value'),
     Input('samples-data-store', 'data'),
 )
@@ -344,20 +404,20 @@ def update_sample_data(samples, data):
             continue
 
         # Otherwise import the data
-        run_id = sample.rsplit('_',1)[0]
+        run_id = _run_from_sample(sample)
         data_folder = "K:/Aurora/cucumber/snapshots" # hardcoded for now
         file_location = os.path.join(data_folder,run_id,sample)
 
         # Get raw data
         files = os.listdir(file_location)
-        cycling_files = [f for f in files if (f.startswith('snapshot') and f.endswith('.h5'))]
+        cycling_files = [
+            os.path.join(file_location,f) for f in files
+            if (f.startswith('snapshot') and f.endswith('.h5'))
+        ]
         if not cycling_files:
             print(f"No cycling files found in {file_location}")
             continue
-        dfs = [pd.read_hdf(f'{file_location}/{f}') for f in cycling_files]
-        dfs = [df for df in dfs if 'uts' in df.columns and df['uts'].nunique() > 1]
-        dfs.sort(key=lambda df: df['uts'].iloc[0])
-        df = pd.concat(dfs)
+        df, metadata = combine_hdfs(cycling_files)
         data['data_sample_time'][sample] = df.to_dict(orient='list')
 
         # Get the analysed file
@@ -366,23 +426,23 @@ def update_sample_data(samples, data):
         except StopIteration:
             continue
         with open(f'{file_location}/{analysed_file}', 'r', encoding='utf-8') as f:
-            cycle_dict = json.load(f)
+            cycle_dict = json.load(f)["data"]
         if not cycle_dict or 'Cycle' not in cycle_dict.keys():
             continue
         data['data_sample_cycle'][sample] = cycle_dict
     
     # Update the y-axis options
-    time_y_vars = set(['Ewe'])
+    time_y_vars = set(['V (V)'])
     for sample, data_dict in data['data_sample_time'].items():
         time_y_vars.update(data_dict.keys())
     time_y_vars = list(time_y_vars)
 
-    cycle_y_vars = set(['Specific discharge capacity (mAh/g)', 'Normalised discharge capacity (%)', 'Efficiency (%)'])
+    cycles_y_vars = set(['Specific discharge capacity (mAh/g)', 'Normalised discharge capacity (%)', 'Efficiency (%)'])
     for sample, data_dict in data['data_sample_cycle'].items():
-        cycle_y_vars.update([k for k,v in data_dict.items() if isinstance(v,list)])
-    cycle_y_vars = list(cycle_y_vars)
+        cycles_y_vars.update([k for k,v in data_dict.items() if isinstance(v,list)])
+    cycles_y_vars = list(cycles_y_vars)
     
-    return data, time_y_vars, cycle_y_vars
+    return data, time_y_vars, cycles_y_vars
 
 # Update the time graph
 @app.callback(
@@ -394,7 +454,7 @@ def update_sample_data(samples, data):
 )
 def update_time_graph(data, xvar, xunits, yvar):
     if not data['data_sample_time']:
-        return {'data': [], 'layout': go.Layout(title=f'No data...', xaxis={'title': 'Time (s)'},)}
+        return {'data': [], 'layout': go.Layout(title='No data...', xaxis={'title': 'Time (s)'},)}
     traces = []
     multiplier = {'Seconds': 1, 'Minutes': 60, 'Hours': 3600, 'Days': 86400}[xunits]
     for sample, data_dict in data['data_sample_time'].items():
@@ -402,8 +462,9 @@ def update_time_graph(data, xvar, xunits, yvar):
         if xvar == 'From protection':
             offset=uts[0]
         elif xvar == 'From formation':
-            # first index where Ewe is over 2.5
-            offset=uts[next(i for i, x in enumerate(data_dict['Ewe']) if x > 3)]
+            offset=uts[next(i for i, x in enumerate(data_dict['Cycle']) if x >= 1)]
+        elif xvar == 'From cycling':
+            offset=uts[next(i for i, x in enumerate(data_dict['Cycle']) if x >= 4)]
         else:
             offset=0
         traces.append(go.Scatter(x=(np.array(data_dict['uts'])-offset)/multiplier, y=data_dict[yvar], mode='lines', name=sample))
@@ -414,15 +475,47 @@ def update_time_graph(data, xvar, xunits, yvar):
 @app.callback(
     Output('cycles-graph', 'figure'),
     Input('samples-data-store', 'data'),
-    Input('samples-cycle-y', 'value'),
+    Input('samples-cycles-y', 'value'),
 )
 def update_cycles_graph(data, yvar):
     traces = []
     if not data['data_sample_cycle']:
-        return {'data': traces, 'layout': go.Layout(title=f'No data...', xaxis={'title': 'Cycle'}, yaxis={'title': yvar})}
+        return {'data': traces, 'layout': go.Layout(title='No data...', xaxis={'title': 'Cycle'}, yaxis={'title': yvar})}
     for sample, cycle_dict in data['data_sample_cycle'].items():
         traces.append(go.Scatter(x=cycle_dict['Cycle'], y=cycle_dict[yvar], mode='lines+markers', name=sample))
     return {'data': traces, 'layout': go.Layout(title=f'{yvar} vs cycle', xaxis={'title': 'Cycle'}, yaxis={'title': yvar})}
+
+# Update the one cycle graph
+@app.callback(
+    Output('cycle-graph', 'figure'),
+    Input('cycles-graph', 'clickData'),
+    Input('samples-data-store', 'data'),
+    Input('samples-cycle-x', 'value'),
+    Input('samples-cycle-y', 'value'),
+)
+def update_cycle_graph(clickData,data,xvar,yvar):
+    if not clickData:
+        cycle = 1
+    else:
+        # clickData is a dict with keys 'points' and 'event'
+        # 'points' is a list of dicts with keys 'curveNumber', 'pointNumber', 'pointIndex', 'x', 'y', 'text'
+        point = clickData['points'][0]
+        cycle = point['x']
+    traces = []
+    for sample, data_dict in data['data_sample_time'].items():
+        # find where the cycle = cycle
+        mask = np.array(data_dict['Cycle']) == cycle
+        if not any(mask):
+            continue
+        mask_dict = {}
+        mask_dict['V (V)'] = np.array(data_dict['V (V)'])[mask]
+        mask_dict['Q (mAh)'] = np.array(data_dict['dQ (mAh)'])[mask].cumsum()
+        mask_dict['dQdV (mAh/V)'] = smoothed_derivative(mask_dict['V (V)'], mask_dict['Q (mAh)'])
+        traces.append(go.Scatter(x=mask_dict[xvar], y=mask_dict[yvar], mode='lines', name=sample))
+    return {'data': traces, 'layout': go.Layout(title=f'{yvar} vs {xvar} for cycle {cycle}', xaxis={'title': xvar}, yaxis={'title': yvar}),}
+
+    
+
 
 #----------------------------- BATCHES CALLBACKS ------------------------------#
 
@@ -454,7 +547,7 @@ def update_batch_data(batches, data):
             continue
         with open(f'{file_location}/{analysed_file}', 'r', encoding='utf-8') as f:
             json_data = json.load(f)
-        data['data_batch_cycle'][batch] = json_data
+        data['data_batch_cycle'][batch] = json_data["data"]
     
     data_list = []
     for key, value in data['data_batch_cycle'].items():
@@ -486,7 +579,7 @@ def update_batch_data(batches, data):
     Input('batch-cycle-colormap', 'value'),
 )
 def update_batch_cycle_graph(data, variable, color, colormap):
-    if not data['data_batch_cycle']:
+    if not data or not data['data_batch_cycle']:
         fig = px.scatter().update_layout(title='No data...', xaxis_title='Cycle', yaxis_title='')
         fig.update_layout(template = 'ggplot2')
         return fig
@@ -503,7 +596,8 @@ def update_batch_cycle_graph(data, variable, color, colormap):
     
     # Use Plotly Express to create the scatter plot
     # TODO copy the stuff from other plots here
-    df['1/Formation C'] = 1 / df['Formation C']
+    if 'Formation C' in df.columns:
+        df['1/Formation C'] = 1 / df['Formation C']
 
     fig = px.scatter(df, x='Cycle', y=variable, title=f'{variable} vs cycle', color=color, color_continuous_scale=colormap)
     fig.update_layout(scattermode="group", scattergap=0.75, template = 'ggplot2')
@@ -527,9 +621,14 @@ def update_correlation_map(data):
         data_list += value
     data = [{k: v for k, v in d.items() if not isinstance(v, list) and v} for d in data_list]
     dfs = [pd.DataFrame(d, index=[0]) for d in data]
+    if not dfs:
+        fig = px.imshow([[0]], color_continuous_scale='balance', aspect="auto", zmin=-1, zmax=1)
+        fig.update_layout(template = 'ggplot2')
+        return fig
     df = pd.concat(dfs, ignore_index=True)
 
-    df['1/Formation C'] = 1 / df['Formation C']
+    if 'Formation C' in df.columns:
+        df['1/Formation C'] = 1 / df['Formation C']
 
     # remove columns where all values are the same
     df = df.loc[:, df.nunique() > 1]
@@ -582,9 +681,13 @@ def update_correlation_graph(clickData, data, color, colormap):
         data_list += value
     data = [{k: v for k, v in d.items() if not isinstance(v, list) and v} for d in data_list]
     dfs = [pd.DataFrame(d, index=[0]) for d in data]
+    if not dfs:
+        fig = px.scatter().update_layout(xaxis_title='X-axis Title', yaxis_title='Y-axis Title')
+        fig.update_layout(template = 'ggplot2')
+        return fig
     df = pd.concat(dfs, ignore_index=True)
-
-    df['1/Formation C'] = 1 / df['Formation C']
+    if 'Formation C' in df.columns:
+        df['1/Formation C'] = 1 / df['Formation C']
 
     point = clickData['points'][0]
     xvar = point['x']
@@ -597,6 +700,8 @@ def update_correlation_graph(clickData, data, color, colormap):
         'Sample ID',
         'Formation C',
     ]
+    # remove columns which are not in the data
+    hover_columns = [col for col in hover_columns if col in df.columns]
 
     fig = px.scatter(
         df,
@@ -611,7 +716,7 @@ def update_correlation_graph(clickData, data, color, colormap):
         },
     )
     fig.update_traces(
-        marker=dict(size=10)
+        marker=dict(size=10,line=dict(color='black', width=1)),
     )
     fig.update_layout(
         xaxis_title=xvar,
