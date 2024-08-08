@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
 from plotly.subplots import make_subplots
-from version import __version__
+from version import __version__, __url__
 
 def convert_tomato_json(
         snapshot_file: str,
@@ -101,6 +101,7 @@ def convert_tomato_json(
                 # Get all data about this job
                 cursor.execute(f"SELECT * FROM jobs WHERE `Job ID`='{jobid}'")
                 job_data = dict(cursor.fetchone())
+                job_data['Payload'] = json.loads(job_data['Payload'])
                 sampleid = job_data["Sample ID"]
                 # Get all data about this sample
                 cursor.execute(f"SELECT * FROM samples WHERE `Sample ID`='{sampleid}'")
@@ -111,27 +112,36 @@ def convert_tomato_json(
             sample_data = None
 
         # add metadata to the hdf5 file
-        # Metadata to add
         metadata = {
             "provenance": {
                 "snapshot_file": snapshot_file,
-                "tomato_metadata": json.dumps(input_dict["metadata"]),
+                "tomato_metadata": input_dict["metadata"],
                 "cucumber_metadata": {
-                    "cucumber_version": __version__,
-                    "conversion_method": "cucumber_analysis.py convert_tomato_json",
-                    "conversion_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    "hdf5_conversion": {
+                        "repo_url": __url__,
+                        "repo_version": __version__,
+                        "method": "cucumber_analysis.py convert_tomato_json",
+                        "datetime": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    }
+                    
                 },
             },
-            "job_data": json.dumps(job_data) if job_data is not None else "{}",
-            "sample_data": json.dumps(sample_data) if sample_data is not None else "{}",
+            "job_data": job_data if job_data is not None else {},
+            "sample_data": sample_data if sample_data is not None else {},
+            "glossary": {
+                "uts": "Unix time stamp in seconds",
+                "V (V)": "Cell voltage in volts",
+                "I (A)": "Current across cell in amps",
+                "loop_number": "Number of loops completed from EC-lab loop technique",
+                "cycle_number": "Number of cycles within one technique from EC-lab",
+                "index": "index of the method in the payload, i.e. 0 for the first method, 1 for the second etc.",
+                "technique": "code of technique using definitions from MPG2 developer package",
+            },
         }
         # Open the HDF5 file with h5py and add metadata
         with h5py.File(output_hdf_file, 'a') as file:
             if 'cycling' in file:
-                for key, value in metadata.items():
-                    if isinstance(value, (dict, list)):
-                        value = json.dumps(value)
-                    file['cycling'].attrs[key] = value
+                file['cycling'].attrs['metadata'] = json.dumps(metadata)
             else:
                 print("Dataset 'cycling' not found.")
     return data
@@ -175,6 +185,8 @@ def combine_hdfs(
         pd.DataFrame: DataFrame containing the cycling data
         dict: metadata from the files
     """
+    with open('./config.json', encoding = 'utf-8') as f:
+        config = json.load(f)
     # Get the metadata from the files
     dfs = []
     metadatas = []
@@ -183,10 +195,10 @@ def combine_hdfs(
         dfs.append(pd.read_hdf(f))
         with h5py.File(f, 'r') as file:
             try:
-                metadata=dict(file['cycling'].attrs)
+                metadata=json.loads(file['cycling'].attrs['metadata'])
                 metadatas.append(metadata)
                 sampleids.append(
-                    json.loads(metadata['sample_data'])['Sample ID']
+                    metadata.get('sample_data',{}).get('Sample ID','')
                 )
             except KeyError as exc:
                 print(f"Metadata not found in {f}")
@@ -235,46 +247,92 @@ def combine_hdfs(
             if abs(group_df["dQ (mAh)"].sum()) < 0.3 * group_df["dQ (mAh)"].abs().sum():
                 df.loc[df['Step'] == step, 'Cycle'] = cycle
                 cycle += 1
+    
+    # Add provenance to the metadatas
+    timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
+    metadata = {
+        'provenance': {
+            'cucumber_metadata': {
+                'hdf5_merging': {
+                    'h5_files': h5_files,
+                    'repo_url': __url__,
+                    'repo_version': __version__,
+                    'method': 'cucumber_analysis.combine_hdfs',
+                    'datetime': datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S %z'),
+                }
+            },
+            'original_file_provenance': {f: m['provenance'] for f, m in zip(h5_files, metadatas)},
+        },
+        'sample_data': metadatas[-1].get('sample_data',{}),
+        'job_data': [m.get('job_data',{}) for m in metadatas],
+        'mpr_metadata': [m.get('mpr_metadata',{}) for m in metadatas],
+        'glossary': {
+            'uts': 'Unix time stamp in seconds',
+            'V (V)': 'Cell voltage in volts',
+            'I (A)': 'Current across cell in amps',
+            'dt (s)': 'Time between data points in seconds',
+            'Iavg (A)': 'Average current between adjacent datapoints in amps',
+            'dQ (mAh)': 'Change in charge between adjacent datapoints in mAh',
+            'Step': 'A step is unique combination of job file, cycle number and loop number, this can be a full charge/discharge cycle, but can also be e.g. a protection step',
+            'Cycle': 'A cycle is a step which is considered a full, valid charge/discharge cycle, see the function specified in provenance for the criteria',
+        },
+    }
 
-    return df, metadatas
+    return df, metadata
 
 def analyse_cycles(
         h5_files: List[str],
         voltage_lower_cutoff: float = 0,
         voltage_upper_cutoff: float = 5,
-        save_files: bool = False,
-    ) -> Tuple[pd.DataFrame, dict]:
+        save_cycle_dict: bool = False,
+        save_merged_hdf: bool = False,
+    ) -> Tuple[pd.DataFrame, dict, dict]:
     """ Take multiple dataframes, merge and analyse the cycling data.
     
     Args:
         h5_files (List[str]): list of paths to the hdf5 files
         voltage_lower_cutoff (float, optional): lower cutoff for voltage data
         voltage_upper_cutoff (float, optional): upper cutoff for voltage data
-        save_files (bool, optional): whether to save the output files
-            files will be saved in the same folder as the first input file
-    
+        save_cycle_dict (bool, optional): save the cycle_dict as a json file
+        save_merged_hdf (bool, optional): save the merged dataframe as an hdf5 file
+
+    Returns:
+        pd.DataFrame: DataFrame containing the cycling data
+        dict: dictionary containing the cycling analysis
+        dict: metadata from the files
+
     TODO: Add save location as an argument.
     """
     with open('./config.json', encoding = 'utf-8') as f:
         config = json.load(f)
     db_path = config["Database path"]
 
-    df, metadatas = combine_hdfs(h5_files)
+    df, metadata = combine_hdfs(h5_files)
 
-    last_metadata = metadatas[-1]
-    sample_data = json.loads(last_metadata.get('sample_data',{}))
+    # update metadata
+    timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
+    metadata.setdefault('provenance', {}).setdefault('cucumber_metadata', {})
+    metadata['provenance']['cucumber_metadata'].update({
+        'analysis': {
+            'repo_url': __url__,
+            'repo_version': __version__,
+            'method': 'cucumber_analysis.analyse_cycles',
+            'datetime': datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S %z'),
+        },
+    })
+
+    sample_data = metadata.get('sample_data',{})
     sampleid = sample_data.get('Sample ID',None)
-    job_data = [json.loads(m.get('job_data','{}')) for m in metadatas]
-    mpr_data = [json.loads(m.get('mpr_metadata','{}')) for m in metadatas]
+    job_data = metadata.get('job_data',[])
+    mpr_metadata = metadata.get('mpr_metadata',[])
     snapshot_status = job_data[-1].get('Snapshot status',None)
     snapshot_pipeline = job_data[-1].get('Pipeline',None)
     last_snapshot = job_data[-1].get('Last snapshot',None)
 
     # Extract useful information from the metadata
     mass_mg = sample_data.get('Cathode active material mass (mg)',np.nan)
-
     # Extract information from the tomato or mpr job data
-    assert not (any(job_data) and any(mpr_data)), "Both tomato job and mpr data found, cucumber cannot process this"
+    assert not (any(job_data) and any(mpr_metadata)), "Both tomato job and mpr data found, cucumber cannot process this"
 
     max_V = 0
     formation_C = 0
@@ -285,7 +343,7 @@ def analyse_cycles(
     pipeline = None
     status = None
     if any(job_data):
-        payloads = [json.loads(j.get('Payload',"[]")) for j in job_data]
+        payloads = [j.get('Payload',[]) for j in job_data]
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
@@ -327,10 +385,9 @@ def analyse_cycles(
 
     # MPR DATA
     # TODO get formation and cycle C, separate max voltage in formation and cycling
-    if any(mpr_data):
-        mpr_metadatas = [json.loads(metadata['mpr_metadata']) for metadata in metadatas]
-        for mpr_metadata in mpr_metadatas:
-            for params in mpr_metadata.get('params',[]):
+    if any(mpr_metadata):
+        for m in mpr_metadata:
+            for params in m.get('params',[]):
                 V = round(params.get("EM",0),3)
                 if V > max_V:
                     max_V = V
@@ -438,10 +495,10 @@ def analyse_cycles(
     # Calculate additional quantities from cycling data and add to cycle_dict
     if not cycle_dict['Cycle']:
         print(f"No cycles found for {sampleid}")
-        return df, cycle_dict
+        return df, cycle_dict, metadata
     if len(cycle_dict['Cycle']) == 1 and not complete:
         print(f"No complete cycles found for {sampleid}")
-        return df, cycle_dict
+        return df, cycle_dict, metadata
     last_idx = -1 if complete else -2
 
     cycle_dict['First formation efficiency (%)'] = cycle_dict['Efficiency (%)'][0]
@@ -470,7 +527,6 @@ def analyse_cycles(
     # TODO add energy density/fade
 
     # Add times to cycle_dict
-    timezone = pytz.timezone(config["Time zone"])
     uts_steps = {}
     for step in [3,5,6,10]:
         datetime_str = sample_data.get(f"Timestamp step {step}", None)
@@ -538,17 +594,30 @@ def analyse_cycles(
             (*update_row.values(), sampleid)
         )
 
-    if save_files:
+    if save_cycle_dict or save_merged_hdf:
         save_folder = os.path.dirname(h5_files[0])
         if not save_folder:
             save_folder = '.'
         if not os.path.exists(save_folder):
             os.makedirs(save_folder)
+    if save_cycle_dict:
         with open(f'{save_folder}/cycles.{sampleid}.json','w',encoding='utf-8') as f:
-            json.dump(cycle_dict,f)
-    return df, cycle_dict
+            json.dump({"data": cycle_dict, "metadata": metadata},f)
+    if save_merged_hdf:
+        df.to_hdf(
+            f'{save_folder}/cycles.{sampleid}.h5',
+            key="cycling",
+            complib="blosc",
+            complevel=4
+        )
+        with h5py.File(f'{save_folder}/combined.{sampleid}.h5', 'a') as file:
+            for key, value in metadata.items():
+                if isinstance(value, (dict, list)):
+                    value = json.dumps(value)
+                file['cycling'].attrs[key] = value
+    return df, cycle_dict, metadata
 
-def analyse_sample(sample: str) -> Tuple[pd.DataFrame, dict]:
+def analyse_sample(sample: str) -> Tuple[pd.DataFrame, dict, dict]:
     """ Analyse a single sample.
     
     Will search for the sample in the processed snapshots folder and analyse the cycling data.
@@ -562,14 +631,14 @@ def analyse_sample(sample: str) -> Tuple[pd.DataFrame, dict]:
         os.path.join(file_location,f) for f in os.listdir(file_location)
         if (f.startswith('snapshot') and f.endswith('.h5'))
     ]
-    df, cycle_dict = analyse_cycles(h5_files, save_files=True)
+    df, cycle_dict, metadata = analyse_cycles(h5_files, save_cycle_dict=True)
     with sqlite3.connect(config["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "UPDATE results SET `Last analysis` = ? WHERE `Sample ID` = ?",
             (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), sample)
         )
-    return df, cycle_dict
+    return df, cycle_dict, metadata
 
 def analyse_all_samples(
         sampleid_contains: str = "",
@@ -660,7 +729,8 @@ def plot_sample(sample: str) -> None:
         print(f"No files starting with 'cycles' found in {file_location}.")
         return
     with open(f'{file_location}/{analysed_file}', 'r', encoding='utf-8') as f:
-        cycle_df = pd.DataFrame(json.load(f))
+        cycle_dict = json.load(f)
+        cycle_df = pd.DataFrame(cycle_dict["data"])
     assert not cycle_df.empty, f"Empty dataframe for {sample}"
     assert 'Cycle' in cycle_df.columns, f"No 'Cycle' column in {sample}"
     fig, ax = plt.subplots(2,1,sharex=True,figsize=(6,4),dpi=72)
@@ -796,6 +866,7 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
         os.makedirs(save_location)
     samples = batch.get('samples')
     cycle_dicts = []
+    metadata = {"sample_metadata":{}}
     for sample in samples:
         # get the anaylsed data
         run_id = _run_from_sample(sample)
@@ -806,7 +877,9 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
                 if (f.startswith('cycles') and f.endswith('.json'))
             )
             with open(f'{sample_folder}/{analysed_file}', 'r', encoding='utf-8') as f:
-                cycle_dict = json.load(f)
+                data = json.load(f)
+                cycle_dict = data.get('data',{})
+                metadata['sample_metadata'][sample] = data.get('metadata',{})
             if cycle_dict.get('Cycle') and cycle_dict['Cycle']:
                 cycle_dicts.append(cycle_dict)
             else:
@@ -819,6 +892,19 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
     cycle_dicts = [d for d in cycle_dicts if d.get('Cycle') and d['Cycle']]
     assert len(cycle_dicts) > 0, "No cycling data found for any sample"
 
+    # update the metadata
+    timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
+    metadata['provenance'] = {
+        'cucumber_metadata': {
+            'batch_analysis': {
+                'repo_url': __url__,
+                'repo_version': __version__,
+                'method': 'cucumber_analysis.analyse_batch',
+                'datetime': datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S %z'),
+            },
+        },
+    }
+
     # make another df where we only keep the lists from the dictionaries in the list
     only_lists = pd.concat([pd.DataFrame({k:v for k,v in cycle_dict.items() if isinstance(v, list) or k=="Sample ID"}) for cycle_dict in cycle_dicts])
     only_vals = pd.DataFrame([{k:v for k,v in cycle_dict.items() if not isinstance(v, list)} for cycle_dict in cycle_dicts])
@@ -827,7 +913,7 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
         only_lists.to_excel(writer, sheet_name='Data by cycle', index=False)
         only_vals.to_excel(writer, sheet_name='Results by sample', index=False)
     with open(f'{save_location}/batch.{plot_name}.json','w',encoding='utf-8') as f:
-        json.dump(cycle_dicts,f)
+        json.dump({"data":cycle_dicts, "metadata": metadata},f)
 
 def plot_batch(plot_name: str, batch: dict) -> None:
     """ Plots the data for a batch of samples.
@@ -846,7 +932,8 @@ def plot_batch(plot_name: str, batch: dict) -> None:
         raise FileNotFoundError(f"No batch data found for {plot_name}")
     with open(os.path.join(save_location,filename),'r',encoding='utf-8') as f:
         data = json.load(f)
-    data = [pd.DataFrame(d) for d in data if not pd.DataFrame(d).dropna(how='all').empty]
+    cycle_dicts = data.get('data',[])
+    data = [pd.DataFrame(d) for d in cycle_dicts if not pd.DataFrame(d).dropna(how='all').empty]
     cycle_df = pd.concat(pd.DataFrame(d) for d in data).reset_index(drop=True)
 
     palette = batch.get('palette', 'deep')

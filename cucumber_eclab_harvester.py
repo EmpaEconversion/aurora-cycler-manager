@@ -21,7 +21,7 @@ import pandas as pd
 import h5py
 import yadg
 import yadg.extractors
-from version import __version__
+from version import __version__, __url__
 
 eclab_config = {
     "Servers": [
@@ -179,34 +179,31 @@ def convert_mpr_to_hdf(
             sample_data = None
 
         # Get job data from the snapshot file
-        mpr_metadata = data.attrs['original_metadata']
-        yadg_metadata = json.dumps(
-            {k: v for k, v in data.attrs.items() if k.startswith('yadg')}
-        )
+        mpr_metadata = json.loads(data.attrs['original_metadata'])
+        yadg_metadata = {k: v for k, v in data.attrs.items() if k.startswith('yadg')}
 
         # Metadata to add
+        timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
         metadata = {
             "provenance": {
                 "snapshot_file": mpr_file,
                 "yadg_metadata": yadg_metadata,
                 "cucumber_metadata": {
-                    "cucumber_version": __version__,
-                    "conversion_method": "cucumber_eclab_harvester.py convert_mpr_to_hdf",
-                    "conversion_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    "hdf5_conversion" : {
+                        "repo_url": __url__,
+                        "repo_version": __version__,
+                        "method": "cucumber_eclab_harvester.py convert_mpr_to_hdf",
+                        "datetime": datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S %z'),
+                    },
                 }
             },
             "mpr_metadata": mpr_metadata,
-            "sample_data": json.dumps(sample_data) if sample_data is not None else "",
+            "sample_data": sample_data if sample_data is not None else {},
         }
         # Open the HDF5 file with h5py and add metadata
         with h5py.File(output_hdf_file, 'a') as file:
             if 'cycling' in file:
-                for key, value in metadata.items():
-                    if value is None:
-                        value=""
-                    if isinstance(value, (dict, list)):
-                        value = json.dumps(value)
-                    file['cycling'].attrs[key] = value
+                file['cycling'].attrs['metadata'] = json.dumps(metadata)
             else:
                 print("Dataset 'cycling' not found.")
     # Update the database
@@ -314,5 +311,5 @@ def convert_all_mprs() -> None:
                     print(f"Error processing {mpr}: {e}")
 
 if __name__ == "__main__":
-    get_mprs_from_folders()
+    # get_mprs_from_folders()
     convert_all_mprs()
