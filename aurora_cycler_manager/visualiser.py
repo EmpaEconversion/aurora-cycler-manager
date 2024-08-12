@@ -18,6 +18,8 @@ from aurora_cycler_manager.analysis import combine_hdfs, _run_from_sample
 
 app = dash.Dash(__name__)
 
+graph_template = 'seaborn'
+
 #======================================================================================================================#
 #===================================================== FUNCTIONS ======================================================#
 #======================================================================================================================#
@@ -146,7 +148,7 @@ app.layout = html.Div([
                     children=[
                         html.Div(
                             [
-                                html.P("Select samples to plot:"),
+                                html.H4("Select samples to plot:"),
                                 dcc.Dropdown(
                                     id='samples-dropdown',
                                     options=[
@@ -155,8 +157,8 @@ app.layout = html.Div([
                                     value=[],
                                     multi=True,
                                 ),
-                                html.Div(style={'margin-top': '20px'}),
-                                html.P("Time graph"),
+                                html.Div(style={'margin-top': '50px'}),
+                                html.H4("Time graph"),
                                 html.Label('X-axis', htmlFor='samples-time-x'),
                                 dcc.Dropdown(
                                     id='samples-time-x',
@@ -176,7 +178,8 @@ app.layout = html.Div([
                                     value='V (V)',
                                     multi=False,
                                 ),
-                                html.P("Cycles graph"),
+                                html.Div(style={'margin-top': '50px'}),
+                                html.H4("Cycles graph"),
                                 html.P("X-axis: Cycle"),
                                 html.Label('Y-axis', htmlFor='samples-cycles-y'),
                                 dcc.Dropdown(
@@ -189,7 +192,8 @@ app.layout = html.Div([
                                     value='Specific discharge capacity (mAh/g)',
                                     multi=False,
                                 ),
-                                html.P("One cycle graph"),
+                                html.Div(style={'margin-top': '50px'}),
+                                html.H4("One cycle graph"),
                                 dcc.Dropdown(
                                     id='samples-cycle-x',
                                     options=['Q (mAh)', 'V (V)', 'dQdV (mAh/V)'],
@@ -211,22 +215,22 @@ app.layout = html.Div([
                                     overlay_style={"visibility":"visible", "filter": "blur(2px)"},
                                     children=[
                                         dcc.Store(id='samples-data-store', data={'data_sample_time': {}, 'data_sample_cycle': {}}),
-                                        dcc.Graph(id='time-graph',figure={'data': [],'layout': go.Layout(title='vs time',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'})}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
+                                        dcc.Graph(id='time-graph',figure={'data': [],'layout': go.Layout(template=graph_template,title='vs time',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'})}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
                                         # two graphs side by side
                                         html.Div(
                                             [
                                                 # First graph on the left
                                                 html.Div(
-                                                    dcc.Graph(id='cycles-graph',figure={'data': [],'layout': go.Layout(title='vs cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'})}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
+                                                    dcc.Graph(id='cycles-graph',figure={'data': [],'layout': go.Layout(template=graph_template,title='vs cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'})}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
                                                 ),
                                             ],
                                             style={'width': '50%', 'display': 'inline-block', 'height': '45vh'}
                                         ),
                                         html.Div(
                                             [
-                                                # First graph on the left
+                                                # Second graph on the right
                                                 html.Div(
-                                                    dcc.Graph(id='cycle-graph',figure={'data': [],'layout': go.Layout(title='One cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'})}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
+                                                    dcc.Graph(id='cycle-graph',figure={'data': [],'layout': go.Layout(template=graph_template,title='One cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'})}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
                                                 ),
                                             ],
                                             style={'width': '50%', 'display': 'inline-block', 'height': '45vh'}
@@ -253,7 +257,7 @@ app.layout = html.Div([
                         ),   
                         html.Div(
                             [
-                                html.P("Select batches to plot:"),
+                                html.H4("Select batches to plot:"),
                                 dcc.Dropdown(
                                     id='batches-dropdown',
                                     options=[
@@ -262,15 +266,16 @@ app.layout = html.Div([
                                     value=[],
                                     multi=True,
                                 ),
-                                html.Div(style={'margin-top': '20px'}),
-                                html.P("Select variable for top graph"),
+                                html.Div(style={'margin-top': '50px'}),
+                                html.P("X-axis: Cycle"),
+                                html.P("Y-axis"),
                                 dcc.Dropdown(
                                     id='batch-cycle-y',
                                     options=['Normalised discharge capacity (%)'],
                                     value='Normalised discharge capacity (%)',
                                     multi=False,
                                 ),
-                                html.P("Colormap of top graph"),
+                                html.P("Colormap"),
                                 dcc.Dropdown(
                                     id='batch-cycle-color',
                                     # TODO remove these default options, change to run ID
@@ -298,7 +303,7 @@ app.layout = html.Div([
                                     id='batch-cycle-graph',
                                     figure={
                                         'data': [],
-                                        'layout': go.Layout(title='vs cycle', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
+                                        'layout': go.Layout(template=graph_template, title='vs cycle', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
                                     }, 
                                     config={'scrollZoom': True, 'displaylogo':False,  'toImageButtonOptions': {'format': 'svg',}},
                                     style={'height': '40vh'}
@@ -315,9 +320,9 @@ app.layout = html.Div([
                                         id='batch-correlation-map',
                                         figure={
                                             'data': [],
-                                            'layout': go.Layout(title='heatmap', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
+                                            'layout': go.Layout(template=graph_template, title='Click to show correlation', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
                                         }, 
-                                        config={'scrollZoom': False, 'displaylogo':False, 'toImageButtonOptions': {'format': 'png', 'width': 1000, 'height': 800}},
+                                        config={'scrollZoom': False, 'displaylogo':False, 'modeBarButtonsToRemove' : ['zoom2d','pan2d','zoomIn2d','zoomOut2d','autoScale2d','resetScale2d'], 'toImageButtonOptions': {'format': 'png', 'width': 1000, 'height': 800}},
                                         style={'height': '50vh'},
                                     ),
                                     style={'width': '50%', 'display': 'inline-block', 'height': '50vh'}
@@ -360,7 +365,7 @@ app.layout = html.Div([
                                             id='batch-correlation-graph',
                                             figure={
                                                 'data': [],
-                                                'layout': go.Layout(title='params', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
+                                                'layout': go.Layout(template=graph_template, title='params', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
                                             },
                                             config={'scrollZoom': True, 'displaylogo':False, 'toImageButtonOptions': {'format': 'svg'}},
                                             style={'height': '45vh'},
@@ -457,9 +462,11 @@ def update_sample_data(samples, data):
     Input('samples-time-y', 'value'),
 )
 def update_time_graph(data, xvar, xunits, yvar):
+    fig = px.scatter().update_layout(title='No data...', xaxis_title=f'Time ({xunits.lower()})', yaxis_title=yvar)
+    fig.update_layout(template = graph_template)
     if not data['data_sample_time']:
-        return {'data': [], 'layout': go.Layout(title='No data...', xaxis={'title': 'Time (s)'},)}
-    traces = []
+        return fig
+
     multiplier = {'Seconds': 1, 'Minutes': 60, 'Hours': 3600, 'Days': 86400}[xunits]
     for sample, data_dict in data['data_sample_time'].items():
         uts = np.array(data_dict['uts'])
@@ -471,8 +478,20 @@ def update_time_graph(data, xvar, xunits, yvar):
             offset=uts[next(i for i, x in enumerate(data_dict['Cycle']) if x >= 4)]
         else:
             offset=0
-        traces.append(go.Scatter(x=(np.array(data_dict['uts'])-offset)/multiplier, y=data_dict[yvar], mode='lines', name=sample))
-    return {'data': traces, 'layout': go.Layout(title=f'{yvar} vs time', xaxis={'title': f'Time ({xunits.lower()})'}, yaxis={'title': yvar})}
+
+        trace = go.Scatter(
+            x=(np.array(data_dict['uts']) - offset) / multiplier,
+            y=data_dict[yvar],
+            mode='lines',
+            name=sample
+        )
+        fig.add_trace(trace)
+
+    fig.update_layout(
+        title=f'{yvar} vs time',
+    )
+
+    return fig
 
 
 # Update the cycles graph
@@ -482,12 +501,15 @@ def update_time_graph(data, xvar, xunits, yvar):
     Input('samples-cycles-y', 'value'),
 )
 def update_cycles_graph(data, yvar):
-    traces = []
+    fig = px.scatter().update_layout(title='No data...', xaxis_title='Cycle', yaxis_title=yvar)
+    fig.update_layout(template = graph_template)
     if not data['data_sample_cycle']:
-        return {'data': traces, 'layout': go.Layout(title='No data...', xaxis={'title': 'Cycle'}, yaxis={'title': yvar})}
+        return fig
     for sample, cycle_dict in data['data_sample_cycle'].items():
-        traces.append(go.Scatter(x=cycle_dict['Cycle'], y=cycle_dict[yvar], mode='lines+markers', name=sample))
-    return {'data': traces, 'layout': go.Layout(title=f'{yvar} vs cycle', xaxis={'title': 'Cycle'}, yaxis={'title': yvar})}
+        trace = go.Scatter(x=cycle_dict['Cycle'], y=cycle_dict[yvar], mode='lines+markers', name=sample)
+        fig.add_trace(trace)
+    fig.update_layout(title=f'{yvar} vs cycle')
+    return fig
 
 # Update the one cycle graph
 @app.callback(
@@ -498,6 +520,12 @@ def update_cycles_graph(data, yvar):
     Input('samples-cycle-y', 'value'),
 )
 def update_cycle_graph(clickData,data,xvar,yvar):
+
+    fig = px.scatter().update_layout(title='No data...', xaxis_title=xvar, yaxis_title=yvar)
+    fig.update_layout(template = graph_template)
+    if not data['data_sample_cycle']:
+        return fig
+    
     if not clickData:
         cycle = 1
     else:
@@ -515,8 +543,11 @@ def update_cycle_graph(clickData,data,xvar,yvar):
         mask_dict['V (V)'] = np.array(data_dict['V (V)'])[mask]
         mask_dict['Q (mAh)'] = np.array(data_dict['dQ (mAh)'])[mask].cumsum()
         mask_dict['dQdV (mAh/V)'] = smoothed_derivative(mask_dict['V (V)'], mask_dict['Q (mAh)'])
-        traces.append(go.Scatter(x=mask_dict[xvar], y=mask_dict[yvar], mode='lines', name=sample))
-    return {'data': traces, 'layout': go.Layout(title=f'{yvar} vs {xvar} for cycle {cycle}', xaxis={'title': xvar}, yaxis={'title': yvar}),}
+        trace = go.Scatter(x=mask_dict[xvar], y=mask_dict[yvar], mode='lines', name=sample)
+        fig.add_trace(trace)
+
+    fig.update_layout(title=f'{yvar} vs {xvar} for cycle {cycle}')
+    return fig
 
     
 
@@ -585,7 +616,7 @@ def update_batch_data(batches, data):
 def update_batch_cycle_graph(data, variable, color, colormap):
     if not data or not data['data_batch_cycle']:
         fig = px.scatter().update_layout(title='No data...', xaxis_title='Cycle', yaxis_title='')
-        fig.update_layout(template = 'ggplot2')
+        fig.update_layout(template = graph_template)
         return fig
 
     # data['data_batch_cycle'] is a dict with keys as batch names and values as dicts
@@ -604,7 +635,7 @@ def update_batch_cycle_graph(data, variable, color, colormap):
         df['1/Formation C'] = 1 / df['Formation C']
 
     fig = px.scatter(df, x='Cycle', y=variable, title=f'{variable} vs cycle', color=color, color_continuous_scale=colormap)
-    fig.update_layout(scattermode="group", scattergap=0.75, template = 'ggplot2')
+    fig.update_layout(scattermode="group", scattergap=0.75, template = graph_template)
     # Plotly Express returns a complete figure, so you can directly return it
     return fig
 
@@ -618,7 +649,7 @@ def update_correlation_map(data):
     # data is a list of dicts
     if not data['data_batch_cycle']:
         fig = px.imshow([[0]], color_continuous_scale='balance', aspect="auto", zmin=-1, zmax=1)
-        fig.update_layout(template = 'ggplot2')
+        fig.update_layout(template = graph_template)
         return fig
     data_list = []
     for key, value in data['data_batch_cycle'].items():
@@ -627,7 +658,7 @@ def update_correlation_map(data):
     dfs = [pd.DataFrame(d, index=[0]) for d in data]
     if not dfs:
         fig = px.imshow([[0]], color_continuous_scale='balance', aspect="auto", zmin=-1, zmax=1)
-        fig.update_layout(template = 'ggplot2')
+        fig.update_layout(template = graph_template)
         return fig
     df = pd.concat(dfs, ignore_index=True)
 
@@ -662,7 +693,7 @@ def update_correlation_map(data):
         xaxis=dict(tickfont=dict(size=10)),
         yaxis=dict(tickfont=dict(size=10)),
         margin=dict(l=0, r=0, t=0, b=0),
-        template = 'ggplot2',
+        template = graph_template,
     )
     return fig
 
@@ -676,7 +707,7 @@ def update_correlation_map(data):
 def update_correlation_graph(clickData, data, color, colormap):
     if not clickData:
         fig = px.scatter().update_layout(xaxis_title='X-axis Title', yaxis_title='Y-axis Title')
-        fig.update_layout(template = 'ggplot2')
+        fig.update_layout(template = graph_template)
         return fig
     # clickData is a dict with keys 'points' and 'event'
     # 'points' is a list of dicts with keys 'curveNumber', 'pointNumber', 'pointIndex', 'x', 'y', 'text'
@@ -687,7 +718,7 @@ def update_correlation_graph(clickData, data, color, colormap):
     dfs = [pd.DataFrame(d, index=[0]) for d in data]
     if not dfs:
         fig = px.scatter().update_layout(xaxis_title='X-axis Title', yaxis_title='Y-axis Title')
-        fig.update_layout(template = 'ggplot2')
+        fig.update_layout(template = graph_template)
         return fig
     df = pd.concat(dfs, ignore_index=True)
     if 'Formation C' in df.columns:
@@ -725,7 +756,7 @@ def update_correlation_graph(clickData, data, color, colormap):
     fig.update_layout(
         xaxis_title=xvar,
         yaxis_title=yvar,
-        template = 'ggplot2',
+        template = graph_template,
     )
     return fig
 
