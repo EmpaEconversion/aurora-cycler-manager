@@ -10,7 +10,7 @@ import json
 import sqlite3
 import pandas as pd
 from scipy import stats
-from cucumber_analysis import combine_hdfs, _run_from_sample
+from .analysis import combine_hdfs, _run_from_sample
 
 app = dash.Dash(__name__)
 

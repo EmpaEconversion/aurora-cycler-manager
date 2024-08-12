@@ -1,12 +1,12 @@
-""" Grab EC-lab files from remote PCs and save them as a cucumber-compatible hdf5 file. 
+""" Harvest EC-lab .mpr files and convert to aurora-compatible hdf5 files. 
 
 Define the machines to grab files from in the config dictionary.
 The functions will grab all files from specified folders on a remote machine,
 save them locally, then convert them to hdf5 files and save in a processed
-data folder cucumber-style, i.e. with run-id/sample-id/snapshot-id.h5.
+data folder aurora-style, i.e. with run-id/sample-id/snapshot-id.h5.
 
-These files can be processed with the same tools in cucumber_analysis as used
-for the data from tomato.
+These files can be processed with the same tools in analysis.py as used for the
+data from tomato.
 """
 import os
 import re
@@ -188,11 +188,11 @@ def convert_mpr_to_hdf(
             "provenance": {
                 "snapshot_file": mpr_file,
                 "yadg_metadata": yadg_metadata,
-                "cucumber_metadata": {
+                "aurora_metadata": {
                     "hdf5_conversion" : {
                         "repo_url": __url__,
                         "repo_version": __version__,
-                        "method": "cucumber_eclab_harvester.py convert_mpr_to_hdf",
+                        "method": "eclab_harvester.convert_mpr_to_hdf",
                         "datetime": datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S %z'),
                     },
                 }

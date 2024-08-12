@@ -1,17 +1,18 @@
-""" cucumber_tools manages a database and tomato servers for battery cycling
+""" server_manager manages a database and tomato servers for battery cycling
 
-This module contains the Cucumber class which communicates with multiple tomato
+This module contains the ServerManager class which communicates with multiple tomato
 servers and manages a database of samples, pipelines and jobs from all servers.
 
-Cucumber can do all ketchup functions (load, submit, eject, ready, cancel,
+Server manager can do all ketchup functions (load, submit, eject, ready, cancel,
 snapshot) without the user having to know which server samples are on.
 
-Jobs can be submitted with C-rates, and cucumber will automatically calculate
-the capacity based on the sample information in the database.
+Jobs can be submitted with C-rates, and the capacity can be automatically
+calculated based on the sample information in the database.
 
-Cucumber can also take snapshots of all jobs in the database, and save the data
-locally as a json and hdf5 file. The data can then be processed and plotted.
-See the cucumber_daemon.py script for how to run this process automatically.
+The server manager can also take snapshots of all jobs in the database, save the
+data locally as a json and convert to an hdf5 file. The data can then be
+processed and plotted. See the daemon.py script for how to run this process 
+automatically.
 """
 
 import os
@@ -24,34 +25,34 @@ import traceback
 from typing import Literal, Tuple
 import pandas as pd
 import paramiko
-from cycler_servers import TomatoServer
-from database_setup import create_config, create_database
-from cucumber_analysis import convert_tomato_json, _run_from_sample
+from .cycler_servers import TomatoServer
+from .database_setup import create_config, create_database
+from .analysis import convert_tomato_json, _run_from_sample
 
 
-class Cucumber:
-    """ The Cucumber class is the only class in the cucumber_tools module.
+class ServerManager:
+    """ The ServerManager: class is the only class in the server_manager module.
 
     Typical usage:
 
         # This will connect to servers and update the database
         # Add sample files to ./samples folder and they will be added to the database automatically
-        cucumber = Cucumber()
+        sm = ServerManager()
 
         # Load a sample, submit a job, ready the pipeline
-        cucumber.load("sample_id", "pipeline_name")
-        cucumber.submit("sample_id", payload_dict, sample_capacity_Ah)
-        cucumber.ready("pipeline_name")
+        sm.load("sample_id", "pipeline_name")
+        sm.submit("sample_id", payload_dict, sample_capacity_Ah)
+        sm.ready("pipeline_name")
 
         # Update the database to check status of jobs and pipelines
-        cucumber.update_db()
+        sm.update_db()
 
         # Snapshot a job or sample to get the data
-        cucumber.snapshot("sample_id")
+        sm.snapshot("sample_id")
     """
 
     def __init__(self):
-        """ Initialize the cucumber object.
+        """ Initialize the server manager object.
         
         Reads configuration from './config.json' to connect to the database and servers.
         """
@@ -81,7 +82,7 @@ class Cucumber:
 
         print("Creating cycler server objects")
         self.get_servers()
-        print("Cucumber complete, consider updating database with update_db()")
+        print("Server manager initialised, consider updating database with update_db()")
 
     def get_servers(self) -> None:
         """ Create the cycler server objects from the config file. """
@@ -584,7 +585,7 @@ class Cucumber:
         Parameters
         ----------
         samp_or_jobid : str
-            The sample ID or (cucumber) job ID to snapshot.
+            The sample ID or (aurora) job ID to snapshot.
         get_raw : bool, optional
             If True, get raw data. If False, get processed data. Default is False.
         mode : str, optional

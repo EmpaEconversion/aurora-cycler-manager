@@ -1,6 +1,6 @@
 """ Functions to create config and database files.
 
-Config and database files are created if they do not exist during Cucumber
+Config and database files are created if they do not exist during server-manager
 initialisation. The config file is created with some default values for
 file paths and server information. The database samples table is created
 with columns specified in the config file, with alternative names for handling

@@ -10,9 +10,9 @@ from datetime import datetime, timedelta
 import logging
 import traceback
 import matplotlib
-import cucumber_tools as ct
-from cucumber_analysis import plot_all_samples, plot_all_batches, analyse_all_samples, analyse_all_batches
-from cucumber_eclab_harvester import get_mprs_from_folders, convert_all_mprs
+from . import server_manager
+from .analysis import plot_all_samples, plot_all_batches, analyse_all_samples, analyse_all_batches
+from .eclab_harvester import get_mprs_from_folders, convert_all_mprs
 
 matplotlib.use('Agg')
 
@@ -28,7 +28,7 @@ def daemon_loop(update_time: float = None, snapshot_times: list = None):
             default ['02:00']
     """
     logging.basicConfig(
-        filename='cucumber_daemon.log',
+        filename='daemon.log',
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
@@ -58,26 +58,26 @@ def daemon_loop(update_time: float = None, snapshot_times: list = None):
     next_run_time = min(snapshot_datetimes)  # Find the earliest next run time
     logging.info("Next snapshot at %s", next_run_time)
 
-    cucumber=ct.Cucumber()
+    sm=server_manager.ServerManager()
     try:
-        cucumber.update_db()
+        sm.update_db()
     except Exception as e:
         logging.critical("Error updating database: %s", e)
         logging.debug(traceback.format_exc())
-    logging.info("Cucumber complete, entering main loop...")
+    logging.info("Server manager initialised, entering main loop...")
     while not STOP_FLAG:
         sleep(update_time)
         now = datetime.now()
         logging.info("Updating database...")
         try:
-            cucumber.update_db()
+            sm.update_db()
         except Exception as e:
             logging.critical("Error updating database: %s", e)
             logging.debug(traceback.format_exc())
         if now >= next_run_time:
             logging.info("Snapshotting database...")
             try:
-                cucumber.snapshot_all()
+                sm.snapshot_all()
             except Exception as e:
                 logging.critical("Error snapshotting: %s", e)
                 logging.debug(traceback.format_exc())
@@ -113,5 +113,5 @@ if __name__ == "__main__":
     try:
         daemon_loop(update_time = 300, snapshot_times = ['02:00'])
     except KeyboardInterrupt:
-        logging.info("Killing cucumber daemon")
+        logging.info("Killing daemon")
         STOP_FLAG = True

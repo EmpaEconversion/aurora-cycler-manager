@@ -1,4 +1,4 @@
-""" Functions used by cucumber for parsing, analysing and plotting.
+""" Functions used for parsing, analysing and plotting.
 
 Parsing:
 Contains functions for converting raw jsons from tomato to pandas dataframes,
@@ -50,7 +50,7 @@ def convert_tomato_json(
     - index: index of the method in the payload
     - technique: code of technique using Biologic convention
         100 = OCV, 101 = CA, 102 = CP, 103 = CV, 155 = CPLIMIT, 157 = CALIMIT, 
-        -1 = Unknown to Cucumber
+        -1 = Unknown
 
     The dataframe is saved to 'cycling' key in the hdf5 file.
     Metadata is added to the 'cycling' attributes in hdf5 file.
@@ -116,11 +116,11 @@ def convert_tomato_json(
             "provenance": {
                 "snapshot_file": snapshot_file,
                 "tomato_metadata": input_dict["metadata"],
-                "cucumber_metadata": {
+                "aurora_metadata": {
                     "hdf5_conversion": {
                         "repo_url": __url__,
                         "repo_version": __version__,
-                        "method": "cucumber_analysis.py convert_tomato_json",
+                        "method": "analysis.py convert_tomato_json",
                         "datetime": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     }
                     
@@ -252,12 +252,12 @@ def combine_hdfs(
     timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
     metadata = {
         'provenance': {
-            'cucumber_metadata': {
+            'aurora_metadata': {
                 'hdf5_merging': {
                     'h5_files': h5_files,
                     'repo_url': __url__,
                     'repo_version': __version__,
-                    'method': 'cucumber_analysis.combine_hdfs',
+                    'method': 'analysis.combine_hdfs',
                     'datetime': datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S %z'),
                 }
             },
@@ -311,12 +311,12 @@ def analyse_cycles(
 
     # update metadata
     timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
-    metadata.setdefault('provenance', {}).setdefault('cucumber_metadata', {})
-    metadata['provenance']['cucumber_metadata'].update({
+    metadata.setdefault('provenance', {}).setdefault('aurora_metadata', {})
+    metadata['provenance']['aurora_metadata'].update({
         'analysis': {
             'repo_url': __url__,
             'repo_version': __version__,
-            'method': 'cucumber_analysis.analyse_cycles',
+            'method': 'analysis.analyse_cycles',
             'datetime': datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S %z'),
         },
     })
@@ -332,7 +332,7 @@ def analyse_cycles(
     # Extract useful information from the metadata
     mass_mg = sample_data.get('Cathode active material mass (mg)',np.nan)
     # Extract information from the tomato or mpr job data
-    assert not (any(job_data) and any(mpr_metadata)), "Both tomato job and mpr data found, cucumber cannot process this"
+    assert not (any(job_data) and any(mpr_metadata)), "Both tomato job and mpr data found, cannot be processed"
 
     max_V = 0
     formation_C = 0
@@ -895,11 +895,11 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
     # update the metadata
     timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
     metadata['provenance'] = {
-        'cucumber_metadata': {
+        'aurora_metadata': {
             'batch_analysis': {
                 'repo_url': __url__,
                 'repo_version': __version__,
-                'method': 'cucumber_analysis.analyse_batch',
+                'method': 'analysis.analyse_batch',
                 'datetime': datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S %z'),
             },
         },

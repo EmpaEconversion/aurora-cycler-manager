@@ -1,4 +1,4 @@
-""" Server classes used by cucumber_tools, currently only tomato servers are implemented.
+""" Server classes used by server_manager, currently only tomato servers are implemented.
 
 Server configs are stored in ./config.json and must include the following fields:
 - label (str): A unique label for the server
@@ -110,7 +110,7 @@ class CyclerServer():
 class TomatoServer(CyclerServer):
     """ Server class for Tomato servers, implements all the methods in CyclerServer.
 
-    Used by cucumber_tools to interact with Tomato servers, should not be instantiated directly.
+    Used by server_manager to interact with Tomato servers, should not be instantiated directly.
 
     Attributes:
         save_location (str): The location on the server where snapshots are saved.
@@ -118,7 +118,7 @@ class TomatoServer(CyclerServer):
     def __init__(self, server_config, local_private_key):
         super().__init__(server_config, local_private_key)
         self.tomato_scripts_path = server_config.get("tomato_scripts_path", None)
-        self.save_location = "C:/tomato/cucumber_scratch"
+        self.save_location = "C:/tomato/aurora_scratch"
         self.tomato_data_path = server_config.get("tomato_data_path", None)
 
     def eject(self, pipeline: str) -> str:
