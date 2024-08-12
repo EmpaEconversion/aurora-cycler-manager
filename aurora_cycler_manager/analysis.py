@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
 from plotly.subplots import make_subplots
-from version import __version__, __url__
+from aurora_cycler_manager.version import __version__, __url__
 
 def convert_tomato_json(
         snapshot_file: str,
@@ -92,7 +92,9 @@ def convert_tomato_json(
             json_filename = os.path.basename(snapshot_file)
             jobid = "".join(json_filename.split(".")[1:-1])
             # look up jobid in the database
-            with open('./config.json', encoding = 'utf-8') as f:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            config_path = os.path.join(current_dir, '..', 'config.json')
+            with open(config_path, encoding = 'utf-8') as f:
                 config = json.load(f)
             db_path = config["Database path"]
             with sqlite3.connect(db_path) as conn:
@@ -150,7 +152,9 @@ def convert_all_tomato_jsons(
     sampleid_contains: str = ""
     ) -> None:
     """ Goes through all the raw json files in the snapshots folder and converts them to hdf5. """
-    with open('./config.json', encoding = 'utf-8') as f:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(current_dir, '..', 'config.json')
+    with open(config_path, encoding = 'utf-8') as f:
         config = json.load(f)
     raw_folder = config["Snapshots folder path"]
     processed_folder = config["Processed snapshots folder path"]
@@ -185,7 +189,9 @@ def combine_hdfs(
         pd.DataFrame: DataFrame containing the cycling data
         dict: metadata from the files
     """
-    with open('./config.json', encoding = 'utf-8') as f:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(current_dir, '..', 'config.json')
+    with open(config_path, encoding = 'utf-8') as f:
         config = json.load(f)
     # Get the metadata from the files
     dfs = []
@@ -303,7 +309,9 @@ def analyse_cycles(
 
     TODO: Add save location as an argument.
     """
-    with open('./config.json', encoding = 'utf-8') as f:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(current_dir, '..', 'config.json')
+    with open(config_path, encoding = 'utf-8') as f:
         config = json.load(f)
     db_path = config["Database path"]
 
@@ -623,7 +631,9 @@ def analyse_sample(sample: str) -> Tuple[pd.DataFrame, dict, dict]:
     Will search for the sample in the processed snapshots folder and analyse the cycling data.
     """
     run_id = _run_from_sample(sample)
-    with open('./config.json', encoding='utf-8') as f:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(current_dir, '..', 'config.json')
+    with open(config_path, encoding = 'utf-8') as f:
         config = json.load(f)
     data_folder = config["Processed snapshots folder path"]
     file_location = os.path.join(data_folder, run_id, sample)
@@ -649,7 +659,9 @@ def analyse_all_samples(
     Args: sampleid_contains (str, optional): only analyse samples with this
         string in the sampleid
     """
-    with open('./config.json', encoding = 'utf-8') as f:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(current_dir, '..', 'config.json')
+    with open(config_path, encoding = 'utf-8') as f:
         config = json.load(f)
     snapshot_folder = config["Processed snapshots folder path"]
 
@@ -698,7 +710,9 @@ def plot_sample(sample: str) -> None:
     and capacity(cycle).
     """
     run_id = _run_from_sample(sample)
-    with open('./config.json', encoding = 'utf-8') as f:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(current_dir, '..', 'config.json')
+    with open(config_path, encoding = 'utf-8') as f:
         config = json.load(f)
     data_folder = config["Processed snapshots folder path"]
     file_location = f"{data_folder}/{run_id}/{sample}"
@@ -760,7 +774,9 @@ def plot_all_samples(
     Args: snapshot_folder (str): path to the folder containing the processed 
         snapshots. Defaults to the path in the config file.
     """
-    with open('./config.json', encoding = 'utf-8') as f:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(current_dir, '..', 'config.json')
+    with open(config_path, encoding = 'utf-8') as f:
         config = json.load(f)
     if not snapshot_folder:
         snapshot_folder = config["Processed snapshots folder path"]
@@ -811,7 +827,9 @@ def parse_sample_plotting_file(
 
     TODO: Put the graph config location in the config file.
     """
-    with open('./config.json', encoding = 'utf-8') as f:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(current_dir, '..', 'config.json')
+    with open(config_path, encoding = 'utf-8') as f:
         config = json.load(f)
     data_folder = config["Processed snapshots folder path"]
 
@@ -858,7 +876,9 @@ def parse_sample_plotting_file(
 
 def analyse_batch(plot_name: str, batch: dict) -> None:
     """ Combines data for a batch of samples. """
-    with open('./config.json', encoding = 'utf-8') as f:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(current_dir, '..', 'config.json')
+    with open(config_path, encoding = 'utf-8') as f:
         config = json.load(f)
     data_folder = config["Processed snapshots folder path"]
     save_location = os.path.join(config['Batches folder path'],plot_name)
@@ -924,7 +944,9 @@ def plot_batch(plot_name: str, batch: dict) -> None:
             and any other plotting options e.g. group_by, palette, etc.
     """
     # Load the data
-    with open('./config.json', encoding = 'utf-8') as f:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(current_dir, '..', 'config.json')
+    with open(config_path, encoding = 'utf-8') as f:
         config = json.load(f)
     save_location = os.path.join(config['Batches folder path'],plot_name)
     filename = next((f for f in os.listdir(save_location) if f.startswith('batch') and f.endswith('.json')), None)

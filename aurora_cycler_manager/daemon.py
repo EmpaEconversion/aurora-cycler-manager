@@ -10,9 +10,9 @@ from datetime import datetime, timedelta
 import logging
 import traceback
 import matplotlib
-from . import server_manager
-from .analysis import plot_all_samples, plot_all_batches, analyse_all_samples, analyse_all_batches
-from .eclab_harvester import get_mprs_from_folders, convert_all_mprs
+import aurora_cycler_manager.server_manager as server_manager
+from aurora_cycler_manager.analysis import plot_all_samples, plot_all_batches, analyse_all_samples, analyse_all_batches
+from aurora_cycler_manager.eclab_harvester import get_mprs_from_folders, convert_all_mprs
 
 matplotlib.use('Agg')
 

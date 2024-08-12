@@ -9,6 +9,7 @@ These files can be processed with the same tools in analysis.py as used for the
 data from tomato.
 """
 import os
+import sys
 import re
 import json
 import sqlite3
@@ -21,8 +22,12 @@ import pandas as pd
 import h5py
 import yadg
 import yadg.extractors
-from version import __version__, __url__
+root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
+from aurora_cycler_manager.version import __version__, __url__
 
+# TODO: move this to a config file
 eclab_config = {
     "Servers": [
         {
@@ -36,7 +41,7 @@ eclab_config = {
             "EC-lab copy location": "C:/Users/lab131/eclabcopy/"
         }
     ],
-    "Snapshots folder path": "C:/",  # will add 'eclabcopy' folder to this path
+    "Snapshots folder path": "C:/aurora_snapshots",  # will add 'eclabcopy' folder to this path
     "Processed snapshots folder path": "K:/Aurora/cucumber/ec-lab snapshots/"
 }
 
@@ -71,7 +76,9 @@ def get_mprs(
 
 def get_mprs_from_folders() -> None:
     """ Get all mpr files from all servers using the config file """
-    with open("./config.json", "r", encoding = 'utf-8') as f:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(current_dir, '..', 'config.json')
+    with open(config_path, encoding = 'utf-8') as f:
         config = json.load(f)
     for server in eclab_config["Servers"]:
         server_config = next((s for s in config["Servers"] if s["label"] == server["label"]), None)
@@ -113,7 +120,9 @@ def convert_mpr_to_hdf(
     TODO: use capacity to define C rate
 
     """
-    with open('./config.json', encoding = 'utf-8') as f:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(current_dir, '..', 'config.json')
+    with open(config_path, encoding = 'utf-8') as f:
         config = json.load(f)
     db_path = config["Database path"]
 
@@ -227,7 +236,9 @@ def convert_mpr_to_hdf(
 
 def convert_all_mprs() -> None:
     """ Converts all raw eclab files to hdf5 files. """
-    with open('./config.json', encoding = 'utf-8') as f:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(current_dir, '..', 'config.json')
+    with open(config_path, encoding = 'utf-8') as f:
         config = json.load(f)
     raw_folder = os.path.join(eclab_config["Snapshots folder path"], "eclabcopy")
     processed_folder = config["Processed snapshots folder path"]

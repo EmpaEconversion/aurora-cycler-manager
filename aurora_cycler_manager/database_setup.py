@@ -10,7 +10,8 @@ import os
 import json
 import sqlite3
 
-base_dir = os.path.dirname(os.path.abspath(__file__))
+current_dir = os.path.dirname(os.path.abspath(__file__))
+base_dir = os.path.join(current_dir, '..')
 config_path = os.path.join(base_dir, 'config.json')
 
 def create_config() -> None:

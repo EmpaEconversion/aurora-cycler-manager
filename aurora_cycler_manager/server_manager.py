@@ -25,9 +25,9 @@ import traceback
 from typing import Literal, Tuple
 import pandas as pd
 import paramiko
-from .cycler_servers import TomatoServer
-from .database_setup import create_config, create_database
-from .analysis import convert_tomato_json, _run_from_sample
+from aurora_cycler_manager.cycler_servers import TomatoServer
+from aurora_cycler_manager.database_setup import create_config, create_database
+from aurora_cycler_manager.analysis import convert_tomato_json, _run_from_sample
 
 
 class ServerManager:
@@ -56,15 +56,18 @@ class ServerManager:
         
         Reads configuration from './config.json' to connect to the database and servers.
         """
-        if not os.path.exists("./config.json") or not os.path.exists("./database.db"):
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        config_path = os.path.join(current_dir, '..', 'config.json')
+        
+        if not os.path.exists(config_path):
             create_config()
             create_database()
             raise ValueError(
-                "Config file or database not found. Created new config.json and database.db files."
+                "Config file or database not found. Created new config.json."
                 "Please check the config file and restart the program, "
                 "or change and rerun database_setup.py as needed."
             )
-        with open("./config.json", "r", encoding="utf-8") as f:
+        with open(config_path, encoding = 'utf-8') as f:
             self.config = json.load(f)
         self.db = self.config["Database path"]
 
@@ -86,8 +89,10 @@ class ServerManager:
 
     def get_servers(self) -> None:
         """ Create the cycler server objects from the config file. """
-        with open("./config.json", "r", encoding="utf-8") as f:
-            self.config = json.load(f)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        config_path = os.path.join(current_dir, '..', 'config.json')
+        with open(config_path, encoding = 'utf-8') as f:
+            config = json.load(f)
         server_list = self.config["Servers"]
 
         self.servers=[]
@@ -114,7 +119,9 @@ class ServerManager:
                 The path to the csv file to insert
         """
         df = pd.read_csv(csv_file,delimiter=';')
-        with open("./config.json", "r", encoding="utf-8") as f:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        config_path = os.path.join(current_dir, '..', 'config.json')
+        with open(config_path, encoding = 'utf-8') as f:
             self.config = json.load(f)
         column_config = self.config["Sample database"]
 

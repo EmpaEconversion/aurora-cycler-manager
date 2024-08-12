@@ -1,4 +1,5 @@
 import os
+import sys
 import dash
 from dash import dcc, html, Input, Output, State
 import plotly.graph_objs as go
@@ -10,7 +11,10 @@ import json
 import sqlite3
 import pandas as pd
 from scipy import stats
-from .analysis import combine_hdfs, _run_from_sample
+root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
+from aurora_cycler_manager.analysis import combine_hdfs, _run_from_sample
 
 app = dash.Dash(__name__)
 

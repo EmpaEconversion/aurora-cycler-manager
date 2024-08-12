@@ -1,6 +1,6 @@
 """ Server classes used by server_manager, currently only tomato servers are implemented.
 
-Server configs are stored in ./config.json and must include the following fields:
+Server configs are stored in ../config.json and must include the following fields:
 - label (str): A unique label for the server
 - hostname (str): The hostname of the server
 - username (str): The username for the server
