@@ -26,17 +26,17 @@ from version import __version__, __url__
 eclab_config = {
     "Servers": [
         {
-            "label" : "tt1", # must match the label in the main config file
+            "label" : "tt1",  # must match the label in the main config file
             "EC-lab folder location": "C:/Users/lab131/Desktop/eclab/svfe/",
             "EC-lab copy location": "C:/Users/lab131/eclabcopy/"
         },
         {
-            "label" : "tt2", # must match the label in the main config file
+            "label" : "tt2",  # must match the label in the main config file
             "EC-lab folder location": "C:/Users/lab131/Desktop/EC-lab/",
             "EC-lab copy location": "C:/Users/lab131/eclabcopy/"
         }
     ],
-    "Snapshots folder path": "C:/", # will add 'eclabcopy' folder to this path
+    "Snapshots folder path": "C:/",  # will add 'eclabcopy' folder to this path
     "Processed snapshots folder path": "K:/Aurora/cucumber/ec-lab snapshots/"
 }
 
@@ -126,15 +126,15 @@ def convert_mpr_to_hdf(
     df = pd.DataFrame()
     df['uts'] = data.coords['uts'].values
     # Check if the time is incorrect and fix it
-    if df['uts'].values[0] < 1000000000: # the measurement started before 2001
-        # grab the start time from mpl file
+    if df['uts'].values[0] < 1000000000:  # The measurement started before 2001
+        # Grab the start time from mpl file
         mpl_file = mpr_file.replace(".mpr",".mpl")
         try:
             with open(mpl_file, encoding='ANSI') as f:
                 lines = f.readlines()
         except FileNotFoundError:
             print(f"Incorrect start time in {mpr_file} and no mpl file found.")
-        # find the date from line with Acquisition started on : 07/17/2024 11:36:40.528
+        # Find the date from line with 'Acquisition started on : '
         for line in lines:
             if line.startswith("Acquisition started on : "):
                 datetime_str = line.split(":",1)[1].strip()
@@ -200,12 +200,14 @@ def convert_mpr_to_hdf(
             "mpr_metadata": mpr_metadata,
             "sample_data": sample_data if sample_data is not None else {},
         }
+
         # Open the HDF5 file with h5py and add metadata
         with h5py.File(output_hdf_file, 'a') as file:
             if 'cycling' in file:
                 file['cycling'].attrs['metadata'] = json.dumps(metadata)
             else:
                 print("Dataset 'cycling' not found.")
+
     # Update the database
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
@@ -245,6 +247,7 @@ def convert_all_mprs() -> None:
             print(f"Skipping {run_folder} - not a folder")
             continue
         run_id = run_id_lookup.get(run_folder, None)
+
         # Try looking up in the database if not found in the lookup table
         if not run_id:
             with sqlite3.connect(db_path) as conn:
@@ -297,7 +300,7 @@ def convert_all_mprs() -> None:
             sample_id = f"{run_id}_{sample_number:02d}"
             print(f"Processing {sample_id}")
 
-            # convert the mpr to hdf
+            # Convert the mpr to hdf
             mprs = [f for f in os.listdir(os.path.join(raw_folder, run_folder, sample_folder)) if f.endswith('.mpr')]
             if not mprs:
                 print(f"No mpr files found for {sample_id}")
@@ -311,5 +314,5 @@ def convert_all_mprs() -> None:
                     print(f"Error processing {mpr}: {e}")
 
 if __name__ == "__main__":
-    # get_mprs_from_folders()
+    get_mprs_from_folders()
     convert_all_mprs()
