@@ -1,3 +1,15 @@
 body {
     font-family: sans-serif;
 }
+/* Customize the font of the tabs */
+.tab {
+    font-family: 'Arial', sans-serif; /* Change to your desired font */
+    font-size: 18px; /* Adjust the font size */
+    color: #444; /* Adjust the font color */
+}
+/* Customize the font of the selected tab */
+.tab--selected {
+    font-family: 'Arial', sans-serif; /* Change to your desired font */
+    font-size: 18px; /* Adjust the font size */
+    color: #ff0000; /* Adjust the font color */
+}
