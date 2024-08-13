@@ -128,7 +128,8 @@ def smoothed_derivative(x, y, npoints=21):
     x_smooth = moving_average(x, npoints)
     y_smooth = moving_average(y, npoints)
     dydx_smooth = deriv(x_smooth, y_smooth)
-    dydx_smooth[dydx_smooth > 20] = np.nan
+    dydx_smooth[deriv(x_smooth,np.arange(len(x_smooth))) < 0] *= -1
+    dydx_smooth[abs(dydx_smooth) > 20] = np.nan
     return dydx_smooth
 
 #======================================================================================================================#
