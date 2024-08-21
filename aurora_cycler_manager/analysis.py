@@ -244,15 +244,23 @@ def combine_hdfs(
     for step, group_df in df.groupby('Step'):
         # To be considered a cycle (subject to change):
         # - more than 10 data points
+        # - 99th percentile min and max voltage of charge and discharge within 2 V of each other
         # - total change in charge less than 50% of absolute total charge
         # - e.g. 1 mAh charge and 0.3 mAh discharge gives 0.7 mAh change and 1.3 mAh total = 54%
         #        this would not be considered a cycle
         # - e.g. 1 mAh charge and 0.5 mAh discharge gives 0.5 mAh change and 1.5 mAh total = 33%
         #        this would be considered a cycle
         if len(group_df) > 10:
-            if abs(group_df["dQ (mAh)"].sum()) < 0.3 * group_df["dQ (mAh)"].abs().sum():
-                df.loc[df['Step'] == step, 'Cycle'] = cycle
-                cycle += 1
+            if abs(group_df["dQ (mAh)"].sum()) < 0.5 * group_df["dQ (mAh)"].abs().sum():
+                charge_min_V = group_df.loc[group_df['Iavg (A)'] > 0, 'V (V)'].quantile(0.01)
+                charge_max_V = group_df.loc[group_df['Iavg (A)'] > 0, 'V (V)'].quantile(0.99)
+                discharge_min_V = group_df.loc[group_df['Iavg (A)'] < 0, 'V (V)'].quantile(0.01)
+                discharge_max_V = group_df.loc[group_df['Iavg (A)'] < 0, 'V (V)'].quantile(0.99)
+                min_V_diff = abs(charge_min_V - discharge_min_V)
+                max_V_diff = abs(charge_max_V - discharge_max_V)
+                if (min_V_diff) < 2 and (max_V_diff) < 2:
+                    df.loc[df['Step'] == step, 'Cycle'] = cycle
+                    cycle += 1
     
     # Add provenance to the metadatas
     timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
@@ -477,6 +485,7 @@ def analyse_cycles(
         'Normalised discharge energy (%)': [100*d/discharge_energy_mWh[3] for d in discharge_energy_mWh] if formed else None,
         'Charge average voltage (V)': charge_avg_V,
         'Discharge average voltage (V)': discharge_avg_V,
+        'Delta V (V)': [c-d for c,d in zip(charge_avg_V,discharge_avg_V)],
         'Charge average current (A)': charge_avg_I,
         'Discharge average current (A)': discharge_avg_I,
         'Charge energy (mWh)': charge_energy_mWh,
@@ -494,6 +503,7 @@ def analyse_cycles(
         "Anode active material mass (mg)",
         "Cathode active material mass (mg)",
         "Electrolyte name",
+        "Electrolyte description",
         "Electrolyte amount (uL)",
         "Rack position",
     ]
@@ -518,6 +528,7 @@ def analyse_cycles(
     cycle_dict['Last efficiency (%)'] = cycle_dict['Efficiency (%)'][last_idx]
     cycle_dict['Formation average voltage (V)'] = np.mean(cycle_dict['Charge average voltage (V)'][:3]) if formed else None
     cycle_dict['Formation average current (A)'] = np.mean(cycle_dict['Charge average current (A)'][:3]) if formed else None
+    cycle_dict['Initial delta V (V)'] = cycle_dict['Delta V (V)'][3] if formed else None
 
     # Calculate cycles to x% of initial discharge capacity
     pcents = [95,90,85,80,75,70,60,50]
@@ -530,9 +541,7 @@ def analyse_cycles(
         cycle_dict[f'Cycles to {pcent}% energy'] = next((i for i in range(3, len(norm) - 1)
                             if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
         
-    # TODO add average voltage (weighted by charge) for each cycle
-    # TODO add average current for each cycle
-    # TODO add energy density/fade
+    cycle_dict['Run ID'] = _run_from_sample(sampleid)
 
     # Add times to cycle_dict
     uts_steps = {}
