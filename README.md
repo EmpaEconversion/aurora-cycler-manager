@@ -40,3 +40,11 @@ Either load samples, submit jobs and ready pipelines using Tomato directly, or w
 Run daemon.py to periodically update the database with the samples, job statuses, as well as periodically harvest data from the cyclers and run analysis. This can also harvest data from EC-lab directly if eclab_harvester.py is configured.
 
 Run visualiser.py to view an interactive visualiser of the results for samples and batches of samples.
+
+## Contributors
+
+- [Graham Kimbell](https://github.com/g-kimbell)
+
+## Acknowledgements
+
+This software was developed at the Materials for Energy Conversion Lab at the Swiss Federal Laboratories for Materials Science and Technology (Empa).
