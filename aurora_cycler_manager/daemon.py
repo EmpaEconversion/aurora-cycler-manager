@@ -4,12 +4,16 @@ Updates database regularly and snapshots all jobs then analyses and plots graphs
 at specified times each day. Change the update time and snapshot times in the
 main block to suit your needs.
 """
-from sys import stdout
+import os
+import sys
 from time import sleep
 from datetime import datetime, timedelta
 import logging
 import traceback
 import matplotlib
+root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
 import aurora_cycler_manager.server_manager as server_manager
 from aurora_cycler_manager.analysis import plot_all_samples, plot_all_batches, analyse_all_samples, analyse_all_batches
 from aurora_cycler_manager.eclab_harvester import get_mprs_from_folders, convert_all_mprs
@@ -33,7 +37,7 @@ def daemon_loop(update_time: float = None, snapshot_times: list = None):
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
     # Add a stream handler to also log to the console
-    console_handler = logging.StreamHandler(stdout)
+    console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     console_handler.setFormatter(formatter)
