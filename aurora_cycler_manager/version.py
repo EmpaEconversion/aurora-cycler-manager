@@ -7,4 +7,4 @@ __description__ = """
 Tools to distribute jobs, monitor progress and analyse results from Tomato
 battery cycling servers.
 """
-__url__ = 'https://github.com/g-kimbell/aurora-cycler-manager'
+__url__ = 'https://github.com/EmpaEconversion/aurora-cycler-manager'
