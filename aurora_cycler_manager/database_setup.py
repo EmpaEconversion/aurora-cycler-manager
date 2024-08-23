@@ -1,4 +1,6 @@
-""" Functions to create config and database files.
+""" Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia
+
+Functions to create config and database files.
 
 Config and database files are created if they do not exist during server-manager
 initialisation. The config file is created with some default values for
