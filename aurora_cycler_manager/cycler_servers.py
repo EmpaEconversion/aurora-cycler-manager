@@ -1,4 +1,6 @@
-""" Server classes used by server_manager, currently only tomato servers are implemented.
+""" Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia
+
+Server classes used by server_manager, currently only tomato servers are implemented.
 
 Server configs are stored in ../config.json and must include the following fields:
 - label (str): A unique label for the server

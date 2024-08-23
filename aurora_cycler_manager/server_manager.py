@@ -1,4 +1,6 @@
-""" server_manager manages a database and tomato servers for battery cycling
+""" Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia
+
+server_manager manages a database and tomato servers for battery cycling
 
 This module contains the ServerManager class which communicates with multiple tomato
 servers and manages a database of samples, pipelines and jobs from all servers.

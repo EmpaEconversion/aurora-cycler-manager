@@ -1,3 +1,11 @@
+""" Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia
+
+Web-based visualiser for the Aurora cycler manager based on Dash and Plotly.
+
+Allows users to rapidly view and compare data from the Aurora robot and cycler
+systems, both of individual samples and of batches of samples.
+"""
+
 import os
 import sys
 import dash

@@ -1,4 +1,6 @@
-""" Harvest EC-lab .mpr files and convert to aurora-compatible hdf5 files. 
+""" Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia
+
+Harvest EC-lab .mpr files and convert to aurora-compatible hdf5 files. 
 
 Define the machines to grab files from in the config dictionary.
 The functions will grab all files from specified folders on a remote machine,

@@ -1,4 +1,6 @@
-""" Functions used for parsing, analysing and plotting.
+""" Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia
+
+Functions used for parsing, analysing and plotting.
 
 Parsing:
 Contains functions for converting raw jsons from tomato to pandas dataframes,
