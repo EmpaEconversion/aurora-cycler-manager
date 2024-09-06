@@ -773,9 +773,12 @@ class ServerManager:
             (json.dumps(payload), sampleid, jobid)
         )
 
-    def update_all_payloads(self) -> None:
+    def update_all_payloads(self, force_retry = False) -> None:
         """ Update the payload information for all jobs in the database. """
-        result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE `Payload` IS NULL")
+        if force_retry:
+            result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE `Payload` IS NULL OR `Payload` = '\"Unknown\"'")
+        else:
+            result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE `Payload` IS NULL")
         for jobid, in result:
             self.update_payload(jobid)
         return
