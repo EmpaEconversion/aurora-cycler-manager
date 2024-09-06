@@ -25,6 +25,7 @@ import traceback
 from typing import Literal, Tuple
 import pandas as pd
 import paramiko
+from multiprocess import Pool
 from aurora_cycler_manager.cycler_servers import TomatoServer
 from aurora_cycler_manager.database_setup import create_config, create_database
 from aurora_cycler_manager.analysis import convert_tomato_json, _run_from_sample
@@ -78,10 +79,9 @@ class ServerManager:
                 "Using default path ~/.ssh/id_rsa",
                 RuntimeWarning
             )
-            private_key_path = os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa")
+            self.private_key_path = os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa")
         else:
-            private_key_path = self.config["SSH private key path"]
-        self.private_key = paramiko.RSAKey.from_private_key_file(private_key_path)
+            self.private_key_path = self.config["SSH private key path"]
 
         print("Creating cycler server objects")
         self.get_servers()
@@ -102,7 +102,7 @@ class ServerManager:
                 self.servers.append(
                     TomatoServer(
                         server_config,
-                        self.private_key
+                        self.private_key_path
                     )
                 )
             else:
@@ -224,9 +224,16 @@ class ServerManager:
                     RuntimeWarning
                 )
 
-    def update_jobs(self) -> None:
+    def update_jobs(self, parallel=False) -> None:
         """ Update the jobs table in the database with the current job status. """
-        for server in self.servers:
+        if parallel:
+            with Pool() as pool:
+                jobs = pool.map(lambda server: server.get_jobs(), self.servers)
+        else:
+            jobs = []
+            for server in self.servers:
+                jobs.append(server.get_jobs())
+        for jobs,server in zip(jobs,self.servers):
             jobs = server.get_jobs()
             dt = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             label = server.label
@@ -238,29 +245,43 @@ class ServerManager:
                         jobs['jobid'], jobs['jobname'], jobs['status'], jobs['pipeline']
                         ):
                         # If pipeline is none, do not update (keep old value)
+                        cursor.execute(
+                            "INSERT OR IGNORE INTO jobs (`Job ID`) VALUES (?)",
+                            (f"{label}-{jobid_on_server}",)
+                        )
                         if pipeline is None:
                             cursor.execute(
                                 "UPDATE jobs "
                                 "SET `Status` = ?, `Jobname` = ?, `Server label` = ?, "
-                                "`Server hostname` = ?, `Last checked` = ? "
+                                "`Server Hostname` = ?, `Job ID on server` = ?, `Last Checked` = ? "
                                 "WHERE `Job ID` = ?",
-                                (status, jobname, label, hostname, dt, f"{label}-{jobid_on_server}")
+                                (status, jobname, label, hostname, jobid_on_server, dt, f"{label}-{jobid_on_server}")
                             )
                         else:
                             cursor.execute(
                                 "UPDATE jobs "
                                 "SET `Status` = ?, `Pipeline` = ?, `Jobname` = ?, `Server label` = ?, "
-                                "`Server Hostname` = ?, `Job ID on server` = ?, "
-                                "`Last Checked` = ? "
+                                "`Server Hostname` = ?, `Job ID on server` = ?, `Last Checked` = ? "
                                 "WHERE `Job ID` = ?",
                                 (status, pipeline, jobname, label, hostname, jobid_on_server, dt, f"{label}-{jobid_on_server}")
                             )
                     conn.commit()
 
-    def update_pipelines(self) -> None:
+    def update_pipelines(self, parallel = False) -> None:
         """ Update the pipelines table in the database with the current status """
-        for server in self.servers:
+        # TODO only include pipelines that are found on the servers
+        pipelines = []
+        if parallel:
+            with Pool() as pool:
+                statuses = pool.map(lambda server: server.get_pipelines(), self.servers)
+        else:
+            statuses = []
+            for server in self.servers:
+                status.append(server.get_pipelines())
+        
+        for status, server in zip(statuses, self.servers):
             status = server.get_pipelines()
+            pipelines += status['pipeline']
             dt = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             label = server.label
             hostname = server.hostname
@@ -771,9 +792,12 @@ class ServerManager:
             (json.dumps(payload), sampleid, jobid)
         )
 
-    def update_all_payloads(self) -> None:
+    def update_all_payloads(self, force_retry = False) -> None:
         """ Update the payload information for all jobs in the database. """
-        result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE `Payload` IS NULL")
+        if force_retry:
+            result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE `Payload` IS NULL OR `Payload` = '\"Unknown\"'")
+        else:
+            result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE `Payload` IS NULL")
         for jobid, in result:
             self.update_payload(jobid)
         return

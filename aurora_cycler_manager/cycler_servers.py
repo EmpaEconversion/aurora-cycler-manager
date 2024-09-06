@@ -24,7 +24,7 @@ import pandas as pd
 class CyclerServer():
     """ Base class for server objects, should not be instantiated directly. """
 
-    def __init__(self, server_config, local_private_key):
+    def __init__(self, server_config, local_private_key_path):
         self.label = server_config["label"]
         self.hostname = server_config["hostname"]
         self.username = server_config["username"]
@@ -32,7 +32,7 @@ class CyclerServer():
         self.shell_type = server_config.get("shell_type", "")
         self.command_prefix = server_config.get("command_prefix", "")
         self.command_suffix = server_config.get("command_suffix", "")
-        self.local_private_key = local_private_key
+        self.local_private_key_path = local_private_key_path
         self.last_status = None
         self.last_queue = None
         self.last_queue_all = None
@@ -46,7 +46,7 @@ class CyclerServer():
         """
         with paramiko.SSHClient() as ssh:
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+            ssh.connect(self.hostname, username=self.username, key_filename=self.local_private_key_path)
             stdin, stdout, stderr = ssh.exec_command(self.command_prefix + command + self.command_suffix)
             output = stdout.read().decode('utf-8')
             error = stderr.read().decode('utf-8')
@@ -115,8 +115,8 @@ class TomatoServer(CyclerServer):
     Attributes:
         save_location (str): The location on the server where snapshots are saved.
     """
-    def __init__(self, server_config, local_private_key):
-        super().__init__(server_config, local_private_key)
+    def __init__(self, server_config, local_private_key_path):
+        super().__init__(server_config, local_private_key_path)
         self.tomato_scripts_path = server_config.get("tomato_scripts_path", None)
         self.save_location = "C:/tomato/aurora_scratch"
         self.tomato_data_path = server_config.get("tomato_data_path", None)
@@ -187,7 +187,7 @@ class TomatoServer(CyclerServer):
             ssh = paramiko.SSHClient()
             ssh.load_system_host_keys()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+            ssh.connect(self.hostname, username=self.username, key_filename=self.local_private_key_path)
             with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
                 scp.put("temp.json", f"{self.save_location}/temp.json")
             ssh.close()
@@ -308,7 +308,7 @@ class TomatoServer(CyclerServer):
         ssh.load_system_host_keys()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         print(f"Connecting to {self.label}: host {self.hostname} user {self.username}")
-        ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+        ssh.connect(self.hostname, username=self.username, key_filename=self.local_private_key_path)
         try:
             print(
                 f"Downloading file {remote_save_location}/snapshot.{jobid_on_server}.json to "
@@ -396,7 +396,7 @@ class TomatoServer(CyclerServer):
         with paramiko.SSHClient() as ssh:
             ssh.load_system_host_keys()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+            ssh.connect(self.hostname, username=self.username, key_filename=self.local_private_key_path)
             stdin, stdout, stderr = ssh.exec_command(command)
             if stderr.read():
                 raise ValueError(stderr.read())
@@ -426,7 +426,7 @@ class TomatoServer(CyclerServer):
         with paramiko.SSHClient() as ssh:
             ssh.load_system_host_keys()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+            ssh.connect(self.hostname, username=self.username, key_filename=self.local_private_key_path)
             stdin, stdout, stderr = ssh.exec_command(command)
             stdout = stdout.read().decode('utf-8')
             stderr = stderr.read().decode('utf-8')
