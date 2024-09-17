@@ -254,15 +254,8 @@ def combine_hdfs(
         #        this would be considered a cycle
         if len(group_df) > 10:
             if abs(group_df["dQ (mAh)"].sum()) < 0.5 * group_df["dQ (mAh)"].abs().sum():
-                charge_min_V = group_df.loc[group_df['Iavg (A)'] > 0, 'V (V)'].quantile(0.01)
-                charge_max_V = group_df.loc[group_df['Iavg (A)'] > 0, 'V (V)'].quantile(0.99)
-                discharge_min_V = group_df.loc[group_df['Iavg (A)'] < 0, 'V (V)'].quantile(0.01)
-                discharge_max_V = group_df.loc[group_df['Iavg (A)'] < 0, 'V (V)'].quantile(0.99)
-                min_V_diff = abs(charge_min_V - discharge_min_V)
-                max_V_diff = abs(charge_max_V - discharge_max_V)
-                if (min_V_diff) < 2 and (max_V_diff) < 2:
-                    df.loc[df['Step'] == step, 'Cycle'] = cycle
-                    cycle += 1
+                df.loc[df['Step'] == step, 'Cycle'] = cycle
+                cycle += 1
     
     # Add provenance to the metadatas
     timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
@@ -623,13 +616,14 @@ def analyse_cycles(
         with open(f'{save_folder}/cycles.{sampleid}.json','w',encoding='utf-8') as f:
             json.dump({"data": cycle_dict, "metadata": metadata},f)
     if save_merged_hdf:
+        df.drop(columns=['dt (s)', 'Iavg (A)'], inplace=True)
         df.to_hdf(
-            f'{save_folder}/cycles.{sampleid}.h5',
+            f'{save_folder}/full.{sampleid}.h5',
             key="cycling",
             complib="blosc",
             complevel=4
         )
-        with h5py.File(f'{save_folder}/combined.{sampleid}.h5', 'a') as file:
+        with h5py.File(f'{save_folder}/full.{sampleid}.h5', 'a') as file:
             for key, value in metadata.items():
                 if isinstance(value, (dict, list)):
                     value = json.dumps(value)
@@ -652,7 +646,7 @@ def analyse_sample(sample: str) -> Tuple[pd.DataFrame, dict, dict]:
         os.path.join(file_location,f) for f in os.listdir(file_location)
         if (f.startswith('snapshot') and f.endswith('.h5'))
     ]
-    df, cycle_dict, metadata = analyse_cycles(h5_files, save_cycle_dict=True)
+    df, cycle_dict, metadata = analyse_cycles(h5_files, save_cycle_dict=True, save_merged_hdf=True)
     with sqlite3.connect(config["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute(
