@@ -654,6 +654,11 @@ class ServerManager:
                 dt = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 # Update the snapshot status in the database
                 self.execute_sql(
+                    "INSERT OR IGNORE INTO results "
+                    "(`Sample ID`, `Last snapshot`) VALUES (?)",
+                    (sample_id)
+                )
+                self.execute_sql(
                     "UPDATE jobs SET `Snapshot status` = ?, `Last snapshot` = ? WHERE `Job ID` = ?",
                     (snapshot_status, dt, jobid)
                 )
