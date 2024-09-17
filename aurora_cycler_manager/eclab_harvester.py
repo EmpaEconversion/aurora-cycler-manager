@@ -128,6 +128,10 @@ def convert_mpr_to_hdf(
         config = json.load(f)
     db_path = config["Database path"]
 
+    # Normalize paths to avoid escape character issues
+    mpr_file = os.path.normpath(mpr_file)
+    output_hdf_file = os.path.normpath(output_hdf_file) if output_hdf_file else None
+
     creation_date = datetime.fromtimestamp(
         os.path.getmtime(mpr_file)
     ).strftime('%Y-%m-%d %H:%M:%S')
@@ -253,6 +257,8 @@ def convert_all_mprs() -> None:
         "010724_gen6_FEC_1C": "240701_svfe_gen6",
         "090724_Gen7": "240709_svfe_gen7",
         "100724_Gen8": "240709_svfe_gen8",
+        "190824_Gen10": "240819_svfe_gen10",
+        "240903_Gen11" : "240903_svfe_gen11",
     }
     for run_folder in os.listdir(raw_folder):
         print("Processing folder", run_folder)
