@@ -36,7 +36,7 @@ def get_sample_names() -> list:
     db_path = "K:/Aurora/cucumber/database/database.db"
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT `Sample ID` FROM results")
+        cursor.execute("SELECT `Sample ID` FROM samples")
         samples = cursor.fetchall()
     return [sample[0] for sample in samples]
 
@@ -171,8 +171,8 @@ app.layout = html.Div([
                                 html.Label('X-axis', htmlFor='samples-time-x'),
                                 dcc.Dropdown(
                                     id='samples-time-x',
-                                    options=['Unix time','From protection','From formation','From cycling'],
-                                    value='From formation',
+                                    options=['Unix time','From start','From formation','From cycling'],
+                                    value='From start',
                                     multi=False,
                                 ),
                                 dcc.Dropdown(
@@ -412,7 +412,8 @@ def update_sample_data(samples, data):
     for sample in list(data['data_sample_time'].keys()):
         if sample not in samples:
             data['data_sample_time'].pop(sample)
-            data['data_sample_cycle'].pop(sample)
+            if sample in data['data_sample_cycle'].keys():
+                data['data_sample_cycle'].pop(sample)
 
     for sample in samples:
         # Check if already in data store
@@ -481,7 +482,7 @@ def update_time_graph(data, xvar, xunits, yvar):
     multiplier = {'Seconds': 1, 'Minutes': 60, 'Hours': 3600, 'Days': 86400}[xunits]
     for sample, data_dict in data['data_sample_time'].items():
         uts = np.array(data_dict['uts'])
-        if xvar == 'From protection':
+        if xvar == 'From start':
             offset=uts[0]
         elif xvar == 'From formation':
             offset=uts[next(i for i, x in enumerate(data_dict['Cycle']) if x >= 1)]
