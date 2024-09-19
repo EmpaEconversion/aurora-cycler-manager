@@ -532,12 +532,14 @@ def analyse_cycles(
     pcents = [95,90,85,80,75,70,60,50]
     norm = cycle_dict['Normalised discharge capacity (%)']
     for pcent in pcents:
-        cycle_dict[f'Cycles to {pcent}% capacity'] = next((i for i in range(initial_cycle-1, len(norm) - 1) - initial_cycle
-                            if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
+        cycle_dict[f'Cycles to {pcent}% capacity'] = next(
+            (i + 1 - initial_cycle for i in range(initial_cycle-1, len(norm) - 1)
+            if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
     norm = cycle_dict['Normalised discharge energy (%)']
     for pcent in pcents:
-        cycle_dict[f'Cycles to {pcent}% energy'] = next((i for i in range(initial_cycle-1, len(norm) - 1) - initial_cycle
-                            if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
+        cycle_dict[f'Cycles to {pcent}% energy'] = next(
+            (i + 1 - initial_cycle for i in range(initial_cycle-1, len(norm) - 1)
+            if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
 
     cycle_dict['Run ID'] = _run_from_sample(sampleid)
 
