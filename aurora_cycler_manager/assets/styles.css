@@ -18,6 +18,13 @@ body {
     color: #ff0000; /* Adjust the font color */
 }
 
+/* ===== MENUS ===== */
+.menu-panel {
+    padding: 8px;
+    background-color: rgb(241, 241, 247);
+    border: white 8px solid;
+}
+
 /* ===== RESIZE HANDLES ===== */
 .resize-handle-horizontal {
     width: 6px;

@@ -9,7 +9,7 @@ systems, both of individual samples and of batches of samples.
 import os
 import sys
 import dash
-from dash import dcc, html, Input, Output, State
+from dash import dcc, html, Input, Output, State, no_update
 from dash_resizable_panels import PanelGroup, Panel, PanelResizeHandle
 import plotly.graph_objs as go
 import plotly.express as px
@@ -139,7 +139,7 @@ def smoothed_derivative(x, y, npoints=21):
     y_smooth = moving_average(y, npoints)
     dydx_smooth = deriv(x_smooth, y_smooth)
     dydx_smooth[deriv(x_smooth,np.arange(len(x_smooth))) < 0] *= -1
-    dydx_smooth[abs(dydx_smooth) > 40] = np.nan
+    dydx_smooth[abs(dydx_smooth) > 100] = np.nan
     return dydx_smooth
 
 #======================================================================================================================#
@@ -160,7 +160,7 @@ samples_menu = [
     ),
     html.Div(style={'margin-top': '50px'}),
     html.H4("Time graph"),
-    html.Label('X-axis', htmlFor='samples-time-x'),
+    html.Label('X-axis:', htmlFor='samples-time-x'),
     dcc.Dropdown(
         id='samples-time-x',
         options=['Unix time','From start','From formation','From cycling'],
@@ -170,10 +170,10 @@ samples_menu = [
     dcc.Dropdown(
         id='samples-time-units',
         options=['Seconds','Minutes','Hours','Days'],
-        value='Seconds',
+        value='Hours',
     ),
     html.Div(style={'margin-top': '10px'}),
-    html.Label('Y-axis', htmlFor='samples-time-y'),
+    html.Label('Y-axis:', htmlFor='samples-time-y'),
     dcc.Dropdown(
         id='samples-time-y',
         options=['V (V)'],
@@ -183,7 +183,7 @@ samples_menu = [
     html.Div(style={'margin-top': '50px'}),
     html.H4("Cycles graph"),
     html.P("X-axis: Cycle"),
-    html.Label('Y-axis', htmlFor='samples-cycles-y'),
+    html.Label('Y-axis:', htmlFor='samples-cycles-y'),
     dcc.Dropdown(
         id='samples-cycles-y',
         options=[
@@ -195,14 +195,14 @@ samples_menu = [
     ),
     html.Div(style={'margin-top': '50px'}),
     html.H4("One cycle graph"),
-    html.Label("X-axis", htmlFor='samples-cycle-x'),
+    html.Label("X-axis:", htmlFor='samples-cycle-x'),
     dcc.Dropdown(
         id='samples-cycle-x',
         options=['Q (mAh)', 'V (V)', 'dQdV (mAh/V)'],
         value='Q (mAh)',
     ),
     html.Div(style={'margin-top': '10px'}),
-    html.Label("Y-axis", htmlFor='samples-cycle-y'),
+    html.Label("Y-axis:", htmlFor='samples-cycle-y'),
     dcc.Dropdown(
         id='samples-cycle-y',
         options=['Q (mAh)', 'V (V)', 'dQdV (mAh/V)'],
@@ -221,8 +221,9 @@ batches_menu = [
         multi=True,
     ),
     html.Div(style={'margin-top': '50px'}),
+    html.H4("Cycles graph"),
     html.P("X-axis: Cycle"),
-    html.Label("Y-axis", htmlFor='batch-cycle-y'),
+    html.Label("Y-axis:", htmlFor='batch-cycle-y'),
     dcc.Dropdown(
         id='batch-cycle-y',
         options=['Specific discharge capacity (mAh/g)'],
@@ -245,6 +246,19 @@ batches_menu = [
         options=colorscales,
         value='turbo'
     ),
+    html.Div(style={'margin-top': '50px'}),
+    html.H4("Correlation graph"),
+    html.Label("X-axis:", htmlFor='batch-correlation-x'),
+    dcc.Dropdown(
+        id='batch-correlation-x',
+    ),
+    html.Div(style={'margin-top': '10px'}),
+    html.Label("Y-axis:", htmlFor='batch-correlation-y'),
+    dcc.Dropdown(
+        id='batch-correlation-y',
+    ),
+    html.Div(style={'margin-top': '10px'}),
+    html.Label("Colormap", htmlFor='batch-correlation-color'),
     dcc.Dropdown(
         id='batch-correlation-color',
         options=[
@@ -280,6 +294,7 @@ app.layout = html.Div(
                                 children=[
                                     Panel(
                                         id="samples-menu",
+                                        className="menu-panel",
                                         children=samples_menu,
                                         defaultSizePercentage=20,
                                         collapsible=True,
@@ -357,6 +372,7 @@ app.layout = html.Div(
                                 children=[
                                     Panel(
                                         id="batches-menu",
+                                        className="menu-panel",
                                         children=batches_menu,
                                         defaultSizePercentage=20,
                                         collapsible=True,
@@ -723,14 +739,22 @@ def update_batch_cycle_graph(data, variable, color, colormap):
         title=f'{variable} vs cycle',
     )
 
-    fig = px.scatter(df, x='Cycle', y=variable, color=color, color_continuous_scale=colormap, hover_name='Sample ID')
+    fig = px.scatter(
+        df, x='Cycle',
+        y=variable,
+        color=color,
+        color_continuous_scale=colormap,
+        hover_name='Sample ID'
+    )
+    fig.update_coloraxes(colorbar_title_side='right')
 
     return fig, variable
 
 # Update the correlation map
 @app.callback(
     Output('batch-correlation-map', 'figure'),
-    # Output('batch-correlation-vars', 'options'),
+    Output('batch-correlation-x', 'options'),
+    Output('batch-correlation-y', 'options'),
     Input('batches-data-store', 'data'),
 )
 def update_correlation_map(data):
@@ -738,7 +762,7 @@ def update_correlation_map(data):
     if not data['data_batch_cycle']:
         fig = px.imshow([[0]], color_continuous_scale='balance', aspect="auto", zmin=-1, zmax=1)
         fig.update_layout(template = graph_template)
-        return fig
+        return fig, [], []
     data_list = []
     for key, value in data['data_batch_cycle'].items():
         data_list += value
@@ -747,7 +771,7 @@ def update_correlation_map(data):
     if not dfs:
         fig = px.imshow([[0]], color_continuous_scale='balance', aspect="auto", zmin=-1, zmax=1)
         fig.update_layout(template = graph_template)
-        return fig
+        return fig, [], []
     df = pd.concat(dfs, ignore_index=True)
 
     if 'Formation C' in df.columns:
@@ -771,6 +795,7 @@ def update_correlation_map(data):
     def customwrap(s,width=30):
         return "<br>".join(textwrap.wrap(s,width=width))
 
+    options = df.columns
     df.columns = [customwrap(col) for col in df.columns]
 
     # Calculate the correlation matrix
@@ -786,22 +811,37 @@ def update_correlation_map(data):
         margin=dict(l=0, r=0, t=0, b=0),
         template = graph_template,
     )
-    return fig
 
+    return fig, options, options
+
+# On clicking the correlation map, update the X-axis and Y-axis dropdowns
+@app.callback(
+    Output('batch-correlation-x', 'value'),
+    Output('batch-correlation-y', 'value'),
+    Input('batch-correlation-map', 'clickData'),
+)
+def update_correlation_vars(clickData):
+    if not clickData:
+        return no_update
+    point = clickData['points'][0]
+    xvar = point['x'].replace('<br>', ' ')
+    yvar = point['y'].replace('<br>', ' ')
+    return xvar, yvar
+
+# On changing x and y axes, update the correlation graph
 @app.callback(
     Output('batch-correlation-graph', 'figure'),
-    Input('batch-correlation-map', 'clickData'),
     Input('batches-data-store', 'data'),
+    Input('batch-correlation-x', 'value'),
+    Input('batch-correlation-y', 'value'),
     Input('batch-correlation-color', 'value'),
     Input('batch-correlation-colorscale', 'value'),
 )
-def update_correlation_graph(clickData, data, color, colormap):
-    if not clickData:
+def update_correlation_graph(data, xvar, yvar, color, colormap):
+    if not xvar or not yvar:
         fig = px.scatter().update_layout(xaxis_title='X-axis Title', yaxis_title='Y-axis Title')
         fig.update_layout(template = graph_template)
         return fig
-    # clickData is a dict with keys 'points' and 'event'
-    # 'points' is a list of dicts with keys 'curveNumber', 'pointNumber', 'pointIndex', 'x', 'y', 'text'
     data_list = []
     for key, value in data['data_batch_cycle'].items():
         data_list += value
@@ -814,13 +854,6 @@ def update_correlation_graph(clickData, data, color, colormap):
     df = pd.concat(dfs, ignore_index=True)
     if 'Formation C' in df.columns:
         df['1/Formation C'] = 1 / df['Formation C']
-
-    point = clickData['points'][0]
-    xvar = point['x']
-    yvar = point['y']
-
-    xvar = xvar.replace('<br>', ' ')
-    yvar = yvar.replace('<br>', ' ')
 
     hover_columns = [
         'Max voltage (V)',
@@ -854,6 +887,7 @@ def update_correlation_graph(clickData, data, color, colormap):
     fig.update_traces(
         marker=dict(size=10,line=dict(color='black', width=1)),
     )
+    fig.update_coloraxes(colorbar_title_side='right')
     fig.update_layout(
         xaxis_title=xvar,
         yaxis_title=yvar,
