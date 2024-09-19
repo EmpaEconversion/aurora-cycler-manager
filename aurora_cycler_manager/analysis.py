@@ -451,7 +451,10 @@ def analyse_cycles(
             discharge_energy_mWh.append((-discharge_data['V (V)']*discharge_data['dQ (mAh)']).sum())
             discharge_avg_I.append((-discharge_data['Iavg (A)']*discharge_data['dQ (mAh)']).sum()/discharge_data['dQ (mAh)'].sum())
 
-    formed = len(charge_capacity_mAh) >= 5
+    formation_cycle_count = 3
+    initial_cycle = formation_cycle_count + 2
+
+    formed = len(charge_capacity_mAh) >= initial_cycle
     # A row is added if charge data is complete and discharge started
     # Last dict may have incomplete discharge data
     # TODO remove incomplete cycles based on voltage limits
@@ -476,8 +479,8 @@ def analyse_cycles(
         'Efficiency (%)': [100*d/c for d,c in zip(discharge_capacity_mAh,charge_capacity_mAh)],
         'Specific charge capacity (mAh/g)': [c/(mass_mg*1e-3) for c in charge_capacity_mAh],
         'Specific discharge capacity (mAh/g)': [d/(mass_mg*1e-3) for d in discharge_capacity_mAh],
-        'Normalised discharge capacity (%)': [100*d/discharge_capacity_mAh[3] for d in discharge_capacity_mAh] if formed else None,
-        'Normalised discharge energy (%)': [100*d/discharge_energy_mWh[3] for d in discharge_energy_mWh] if formed else None,
+        'Normalised discharge capacity (%)': [100*d/discharge_capacity_mAh[initial_cycle-1] for d in discharge_capacity_mAh] if formed else None,
+        'Normalised discharge energy (%)': [100*d/discharge_energy_mWh[initial_cycle-1] for d in discharge_energy_mWh] if formed else None,
         'Charge average voltage (V)': charge_avg_V,
         'Discharge average voltage (V)': discharge_avg_V,
         'Delta V (V)': [c-d for c,d in zip(charge_avg_V,discharge_avg_V)],
@@ -516,26 +519,28 @@ def analyse_cycles(
 
     cycle_dict['First formation efficiency (%)'] = cycle_dict['Efficiency (%)'][0]
     cycle_dict['First formation specific discharge capacity (mAh/g)'] = cycle_dict['Specific discharge capacity (mAh/g)'][0]
-    cycle_dict['Initial specific discharge capacity (mAh/g)'] = cycle_dict['Specific discharge capacity (mAh/g)'][3] if formed else None
-    cycle_dict['Initial efficiency (%)'] = cycle_dict['Efficiency (%)'][3] if formed else None
+    cycle_dict['Initial specific discharge capacity (mAh/g)'] = cycle_dict['Specific discharge capacity (mAh/g)'][initial_cycle-1] if formed else None
+    cycle_dict['Initial efficiency (%)'] = cycle_dict['Efficiency (%)'][initial_cycle-1] if formed else None
     cycle_dict['Capacity loss (%)'] = 100 - cycle_dict['Normalised discharge capacity (%)'][last_idx] if formed else None
     cycle_dict['Last specific discharge capacity (mAh/g)'] = cycle_dict['Specific discharge capacity (mAh/g)'][last_idx]
     cycle_dict['Last efficiency (%)'] = cycle_dict['Efficiency (%)'][last_idx]
-    cycle_dict['Formation average voltage (V)'] = np.mean(cycle_dict['Charge average voltage (V)'][:3]) if formed else None
-    cycle_dict['Formation average current (A)'] = np.mean(cycle_dict['Charge average current (A)'][:3]) if formed else None
-    cycle_dict['Initial delta V (V)'] = cycle_dict['Delta V (V)'][3] if formed else None
+    cycle_dict['Formation average voltage (V)'] = np.mean(cycle_dict['Charge average voltage (V)'][:initial_cycle-1]) if formed else None
+    cycle_dict['Formation average current (A)'] = np.mean(cycle_dict['Charge average current (A)'][:initial_cycle-1]) if formed else None
+    cycle_dict['Initial delta V (V)'] = cycle_dict['Delta V (V)'][initial_cycle-1] if formed else None
 
     # Calculate cycles to x% of initial discharge capacity
     pcents = [95,90,85,80,75,70,60,50]
     norm = cycle_dict['Normalised discharge capacity (%)']
     for pcent in pcents:
-        cycle_dict[f'Cycles to {pcent}% capacity'] = next((i for i in range(3, len(norm) - 1)
-                            if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
+        cycle_dict[f'Cycles to {pcent}% capacity'] = next(
+            (i + 1 - initial_cycle for i in range(initial_cycle-1, len(norm) - 1)
+            if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
     norm = cycle_dict['Normalised discharge energy (%)']
     for pcent in pcents:
-        cycle_dict[f'Cycles to {pcent}% energy'] = next((i for i in range(3, len(norm) - 1)
-                            if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
-        
+        cycle_dict[f'Cycles to {pcent}% energy'] = next(
+            (i + 1 - initial_cycle for i in range(initial_cycle-1, len(norm) - 1)
+            if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
+
     cycle_dict['Run ID'] = _run_from_sample(sampleid)
 
     # Add times to cycle_dict

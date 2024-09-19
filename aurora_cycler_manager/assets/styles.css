@@ -1,7 +1,11 @@
+/* ===== GENERAL STYLES ===== */
 body {
+    margin: 0;
     font-family: sans-serif;
+    color: rgb(61, 61, 61);
 }
-/* Customize the font of the tabs */
+
+/* ===== TABS ===== */
 .tab {
     font-family: 'Arial', sans-serif; /* Change to your desired font */
     font-size: 18px; /* Adjust the font size */
@@ -12,4 +16,50 @@ body {
     font-family: 'Arial', sans-serif; /* Change to your desired font */
     font-size: 18px; /* Adjust the font size */
     color: #ff0000; /* Adjust the font color */
+}
+
+/* ===== MENUS ===== */
+.menu-panel {
+    padding: 8px;
+    background-color: rgb(241, 241, 247);
+    border: white 8px solid;
+}
+
+/* ===== RESIZE HANDLES ===== */
+.resize-handle-horizontal {
+    width: 6px;
+    height: 100%;
+    background-color: lightgray;
+    position: relative;
+}
+/* Line inside handle */
+.resize-handle-horizontal::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2px;
+    height: 5%;
+    background-color: rgb(120, 120, 120);
+    transform: translate(-50%, -50%);
+}
+.resize-handle-vertical {
+    width: 100%;
+    height: 6px;
+    background-color: lightgray;
+    position: relative; 
+}
+/* Line inside handle */
+.resize-handle-vertical::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 5%;
+    height: 2px;
+    background-color: rgb(120, 120, 120);
+    transform: translate(-50%, -50%);
+}
+.resize-handle-horizontal:hover,.resize-handle-vertical:hover {
+    background-color: rgb(120, 120, 120);
 }

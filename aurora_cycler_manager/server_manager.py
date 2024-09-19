@@ -655,8 +655,12 @@ class ServerManager:
                 # Update the snapshot status in the database
                 self.execute_sql(
                     "INSERT OR IGNORE INTO results "
-                    "(`Sample ID`, `Last snapshot`) VALUES (?)",
-                    (sample_id)
+                    "(`Sample ID`) VALUES (?)",
+                    (sample_id,)
+                )
+                self.execute_sql(
+                    "UPDATE results SET `Last snapshot` = ? WHERE `Sample ID` = ?",
+                    (dt, sample_id)
                 )
                 self.execute_sql(
                     "UPDATE jobs SET `Snapshot status` = ?, `Last snapshot` = ? WHERE `Job ID` = ?",
