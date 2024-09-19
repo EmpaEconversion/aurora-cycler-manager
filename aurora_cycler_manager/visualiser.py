@@ -10,6 +10,7 @@ import os
 import sys
 import dash
 from dash import dcc, html, Input, Output, State
+from dash_resizable_panels import PanelGroup, Panel, PanelResizeHandle
 import plotly.graph_objs as go
 import plotly.express as px
 import textwrap
@@ -25,6 +26,7 @@ if root_dir not in sys.path:
 from aurora_cycler_manager.analysis import combine_hdfs, _run_from_sample
 
 app = dash.Dash(__name__)
+app.title = "Aurora Visualiser"
 
 graph_template = 'seaborn'
 
@@ -137,7 +139,7 @@ def smoothed_derivative(x, y, npoints=21):
     y_smooth = moving_average(y, npoints)
     dydx_smooth = deriv(x_smooth, y_smooth)
     dydx_smooth[deriv(x_smooth,np.arange(len(x_smooth))) < 0] *= -1
-    dydx_smooth[abs(dydx_smooth) > 20] = np.nan
+    dydx_smooth[abs(dydx_smooth) > 40] = np.nan
     return dydx_smooth
 
 #======================================================================================================================#
@@ -146,250 +148,302 @@ def smoothed_derivative(x, y, npoints=21):
 
 colorscales = px.colors.named_colorscales()
 
-app.layout = html.Div([
-    html.Div(
-        [
-            dcc.Tabs(id="tabs", value='tab-1', children=[
-                #################### SAMPLES TAB ####################
+samples_menu = [
+    html.H4("Select samples to plot:"),
+    dcc.Dropdown(
+        id='samples-dropdown',
+        options=[
+            {'label': name, 'value': name} for name in get_sample_names()
+        ],
+        value=[],
+        multi=True,
+    ),
+    html.Div(style={'margin-top': '50px'}),
+    html.H4("Time graph"),
+    html.Label('X-axis', htmlFor='samples-time-x'),
+    dcc.Dropdown(
+        id='samples-time-x',
+        options=['Unix time','From start','From formation','From cycling'],
+        value='From start',
+        multi=False,
+    ),
+    dcc.Dropdown(
+        id='samples-time-units',
+        options=['Seconds','Minutes','Hours','Days'],
+        value='Seconds',
+    ),
+    html.Div(style={'margin-top': '10px'}),
+    html.Label('Y-axis', htmlFor='samples-time-y'),
+    dcc.Dropdown(
+        id='samples-time-y',
+        options=['V (V)'],
+        value='V (V)',
+        multi=False,
+    ),
+    html.Div(style={'margin-top': '50px'}),
+    html.H4("Cycles graph"),
+    html.P("X-axis: Cycle"),
+    html.Label('Y-axis', htmlFor='samples-cycles-y'),
+    dcc.Dropdown(
+        id='samples-cycles-y',
+        options=[
+            'Specific discharge capacity (mAh/g)',
+            'Efficiency (%)',
+        ],
+        value='Specific discharge capacity (mAh/g)',
+        multi=False,
+    ),
+    html.Div(style={'margin-top': '50px'}),
+    html.H4("One cycle graph"),
+    html.Label("X-axis", htmlFor='samples-cycle-x'),
+    dcc.Dropdown(
+        id='samples-cycle-x',
+        options=['Q (mAh)', 'V (V)', 'dQdV (mAh/V)'],
+        value='Q (mAh)',
+    ),
+    html.Div(style={'margin-top': '10px'}),
+    html.Label("Y-axis", htmlFor='samples-cycle-y'),
+    dcc.Dropdown(
+        id='samples-cycle-y',
+        options=['Q (mAh)', 'V (V)', 'dQdV (mAh/V)'],
+        value='V (V)',
+    ),
+]
+
+batches_menu = [
+    html.H4("Select batches to plot:"),
+    dcc.Dropdown(
+        id='batches-dropdown',
+        options=[
+            {'label': name, 'value': name} for name in get_batch_names()
+        ],
+        value=[],
+        multi=True,
+    ),
+    html.Div(style={'margin-top': '50px'}),
+    html.P("X-axis: Cycle"),
+    html.Label("Y-axis", htmlFor='batch-cycle-y'),
+    dcc.Dropdown(
+        id='batch-cycle-y',
+        options=['Specific discharge capacity (mAh/g)'],
+        value='Specific discharge capacity (mAh/g)',
+        multi=False,
+    ),
+    html.Div(style={'margin-top': '10px'}),
+    html.Label("Colormap", htmlFor='batch-cycle-colormap'),
+    dcc.Dropdown(
+        id='batch-cycle-color',
+        # TODO remove these default options, change to run ID
+        options=[
+            'Run ID'
+        ],
+        value='Run ID',
+        multi=False,
+    ),
+    dcc.Dropdown(
+        id='batch-cycle-colormap',
+        options=colorscales,
+        value='turbo'
+    ),
+    dcc.Dropdown(
+        id='batch-correlation-color',
+        options=[
+            'Run ID'
+        ],
+        value='Run ID',
+        multi=False,
+    ),
+    dcc.Dropdown(
+        id='batch-correlation-colorscale',
+        options=colorscales,
+        value='turbo',
+        multi=False,
+    ),
+]
+
+app.layout = html.Div(
+    style = {'height': '100vh'},
+    children = [
+        dcc.Tabs(
+            id = "tabs",
+            value = 'tab-1',
+            children = [
+                #################### SAMPLES TAB WITH PANELS ####################
                 dcc.Tab(
                     label='Samples',
                     value='tab-1',
-                    children=[
-                        html.Div(
-                            [
-                                html.H4("Select samples to plot:"),
-                                dcc.Dropdown(
-                                    id='samples-dropdown',
-                                    options=[
-                                        {'label': name, 'value': name} for name in get_sample_names()
-                                    ],
-                                    value=[],
-                                    multi=True,
-                                ),
-                                html.Div(style={'margin-top': '50px'}),
-                                html.H4("Time graph"),
-                                html.Label('X-axis', htmlFor='samples-time-x'),
-                                dcc.Dropdown(
-                                    id='samples-time-x',
-                                    options=['Unix time','From start','From formation','From cycling'],
-                                    value='From start',
-                                    multi=False,
-                                ),
-                                dcc.Dropdown(
-                                    id='samples-time-units',
-                                    options=['Seconds','Minutes','Hours','Days'],
-                                    value='Seconds',
-                                ),
-                                html.Div(style={'margin-top': '10px'}),
-                                html.Label('Y-axis', htmlFor='samples-time-y'),
-                                dcc.Dropdown(
-                                    id='samples-time-y',
-                                    options=['V (V)'],
-                                    value='V (V)',
-                                    multi=False,
-                                ),
-                                html.Div(style={'margin-top': '50px'}),
-                                html.H4("Cycles graph"),
-                                html.P("X-axis: Cycle"),
-                                html.Label('Y-axis', htmlFor='samples-cycles-y'),
-                                dcc.Dropdown(
-                                    id='samples-cycles-y',
-                                    options=[
-                                        'Specific discharge capacity (mAh/g)',
-                                        'Efficiency (%)',
-                                    ],
-                                    value='Specific discharge capacity (mAh/g)',
-                                    multi=False,
-                                ),
-                                html.Div(style={'margin-top': '50px'}),
-                                html.H4("One cycle graph"),
-                                html.Label("X-axis", htmlFor='samples-cycle-x'),
-                                dcc.Dropdown(
-                                    id='samples-cycle-x',
-                                    options=['Q (mAh)', 'V (V)', 'dQdV (mAh/V)'],
-                                    value='Q (mAh)',
-                                ),
-                                html.Div(style={'margin-top': '10px'}),
-                                html.Label("Y-axis", htmlFor='samples-cycle-y'),
-                                dcc.Dropdown(
-                                    id='samples-cycle-y',
-                                    options=['Q (mAh)', 'V (V)', 'dQdV (mAh/V)'],
-                                    value='V (V)',
-                                ),
-                            ],
-                        style={'width': '20%', 'display': 'inline-block', 'verticalAlign': 'top', 'horizontalAlign': 'left', 'height': '90vh'}
-                        ),
-                        html.Div(
-                            [
-                                dcc.Loading(
-                                    id='loading-samples-data-store',
-                                    type='circle',
-                                    overlay_style={"visibility":"visible", "filter": "blur(2px)"},
-                                    children=[
-                                        dcc.Store(id='samples-data-store', data={'data_sample_time': {}, 'data_sample_cycle': {}}),
-                                        dcc.Graph(id='time-graph',figure={'data': [],'layout': go.Layout(template=graph_template,title='vs time',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'},showlegend=False)}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
-                                        # two graphs side by side
-                                        html.Div(
-                                            [
-                                                # First graph on the left
-                                                html.Div(
-                                                    dcc.Graph(id='cycles-graph',figure={'data': [],'layout': go.Layout(template=graph_template,title='vs cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'},showlegend=False)}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
-                                                ),
-                                            ],
-                                            style={'width': '50%', 'display': 'inline-block', 'height': '45vh'}
-                                        ),
-                                        html.Div(
-                                            [
-                                                # Second graph on the right
-                                                html.Div(
-                                                    dcc.Graph(id='cycle-graph',figure={'data': [],'layout': go.Layout(template=graph_template,title='One cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'},showlegend=False)}, config={'scrollZoom':True, 'displaylogo':False}, style={'height': '45vh'}),
-                                                ),
-                                            ],
-                                            style={'width': '50%', 'display': 'inline-block', 'height': '45vh'}
-                                        ),
-                                    ],
-                                    fullscreen=False,
-                                ),
-                            ],
-                        style={'width': '75%', 'display': 'inline-block', 'paddingLeft': '20px', 'horizontalAlign': 'right', 'height': '90vh'}
+                    children = [
+                        dcc.Store(id='samples-data-store', data={'data_sample_time': {}, 'data_sample_cycle': {}}),
+                        html.Div([
+                            PanelGroup(
+                                id="samples-panel-group",
+                                children=[
+                                    Panel(
+                                        id="samples-menu",
+                                        children=samples_menu,
+                                        defaultSizePercentage=20,
+                                        collapsible=True,
+                                    ),
+                                    PanelResizeHandle(html.Div(className="resize-handle-horizontal")),
+                                    Panel(
+                                        id="samples-graphs",
+                                        children=[
+                                            PanelGroup(
+                                                id="samples-graph-group",
+                                                children=[
+                                                    Panel(
+                                                        id="samples-top-graph",
+                                                        children=[
+                                                            dcc.Graph(id='time-graph',figure={'data': [],'layout': go.Layout(template=graph_template,title='vs time',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'},showlegend=False)}, config={'scrollZoom':True, 'displaylogo':False},style={'height': '100%'}),
+                                                        ]),
+                                                    PanelResizeHandle(
+                                                        html.Div(className="resize-handle-vertical")
+                                                    ),
+                                                    Panel(
+                                                        id="samples-bottom-graphs",
+                                                        children=[
+                                                            PanelGroup(
+                                                                id="samples-bottom-graph-group",
+                                                                children=[
+                                                                    Panel(
+                                                                        id="samples-bottom-left-graph",
+                                                                        children=[
+                                                                            dcc.Graph(id='cycles-graph',figure={'data': [],'layout': go.Layout(template=graph_template,title='vs cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'},showlegend=False)}, config={'scrollZoom':True, 'displaylogo':False},style={'height': '100%'}), # TODO this doesn't work
+                                                                        ]
+                                                                    ),
+                                                                    PanelResizeHandle(
+                                                                        html.Div(className="resize-handle-horizontal")
+                                                                    ),
+                                                                    Panel(
+                                                                        id="samples-bottom-right-graph",
+                                                                        children=[
+                                                                            dcc.Graph(id='cycle-graph',figure={'data': [],'layout': go.Layout(template=graph_template,title='One cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'},showlegend=False)}, config={'scrollZoom':True, 'displaylogo':False},style={'height': '100%'}),
+                                                                        ]
+                                                                    ),
+                                                                ],
+                                                                direction="horizontal",
+                                                            ),
+                                                        ],
+                                                    ),
+                                                ],
+                                                direction="vertical",
+                                            )
+                                        ],
+                                        minSizePercentage=50,
+                                    ),
+                                ],
+                                direction="horizontal",
+                            )
+                        ],
+                        style={'height': '95vh'},
                         ),
                     ],
                 ),
-                #################### BATCHES TAB ####################
+                #################### BATCHES TAB WITH PANELS ####################
                 dcc.Tab(
                     label='Batches',
                     value='tab-2',
-                    children=[
+                    children = [
                         dcc.Loading(
                             id='loading-page',
                             overlay_style={"visibility":"visible", "filter": "blur(2px)"},
                             type='circle',
-                            fullscreen=False,
+                            fullscreen=True,
                             children=[ dcc.Store(id='batches-data-store', data={'data_batch_cycle': {}}),],
-                        ),   
-                        html.Div(
-                            [
-                                html.H4("Select batches to plot:"),
-                                dcc.Dropdown(
-                                    id='batches-dropdown',
-                                    options=[
-                                        {'label': name, 'value': name} for name in get_batch_names()
-                                    ],
-                                    value=[],
-                                    multi=True,
-                                ),
-                                html.Div(style={'margin-top': '50px'}),
-                                html.P("X-axis: Cycle"),
-                                html.Label("Y-axis", htmlFor='batch-cycle-y'),
-                                dcc.Dropdown(
-                                    id='batch-cycle-y',
-                                    options=['Specific discharge capacity (mAh/g)'],
-                                    value='Specific discharge capacity (mAh/g)',
-                                    multi=False,
-                                ),
-                                html.Div(style={'margin-top': '10px'}),
-                                html.Label("Colormap", htmlFor='batch-cycle-colormap'),
-                                dcc.Dropdown(
-                                    id='batch-cycle-color',
-                                    # TODO remove these default options, change to run ID
-                                    options=[
-                                        'Run ID'
-                                    ],
-                                    value='Run ID',
-                                    multi=False,
-                                ),
-                                dcc.Dropdown(
-                                    id='batch-cycle-colormap',
-                                    options=colorscales,
-                                    value='turbo'
-                                )
-                            ],
-                        style={'width': '20%', 'display': 'inline-block', 'verticalAlign': 'top', 'horizontalAlign': 'left', 'height': '40vh'}
                         ),
-                        html.Div(
-                            [
-                                # Top graph
-                                dcc.Graph(
-                                    id='batch-cycle-graph',
-                                    figure={
-                                        'data': [],
-                                        'layout': go.Layout(template=graph_template, title='vs cycle', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
-                                    }, 
-                                    config={'scrollZoom': True, 'displaylogo':False,  'toImageButtonOptions': {'format': 'svg',}},
-                                    style={'height': '40vh'}
-                                ),
-                            ],
-                        style={'width': '75%', 'display': 'inline-block', 'paddingLeft': '20px', 'horizontalAlign': 'right', 'height': '40vh'}
-                        ),
-                        # Div for two graphs side by side
-                        html.Div(
-                            [
-                                # First graph on the left
-                                html.Div(
-                                    dcc.Graph(
-                                        id='batch-correlation-map',
-                                        figure={
-                                            'data': [],
-                                            'layout': go.Layout(template=graph_template, title='Click to show correlation', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
-                                        }, 
-                                        config={'scrollZoom': False, 'displaylogo':False, 'modeBarButtonsToRemove' : ['zoom2d','pan2d','zoomIn2d','zoomOut2d','autoScale2d','resetScale2d'], 'toImageButtonOptions': {'format': 'png', 'width': 1000, 'height': 800}},
-                                        style={'height': '50vh'},
+                        html.Div([
+                            PanelGroup(
+                                id="batches-panel-group",
+                                children=[
+                                    Panel(
+                                        id="batches-menu",
+                                        children=batches_menu,
+                                        defaultSizePercentage=20,
+                                        collapsible=True,
                                     ),
-                                    style={'width': '50%', 'display': 'inline-block', 'height': '50vh'}
-                                ),
-                                # Second graph on the right
-                                html.Div(
-                                    [
-                                        html.Div(
-                                            html.P("Choose a colormap"),
-                                            style={'width': '25%', 'display': 'inline-block', 'paddingLeft': '50px', 'verticalAlign': 'middle'},
-                                        ),
-                                        html.Div(
-                                            [
-                                                dcc.Dropdown(
-                                                    id='batch-correlation-color',
-                                                    options=[
-                                                        'Run ID'
-                                                    ],
-                                                    value='Run ID',
-                                                    multi=False,
-                                                ),
-                                            ],
-                                            style={'width': '25%', 'display': 'inline-block', 'verticalAlign': 'middle'},
-                                        ),
-                                        html.Div(
-                                            [
-                                                dcc.Dropdown(
-                                                    id='batch-correlation-colorscale',
-                                                    options=colorscales,
-                                                    value='turbo',
-                                                    multi=False,
-                                                ),
-                                            ],
-                                            style={'width': '25%', 'display': 'inline-block', 'verticalAlign': 'middle'},
-                                        ),
-                                        dcc.Graph(
-                                            id='batch-correlation-graph',
-                                            figure={
-                                                'data': [],
-                                                'layout': go.Layout(template=graph_template, title='params', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
-                                            },
-                                            config={'scrollZoom': True, 'displaylogo':False, 'toImageButtonOptions': {'format': 'svg'}},
-                                            style={'height': '45vh'},
-                                        ),
-                                    ],
-                                    style={'width': '50%', 'display': 'inline-block', 'verticalAlign': 'top'}
-                                ),
-                            ],
-                            style={'height': '50vh'}
+                                    PanelResizeHandle(html.Div(className="resize-handle-horizontal")),
+                                    Panel(
+                                        id="graphs",
+                                        children=[
+                                            PanelGroup(
+                                                id="graph group",
+                                                children=[
+                                                    Panel(
+                                                        id="top graph",
+                                                        children=[
+                                                            dcc.Graph(
+                                                                id='batch-cycle-graph',
+                                                                figure={
+                                                                    'data': [],
+                                                                    'layout': go.Layout(template=graph_template, title='vs cycle', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
+                                                                }, 
+                                                                config={'scrollZoom': True, 'displaylogo':False,  'toImageButtonOptions': {'format': 'svg',}},
+                                                                style={'height': '100%'}
+                                                            ),
+                                                        ]),
+                                                    PanelResizeHandle(
+                                                        html.Div(className="resize-handle-vertical")
+                                                    ),
+                                                    Panel(
+                                                        id="bottom graphs",
+                                                        children=[
+                                                            PanelGroup(
+                                                                id="bottom graph group",
+                                                                children=[
+                                                                    Panel(
+                                                                        id="bottom left graph",
+                                                                        children=[
+                                                                            dcc.Graph(
+                                                                                id='batch-correlation-map',
+                                                                                figure={
+                                                                                    'data': [],
+                                                                                    'layout': go.Layout(template=graph_template, title='Click to show correlation', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
+                                                                                }, 
+                                                                                config={'scrollZoom': False, 'displaylogo':False, 'modeBarButtonsToRemove' : ['zoom2d','pan2d','zoomIn2d','zoomOut2d','autoScale2d','resetScale2d'], 'toImageButtonOptions': {'format': 'png', 'width': 1000, 'height': 800}},
+                                                                                style={'height': '100%'},
+                                                                            ),
+                                                                        ]
+                                                                    ),
+                                                                    PanelResizeHandle(
+                                                                        html.Div(className="resize-handle-horizontal")
+                                                                    ),
+                                                                    Panel(
+                                                                        id="bottom right graph",
+                                                                        children=[
+                                                                            dcc.Graph(
+                                                                                id='batch-correlation-graph',
+                                                                                figure={
+                                                                                    'data': [],
+                                                                                    'layout': go.Layout(template=graph_template, title='params', xaxis={'title': 'X-axis Title'}, yaxis={'title': 'Y-axis Title'})
+                                                                                },
+                                                                                config={'scrollZoom': True, 'displaylogo':False, 'toImageButtonOptions': {'format': 'svg'}},
+                                                                                style={'height': '100%'},
+                                                                            ),
+                                                                        ]
+                                                                    ),
+                                                                ],
+                                                                direction="horizontal",
+                                                            ),
+                                                        ],
+                                                    ),
+                                                ],
+                                                direction="vertical",
+                                            )
+                                        ],
+                                        minSizePercentage=50,
+                                    ),
+                                ],
+                                direction="horizontal",
+                            )
+                        ],
+                        style={'height': '95vh'},
                         ),
                     ],
                 ),
-            ]),
-        ],
-        style={'height': '90vh'},
-    ),
-])
+            ],
+        ),
+    ],
+),
 
 #======================================================================================================================#
 #===================================================== CALLBACKS ======================================================#
