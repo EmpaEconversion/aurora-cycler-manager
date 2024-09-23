@@ -14,6 +14,7 @@ import os
 import sys
 import re
 import json
+import gzip
 import sqlite3
 from datetime import datetime
 import pytz
@@ -44,7 +45,6 @@ eclab_config = {
         }
     ],
     "Snapshots folder path": "C:/aurora_snapshots",  # will add 'eclabcopy' folder to this path
-    "Processed snapshots folder path": "K:/Aurora/cucumber/ec-lab snapshots/"
 }
 
 def get_mprs(
@@ -63,6 +63,7 @@ def get_mprs(
         server_private_key (str): Private key for ssh
         folder (str): Folder to search for MPR files
     """
+    # TODO - add check to only copy across files that have been modified in the last x days
     with paramiko.SSHClient() as ssh:
         ssh.load_system_host_keys()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -93,29 +94,31 @@ def get_mprs_from_folders() -> None:
             eclab_config["Snapshots folder path"],
         )
 
-def convert_mpr_to_hdf(
+def convert_mpr(
         sampleid: str,
         mpr_file: str,
         output_hdf_file: str = None,
+        output_jsongz_file: str = None,
         capacity_Ah: float = None,
         ) -> pd.DataFrame:
-    """ Convert a tomato json to dataframe, optionally save as hdf5 file.
+    """ Convert a tomato json to dataframe, optionally save as hdf5 or zipped json file.
 
     Args:
         sampleid (str): sample ID from robot output
-        snapshot_file (str): path to the raw mpr file
-        hdf_save_location (str, optional): path to save the output hdf5 file
+        mpr_file (str): path to the raw mpr file
+        output_hdf_file (str, optional): path to save the output hdf5 file
+        output_jsongz_file (str, optional): path to save the output zipped json file
         capacity_Ah (float, optional): capacity of the cell in Ah
 
     Returns:
         pd.DataFrame: DataFrame containing the cycling data
 
     Columns in output DataFrame:
-    - uts: timestamp, starting from 0
+    - uts: unix timestamp in seconds
     - V (V): Cell voltage in volts
     - I (A): Current in amps
-    - loop_number: how many loops have been completed
-    - cycle_number: not used here
+    - loop_number: number of loops over several techniques
+    - cycle_number: number of cycles within one technique
     - index: index of the method in the payload, not used here
     - technique: code of technique using Biologic convention, not used here
     
@@ -168,18 +171,12 @@ def convert_mpr_to_hdf(
     df['index'] = 0
     df['technique'] = data.data_vars['mode'].values
 
-    if output_hdf_file:
+    if output_hdf_file or output_jsongz_file:
         folder = os.path.dirname(output_hdf_file)
         if not folder:
             folder = '.'
         if not os.path.exists(folder):
             os.makedirs(folder)
-        df.to_hdf(
-            output_hdf_file,
-            key="cycling",
-            complib="blosc",
-            complevel=2
-        )
 
         # Try get sample data from database
         try:
@@ -204,10 +201,10 @@ def convert_mpr_to_hdf(
                 "snapshot_file": mpr_file,
                 "yadg_metadata": yadg_metadata,
                 "aurora_metadata": {
-                    "hdf5_conversion" : {
+                    "mpr_conversion" : {
                         "repo_url": __url__,
                         "repo_version": __version__,
-                        "method": "eclab_harvester.convert_mpr_to_hdf",
+                        "method": "eclab_harvester.convert_mpr",
                         "datetime": datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S %z'),
                     },
                 }
@@ -215,28 +212,37 @@ def convert_mpr_to_hdf(
             "mpr_metadata": mpr_metadata,
             "sample_data": sample_data if sample_data is not None else {},
         }
+        if output_hdf_file:
+            df.to_hdf(
+                output_hdf_file,
+                key="cycling",
+                complib="blosc",
+                complevel=2
+            )
+            # Open the HDF5 file with h5py and add metadata
+            with h5py.File(output_hdf_file, 'a') as file:
+                if 'cycling' in file:
+                    file['cycling'].attrs['metadata'] = json.dumps(metadata)
+                else:
+                    print("Dataset 'cycling' not found.")
+        if output_jsongz_file:
+            with gzip.open(output_jsongz_file, 'wt') as f:
+                json.dump({'data': df.to_dict(orient='list'), 'metadata': metadata}, f)
 
-        # Open the HDF5 file with h5py and add metadata
-        with h5py.File(output_hdf_file, 'a') as file:
-            if 'cycling' in file:
-                file['cycling'].attrs['metadata'] = json.dumps(metadata)
-            else:
-                print("Dataset 'cycling' not found.")
-
-    # Update the database
-    with sqlite3.connect(db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
-            (sampleid,)
-        )
-        cursor.execute(
-            "UPDATE results "
-            "SET `Last snapshot` = ? "
-            "WHERE `Sample ID` = ?",
-            (creation_date, sampleid)
-        )
-        cursor.close()
+        # Update the database
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
+                (sampleid,)
+            )
+            cursor.execute(
+                "UPDATE results "
+                "SET `Last snapshot` = ? "
+                "WHERE `Sample ID` = ?",
+                (creation_date, sampleid)
+            )
+            cursor.close()
 
     return df
 
@@ -297,9 +303,10 @@ def convert_all_mprs() -> None:
                 print(f"Processing {sample_id}")
                 # convert the mpr to hdf
                 mpr_path = os.path.join(raw_folder, run_folder, mpr)
-                output_path = os.path.join(processed_folder, run_id, sample_id, f"snapshot.mpr-{i}.h5")
+                output_mpr = os.path.join(processed_folder, run_id, sample_id, f"snapshot.mpr-{i}.h5")
+                output_jsongz = os.path.join(processed_folder, run_id, sample_id, f"snapshot.mpr-{i}.json.gz")
                 try:
-                    convert_mpr_to_hdf(sample_id, mpr_path, output_path, 0.00154)
+                    convert_mpr(sample_id, mpr_path, None, output_jsongz, 0.00154)
                 except Exception as e:
                     print(f"Error processing {mpr}: {e}")
 
@@ -326,9 +333,10 @@ def convert_all_mprs() -> None:
                 continue
             for i,mpr in enumerate(mprs):
                 mpr_path = os.path.join(raw_folder, run_folder, sample_folder, mpr)
-                output_path = os.path.join(processed_folder, run_id, sample_id, f"snapshot.mpr-{i}.h5")
+                output_mpr = os.path.join(processed_folder, run_id, sample_id, f"snapshot.mpr-{i}.h5")
+                output_jsongz = os.path.join(processed_folder, run_id, sample_id, f"snapshot.mpr-{i}.json.gz")
                 try:
-                    convert_mpr_to_hdf(sample_id, mpr_path, output_path, 0.00154)
+                    convert_mpr(sample_id, mpr_path, None, output_jsongz, 0.00154)
                 except Exception as e:
                     print(f"Error processing {mpr}: {e}")
 

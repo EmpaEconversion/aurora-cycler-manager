@@ -17,13 +17,14 @@ import textwrap
 import yaml
 import numpy as np
 import json
+import gzip
 import sqlite3
 import pandas as pd
 from scipy import stats
 root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if root_dir not in sys.path:
     sys.path.append(root_dir)
-from aurora_cycler_manager.analysis import combine_hdfs, _run_from_sample
+from aurora_cycler_manager.analysis import combine_jobs, _run_from_sample
 
 app = dash.Dash(__name__)
 app.title = "Aurora Visualiser"
@@ -500,15 +501,25 @@ def update_sample_data(samples, data):
             files = os.listdir(file_location)
         except FileNotFoundError:
             continue
-        cycling_files = [
-            os.path.join(file_location,f) for f in files
-            if (f.startswith('snapshot') and f.endswith('.h5'))
-        ]
-        if not cycling_files:
-            print(f"No cycling files found in {file_location}")
-            continue
-        df, metadata = combine_hdfs(cycling_files)
-        data['data_sample_time'][sample] = df.to_dict(orient='list')
+        if any(f.startswith('full') and f.endswith('.json.gz') for f in files):
+            filepath = next(f for f in files if f.startswith('full') and f.endswith('.json.gz'))
+            with gzip.open(f'{file_location}/{filepath}', 'rb') as f:
+                data_dict = json.load(f)['data']
+            data['data_sample_time'][sample] = data_dict
+        elif any(f.startswith('full') and f.endswith('.h5') for f in files):
+            filepath = next(f for f in files if f.startswith('full') and f.endswith('.h5'))
+            df = pd.read_hdf(f'{file_location}/{filepath}')
+            data['data_sample_time'][sample] = df.to_dict(orient='list')
+        else:
+            cycling_files = [
+                os.path.join(file_location,f) for f in files
+                if (f.startswith('snapshot') and f.endswith('.h5'))
+            ]
+            if not cycling_files:
+                print(f"No cycling files found in {file_location}")
+                continue
+            df, metadata = combine_jobs(cycling_files)
+            data['data_sample_time'][sample] = df.to_dict(orient='list')
 
         # Get the analysed file
         try:

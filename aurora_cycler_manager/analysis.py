@@ -18,6 +18,7 @@ from typing import List, Tuple, Literal
 from datetime import datetime
 import traceback
 import json
+import gzip
 import fractions
 import pytz
 import yaml
@@ -33,6 +34,7 @@ from aurora_cycler_manager.version import __version__, __url__
 def convert_tomato_json(
         snapshot_file: str,
         output_hdf_file: str = None,
+        output_jsongz_file: str = None,
         ) -> pd.DataFrame:
     """ Convert a raw json file from tomato to a pandas dataframe.
 
@@ -77,18 +79,12 @@ def convert_tomato_json(
         }
         data.append(pd.DataFrame(step_dict))
     data = pd.concat(data, ignore_index=True)
-    if output_hdf_file:
+    if output_hdf_file or output_jsongz_file:
         folder = os.path.dirname(output_hdf_file)
         if not folder:
             folder = '.'
         if not os.path.exists(folder):
             os.makedirs(folder)
-        data.to_hdf(
-            output_hdf_file,
-            key="cycling",
-            complib="blosc",
-            complevel=2
-        )
         # Try to get the job number from the snapshot file and add to metadata
         try:
             json_filename = os.path.basename(snapshot_file)
@@ -115,13 +111,13 @@ def convert_tomato_json(
             job_data = None
             sample_data = None
 
-        # add metadata to the hdf5 file
+        # add metadata
         metadata = {
             "provenance": {
                 "snapshot_file": snapshot_file,
                 "tomato_metadata": input_dict["metadata"],
                 "aurora_metadata": {
-                    "hdf5_conversion": {
+                    "json_conversion": {
                         "repo_url": __url__,
                         "repo_version": __version__,
                         "method": "analysis.py convert_tomato_json",
@@ -142,12 +138,28 @@ def convert_tomato_json(
                 "technique": "code of technique using definitions from MPG2 developer package",
             },
         }
-        # Open the HDF5 file with h5py and add metadata
-        with h5py.File(output_hdf_file, 'a') as file:
-            if 'cycling' in file:
-                file['cycling'].attrs['metadata'] = json.dumps(metadata)
-            else:
-                print("Dataset 'cycling' not found.")
+        if output_hdf_file:
+            data.to_hdf(
+                output_hdf_file,
+                key="cycling",
+                complib="blosc",
+                complevel=2
+            )
+            with h5py.File(output_hdf_file, 'a') as file:
+                if 'cycling' in file:
+                    file['cycling'].attrs['metadata'] = json.dumps(metadata)
+                else:
+                    print("Dataset 'cycling' not found.")
+        if output_jsongz_file:
+            folder = os.path.dirname(output_jsongz_file)
+            if not folder:
+                folder = '.'
+            if not os.path.exists(folder):
+                os.makedirs(folder)
+            full_data = {'data': data.to_dict(orient='list'), 'metadata': metadata}
+            with gzip.open(output_jsongz_file, 'wt', encoding='utf-8') as f:
+                json.dump(full_data, f)
+
     return data
 
 def convert_all_tomato_jsons(
@@ -171,21 +183,22 @@ def convert_all_tomato_jsons(
                         os.makedirs(output_folder)
                     convert_tomato_json(
                         os.path.join(raw_folder,batch_folder,sample_folder,snapshot_file),
-                        os.path.join(output_folder,snapshot_file.replace('.json','.h5'))
+                        None,
+                        os.path.join(output_folder,snapshot_file.replace('.json','.json.gz')),
                     )
                     print(f"Converted {snapshot_file}")
 
-def combine_hdfs(
-        h5_files: List[str],
+def combine_jobs(
+        job_files: List[str],
 ) -> Tuple[pd.DataFrame, dict]:
-    """ Read multiple hdf5 files and return a single dataframe.
+    """ Read multiple job files and return a single dataframe.
 
     Merges the data, identifies cycle numbers and changes column names.
     Columns are now 'V (V)', 'I (A)', 'uts', 'dt (s)', 'Iavg (A)', 
     'dQ (mAh)', 'Step', 'Cycle'.
 
     Args:
-        h5_files (List[str]): list of paths to the hdf5 files
+        job_files (List[str]): list of paths to the job files
 
     Returns:
         pd.DataFrame: DataFrame containing the cycling data
@@ -199,24 +212,33 @@ def combine_hdfs(
     dfs = []
     metadatas = []
     sampleids = []
-    for f in h5_files:
-        dfs.append(pd.read_hdf(f))
-        with h5py.File(f, 'r') as file:
-            try:
-                metadata=json.loads(file['cycling'].attrs['metadata'])
-                metadatas.append(metadata)
+    for f in job_files:
+        if f.endswith('.h5'):
+            dfs.append(pd.read_hdf(f))
+            with h5py.File(f, 'r') as file:
+                try:
+                    metadata=json.loads(file['cycling'].attrs['metadata'])
+                    metadatas.append(metadata)
+                    sampleids.append(
+                        metadata.get('sample_data',{}).get('Sample ID','')
+                    )
+                except KeyError as exc:
+                    print(f"Metadata not found in {f}")
+                    raise KeyError from exc
+        elif f.endswith('.json.gz'):
+            with gzip.open(f, 'rt', encoding='utf-8') as file:
+                data = json.load(file)
+                dfs.append(pd.DataFrame(data['data']))
+                metadatas.append(data['metadata'])
                 sampleids.append(
-                    metadata.get('sample_data',{}).get('Sample ID','')
+                    data['metadata'].get('sample_data',{}).get('Sample ID','')
                 )
-            except KeyError as exc:
-                print(f"Metadata not found in {f}")
-                raise KeyError from exc
     assert len(set(sampleids)) == 1, "All files must be from the same sample"
     dfs = [df for df in dfs if 'uts' in df.columns and not df['uts'].empty]
     assert dfs, "No 'uts' column found in any of the files"
     order = np.argsort([df['uts'].iloc[0] for df in dfs])
     dfs = [dfs[i] for i in order]
-    h5_files = [h5_files[i] for i in order]
+    job_files = [job_files[i] for i in order]
     metadatas = [metadatas[i] for i in order]
 
     for i,df in enumerate(dfs):
@@ -262,15 +284,15 @@ def combine_hdfs(
     metadata = {
         'provenance': {
             'aurora_metadata': {
-                'hdf5_merging': {
-                    'h5_files': h5_files,
+                'data_merging': {
+                    'job_files': job_files,
                     'repo_url': __url__,
                     'repo_version': __version__,
-                    'method': 'analysis.combine_hdfs',
+                    'method': 'analysis.combine_jobs',
                     'datetime': datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S %z'),
                 }
             },
-            'original_file_provenance': {f: m['provenance'] for f, m in zip(h5_files, metadatas)},
+            'original_file_provenance': {f: m['provenance'] for f, m in zip(job_files, metadatas)},
         },
         'sample_data': metadatas[-1].get('sample_data',{}),
         'job_data': [m.get('job_data',{}) for m in metadatas],
@@ -290,16 +312,17 @@ def combine_hdfs(
     return df, metadata
 
 def analyse_cycles(
-        h5_files: List[str],
+        job_files: List[str],
         voltage_lower_cutoff: float = 0,
         voltage_upper_cutoff: float = 5,
         save_cycle_dict: bool = False,
         save_merged_hdf: bool = False,
+        save_merged_jsongz: bool = False,
     ) -> Tuple[pd.DataFrame, dict, dict]:
     """ Take multiple dataframes, merge and analyse the cycling data.
     
     Args:
-        h5_files (List[str]): list of paths to the hdf5 files
+        job_files (List[str]): list of paths to the json.gz job files
         voltage_lower_cutoff (float, optional): lower cutoff for voltage data
         voltage_upper_cutoff (float, optional): upper cutoff for voltage data
         save_cycle_dict (bool, optional): save the cycle_dict as a json file
@@ -318,7 +341,7 @@ def analyse_cycles(
         config = json.load(f)
     db_path = config["Database path"]
 
-    df, metadata = combine_hdfs(h5_files)
+    df, metadata = combine_jobs(job_files)
 
     # update metadata
     timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
@@ -611,28 +634,32 @@ def analyse_cycles(
             (*update_row.values(), sampleid)
         )
 
-    if save_cycle_dict or save_merged_hdf:
-        save_folder = os.path.dirname(h5_files[0])
+    if save_cycle_dict or save_merged_hdf or save_merged_jsongz:
+        save_folder = os.path.dirname(job_files[0])
         if not save_folder:
             save_folder = '.'
         if not os.path.exists(save_folder):
             os.makedirs(save_folder)
-    if save_cycle_dict:
-        with open(f'{save_folder}/cycles.{sampleid}.json','w',encoding='utf-8') as f:
-            json.dump({"data": cycle_dict, "metadata": metadata},f)
-    if save_merged_hdf:
-        df.drop(columns=['dt (s)', 'Iavg (A)'], inplace=True)
-        df.to_hdf(
-            f'{save_folder}/full.{sampleid}.h5',
-            key="cycling",
-            complib="blosc",
-            complevel=4
-        )
-        with h5py.File(f'{save_folder}/full.{sampleid}.h5', 'a') as file:
-            for key, value in metadata.items():
-                if isinstance(value, (dict, list)):
-                    value = json.dumps(value)
-                file['cycling'].attrs[key] = value
+        if save_cycle_dict:
+            with open(f'{save_folder}/cycles.{sampleid}.json','w',encoding='utf-8') as f:
+                json.dump({"data": cycle_dict, "metadata": metadata},f)
+        if save_merged_hdf or save_merged_jsongz:
+            df.drop(columns=['dt (s)', 'Iavg (A)'], inplace=True)
+        if save_merged_hdf:
+            df.to_hdf(
+                f'{save_folder}/full.{sampleid}.h5',
+                key="cycling",
+                complib="blosc",
+                complevel=4
+            )
+            with h5py.File(f'{save_folder}/full.{sampleid}.h5', 'a') as file:
+                for key, value in metadata.items():
+                    if isinstance(value, (dict, list)):
+                        value = json.dumps(value)
+                    file['cycling'].attrs[key] = value
+        if save_merged_jsongz:
+            with gzip.open(f'{save_folder}/full.{sampleid}.json.gz', 'wt', encoding='utf-8') as f:
+                json.dump({'data': df.to_dict(orient='list'), 'metadata': metadata}, f)
     return df, cycle_dict, metadata
 
 def analyse_sample(sample: str) -> Tuple[pd.DataFrame, dict, dict]:
@@ -647,11 +674,16 @@ def analyse_sample(sample: str) -> Tuple[pd.DataFrame, dict, dict]:
         config = json.load(f)
     data_folder = config["Processed snapshots folder path"]
     file_location = os.path.join(data_folder, run_id, sample)
-    h5_files = [
+    job_files = [
         os.path.join(file_location,f) for f in os.listdir(file_location)
-        if (f.startswith('snapshot') and f.endswith('.h5'))
+        if (f.startswith('snapshot') and f.endswith('.json.gz'))
     ]
-    df, cycle_dict, metadata = analyse_cycles(h5_files, save_cycle_dict=True, save_merged_hdf=True)
+    if not job_files:  # check if there are .h5 files
+        job_files = [
+            os.path.join(file_location,f) for f in os.listdir(file_location)
+            if (f.startswith('snapshot') and f.endswith('.h5'))
+        ]
+    df, cycle_dict, metadata = analyse_cycles(job_files, save_cycle_dict=True, save_merged_hdf=False, save_merged_jsongz=True)
     with sqlite3.connect(config["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute(
