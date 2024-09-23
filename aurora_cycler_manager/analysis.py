@@ -80,11 +80,6 @@ def convert_tomato_json(
         data.append(pd.DataFrame(step_dict))
     data = pd.concat(data, ignore_index=True)
     if output_hdf_file or output_jsongz_file:
-        folder = os.path.dirname(output_hdf_file)
-        if not folder:
-            folder = '.'
-        if not os.path.exists(folder):
-            os.makedirs(folder)
         # Try to get the job number from the snapshot file and add to metadata
         try:
             json_filename = os.path.basename(snapshot_file)
@@ -111,7 +106,7 @@ def convert_tomato_json(
             job_data = None
             sample_data = None
 
-        # add metadata
+        # Create metadata
         metadata = {
             "provenance": {
                 "snapshot_file": snapshot_file,
@@ -139,6 +134,11 @@ def convert_tomato_json(
             },
         }
         if output_hdf_file:
+            folder = os.path.dirname(output_hdf_file)
+            if not folder:
+                folder = '.'
+            if not os.path.exists(folder):
+                os.makedirs(folder)
             data.to_hdf(
                 output_hdf_file,
                 key="cycling",
