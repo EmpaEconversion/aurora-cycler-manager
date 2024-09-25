@@ -45,6 +45,21 @@ def create_config() -> None:
                         "tomato_data_path": "tomato-specific: the folder where data is stored, usually AppData/local/dgbowl/tomato/version/jobs",
                     }
                 ],
+
+                "EC-lab harvester" : {
+                    "Servers": [
+                        {
+                            "label" : "example-server must match the server label in the servers section",
+                            "EC-lab folder location": "where EC-lab data is saved",
+                            "EC-lab copy location": "temporary copy location on the server",
+                        },
+                    ],
+                    "run_id_lookup": {
+                        "folder name on server": "run_id in database",  
+                    },
+                    "Snapshots folder path": os.path.join(base_dir, "snapshots"),
+                },
+
                 "Sample database" : [
                     {"Name" : "Sample ID", "Alternative names" : ["sampleid"], "Type" : "VARCHAR(255) PRIMARY KEY"},
                     {"Name" : "Run ID", "Alternative names" : [], "Type" : "VARCHAR(255)"},
@@ -107,6 +122,7 @@ def create_config() -> None:
                     {"Name" : "Timestamp step 11", "Alternative names" : ["Timestamp Step 11"], "Type" : "DATETIME"}
                 ],
             }, f, indent=4)
+
     return
 
 
@@ -191,6 +207,15 @@ def create_database() -> None:
             '`Snapshot pipeline` VARCHAR(50),'
             'FOREIGN KEY(`Sample ID`) REFERENCES samples(`Sample ID`), '
             'FOREIGN KEY(`Pipeline`) REFERENCES pipelines(`Pipeline`)'
+            ')'
+        )
+        cursor.execute(
+            'CREATE TABLE harvester ('
+            'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+            '`Server label` TEXT, '
+            '`Server hostname` TEXT, '
+            '`Folder` TEXT, '
+            'UNIQUE(`Server label`, `Server hostname`, `Folder`)'
             ')'
         )
         conn.commit()
