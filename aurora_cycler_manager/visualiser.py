@@ -9,7 +9,9 @@ systems, both of individual samples and of batches of samples.
 import os
 import sys
 import dash
-from dash import dcc, html, Input, Output, State, no_update
+from dash import dcc, html, Input, Output, State, no_update, dash_table
+import dash_bootstrap_components as dbc
+import dash_ag_grid as dag
 from dash_resizable_panels import PanelGroup, Panel, PanelResizeHandle
 import plotly.graph_objs as go
 import plotly.express as px
@@ -17,17 +19,33 @@ import textwrap
 import yaml
 import numpy as np
 import json
+import gzip
 import sqlite3
 import pandas as pd
+from datetime import datetime
 from scipy import stats
 root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if root_dir not in sys.path:
     sys.path.append(root_dir)
-from aurora_cycler_manager.analysis import combine_hdfs, _run_from_sample
+from aurora_cycler_manager.analysis import combine_jobs, _run_from_sample
 
 app = dash.Dash(__name__)
 app.title = "Aurora Visualiser"
 
+#======================================================================================================================#
+#================================================ GLOBAL VARIABLES ====================================================#
+#======================================================================================================================#
+
+# Config file
+current_dir = os.path.dirname(os.path.abspath(__file__))
+config_path = os.path.join(current_dir, '..', 'config.json')
+with open(config_path, encoding = 'utf-8') as f:
+    config = json.load(f)
+db_path = config['Database path']
+graph_config_path = config['Graph config path']
+unused_pipelines = config.get('Unused pipelines', [])
+
+# Graphs
 graph_template = 'seaborn'
 
 #======================================================================================================================#
@@ -35,7 +53,6 @@ graph_template = 'seaborn'
 #======================================================================================================================#
 
 def get_sample_names() -> list:
-    db_path = "K:/Aurora/cucumber/database/database.db"
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT `Sample ID` FROM samples")
@@ -43,10 +60,25 @@ def get_sample_names() -> list:
     return [sample[0] for sample in samples]
 
 def get_batch_names() -> list:
-    graph_config_path = "K:/Aurora/cucumber/graph_config.yml"
     with open(graph_config_path, 'r') as f:
         graph_config = yaml.safe_load(f)
     return list(graph_config.keys())
+
+def get_database() -> dict:
+    pipeline_query = "SELECT * FROM pipelines WHERE " + " AND ".join([f"Pipeline NOT LIKE '{pattern}'" for pattern in unused_pipelines])
+    db_data = {
+        'samples': pd.read_sql_query("SELECT * FROM samples", sqlite3.connect(db_path)).to_dict("records"),
+        'results': pd.read_sql_query("SELECT * FROM results", sqlite3.connect(db_path)).to_dict("records"),
+        'jobs': pd.read_sql_query("SELECT * FROM jobs", sqlite3.connect(db_path)).to_dict("records"),
+        'pipelines': pd.read_sql_query(pipeline_query, sqlite3.connect(db_path)).to_dict("records")
+    }
+    db_columns = {
+        'samples': [{'field' : col, 'filter': True, 'tooltipField': col} for col in db_data['samples'][0].keys()],
+        'results': [{'field' : col, 'filter': True, 'tooltipField': col} for col in db_data['results'][0].keys()],
+        'jobs': [{'field' : col, 'filter': True, 'tooltipField': col} for col in db_data['jobs'][0].keys()],
+        'pipelines': [{'field' : col, 'filter': True, 'tooltipField': col} for col in db_data['pipelines'][0].keys()],
+    }
+    return {'data':db_data, 'column_defs': db_columns}
 
 def cramers_v(x, y):
     """ Calculate Cramer's V for two categorical variables. """
@@ -124,10 +156,11 @@ def moving_average(x, npoints=11):
     return xav
 
 def deriv(x, y):
-    dydx = np.zeros(len(y))
-    dydx[0] = (y[1] - y[0]) / (x[1] - x[0])
-    dydx[-1] = (y[-1] - y[-2]) / (x[-1] - x[-2])
-    dydx[1:-1] = (y[2:] - y[:-2]) / (x[2:] - x[:-2])
+    with np.errstate(divide='ignore'):
+        dydx = np.zeros(len(y))
+        dydx[0] = (y[1] - y[0]) / (x[1] - x[0])
+        dydx[-1] = (y[-1] - y[-2]) / (x[-1] - x[-2])
+        dydx[1:-1] = (y[2:] - y[:-2]) / (x[2:] - x[:-2])
 
     # for any 3 points where x direction changes sign set to nan
     mask = (x[1:-1] - x[:-2]) * (x[2:] - x[1:-1]) < 0
@@ -148,139 +181,156 @@ def smoothed_derivative(x, y, npoints=21):
 
 colorscales = px.colors.named_colorscales()
 
-samples_menu = [
-    html.H4("Select samples to plot:"),
-    dcc.Dropdown(
-        id='samples-dropdown',
-        options=[
-            {'label': name, 'value': name} for name in get_sample_names()
-        ],
-        value=[],
-        multi=True,
-    ),
-    html.Div(style={'margin-top': '50px'}),
-    html.H4("Time graph"),
-    html.Label('X-axis:', htmlFor='samples-time-x'),
-    dcc.Dropdown(
-        id='samples-time-x',
-        options=['Unix time','From start','From formation','From cycling'],
-        value='From start',
-        multi=False,
-    ),
-    dcc.Dropdown(
-        id='samples-time-units',
-        options=['Seconds','Minutes','Hours','Days'],
-        value='Hours',
-    ),
-    html.Div(style={'margin-top': '10px'}),
-    html.Label('Y-axis:', htmlFor='samples-time-y'),
-    dcc.Dropdown(
-        id='samples-time-y',
-        options=['V (V)'],
-        value='V (V)',
-        multi=False,
-    ),
-    html.Div(style={'margin-top': '50px'}),
-    html.H4("Cycles graph"),
-    html.P("X-axis: Cycle"),
-    html.Label('Y-axis:', htmlFor='samples-cycles-y'),
-    dcc.Dropdown(
-        id='samples-cycles-y',
-        options=[
-            'Specific discharge capacity (mAh/g)',
-            'Efficiency (%)',
-        ],
-        value='Specific discharge capacity (mAh/g)',
-        multi=False,
-    ),
-    html.Div(style={'margin-top': '50px'}),
-    html.H4("One cycle graph"),
-    html.Label("X-axis:", htmlFor='samples-cycle-x'),
-    dcc.Dropdown(
-        id='samples-cycle-x',
-        options=['Q (mAh)', 'V (V)', 'dQdV (mAh/V)'],
-        value='Q (mAh)',
-    ),
-    html.Div(style={'margin-top': '10px'}),
-    html.Label("Y-axis:", htmlFor='samples-cycle-y'),
-    dcc.Dropdown(
-        id='samples-cycle-y',
-        options=['Q (mAh)', 'V (V)', 'dQdV (mAh/V)'],
-        value='V (V)',
-    ),
-]
+samples_menu = html.Div(
+    style = {'overflow': 'scroll', 'height': '100%'},
+    children = [
+        html.H4("Select samples to plot:"),
+        dcc.Dropdown(
+            id='samples-dropdown',
+            options=[
+                {'label': name, 'value': name} for name in get_sample_names()
+            ],
+            value=[],
+            multi=True,
+        ),
+        html.Div(style={'margin-top': '50px'}),
+        html.H4("Time graph"),
+        html.Label('X-axis:', htmlFor='samples-time-x'),
+        dcc.Dropdown(
+            id='samples-time-x',
+            options=['Unix time','From start','From formation','From cycling'],
+            value='From start',
+            multi=False,
+        ),
+        dcc.Dropdown(
+            id='samples-time-units',
+            options=['Seconds','Minutes','Hours','Days'],
+            value='Hours',
+        ),
+        html.Div(style={'margin-top': '10px'}),
+        html.Label('Y-axis:', htmlFor='samples-time-y'),
+        dcc.Dropdown(
+            id='samples-time-y',
+            options=['V (V)'],
+            value='V (V)',
+            multi=False,
+        ),
+        html.Div(style={'margin-top': '50px'}),
+        html.H4("Cycles graph"),
+        html.P("X-axis: Cycle"),
+        html.Label('Y-axis:', htmlFor='samples-cycles-y'),
+        dcc.Dropdown(
+            id='samples-cycles-y',
+            options=[
+                'Specific discharge capacity (mAh/g)',
+                'Efficiency (%)',
+            ],
+            value='Specific discharge capacity (mAh/g)',
+            multi=False,
+        ),
+        html.Div(style={'margin-top': '50px'}),
+        html.H4("One cycle graph"),
+        html.Label("X-axis:", htmlFor='samples-cycle-x'),
+        dcc.Dropdown(
+            id='samples-cycle-x',
+            options=['Q (mAh)', 'V (V)', 'dQdV (mAh/V)'],
+            value='Q (mAh)',
+        ),
+        html.Div(style={'margin-top': '10px'}),
+        html.Label("Y-axis:", htmlFor='samples-cycle-y'),
+        dcc.Dropdown(
+            id='samples-cycle-y',
+            options=['Q (mAh)', 'V (V)', 'dQdV (mAh/V)'],
+            value='V (V)',
+        ),
+        html.Div(style={'margin-top': '100px'})
+    ]
+)
 
-batches_menu = [
-    html.H4("Select batches to plot:"),
-    dcc.Dropdown(
-        id='batches-dropdown',
-        options=[
-            {'label': name, 'value': name} for name in get_batch_names()
-        ],
-        value=[],
-        multi=True,
-    ),
-    html.Div(style={'margin-top': '50px'}),
-    html.H4("Cycles graph"),
-    html.P("X-axis: Cycle"),
-    html.Label("Y-axis:", htmlFor='batch-cycle-y'),
-    dcc.Dropdown(
-        id='batch-cycle-y',
-        options=['Specific discharge capacity (mAh/g)'],
-        value='Specific discharge capacity (mAh/g)',
-        multi=False,
-    ),
-    html.Div(style={'margin-top': '10px'}),
-    html.Label("Colormap", htmlFor='batch-cycle-colormap'),
-    dcc.Dropdown(
-        id='batch-cycle-color',
-        # TODO remove these default options, change to run ID
-        options=[
-            'Run ID'
-        ],
-        value='Run ID',
-        multi=False,
-    ),
-    dcc.Dropdown(
-        id='batch-cycle-colormap',
-        options=colorscales,
-        value='turbo'
-    ),
-    html.Div(style={'margin-top': '50px'}),
-    html.H4("Correlation graph"),
-    html.Label("X-axis:", htmlFor='batch-correlation-x'),
-    dcc.Dropdown(
-        id='batch-correlation-x',
-    ),
-    html.Div(style={'margin-top': '10px'}),
-    html.Label("Y-axis:", htmlFor='batch-correlation-y'),
-    dcc.Dropdown(
-        id='batch-correlation-y',
-    ),
-    html.Div(style={'margin-top': '10px'}),
-    html.Label("Colormap", htmlFor='batch-correlation-color'),
-    dcc.Dropdown(
-        id='batch-correlation-color',
-        options=[
-            'Run ID'
-        ],
-        value='Run ID',
-        multi=False,
-    ),
-    dcc.Dropdown(
-        id='batch-correlation-colorscale',
-        options=colorscales,
-        value='turbo',
-        multi=False,
-    ),
-]
+batches_menu = html.Div(
+    style = {'overflow': 'scroll', 'height': '100%'},
+    children = [
+        html.H4("Select batches to plot:"),
+        dcc.Dropdown(
+            id='batches-dropdown',
+            options=[
+                {'label': name, 'value': name} for name in get_batch_names()
+            ],
+            value=[],
+            multi=True,
+        ),
+        html.Div(style={'margin-top': '50px'}),
+        html.H4("Cycles graph"),
+        html.P("X-axis: Cycle"),
+        html.Label("Y-axis:", htmlFor='batch-cycle-y'),
+        dcc.Dropdown(
+            id='batch-cycle-y',
+            options=['Specific discharge capacity (mAh/g)'],
+            value='Specific discharge capacity (mAh/g)',
+            multi=False,
+        ),
+        html.Div(style={'margin-top': '10px'}),
+        html.Label("Colormap", htmlFor='batch-cycle-colormap'),
+        dcc.Dropdown(
+            id='batch-cycle-color',
+            options=[
+                'Run ID'
+            ],
+            value='Run ID',
+            multi=False,
+        ),
+        dcc.Dropdown(
+            id='batch-cycle-colormap',
+            options=colorscales,
+            value='turbo'
+        ),
+        html.Div(style={'margin-top': '10px'}),
+        html.Label("Style", htmlFor='batch-cycle-style'),
+        dcc.Dropdown(
+            id='batch-cycle-style',
+            options=[
+            ],
+            multi=False,
+        ),
+        html.Div(style={'margin-top': '50px'}),
+        html.H4("Correlation graph"),
+        html.Label("X-axis:", htmlFor='batch-correlation-x'),
+        dcc.Dropdown(
+            id='batch-correlation-x',
+        ),
+        html.Div(style={'margin-top': '10px'}),
+        html.Label("Y-axis:", htmlFor='batch-correlation-y'),
+        dcc.Dropdown(
+            id='batch-correlation-y',
+        ),
+        html.Div(style={'margin-top': '10px'}),
+        html.Label("Colormap", htmlFor='batch-correlation-color'),
+        dcc.Dropdown(
+            id='batch-correlation-color',
+            options=[
+                'Run ID'
+            ],
+            value='Run ID',
+            multi=False,
+        ),
+        dcc.Dropdown(
+            id='batch-correlation-colorscale',
+            options=colorscales,
+            value='turbo',
+            multi=False,
+        ),
+        html.Div(style={'margin-top': '100px'})
+    ]
+)
 
 app.layout = html.Div(
-    style = {'height': '100vh'},
+    style = {'height': 'calc(100vh - 30px)','overflow': 'hidden'},
     children = [
         dcc.Tabs(
             id = "tabs",
             value = 'tab-1',
+            content_style = {'height': '100%', 'overflow': 'hidden'},
+            parent_style = {'height': '100%', 'overflow': 'hidden'},
             children = [
                 #################### SAMPLES TAB WITH PANELS ####################
                 dcc.Tab(
@@ -288,69 +338,71 @@ app.layout = html.Div(
                     value='tab-1',
                     children = [
                         dcc.Store(id='samples-data-store', data={'data_sample_time': {}, 'data_sample_cycle': {}}),
-                        html.Div([
-                            PanelGroup(
-                                id="samples-panel-group",
-                                children=[
-                                    Panel(
-                                        id="samples-menu",
-                                        className="menu-panel",
-                                        children=samples_menu,
-                                        defaultSizePercentage=20,
-                                        collapsible=True,
-                                    ),
-                                    PanelResizeHandle(html.Div(className="resize-handle-horizontal")),
-                                    Panel(
-                                        id="samples-graphs",
-                                        children=[
-                                            PanelGroup(
-                                                id="samples-graph-group",
-                                                children=[
-                                                    Panel(
-                                                        id="samples-top-graph",
-                                                        children=[
-                                                            dcc.Graph(id='time-graph',figure={'data': [],'layout': go.Layout(template=graph_template,title='vs time',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'},showlegend=False)}, config={'scrollZoom':True, 'displaylogo':False},style={'height': '100%'}),
-                                                        ]),
-                                                    PanelResizeHandle(
-                                                        html.Div(className="resize-handle-vertical")
-                                                    ),
-                                                    Panel(
-                                                        id="samples-bottom-graphs",
-                                                        children=[
-                                                            PanelGroup(
-                                                                id="samples-bottom-graph-group",
-                                                                children=[
-                                                                    Panel(
-                                                                        id="samples-bottom-left-graph",
-                                                                        children=[
-                                                                            dcc.Graph(id='cycles-graph',figure={'data': [],'layout': go.Layout(template=graph_template,title='vs cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'},showlegend=False)}, config={'scrollZoom':True, 'displaylogo':False},style={'height': '100%'}), # TODO this doesn't work
-                                                                        ]
-                                                                    ),
-                                                                    PanelResizeHandle(
-                                                                        html.Div(className="resize-handle-horizontal")
-                                                                    ),
-                                                                    Panel(
-                                                                        id="samples-bottom-right-graph",
-                                                                        children=[
-                                                                            dcc.Graph(id='cycle-graph',figure={'data': [],'layout': go.Layout(template=graph_template,title='One cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'},showlegend=False)}, config={'scrollZoom':True, 'displaylogo':False},style={'height': '100%'}),
-                                                                        ]
-                                                                    ),
-                                                                ],
-                                                                direction="horizontal",
-                                                            ),
-                                                        ],
-                                                    ),
-                                                ],
-                                                direction="vertical",
-                                            )
-                                        ],
-                                        minSizePercentage=50,
-                                    ),
-                                ],
-                                direction="horizontal",
-                            )
-                        ],
-                        style={'height': '95vh'},
+                        html.Div(
+                            style={'height': '100%'},
+                            children = [
+                                PanelGroup(
+                                    id="samples-panel-group",
+                                    direction="horizontal",
+                                    children=[
+                                        Panel(
+                                            id="samples-menu",
+                                            className="menu-panel",
+                                            children=samples_menu,
+                                            defaultSizePercentage=20,
+                                            collapsible=True,
+                                        ),
+                                        PanelResizeHandle(html.Div(className="resize-handle-horizontal")),
+                                        Panel(
+                                            id="samples-graphs",
+                                            children=[
+                                                PanelGroup(
+                                                    id="samples-graph-group",
+                                                    direction="vertical",
+                                                    children=[
+                                                        Panel(
+                                                            id="samples-top-graph",
+                                                            children=[
+                                                                dcc.Graph(id='time-graph',figure={'data': [],'layout': go.Layout(template=graph_template,title='vs time',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'},showlegend=False)}, config={'scrollZoom':True, 'displaylogo':False},style={'height': '100%'}),
+                                                            ]),
+                                                        PanelResizeHandle(
+                                                            html.Div(className="resize-handle-vertical")
+                                                        ),
+                                                        Panel(
+                                                            id="samples-bottom-graphs",
+                                                            children=[
+                                                                PanelGroup(
+                                                                    id="samples-bottom-graph-group",
+                                                                    direction="horizontal",
+                                                                    children=[
+                                                                        Panel(
+                                                                            id="samples-bottom-left-graph",
+                                                                            children=[
+                                                                                dcc.Graph(id='cycles-graph',figure={'data': [],'layout': go.Layout(template=graph_template,title='vs cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'},showlegend=False)}, config={'scrollZoom':True, 'displaylogo':False},style={'height': '100%'}), # TODO this doesn't work
+                                                                            ]
+                                                                        ),
+                                                                        PanelResizeHandle(
+                                                                            html.Div(className="resize-handle-horizontal")
+                                                                        ),
+                                                                        Panel(
+                                                                            id="samples-bottom-right-graph",
+                                                                            children=[
+                                                                                dcc.Graph(id='cycle-graph',figure={'data': [],'layout': go.Layout(template=graph_template,title='One cycle',xaxis={'title': 'X-axis Title'},yaxis={'title': 'Y-axis Title'},showlegend=False)}, config={'scrollZoom':True, 'displaylogo':False},style={'height': '100%'}),
+                                                                            ]
+                                                                        ),
+                                                                    ],
+                                                                ),
+                                                            ],
+                                                        ),
+                                                    ],
+                                                    
+                                                )
+                                            ],
+                                            minSizePercentage=50,
+                                        ),
+                                    ],
+                                ),
+                            ],
                         ),
                     ],
                 ),
@@ -361,10 +413,18 @@ app.layout = html.Div(
                     children = [
                         dcc.Loading(
                             id='loading-page',
-                            overlay_style={"visibility":"visible", "filter": "blur(2px)"},
                             type='circle',
-                            fullscreen=True,
                             children=[ dcc.Store(id='batches-data-store', data={'data_batch_cycle': {}}),],
+                            style={
+                                'position': 'fixed',
+                                'bottom': '1%',
+                                'left': '1%',
+                                'size': '500%',
+                                'zIndex': 1000
+                            },
+                            parent_style={
+                                'position': 'relative'
+                            },
                         ),
                         html.Div([
                             PanelGroup(
@@ -452,18 +512,92 @@ app.layout = html.Div(
                                 direction="horizontal",
                             )
                         ],
-                        style={'height': '95vh'},
+                        style={'height': '100%'},
                         ),
                     ],
                 ),
-            ],
-        ),
-    ],
-),
+                ##### Database tab #####
+                dcc.Tab(
+                    label='Database',
+                    value='tab-3',
+                    children = [
+                        html.Div(
+                            style={'height': '100%', 'overflowY': 'scroll', 'overflowX': 'scroll', 'padding': '10px'},
+                            children = [
+                                dcc.Loading(
+                                    id='loading-database',
+                                    type='circle',
+                                    overlay_style={"visibility":"visible", "filter": "blur(2px)"},
+                                    style={'height': '100%'},
+                                    children=[
+                                        html.Div(
+                                            style={'height': '100%'},
+                                            children = [
+                                                dcc.Store(id='table-data-store', data=get_database()),
+                                                # Button to update the database
+                                                html.P(children = f"Last refreshed: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}", id='last-refreshed'),
+                                                html.P(children = f"Last updated: unknown", id='last-updated'),
+                                                html.Button("Refresh database", id='refresh-database'),
+                                                # html.Button("Force update database", id='update-database'), # TODO
+                                                html.Div(style={'margin-top': '10px'}),
+                                                # Buttons to select which table to display
+                                                dcc.RadioItems(
+                                                    id='table-select',
+                                                    inline=True,
+                                                    options=[
+                                                        {'label': 'Samples', 'value': 'samples'},
+                                                        {'label': 'Results', 'value': 'results'},
+                                                        {'label': 'Jobs', 'value': 'jobs'},
+                                                        {'label': 'Pipelines', 'value': 'pipelines'},
+                                                    ],
+                                                    value='pipelines',
+                                                ),
+                                                html.Div(style={'margin-top': '10px'}),
+                                                dag.AgGrid(
+                                                    id='table',
+                                                    dashGridOptions = {"enableCellTextSelection": False, "tooltipShowDelay": 1000, 'rowSelection': 'multiple'},
+                                                    style={"height": "calc(90vh - 200px)", "width": "100%", "minHeight": "400px"},
+                                                ),
+                                            ]
+                                        )
+                                    ]
+                                )
+                            ]
+                        )
+                    ]
+                )
+            ]
+        )
+    ]
+)
 
 #======================================================================================================================#
 #===================================================== CALLBACKS ======================================================#
 #======================================================================================================================#
+
+#----------------------------- DATABASE CALLBACKS ------------------------------#
+@app.callback(
+    Output('table', 'rowData'),
+    Output('table', 'columnDefs'),
+    Input('table-select', 'value'),
+    Input('table-data-store', 'data'),
+)
+def update_table(table, data):
+    return data['data'][table], data['column_defs'][table]
+
+
+
+@app.callback(
+    Output('table-data-store', 'data'),
+    Output('last-refreshed', 'children'),
+    Output('last-updated', 'children'),
+    Input('refresh-database', 'n_clicks'),
+)
+def refresh_database(n_clicks):
+    if n_clicks is None:
+        return no_update
+    db_data = get_database()
+    return db_data, f"Last refreshed: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}", f"Last updated: {db_data['data']['pipelines'][0]['Last checked']}"
 
 #----------------------------- SAMPLES CALLBACKS ------------------------------#
 
@@ -500,15 +634,25 @@ def update_sample_data(samples, data):
             files = os.listdir(file_location)
         except FileNotFoundError:
             continue
-        cycling_files = [
-            os.path.join(file_location,f) for f in files
-            if (f.startswith('snapshot') and f.endswith('.h5'))
-        ]
-        if not cycling_files:
-            print(f"No cycling files found in {file_location}")
-            continue
-        df, metadata = combine_hdfs(cycling_files)
-        data['data_sample_time'][sample] = df.to_dict(orient='list')
+        if any(f.startswith('full') and f.endswith('.json.gz') for f in files):
+            filepath = next(f for f in files if f.startswith('full') and f.endswith('.json.gz'))
+            with gzip.open(f'{file_location}/{filepath}', 'rb') as f:
+                data_dict = json.load(f)['data']
+            data['data_sample_time'][sample] = data_dict
+        elif any(f.startswith('full') and f.endswith('.h5') for f in files):
+            filepath = next(f for f in files if f.startswith('full') and f.endswith('.h5'))
+            df = pd.read_hdf(f'{file_location}/{filepath}')
+            data['data_sample_time'][sample] = df.to_dict(orient='list')
+        else:
+            cycling_files = [
+                os.path.join(file_location,f) for f in files
+                if (f.startswith('snapshot') and f.endswith('.h5'))
+            ]
+            if not cycling_files:
+                print(f"No cycling files found in {file_location}")
+                continue
+            df, metadata = combine_jobs(cycling_files)
+            data['data_sample_time'][sample] = df.to_dict(orient='list')
 
         # Get the analysed file
         try:
@@ -609,7 +753,6 @@ def update_cycles_graph(data, yvar):
     Input('samples-cycle-y', 'value'),
 )
 def update_cycle_graph(clickData,data,xvar,yvar):
-
     fig = px.scatter().update_layout(title='No data...', xaxis_title=xvar, yaxis_title=yvar,showlegend=False)
     fig.update_layout(template = graph_template)
     if not data['data_sample_cycle'] or not xvar or not yvar:
@@ -644,9 +787,6 @@ def update_cycle_graph(clickData,data,xvar,yvar):
     fig.update_layout(title=f'{yvar} vs {xvar} for cycle {cycle}')
     return fig
 
-    
-
-
 #----------------------------- BATCHES CALLBACKS ------------------------------#
 
 # Update the batches data store
@@ -654,6 +794,7 @@ def update_cycle_graph(clickData,data,xvar,yvar):
     Output('batches-data-store', 'data'),
     Output('batch-cycle-y', 'options'),
     Output('batch-cycle-color', 'options'),
+    Output('batch-cycle-style', 'options'),
     Output('batch-correlation-color', 'options'),
     Input('batches-dropdown', 'value'),
     Input('batches-data-store', 'data'),
@@ -697,7 +838,7 @@ def update_batch_data(batches, data):
         color_vars.update([k for k,v in data_dict.items() if not isinstance(v,list)])
     color_vars = list(color_vars)
 
-    return data, y_vars, color_vars, color_vars
+    return data, y_vars, color_vars, color_vars, color_vars
 
 
 # Update the batch cycle graph
@@ -708,8 +849,9 @@ def update_batch_data(batches, data):
     Input('batch-cycle-y', 'value'),
     Input('batch-cycle-color', 'value'),
     Input('batch-cycle-colormap', 'value'),
+    Input('batch-cycle-style', 'value'),
 )
-def update_batch_cycle_graph(data, variable, color, colormap):
+def update_batch_cycle_graph(data, variable, color, colormap, style):
     fig = px.scatter().update_layout(title='No data...', xaxis_title='Cycle', yaxis_title='')
     fig.update_layout(template = graph_template)
     if not data or not data['data_batch_cycle']:
@@ -740,10 +882,12 @@ def update_batch_cycle_graph(data, variable, color, colormap):
     )
 
     fig = px.scatter(
-        df, x='Cycle',
+        df,
+        x='Cycle',
         y=variable,
         color=color,
         color_continuous_scale=colormap,
+        symbol=style,
         hover_name='Sample ID'
     )
     fig.update_coloraxes(colorbar_title_side='right')

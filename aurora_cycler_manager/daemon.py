@@ -18,7 +18,7 @@ if root_dir not in sys.path:
     sys.path.append(root_dir)
 import aurora_cycler_manager.server_manager as server_manager
 from aurora_cycler_manager.analysis import plot_all_samples, plot_all_batches, analyse_all_samples, analyse_all_batches
-from aurora_cycler_manager.eclab_harvester import get_mprs_from_folders, convert_all_mprs
+from aurora_cycler_manager.eclab_harvester import get_all_mprs, convert_all_mprs
 
 matplotlib.use('Agg')
 
@@ -90,7 +90,7 @@ def daemon_loop(update_time: float = None, snapshot_times: list = None):
             else:
                 logging.info("Snapshotting complete")
             try:
-                get_mprs_from_folders()
+                get_all_mprs()
                 convert_all_mprs()
             except Exception as e:
                 logging.critical("Error converting mprs: %s", e)

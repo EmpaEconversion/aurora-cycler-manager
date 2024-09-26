@@ -4,6 +4,12 @@ body {
     font-family: sans-serif;
     color: rgb(61, 61, 61);
 }
+html, body {
+    height: 100%;
+}
+#app {
+    height: 100%;
+}
 
 /* ===== TABS ===== */
 .tab {
@@ -15,7 +21,6 @@ body {
 .tab--selected {
     font-family: 'Arial', sans-serif; /* Change to your desired font */
     font-size: 18px; /* Adjust the font size */
-    color: #ff0000; /* Adjust the font color */
 }
 
 /* ===== MENUS ===== */

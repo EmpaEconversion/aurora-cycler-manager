@@ -1,20 +1,30 @@
 """ Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia
 
-Harvest EC-lab .mpr files and convert to aurora-compatible hdf5 files. 
+Harvest EC-lab .mpr files and convert to aurora-compatible gzipped json files. 
 
-Define the machines to grab files from in the config dictionary.
-The functions will grab all files from specified folders on a remote machine,
-save them locally, then convert them to hdf5 files and save in a processed
-data folder aurora-style, i.e. with run-id/sample-id/snapshot-id.h5.
+Define the machines to grab files from in the config.json file.
 
-These files can be processed with the same tools in analysis.py as used for the
-data from tomato.
+get_mpr will copy all files from specified folders on a remote machine, if they
+have been modified since the last time the function was called.
+
+get_all_mprs does this for all machines defined in the config.
+
+convert_mpr converts an mpr to a dataframe and optionally saves it as a hdf5
+file and/or a gzipped json file. This file contains all cycling data as well as
+metadata from the mpr and information about the sample from the database.
+
+convert_all_mprs does this for all mpr files in the local snapshot folder, and
+saves them to the processed snapshot folder.
+
+Run the script to harvest and convert all mpr files.
 """
 import os
 import sys
 import re
 import json
+import gzip
 import sqlite3
+import warnings
 from datetime import datetime
 import pytz
 import paramiko
@@ -23,140 +33,210 @@ import numpy as np
 import pandas as pd
 import h5py
 import yadg
-import yadg.extractors
 root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if root_dir not in sys.path:
     sys.path.append(root_dir)
 from aurora_cycler_manager.version import __version__, __url__
 
-# TODO: move this to a config file
-eclab_config = {
-    "Servers": [
-        {
-            "label" : "tt1",  # must match the label in the main config file
-            "EC-lab folder location": "C:/Users/lab131/Desktop/eclab/svfe/",
-            "EC-lab copy location": "C:/Users/lab131/eclabcopy/"
-        },
-        {
-            "label" : "tt2",  # must match the label in the main config file
-            "EC-lab folder location": "C:/Users/lab131/Desktop/EC-lab/",
-            "EC-lab copy location": "C:/Users/lab131/eclabcopy/"
-        }
-    ],
-    "Snapshots folder path": "C:/aurora_snapshots",  # will add 'eclabcopy' folder to this path
-    "Processed snapshots folder path": "K:/Aurora/cucumber/ec-lab snapshots/"
-}
+# Load configuration
+current_dir = os.path.dirname(os.path.abspath(__file__))
+config_path = os.path.join(current_dir, '..', 'config.json')
+with open(config_path, encoding = 'utf-8') as f:
+    config = json.load(f)
+eclab_config = config["EC-lab harvester"]
+db_path = config["Database path"]
 
 def get_mprs(
+    server_label: str,
     server_hostname: str,
     server_username: str,
-    local_private_key: str,
-    server_eclab_folder: str,
+    server_shell_type: str,
     server_copy_folder: str,
+    local_private_key: str,
     local_folder: str,
+    force_copy: bool = False,
 ) -> None:
-    """ Get all MPR files from subfolders of specified folder.
+    """ Get .mpr files from subfolders of specified folder.
     
     Args:
+        server_label (str): Label of the server
         server_hostname (str): Hostname of the server
         server_username (str): Username to login with
-        server_private_key (str): Private key for ssh
-        folder (str): Folder to search for MPR files
+        server_shell_type (str): Type of shell to use (powershell or cmd)
+        server_copy_folder (str): Folder to search and copy .mpr and .mpl files
+        local_private_key (str): Local private key for ssh
+        local_folder (str): Folder to copy files to
+        force_copy (bool): Copy all files regardless of modification date
     """
+    if force_copy:
+        cutoff_datetime = datetime.fromtimestamp(0)
+    else:
+        # Check the database for last snapshot datetime
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"SELECT `Last snapshot` FROM harvester WHERE "
+                f"`Server label`='{server_label}' "
+                f"AND `Server hostname`='{server_hostname}' "
+                f"AND `Folder`='{server_copy_folder}'"
+            )
+            result = cursor.fetchone()
+            cursor.close()
+        if result:
+            cutoff_datetime = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
+        else:
+            cutoff_datetime = datetime.fromtimestamp(0)
+
+    current_datetime = datetime.now()
+    cutoff_date_str = cutoff_datetime.strftime('%Y-%m-%d %H:%M:%S')
+
+    # Connect to the server and copy the files
     with paramiko.SSHClient() as ssh:
         ssh.load_system_host_keys()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         print(f"Connecting to host {server_hostname} user {server_username}")
         ssh.connect(server_hostname, username=server_username, pkey=local_private_key)
-        _, _, stderr = ssh.exec_command(
-            f"robocopy {server_eclab_folder} {server_copy_folder} "
-            "/E /Z /NP /NC /NS /NFL /NDL /NJH /NJS"
-            )
-        assert not stderr.read(), f"Error copying folder: {stderr.read()}"
-        with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
-            scp.get(server_copy_folder, recursive=True, local_path=local_folder)
 
-def get_mprs_from_folders() -> None:
-    """ Get all mpr files from all servers using the config file """
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(current_dir, '..', 'config.json')
-    with open(config_path, encoding = 'utf-8') as f:
-        config = json.load(f)
+        # Shell commands to find files modified since cutoff date
+        if server_shell_type == "powershell":
+            command = (
+                f'Get-ChildItem -Path \'{server_copy_folder}\' -Recurse '
+                f'| Where-Object {{ $_.LastWriteTime -gt \'{cutoff_date_str}\' }} '
+                f'| Select-Object -ExpandProperty FullName'
+            )
+        elif server_shell_type == "cmd":
+            command = (
+                f'powershell.exe -Command "Get-ChildItem -Path \'{server_copy_folder}\' -Recurse '
+                f'| Where-Object {{ $_.LastWriteTime -gt \'{cutoff_date_str}\' }} '
+                f'| Select-Object -ExpandProperty FullName"'
+            )
+        stdin, stdout, stderr = ssh.exec_command(command)
+        modified_files = stdout.read().decode().splitlines()
+        print(modified_files)
+        modified_files = [f for f in modified_files if f.endswith('.mpr') or f.endswith('.mpl')]
+        assert not stderr.read(), f"Error finding modified files: {stderr.read()}"
+        print(f"Found {len(modified_files)} files modified since {cutoff_date_str}")
+        print(modified_files)
+
+        # Copy the files
+        with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
+            for file in modified_files:
+                if file.endswith('.mpr') or file.endswith('.mpl'):
+                    # Maintain the folder structure when copying
+                    relative_path = os.path.relpath(file, server_copy_folder)
+                    local_path = os.path.join(local_folder, relative_path)
+                    local_dir = os.path.dirname(local_path)
+                    if not os.path.exists(local_dir):
+                        os.makedirs(local_dir)
+                    print(f"Copying {file} to {local_path}")
+                    scp.get(file, local_path=local_path)
+    
+    # Update the database
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO harvester (`Server label`, `Server hostname`, `Folder`) "
+            "VALUES (?, ?, ?)",
+            (server_label, server_hostname, server_copy_folder)
+        )
+        cursor.execute(
+            "UPDATE harvester "
+            "SET `Last snapshot` = ? "
+            "WHERE `Server label` = ? AND `Server hostname` = ? AND `Folder` = ?",
+            (current_datetime.strftime('%Y-%m-%d %H:%M:%S'), server_label, server_hostname, server_copy_folder)
+        )
+        cursor.close()
+
+def get_all_mprs(force_copy=False) -> None:
+    """ Get all MPR files from the folders specified in the config.
+    
+    The config file needs a key "EC-lab harvester" with a key "Snapshots folder 
+    path" with a location to save to, and a key "Servers" containing a list of 
+    dictionaries with the keys "label" and "EC-lab folder location".
+    The "label" must match a server in the "Servers" list in the main config.
+    """
     for server in eclab_config["Servers"]:
         server_config = next((s for s in config["Servers"] if s["label"] == server["label"]), None)
         get_mprs(
+            server["label"],
             server_config["hostname"],
             server_config["username"],
-            paramiko.RSAKey.from_private_key_file(config["SSH private key path"]),
+            server_config["shell_type"],
             server["EC-lab folder location"],
-            server["EC-lab copy location"],
+            paramiko.RSAKey.from_private_key_file(config["SSH private key path"]),
             eclab_config["Snapshots folder path"],
+            force_copy,
         )
 
-def convert_mpr_to_hdf(
+def convert_mpr(
         sampleid: str,
         mpr_file: str,
         output_hdf_file: str = None,
+        output_jsongz_file: str = None,
         capacity_Ah: float = None,
         ) -> pd.DataFrame:
-    """ Convert a tomato json to dataframe, optionally save as hdf5 file.
+    """ Convert a tomato json to dataframe, optionally save as hdf5 or zipped json file.
 
     Args:
         sampleid (str): sample ID from robot output
-        snapshot_file (str): path to the raw mpr file
-        hdf_save_location (str, optional): path to save the output hdf5 file
+        mpr_file (str): path to the raw mpr file
+        output_hdf_file (str, optional): path to save the output hdf5 file
+        output_jsongz_file (str, optional): path to save the output zipped json file
         capacity_Ah (float, optional): capacity of the cell in Ah
 
     Returns:
         pd.DataFrame: DataFrame containing the cycling data
 
     Columns in output DataFrame:
-    - uts: timestamp, starting from 0
+    - uts: unix timestamp in seconds
     - V (V): Cell voltage in volts
     - I (A): Current in amps
-    - loop_number: how many loops have been completed
-    - cycle_number: not used here
+    - loop_number: number of loops over several techniques
+    - cycle_number: number of cycles within one technique
     - index: index of the method in the payload, not used here
     - technique: code of technique using Biologic convention, not used here
     
     TODO: use capacity to define C rate
 
     """
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(current_dir, '..', 'config.json')
-    with open(config_path, encoding = 'utf-8') as f:
-        config = json.load(f)
-    db_path = config["Database path"]
 
     # Normalize paths to avoid escape character issues
     mpr_file = os.path.normpath(mpr_file)
     output_hdf_file = os.path.normpath(output_hdf_file) if output_hdf_file else None
+    output_jsongz_file = os.path.normpath(output_jsongz_file) if output_jsongz_file else None
 
     creation_date = datetime.fromtimestamp(
         os.path.getmtime(mpr_file)
     ).strftime('%Y-%m-%d %H:%M:%S')
 
+    # Extract data from mpr file
     data = yadg.extractors.extract('eclab.mpr', mpr_file)
 
     df = pd.DataFrame()
     df['uts'] = data.coords['uts'].values
+
     # Check if the time is incorrect and fix it
-    if df['uts'].values[0] < 1000000000:  # The measurement started before 2001
+    if df['uts'].values[0] < 1000000000:  # The measurement started before 2001, assume wrong
         # Grab the start time from mpl file
         mpl_file = mpr_file.replace(".mpr",".mpl")
         try:
             with open(mpl_file, encoding='ANSI') as f:
                 lines = f.readlines()
+            for line in lines:
+                # Find the start datetime from the mpl
+                found_start_time = False
+                if line.startswith("Acquisition started on : "):
+                    datetime_str = line.split(":",1)[1].strip()
+                    datetime_object = datetime.strptime(datetime_str, '%m/%d/%Y %H:%M:%S.%f')
+                    timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
+                    uts_timestamp = timezone.localize(datetime_object).timestamp()
+                    df['uts'] = df['uts'] + uts_timestamp
+                    found_start_time = True
+                    break
+            if not found_start_time:
+                warnings.warn(f"Incorrect start time in {mpr_file} and no start time in found {mpl_file}")
         except FileNotFoundError:
-            print(f"Incorrect start time in {mpr_file} and no mpl file found.")
-        # Find the date from line with 'Acquisition started on : '
-        for line in lines:
-            if line.startswith("Acquisition started on : "):
-                datetime_str = line.split(":",1)[1].strip()
-                datetime_object = datetime.strptime(datetime_str, '%m/%d/%Y %H:%M:%S.%f')
-                timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
-                uts_timestamp = timezone.localize(datetime_object).timestamp()
-                df['uts'] = df['uts'] + uts_timestamp
+            warnings.warn(f"Incorrect start time in {mpr_file} and no mpl file found.")
 
     df['V (V)'] = data.data_vars['Ewe'].values
     df['I (A)'] = (
@@ -168,20 +248,10 @@ def convert_mpr_to_hdf(
     df['index'] = 0
     df['technique'] = data.data_vars['mode'].values
 
-    if output_hdf_file:
-        folder = os.path.dirname(output_hdf_file)
-        if not folder:
-            folder = '.'
-        if not os.path.exists(folder):
-            os.makedirs(folder)
-        df.to_hdf(
-            output_hdf_file,
-            key="cycling",
-            complib="blosc",
-            complevel=2
-        )
+    # If saving files, add metadata, save, update database
+    if output_hdf_file or output_jsongz_file:
 
-        # Try get sample data from database
+        # get sample data from database
         try:
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
@@ -204,10 +274,10 @@ def convert_mpr_to_hdf(
                 "snapshot_file": mpr_file,
                 "yadg_metadata": yadg_metadata,
                 "aurora_metadata": {
-                    "hdf5_conversion" : {
+                    "mpr_conversion" : {
                         "repo_url": __url__,
                         "repo_version": __version__,
-                        "method": "eclab_harvester.convert_mpr_to_hdf",
+                        "method": "eclab_harvester.convert_mpr",
                         "datetime": datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S %z'),
                     },
                 }
@@ -216,50 +286,64 @@ def convert_mpr_to_hdf(
             "sample_data": sample_data if sample_data is not None else {},
         }
 
-        # Open the HDF5 file with h5py and add metadata
-        with h5py.File(output_hdf_file, 'a') as file:
-            if 'cycling' in file:
-                file['cycling'].attrs['metadata'] = json.dumps(metadata)
-            else:
-                print("Dataset 'cycling' not found.")
+        if output_hdf_file:  # Save as hdf5
+            folder = os.path.dirname(output_hdf_file)
+            if not folder:
+                folder = '.'
+            if not os.path.exists(folder):
+                os.makedirs(folder)
+            df.to_hdf(
+                output_hdf_file,
+                key="cycling",
+                complib="blosc",
+                complevel=2
+            )
+            # Open the HDF5 file with h5py and add metadata
+            with h5py.File(output_hdf_file, 'a') as file:
+                if 'cycling' in file:
+                    file['cycling'].attrs['metadata'] = json.dumps(metadata)
+                else:
+                    print("Dataset 'cycling' not found.")
 
-    # Update the database
-    with sqlite3.connect(db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
-            (sampleid,)
-        )
-        cursor.execute(
-            "UPDATE results "
-            "SET `Last snapshot` = ? "
-            "WHERE `Sample ID` = ?",
-            (creation_date, sampleid)
-        )
-        cursor.close()
+        if output_jsongz_file:  # Save as zipped json
+            folder = os.path.dirname(output_jsongz_file)
+            if not folder:
+                folder = '.'
+            if not os.path.exists(folder):
+                os.makedirs(folder)
+            with gzip.open(output_jsongz_file, 'wt') as f:
+                json.dump({'data': df.to_dict(orient='list'), 'metadata': metadata}, f)
 
+        # Update the database
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
+                (sampleid,)
+            )
+            cursor.execute(
+                "UPDATE results "
+                "SET `Last snapshot` = ? "
+                "WHERE `Sample ID` = ?",
+                (creation_date, sampleid)
+            )
+            cursor.close()
     return df
 
 def convert_all_mprs() -> None:
-    """ Converts all raw eclab files to hdf5 files. """
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(current_dir, '..', 'config.json')
-    with open(config_path, encoding = 'utf-8') as f:
-        config = json.load(f)
-    raw_folder = os.path.join(eclab_config["Snapshots folder path"], "eclabcopy")
+    """ Converts all raw .mpr files to gzipped json files. 
+    
+    The config file needs a key "EC lab harvester" with the keys "Snapshots folder path",
+     and "Run ID lookup" containing a dictionary with
+    """
+    raw_folder = eclab_config["Snapshots folder path"]
     processed_folder = config["Processed snapshots folder path"]
     db_path = config["Database path"]
 
-    # HACK - lookup table for run IDs from incorrectly named folders
-    # it is not possible to change folder names while data is being collected
-    run_id_lookup = {
-        "270624_gen5_2_FEC_C3": "240620_svfe_gen5",
-        "010724_gen6_FEC_1C": "240701_svfe_gen6",
-        "090724_Gen7": "240709_svfe_gen7",
-        "100724_Gen8": "240709_svfe_gen8",
-        "190824_Gen10": "240819_svfe_gen10",
-        "240903_Gen11" : "240903_svfe_gen11",
-    }
+    # Lookup dict for folder_name: run_id
+    # In case folders are named differently to run_id on the server
+    run_id_lookup = eclab_config.get("Run ID lookup", {})
+
     for run_folder in os.listdir(raw_folder):
         print("Processing folder", run_folder)
         if not os.path.isdir(os.path.join(raw_folder, run_folder)):
@@ -295,17 +379,19 @@ def convert_all_mprs() -> None:
                     continue
                 sample_id = f"{run_id}_{sample_number:02d}"
                 print(f"Processing {sample_id}")
-                # convert the mpr to hdf
+
+                # Convert the mpr to hdf
                 mpr_path = os.path.join(raw_folder, run_folder, mpr)
-                output_path = os.path.join(processed_folder, run_id, sample_id, f"snapshot.mpr-{i}.h5")
+                output_jsongz = os.path.join(processed_folder, run_id, sample_id, f"snapshot.mpr-{i}.json.gz")
                 try:
-                    convert_mpr_to_hdf(sample_id, mpr_path, output_path, 0.00154)
+                    convert_mpr(sample_id, mpr_path, None, output_jsongz, 0.00154)
                 except Exception as e:
                     print(f"Error processing {mpr}: {e}")
 
-        # Check for subfolders with .mpr
+        # Check for sample folders
         for sample_folder in os.listdir(os.path.join(raw_folder, run_folder)):
-            if not os.path.isdir(os.path.join(raw_folder, run_folder, sample_folder)):
+            root_folder = os.path.join(raw_folder, run_folder, sample_folder)
+            if not os.path.isdir(root_folder):
                 continue
             try:
                 sample_number = int(sample_folder)
@@ -319,19 +405,25 @@ def convert_all_mprs() -> None:
             sample_id = f"{run_id}_{sample_number:02d}"
             print(f"Processing {sample_id}")
 
-            # Convert the mpr to hdf
-            mprs = [f for f in os.listdir(os.path.join(raw_folder, run_folder, sample_folder)) if f.endswith('.mpr')]
+            # Walk through the sample folder, find all .mpr files including in subfolders
+            mprs = []
+            for dirpath, dirnames, filenames in os.walk(root_folder):
+                for filename in filenames:
+                    if filename.endswith(".mpr"):
+                        mprs.append(os.path.relpath(os.path.join(dirpath, filename), root_folder))
             if not mprs:
                 print(f"No mpr files found for {sample_id}")
                 continue
+
+            # Convert the mpr to hdf
             for i,mpr in enumerate(mprs):
-                mpr_path = os.path.join(raw_folder, run_folder, sample_folder, mpr)
-                output_path = os.path.join(processed_folder, run_id, sample_id, f"snapshot.mpr-{i}.h5")
+                mpr_path = os.path.join(root_folder, mpr)
+                output_jsongz = os.path.join(processed_folder, run_id, sample_id, f"snapshot.mpr-{i}.json.gz")
                 try:
-                    convert_mpr_to_hdf(sample_id, mpr_path, output_path, 0.00154)
+                    convert_mpr(sample_id, mpr_path, None, output_jsongz, 0.00154)
                 except Exception as e:
                     print(f"Error processing {mpr}: {e}")
 
 if __name__ == "__main__":
-    get_mprs_from_folders()
+    get_all_mprs()
     convert_all_mprs()
