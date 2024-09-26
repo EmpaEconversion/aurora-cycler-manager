@@ -12,7 +12,7 @@ Jobs can be submitted with C-rates, and the capacity can be automatically
 calculated based on the sample information in the database.
 
 The server manager can also take snapshots of all jobs in the database, save the
-data locally as a json and convert to an hdf5 file. The data can then be
+data locally as a json and convert to a zipped json file. The data can then be
 processed and plotted. See the daemon.py script for how to run this process 
 automatically.
 """
@@ -682,7 +682,7 @@ class ServerManager:
             # Process the file and save to processed snapshots folder
             convert_tomato_json(
                 f"{local_save_location}/snapshot.{jobid}.json",
-                f"{local_save_location_processed}/snapshot.{jobid}.h5",
+                output_jsongz_file=f"{local_save_location_processed}/snapshot.{jobid}.json.gz",
             )
 
         return
