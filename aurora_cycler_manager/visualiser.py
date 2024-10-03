@@ -1622,7 +1622,7 @@ def update_correlation_graph(data, xvar, yvar, color, colormap):
 
 if __name__ == '__main__':
     def start_dash_server():
-        app.run_server(debug=True, use_reloader=True)
+        app.run_server(debug=True, use_reloader=False)
     def start_web_browser():
         webbrowser.open_new("http://localhost:8050")
     Thread(target=start_web_browser).start()
