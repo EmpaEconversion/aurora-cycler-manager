@@ -137,6 +137,11 @@ class TomatoServer(CyclerServer):
         """ Ready a pipeline for use. """
         output = self.command(f"{self.tomato_scripts_path}ketchup ready {pipeline}")
         return output
+    
+    def unready(self, pipeline: str) -> str:
+        """ Unready a pipeline - only works if no job submitted yet, otherwise use cancel. """
+        output = self.command(f"{self.tomato_scripts_path}ketchup unready {pipeline}")
+        return output
 
     def submit(
             self,

@@ -14,18 +14,22 @@ html, body {
 /* ===== TABS ===== */
 .tab {
     font-family: 'Arial', sans-serif; /* Change to your desired font */
-    font-size: 18px; /* Adjust the font size */
+    font-size: 16px; /* Adjust the font size */
     color: #444; /* Adjust the font color */
+    height: 50px;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
 }
 /* Customize the font of the selected tab */
 .tab--selected {
-    font-family: 'Arial', sans-serif; /* Change to your desired font */
-    font-size: 18px; /* Adjust the font size */
+    font-weight: bold; /* Adjust the font weight */
 }
 
 /* ===== MENUS ===== */
 .menu-panel {
     padding: 8px;
+    font-size: 16px;
     background-color: rgb(241, 241, 247);
     border: white 8px solid;
 }
