@@ -472,7 +472,18 @@ class ServerManager:
         result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
         server = next((server for server in self.servers if server.label == result[0][0]), None)
         print(f"Loading {sample} on server: {server.label}")
-        output = server.load(sample, pipeline)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            output = server.load(sample, pipeline)
+            if w:
+                for warning in w:
+                    print(f"Warning raised: {warning.message}")
+            else:
+                # Update database preemtively
+                self.execute_sql(
+                    "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
+                    (sample, pipeline)
+                )
         return output
 
     def eject(self, pipeline: str) -> str:
@@ -488,7 +499,18 @@ class ServerManager:
         result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
         server = next((server for server in self.servers if server.label == result[0][0]), None)
         print(f"Ejecting {pipeline} on server: {server.label}")
-        output = server.eject(pipeline)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            output = server.eject(pipeline)
+            if w:
+                for warning in w:
+                    print(f"Warning raised: {warning.message}")
+            else:
+                # Update database preemtively
+                self.execute_sql(
+                    "UPDATE pipelines SET `Sample ID` = NULL WHERE `Pipeline` = ?",
+                    (pipeline,)
+                )
         return output
 
     def ready(self, pipeline: str) -> str:
@@ -505,6 +527,22 @@ class ServerManager:
         server = next((server for server in self.servers if server.label == result[0][0]), None)
         print(f"Readying {pipeline} on server: {server.label}")
         output = server.ready(pipeline)
+        return output
+    
+    def unready(self, pipeline: str) -> str:
+        """ Unready a pipeline, only works if no job running, if job is running user must cancel.
+
+        Args:
+            pipeline (str):
+                The pipeline to unready, must exist in pipelines table of database
+        Returns:
+            The output from the server unready command as a string
+        """
+        # Find server with pipeline, if there is more than one throw an error
+        result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
+        server = next((server for server in self.servers if server.label == result[0][0]), None)
+        print(f"Unreadying {pipeline} on server: {server.label}")
+        output = server.unready(pipeline)
         return output
 
     def submit(
@@ -563,6 +601,10 @@ class ServerManager:
             "`Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (full_jobid, sample, server.label, int(jobid), dt, json_string, comment)
         )
+        self.execute_sql(
+            "UPDATE pipelines SET `Job ID on server` = ?, `Job ID` = ?, `Server Label` = ?, `Server Hostname` = ? WHERE `Sample ID` = ?",
+            (int(jobid), full_jobid, server.label, server.hostname, sample)
+        )
 
         return
 
@@ -579,6 +621,15 @@ class ServerManager:
         server_label, jobid_on_server = result[0]
         server = next((server for server in self.servers if server.label == server_label), None)
         output = server.cancel(jobid_on_server)
+        # If no error, assume job is cancelled and update the database
+        self.execute_sql(
+            "UPDATE jobs SET `Status` = 'cd' WHERE `Job ID` = ?",
+            (jobid,)
+        )
+        self.execute_sql(
+            "UPDATE pipelines SET `Job ID on server` = NULL, `Job ID` = NULL WHERE `Job ID on server` = ?",
+            (jobid_on_server,)
+        )
         return output
 
     def snapshot(

@@ -762,12 +762,13 @@ def plot_sample(sample: str) -> None:
 
     # plot V(t)
     files = os.listdir(file_location)
-    cycling_files = [f for f in files if (f.startswith('snapshot') and f.endswith('.h5'))]
-    if not cycling_files:
-        print(f"No cycling files found in {file_location}")
+    cycling_file = next((f for f in files if (f.startswith('full') and f.endswith('.json.gz'))), None)
+    if not cycling_file:
+        print(f"No full cycling file found in {file_location}")
         return
-    dfs = [pd.read_hdf(f'{file_location}/{f}') for f in cycling_files]
-    df = pd.concat(dfs)
+    with gzip.open(f'{file_location}/{cycling_file}', 'rt', encoding='utf-8') as f:
+        data = json.load(f)['data']
+    df = pd.DataFrame(data)
     df.sort_values('uts', inplace=True)
     fig, ax = plt.subplots(figsize=(6,4),dpi=72)
     plt.plot(pd.to_datetime(df["uts"], unit="s"),df["V (V)"])
@@ -779,9 +780,8 @@ def plot_sample(sample: str) -> None:
     fig.savefig(f'{save_location}/{sample}_V(t).png',bbox_inches='tight')
 
     # plot capacity
-    try:
-        analysed_file = next(f for f in files if (f.startswith('cycles') and f.endswith('.json')))
-    except StopIteration:
+    analysed_file = next((f for f in files if (f.startswith('cycles') and f.endswith('.json'))), None)
+    if not analysed_file:
         print(f"No files starting with 'cycles' found in {file_location}.")
         return
     with open(f'{file_location}/{analysed_file}', 'r', encoding='utf-8') as f:

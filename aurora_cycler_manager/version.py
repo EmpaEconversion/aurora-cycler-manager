@@ -1,4 +1,4 @@
-__version__ = '0.4.2'
+__version__ = '0.4.3'
 __author__ = 'Graham Kimbell'
 __title__ = 'Aurora cycler manager'
 __license__ = 'MIT'
