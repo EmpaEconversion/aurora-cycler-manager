@@ -72,15 +72,12 @@ class ServerManager:
         self.db = self.config["Database path"]
 
         # get the private key
-        if not self.config["SSH private key path"]:
-            warnings.warn(
-                "No SSH private key path specified in config.json."
-                "Using default path ~/.ssh/id_rsa",
-                RuntimeWarning
-            )
-            private_key_path = os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa")
-        else:
-            private_key_path = self.config["SSH private key path"]
+        private_key_path = self.config.get(
+            "SSH private key path",
+            os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa")
+        )
+        if not os.path.exists(private_key_path):
+            raise FileNotFoundError(f"Private key file {private_key_path} not found.")
         self.private_key = paramiko.RSAKey.from_private_key_file(private_key_path)
 
         print("Creating cycler server objects")

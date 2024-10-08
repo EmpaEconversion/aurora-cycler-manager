@@ -18,7 +18,7 @@ try:
     sm = ServerManager()
     print("Successfully connected to the servers. You have permissions to alter everything.")
     permissions = True
-except paramiko.SSHException:
+except (paramiko.SSHException, FileNotFoundError):
     print("You do not have permission to write to the servers. Disabling these features.")
     sm = None
     permissions = False
