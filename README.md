@@ -21,7 +21,7 @@ Cycling data is converted to .hdf5 files with provenance tracked metadata. The v
 
 Batches of samples can be defined in a .yaml file, which can then be merged into one data file and plotted together.
 
-There is also a data visualiser based on Plotly Dash which allows for rapid and interactive viewing of data, including correlations of parameters for batches of cells.
+There is also a data visualiser based on Plotly Dash which allows for rapid and interactive viewing of data, as well as control of the cyclers through a graphical interface.
 
 ## Installation
 
@@ -39,7 +39,7 @@ Either load samples, submit jobs and ready pipelines using Tomato directly, or w
 
 Run daemon.py to periodically update the database with the samples, job statuses, as well as periodically harvest data from the cyclers and run analysis. This can also harvest data from EC-lab directly if eclab_harvester.py is configured.
 
-Run visualiser.py to view an interactive visualiser of the results for samples and batches of samples.
+Run visualiser/app.py to view an interactive visualiser of the results for samples and batches of samples, and to control the cyclers.
 
 ## Contributors
 
