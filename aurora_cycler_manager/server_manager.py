@@ -16,7 +16,6 @@ data locally as a json and convert to a zipped json file. The data can then be
 processed and plotted. See the daemon.py script for how to run this process 
 automatically.
 """
-
 import os
 import warnings
 import json
@@ -30,7 +29,6 @@ import paramiko
 from aurora_cycler_manager.cycler_servers import TomatoServer
 from aurora_cycler_manager.database_setup import create_config, create_database
 from aurora_cycler_manager.analysis import convert_tomato_json, _run_from_sample
-
 
 class ServerManager:
     """ The ServerManager: class is the only class in the server_manager module.
@@ -91,14 +89,9 @@ class ServerManager:
 
     def get_servers(self) -> None:
         """ Create the cycler server objects from the config file. """
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(current_dir, '..', 'config.json')
-        with open(config_path, encoding = 'utf-8') as f:
-            config = json.load(f)
         server_list = self.config["Servers"]
 
         self.servers=[]
-
         for server_config in server_list:
             if server_config["server_type"] == "tomato":
                 self.servers.append(
@@ -626,10 +619,6 @@ class ServerManager:
             "UPDATE jobs SET `Status` = 'cd' WHERE `Job ID` = ?",
             (jobid,)
         )
-        self.execute_sql(
-            "UPDATE pipelines SET `Job ID on server` = NULL, `Job ID` = NULL WHERE `Job ID on server` = ?",
-            (jobid_on_server,)
-        )
         return output
 
     def snapshot(
@@ -659,20 +648,20 @@ class ServerManager:
         result = self.execute_sql("SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?", (samp_or_jobid,))
         if result:  # it's a sample
             result = self.execute_sql(
-                "SELECT `Sample ID`, `Job ID on server`, `Server label`, `Snapshot Status` "
+                "SELECT `Sample ID`, `Status`, `Job ID on server`, `Server label`, `Snapshot Status` "
                 "FROM jobs WHERE `Sample ID` = ? ",
                 (samp_or_jobid,)
             )
         else:  # it's a job ID
             result = self.execute_sql(
-                "SELECT `Sample ID`, `Job ID on server`, `Server label`, `Snapshot Status` "
+                "SELECT `Sample ID`, `Status`, `Job ID on server`, `Server label`, `Snapshot Status` "
                 "FROM jobs WHERE `Job ID` = ?",
                 (samp_or_jobid,)
             )
         if not result:
             raise ValueError(f"Sample or job ID '{samp_or_jobid}' not found in the database.")
 
-        for sample_id, jobid_on_server, server_label, snapshot_status in result:
+        for sample_id, status, jobid_on_server, server_label, snapshot_status in result:
             jobid = f"{server_label}-{jobid_on_server}"
             if not sample_id: # TODO should this update the db as well?
                 print(f"Job {server_label}-{jobid_on_server} has no sample, skipping.")
@@ -694,6 +683,11 @@ class ServerManager:
                 if mode == "new_data" and snapshot_status is not None and snapshot_status.startswith("c"):
                     print(f"Snapshot {jobid} already complete.")
                     continue
+
+            # Check that the job has started
+            if status in ['q', 'qw']:
+                print(f"Job {jobid} is still queued, skipping snapshot.")
+                continue
 
             # Otherwise snapshot the job
             server = next((server for server in self.servers if server.label == server_label), None)
