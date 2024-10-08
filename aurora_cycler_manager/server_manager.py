@@ -626,10 +626,6 @@ class ServerManager:
             "UPDATE jobs SET `Status` = 'cd' WHERE `Job ID` = ?",
             (jobid,)
         )
-        self.execute_sql(
-            "UPDATE pipelines SET `Job ID on server` = NULL, `Job ID` = NULL WHERE `Job ID on server` = ?",
-            (jobid_on_server,)
-        )
         return output
 
     def snapshot(
