@@ -1,3 +1,7 @@
+""" Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia
+
+Database view tab layout and callbacks for the visualiser app.
+"""
 import json
 from datetime import datetime
 import base64
@@ -14,8 +18,8 @@ try:
     sm = ServerManager()
     print("Successfully connected to the servers. You have permissions to alter everything.")
     permissions = True
-except paramiko.SSHException as e:
-    print(f"You do not have permission to write to the servers. Disabling these features.")
+except paramiko.SSHException:
+    print("You do not have permission to write to the servers. Disabling these features.")
     sm = None
     permissions = False
 

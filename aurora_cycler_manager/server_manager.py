@@ -16,7 +16,6 @@ data locally as a json and convert to a zipped json file. The data can then be
 processed and plotted. See the daemon.py script for how to run this process 
 automatically.
 """
-
 import os
 import warnings
 import json
@@ -30,7 +29,6 @@ import paramiko
 from aurora_cycler_manager.cycler_servers import TomatoServer
 from aurora_cycler_manager.database_setup import create_config, create_database
 from aurora_cycler_manager.analysis import convert_tomato_json, _run_from_sample
-
 
 class ServerManager:
     """ The ServerManager: class is the only class in the server_manager module.
@@ -91,14 +89,9 @@ class ServerManager:
 
     def get_servers(self) -> None:
         """ Create the cycler server objects from the config file. """
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(current_dir, '..', 'config.json')
-        with open(config_path, encoding = 'utf-8') as f:
-            config = json.load(f)
         server_list = self.config["Servers"]
 
         self.servers=[]
-
         for server_config in server_list:
             if server_config["server_type"] == "tomato":
                 self.servers.append(

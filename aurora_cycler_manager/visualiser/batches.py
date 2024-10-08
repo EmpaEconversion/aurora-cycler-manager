@@ -1,3 +1,7 @@
+""" Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia
+
+Batches tab layout and callbacks for the visualiser app.
+"""
 import os
 import json
 import pandas as pd

@@ -1,12 +1,18 @@
-import os
+""" Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia
+
+Useful functions for the visualiser app.
+"""
+from typing import Union
 import yaml
 import numpy as np
-import json
 import sqlite3
 import pandas as pd
 from scipy import stats
 
+ArrayLike = Union[list, np.ndarray, pd.Series]
+
 def get_sample_names(config: dict) -> list:
+    """ Get all sample IDs from the database. """
     db_path = config['Database path']
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
@@ -15,12 +21,17 @@ def get_sample_names(config: dict) -> list:
     return [sample[0] for sample in samples]
 
 def get_batch_names(config: dict) -> list:
+    """ Get all batch names from the database. """
     graph_config_path = config['Graph config path']
     with open(graph_config_path, 'r') as f:
         graph_config = yaml.safe_load(f)
     return list(graph_config.keys())
 
 def get_database(config: dict) -> dict:
+    """ Get all data from the database.
+
+    Formatted for viewing in Dash AG Grid.
+    """
     db_path = config['Database path']
     unused_pipelines = config.get('Unused pipelines', [])
     pipeline_query = "SELECT * FROM pipelines WHERE " + " AND ".join([f"Pipeline NOT LIKE '{pattern}'" for pattern in unused_pipelines])
@@ -38,7 +49,7 @@ def get_database(config: dict) -> dict:
     }
     return {'data':db_data, 'column_defs': db_columns}
 
-def cramers_v(x, y):
+def cramers_v(x: ArrayLike, y: ArrayLike) -> float:
     """ Calculate Cramer's V for two categorical variables. """
     confusion_matrix = pd.crosstab(x, y)
     chi2 = stats.chi2_contingency(confusion_matrix)[0]
@@ -50,14 +61,14 @@ def cramers_v(x, y):
     kcorr = k - ((k-1)**2)/(n-1)
     return np.sqrt(phi2corr / min((kcorr-1), (rcorr-1)))
 
-def anova_test(x, y):
+def anova_test(x: ArrayLike, y: ArrayLike) -> float:
     """ ANOVA test between categorical and continuous variables."""
     categories = x.unique()
     groups = [y[x == category] for category in categories]
     f_stat, p_value = stats.f_oneway(*groups)
     return p_value
 
-def correlation_ratio(categories, measurements):
+def correlation_ratio(categories: ArrayLike, measurements: ArrayLike) -> float:
     """ Measure of the relationship between a categorical and numerical variable. """
     fcat, _ = pd.factorize(categories)
     cat_num = np.max(fcat)+1
@@ -76,9 +87,7 @@ def correlation_ratio(categories, measurements):
         eta = np.sqrt(numerator/denominator)
     return eta
 
-def correlation_matrix(
-        df: pd.DataFrame,
-) -> pd.DataFrame:
+def correlation_matrix(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate the correlation matrix for a DataFrame including categorical columns.
     For continuous-continuous use Pearson correlation
@@ -104,7 +113,7 @@ def correlation_matrix(
                 corr.loc[col1, col2] = cramers_v(df[col1], df[col2])
     return corr
 
-def moving_average(x, npoints=11):
+def moving_average(x: ArrayLike, npoints: int = 11) -> np.ndarray:
     if npoints % 2 == 0:
         npoints += 1  # Ensure npoints is odd for a symmetric window
     window = np.ones(npoints) / npoints
@@ -113,7 +122,7 @@ def moving_average(x, npoints=11):
     xav[-npoints // 2:] = np.nan
     return xav
 
-def deriv(x, y):
+def deriv(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     with np.errstate(divide='ignore'):
         dydx = np.zeros(len(y))
         dydx[0] = (y[1] - y[0]) / (x[1] - x[0])
@@ -125,7 +134,11 @@ def deriv(x, y):
     dydx[1:-1][mask] = np.nan
     return dydx
 
-def smoothed_derivative(x, y, npoints=21):
+def smoothed_derivative(
+        x: np.ndarray,
+        y: np.ndarray,
+        npoints: int = 21
+    ) -> np.ndarray:
     x_smooth = moving_average(x, npoints)
     y_smooth = moving_average(y, npoints)
     dydx_smooth = deriv(x_smooth, y_smooth)

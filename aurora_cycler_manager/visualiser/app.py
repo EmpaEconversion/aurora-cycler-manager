@@ -4,6 +4,9 @@ Web-based visualiser for the Aurora cycler manager based on Dash and Plotly.
 
 Allows users to rapidly view and compare data from the Aurora robot and cycler
 systems, both of individual samples and of batches of samples.
+
+Allows users to view current information in the database, and control cyclers
+remotely, loading, ejecting, and submitting jobs to samples.
 """
 
 import os

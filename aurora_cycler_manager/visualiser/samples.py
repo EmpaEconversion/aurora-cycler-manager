@@ -1,3 +1,7 @@
+""" Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia
+
+Samples tab layout and callbacks for the visualiser app.
+"""
 import os
 import json
 import gzip
@@ -354,7 +358,7 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
         Input('samples-cycle-x', 'value'),
         Input('samples-cycle-y', 'value'),
     )
-    def update_cycle_graph(clickData,data,xvar,yvar):
+    def update_cycle_graph(clickData, data, xvar, yvar):
         fig = px.scatter().update_layout(title='No data...', xaxis_title=xvar, yaxis_title=yvar,showlegend=False)
         fig.update_layout(template = graph_template)
         if not data['data_sample_cycle'] or not xvar or not yvar:
@@ -367,7 +371,6 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
             # 'points' is a list of dicts with keys 'curveNumber', 'pointNumber', 'pointIndex', 'x', 'y', 'text'
             point = clickData['points'][0]
             cycle = point['x']
-        traces = []
         for sample, data_dict in data['data_sample_time'].items():
             # find where the cycle = cycle
             mask = np.array(data_dict['Cycle']) == cycle
