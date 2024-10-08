@@ -1228,11 +1228,16 @@ def update_sample_data(samples, data):
         else:
             cycling_files = [
                 os.path.join(file_location,f) for f in files
-                if (f.startswith('snapshot') and f.endswith('.h5'))
+                if (f.startswith('snapshot') and f.endswith('.json.gz'))
             ]
             if not cycling_files:
-                print(f"No cycling files found in {file_location}")
-                continue
+                cycling_files = [
+                    os.path.join(file_location,f) for f in files
+                    if (f.startswith('snapshot') and f.endswith('.h5'))
+                ]
+                if not cycling_files:
+                    print(f"No cycling files found in {file_location}")
+                    continue
             df, metadata = combine_jobs(cycling_files)
             data['data_sample_time'][sample] = df.to_dict(orient='list')
 
