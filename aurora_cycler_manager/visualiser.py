@@ -590,6 +590,8 @@ app.layout = html.Div(
                                                 dbc.Button("Unready", id='unready-button', color='primary', outline=True, className='me-1'),
                                                 dbc.Button("Submit", id='submit-button', color='primary', outline=True, className='me-1'),
                                                 dbc.Button("Cancel", id='cancel-button', color='danger', outline=True, className='me-1'),
+                                                dbc.Button("View data", id='view-button', color='primary', outline=True, className='me-1'),
+                                                dbc.Button("Snapshot", id='snapshot-button', color='primary', outline=True, className='me-1'),
                                             ]
                                         ),
                                         # Pop up modals for interacting with the database after clicking buttons
@@ -769,6 +771,25 @@ app.layout = html.Div(
                                             id="cancel-modal",
                                             is_open=False,
                                         ),
+                                        # Snapshot
+                                        dbc.Modal(
+                                            [
+                                                dbc.ModalHeader(dbc.ModalTitle("Snapshot")),
+                                                dbc.ModalBody(id='snapshot-modal-body',children="Do you want to snapshot the selected samples? This could take minutes per sample depending on data size."),
+                                                dbc.ModalFooter(
+                                                    [
+                                                        dbc.Button(
+                                                            "Snapshot", id="snapshot-yes-close", className="ms-auto", n_clicks=0, color='warning'
+                                                        ),
+                                                        dbc.Button(
+                                                            "Go back", id="snapshot-no-close", className="ms-auto", n_clicks=0, color='secondary'
+                                                        ),
+                                                    ]
+                                                ),
+                                            ],
+                                            id="snapshot-modal",
+                                            is_open=False,
+                                        ),
                                     ]
                                 )
                             ]
@@ -797,6 +818,8 @@ app.layout = html.Div(
     Output('unready-button', 'style'),
     Output('submit-button', 'style'),
     Output('cancel-button', 'style'),
+    Output('view-button', 'style'),
+    Output('snapshot-button', 'style'),
     Input('table-select', 'value'),
     Input('table-data-store', 'data'),
 )
@@ -807,6 +830,8 @@ def update_table(table, data):
     unready = {'display': 'none'}
     cancel = {'display': 'none'}
     submit = {'display': 'none'}
+    view = {'display': 'none'}
+    snapshot = {'display': 'none'}
     if table == 'pipelines':
         load = {'display': 'inline-block'}
         eject = {'display': 'inline-block'}
@@ -814,9 +839,14 @@ def update_table(table, data):
         unready = {'display': 'inline-block'}
         cancel = {'display': 'inline-block'}
         submit = {'display': 'inline-block'}
+        view = {'display': 'inline-block'}
+        snapshot = {'display': 'inline-block'}
     elif table == 'jobs':
         cancel = {'display': 'inline-block'}
-    return data['data'][table], data['column_defs'][table], load, eject, ready, unready, submit, cancel
+    elif table == 'samples' or table == 'results':
+        view = {'display': 'inline-block'}
+        snapshot = {'display': 'inline-block'}
+    return data['data'][table], data['column_defs'][table], load, eject, ready, unready, submit, cancel, view, snapshot
 
 # Refresh the local data from the database
 @app.callback(
@@ -852,30 +882,33 @@ def update_database(n_clicks):
     Output('unready-button', 'disabled'),
     Output('submit-button', 'disabled'),
     Output('cancel-button', 'disabled'),
+    Output('view-button', 'disabled'),
+    Output('snapshot-button', 'disabled'),
     Input('table', 'selectedRows'),
     State('table-select', 'value'),
 )
 def enable_buttons(selected_rows, table):
-    load, eject, ready, unready, submit, cancel = True,True,True,True,True,True
-    if not permissions:
-        return True, True, True, True, True, True
-    if not selected_rows:
-        return True, True, True, True, True, True
-    if table == 'pipelines':
-        if all([s['Sample ID'] is not None for s in selected_rows]):
-            submit = False
-            if all([s['Job ID'] is None for s in selected_rows]):
-                eject = False
-                ready = False
-                unready = False
-            elif all([s['Job ID'] is not None for s in selected_rows]):
-                cancel = False
-        elif all([s['Sample ID']==None for s in selected_rows]):
-            load = False
-    if table == 'jobs':
-        if all([s['Status'] in ['r','q','qw'] for s in selected_rows]):
-            cancel = False
-    return load, eject, ready, unready, submit, cancel
+    load, eject, ready, unready, submit, cancel, view, snapshot = True,True,True,True,True,True,True,True
+    if selected_rows:  # Must have something selected
+        if permissions:  # Must have permissions to do anything except view
+            if table == 'pipelines':
+                if all([s['Sample ID'] is not None for s in selected_rows]):
+                    submit, snapshot = False, False
+                    if all([s['Job ID'] is None for s in selected_rows]):
+                        eject, ready, unready = False, False, False
+                    elif all([s['Job ID'] is not None for s in selected_rows]):
+                        cancel = False
+                elif all([s['Sample ID'] is None for s in selected_rows]):
+                    load = False
+            elif table == 'jobs':
+                if all([s['Status'] in ['r','q','qw'] for s in selected_rows]):
+                    cancel = False
+            elif table == 'results' or table == 'samples':
+                if all([s['Sample ID'] is not None for s in selected_rows]):
+                    snapshot = False
+        if any([s['Sample ID'] is not None for s in selected_rows]):
+            view = False
+    return load, eject, ready, unready, submit, cancel, view, snapshot
 
 # Eject button pop up
 @app.callback(
@@ -1182,6 +1215,55 @@ def cancel_job(yes_clicks, selected_rows):
         print(f"Cancelling job {row['Job ID']}")
         sm.cancel(row['Job ID'])
     return no_update, 1
+
+# View data
+@app.callback(
+    Output('tabs', 'value'),
+    Output('samples-dropdown', 'value'),
+    Input('view-button', 'n_clicks'),
+    State('table', 'selectedRows'),
+    prevent_initial_call=True,
+)
+def view_data(n_clicks, selected_rows):
+    if not n_clicks or not selected_rows:
+        return no_update, no_update
+    sample_id = [s['Sample ID'] for s in selected_rows]
+    return 'tab-1', sample_id
+
+# Snapshot button pop up
+@app.callback(
+    Output("snapshot-modal", "is_open"),
+    Input('snapshot-button', 'n_clicks'),
+    Input('snapshot-yes-close', 'n_clicks'),
+    Input('snapshot-no-close', 'n_clicks'),
+    State('snapshot-modal', 'is_open'),
+)
+def snapshot_sample_button(snapshot_clicks, yes_clicks, no_clicks, is_open):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return is_open
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    if button_id == 'snapshot-button':
+        return not is_open
+    elif button_id == 'snapshot-yes-close' and yes_clicks:
+        return False
+    elif button_id == 'snapshot-no-close' and no_clicks:
+        return False
+    return is_open, no_update, no_update, no_update
+# When snapshot confirmed, snapshot the samples and refresh the database
+@app.callback(
+    Output('loading-database', 'children', allow_duplicate=True),
+    Input('snapshot-yes-close', 'n_clicks'),
+    State('table', 'selectedRows'),
+    prevent_initial_call=True,
+)
+def snapshot_sample(yes_clicks, selected_rows):
+    if not yes_clicks:
+        return no_update
+    for row in selected_rows:
+        print(f"Snapshotting {row['Sample ID']}")
+        sm.snapshot(row['Sample ID'])
+    return no_update
 
 #----------------------------- SAMPLES CALLBACKS ------------------------------#
 
