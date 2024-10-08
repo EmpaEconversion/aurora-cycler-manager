@@ -655,20 +655,20 @@ class ServerManager:
         result = self.execute_sql("SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?", (samp_or_jobid,))
         if result:  # it's a sample
             result = self.execute_sql(
-                "SELECT `Sample ID`, `Job ID on server`, `Server label`, `Snapshot Status` "
+                "SELECT `Sample ID`, `Status`, `Job ID on server`, `Server label`, `Snapshot Status` "
                 "FROM jobs WHERE `Sample ID` = ? ",
                 (samp_or_jobid,)
             )
         else:  # it's a job ID
             result = self.execute_sql(
-                "SELECT `Sample ID`, `Job ID on server`, `Server label`, `Snapshot Status` "
+                "SELECT `Sample ID`, `Status`, `Job ID on server`, `Server label`, `Snapshot Status` "
                 "FROM jobs WHERE `Job ID` = ?",
                 (samp_or_jobid,)
             )
         if not result:
             raise ValueError(f"Sample or job ID '{samp_or_jobid}' not found in the database.")
 
-        for sample_id, jobid_on_server, server_label, snapshot_status in result:
+        for sample_id, status, jobid_on_server, server_label, snapshot_status in result:
             jobid = f"{server_label}-{jobid_on_server}"
             if not sample_id: # TODO should this update the db as well?
                 print(f"Job {server_label}-{jobid_on_server} has no sample, skipping.")
@@ -690,6 +690,11 @@ class ServerManager:
                 if mode == "new_data" and snapshot_status is not None and snapshot_status.startswith("c"):
                     print(f"Snapshot {jobid} already complete.")
                     continue
+
+            # Check that the job has started
+            if status in ['q', 'qw']:
+                print(f"Job {jobid} is still queued, skipping snapshot.")
+                continue
 
             # Otherwise snapshot the job
             server = next((server for server in self.servers if server.label == server_label), None)
