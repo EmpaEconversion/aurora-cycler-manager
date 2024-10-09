@@ -68,10 +68,9 @@ def get_mprs(
         local_folder (str): Folder to copy files to
         force_copy (bool): Copy all files regardless of modification date
     """
-    if force_copy:
+    if force_copy:  # Set cutoff date to 1970
         cutoff_datetime = datetime.fromtimestamp(0)
-    else:
-        # Check the database for last snapshot datetime
+    else:  # Set cutoff date to last snapshot from database
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -86,8 +85,6 @@ def get_mprs(
             cutoff_datetime = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
         else:
             cutoff_datetime = datetime.fromtimestamp(0)
-
-    current_datetime = datetime.now()
     cutoff_date_str = cutoff_datetime.strftime('%Y-%m-%d %H:%M:%S')
 
     # Connect to the server and copy the files
@@ -101,35 +98,36 @@ def get_mprs(
         if server_shell_type == "powershell":
             command = (
                 f'Get-ChildItem -Path \'{server_copy_folder}\' -Recurse '
-                f'| Where-Object {{ $_.LastWriteTime -gt \'{cutoff_date_str}\' }} '
+                f'| Where-Object {{ $_.LastWriteTime -gt \'{cutoff_date_str}\' -and ($_.Extension -eq \'.mpl\' -or $_.Extension -eq \'.mpr\')}} '
                 f'| Select-Object -ExpandProperty FullName'
             )
         elif server_shell_type == "cmd":
             command = (
                 f'powershell.exe -Command "Get-ChildItem -Path \'{server_copy_folder}\' -Recurse '
-                f'| Where-Object {{ $_.LastWriteTime -gt \'{cutoff_date_str}\' }} '
+                f'| Where-Object {{ $_.LastWriteTime -gt \'{cutoff_date_str}\' -and ($_.Extension -eq \'.mpl\' -or $_.Extension -eq \'.mpr\')}} '
                 f'| Select-Object -ExpandProperty FullName"'
             )
         stdin, stdout, stderr = ssh.exec_command(command)
-        modified_files = stdout.read().decode().splitlines()
-        print(modified_files)
-        modified_files = [f for f in modified_files if f.endswith('.mpr') or f.endswith('.mpl')]
-        assert not stderr.read(), f"Error finding modified files: {stderr.read()}"
-        print(f"Found {len(modified_files)} files modified since {cutoff_date_str}")
-        print(modified_files)
 
-        # Copy the files
-        with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
+        # Parse the output
+        output = stdout.read().decode('utf-8').strip()
+        error = stderr.read().decode('utf-8').strip()
+        assert not stderr.read(), f"Error finding modified files: {stderr.read()}"
+        modified_files = output.splitlines()
+        print(f"Found {len(modified_files)} files modified since {cutoff_date_str}")
+
+        # Copy the files using SFTP
+        current_datetime = datetime.now()  # Keep time of copying for database
+        with ssh.open_sftp() as sftp:
             for file in modified_files:
-                if file.endswith('.mpr') or file.endswith('.mpl'):
-                    # Maintain the folder structure when copying
-                    relative_path = os.path.relpath(file, server_copy_folder)
-                    local_path = os.path.join(local_folder, relative_path)
-                    local_dir = os.path.dirname(local_path)
-                    if not os.path.exists(local_dir):
-                        os.makedirs(local_dir)
-                    print(f"Copying {file} to {local_path}")
-                    scp.get(file, local_path=local_path)
+                # Maintain the folder structure when copying
+                relative_path = os.path.relpath(file, server_copy_folder)
+                local_path = os.path.join(local_folder, relative_path)
+                local_dir = os.path.dirname(local_path)
+                if not os.path.exists(local_dir):
+                    os.makedirs(local_dir)
+                print(f"Copying {file} to {local_path}")
+                sftp.get(file, local_path)
     
     # Update the database
     with sqlite3.connect(db_path) as conn:
@@ -238,6 +236,7 @@ def convert_mpr(
         except FileNotFoundError:
             warnings.warn(f"Incorrect start time in {mpr_file} and no mpl file found.")
 
+    # Only keep certain columns in dataframe
     df['V (V)'] = data.data_vars['Ewe'].values
     df['I (A)'] = (
         (3600 / 1000) * data.data_vars['dq'].values /
@@ -250,7 +249,6 @@ def convert_mpr(
 
     # If saving files, add metadata, save, update database
     if output_hdf_file or output_jsongz_file:
-
         # get sample data from database
         try:
             with sqlite3.connect(db_path) as conn:
