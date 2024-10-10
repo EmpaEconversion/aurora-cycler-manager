@@ -259,14 +259,14 @@ class ServerManager:
             if status:
                 with sqlite3.connect(self.db) as conn:
                     cursor = conn.cursor()
-                    for pipeline, sampleid, jobid_on_server in zip(status['pipeline'], status['sampleid'], status['jobid']):
+                    for ready, pipeline, sampleid, jobid_on_server in zip(status['ready'],status['pipeline'], status['sampleid'], status['jobid']):
                         jobid = f"{label}-{jobid_on_server}" if jobid_on_server else None
                         cursor.execute(
                             "INSERT OR REPLACE INTO pipelines "
-                            "(`Pipeline`, `Sample ID`, `Job ID`, `Job ID on server`, "
-                            "`Server label`, `Server Hostname`, `Last Checked`) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                            (pipeline, sampleid, jobid, jobid_on_server, label, hostname, dt)
+                            "(`Pipeline`, `Sample ID`, `Job ID`, `Ready`, `Last Checked`, "
+                            "`Server label`, `Server Hostname`, `Job ID on server`) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                            (pipeline, sampleid, jobid, ready, dt, label, hostname, jobid_on_server)
                         )
                     conn.commit()
 
@@ -498,7 +498,7 @@ class ServerManager:
             else:
                 # Update database preemtively
                 self.execute_sql(
-                    "UPDATE pipelines SET `Sample ID` = NULL WHERE `Pipeline` = ?",
+                    "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = 0 WHERE `Pipeline` = ?",
                     (pipeline,)
                 )
         return output
@@ -516,7 +516,18 @@ class ServerManager:
         result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
         server = next((server for server in self.servers if server.label == result[0][0]), None)
         print(f"Readying {pipeline} on server: {server.label}")
-        output = server.ready(pipeline)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            output = server.ready(pipeline)
+            if w:
+                for warning in w:
+                    print(f"Warning raised: {warning.message}")
+            else:
+                # Update database preemtively
+                self.execute_sql(
+                    "UPDATE pipelines SET `Ready` = 1 WHERE `Pipeline` = ?",
+                    (pipeline,)
+                )
         return output
     
     def unready(self, pipeline: str) -> str:
@@ -532,7 +543,18 @@ class ServerManager:
         result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
         server = next((server for server in self.servers if server.label == result[0][0]), None)
         print(f"Unreadying {pipeline} on server: {server.label}")
-        output = server.unready(pipeline)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            output = server.unready(pipeline)
+            if w:
+                for warning in w:
+                    print(f"Warning raised: {warning.message}")
+            else:
+                # Update database preemtively
+                self.execute_sql(
+                    "UPDATE pipelines SET `Ready` = 0 WHERE `Pipeline` = ?",
+                    (pipeline,)
+                )
         return output
 
     def submit(
