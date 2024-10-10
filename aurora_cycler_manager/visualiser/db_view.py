@@ -523,17 +523,18 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     # When ready button confirmed, ready pipelines and refresh the database
     @app.callback(
         Output('loading-database', 'children', allow_duplicate=True),
+        Output('refresh-database', 'n_clicks', allow_duplicate=True),
         Input('ready-yes-close', 'n_clicks'),
         State('table', 'selectedRows'),
         prevent_initial_call=True,
     )
     def ready_pipeline(yes_clicks, selected_rows):
         if not yes_clicks:
-            return no_update
+            return no_update, 0
         for row in selected_rows:
             print(f"Readying {row['Pipeline']}")
             output = sm.ready(row['Pipeline'])
-        return no_update
+        return no_update, 1
 
     # Unready button pop up
     @app.callback(
@@ -557,17 +558,18 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     # When unready button confirmed, unready pipelines and refresh the database
     @app.callback(
         Output('loading-database', 'children', allow_duplicate=True),
+        Output('refresh-database', 'n_clicks', allow_duplicate=True),
         Input('unready-yes-close', 'n_clicks'),
         State('table', 'selectedRows'),
         prevent_initial_call=True,
     )
     def unready_pipeline(yes_clicks, selected_rows):
         if not yes_clicks:
-            return no_update
+            return no_update, 0
         for row in selected_rows:
             print(f"Unreadying {row['Pipeline']}")
             output = sm.unready(row['Pipeline'])
-        return no_update
+        return no_update, 1
 
     # Submit button pop up
     @app.callback(
