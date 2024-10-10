@@ -690,8 +690,8 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         return is_open, no_update, no_update, no_update
     # When cancel confirmed, cancel the jobs and refresh the database
     @app.callback(
-        Output('refresh-database', 'n_clicks', allow_duplicate=True),
         Output('loading-database', 'children', allow_duplicate=True),
+        Output('refresh-database', 'n_clicks', allow_duplicate=True),
         Input('cancel-yes-close', 'n_clicks'),
         State('table', 'selectedRows'),
         prevent_initial_call=True,
