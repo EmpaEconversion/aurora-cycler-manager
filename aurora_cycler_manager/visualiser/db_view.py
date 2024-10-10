@@ -18,7 +18,7 @@ try:
     sm = ServerManager()
     print("Successfully connected to the servers. You have permissions to alter everything.")
     permissions = True
-except paramiko.SSHException:
+except (paramiko.SSHException, FileNotFoundError):
     print("You do not have permission to write to the servers. Disabling these features.")
     sm = None
     permissions = False
@@ -223,7 +223,7 @@ def db_view_layout(config: dict) -> html.Div:
                                         id='submit-capacity-div',
                                         children=[
                                             "Capacity = ",
-                                            dcc.Input(id='submit-capacity', type='number', min=0, max=10, step=0.1),
+                                            dcc.Input(id='submit-capacity', type='number', min=0, max=10),
                                             " mAh"
                                         ],
                                         style={'display': 'none'},
@@ -451,7 +451,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     def load_sample_button(load_clicks, yes_clicks, no_clicks, is_open, selected_rows):
         if not selected_rows or not ctx.triggered:
             return is_open, no_update
-        options = [{'label': name, 'value': name} for name in get_sample_names()]
+        options = [{'label': name, 'value': name} for name in get_sample_names(config)]
         dropdowns = [
             html.Div(
                 children=[

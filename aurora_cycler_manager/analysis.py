@@ -597,7 +597,6 @@ def analyse_cycles(
                 flag = 'Init cap'
         else:
             flag = 'Complete'
-
     update_row = {
         'Pipeline': pipeline,
         'Status': status,
@@ -612,12 +611,13 @@ def analyse_cycles(
         'Initial efficiency (%)': cycle_dict['Initial efficiency (%)'],
         'Last specific discharge capacity (mAh/g)': cycle_dict['Last specific discharge capacity (mAh/g)'],
         'Last efficiency (%)': cycle_dict['Last efficiency (%)'],
-        'Last snapshot': last_snapshot,
         'Last analysis': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        #'Last plotted' # do not update this column here
-        'Snapshot status': snapshot_status,
-        'Snapshot pipeline': snapshot_pipeline,
+        # Only add the following keys if they are not None, otherwise they set to NULL in database
+        **({'Last snapshot': last_snapshot} if last_snapshot else {}),
+        **({'Snapshot status': snapshot_status} if snapshot_status else {}),
+        **({'Snapshot pipeline': snapshot_pipeline} if snapshot_pipeline else {}),
     }
+
     # round any floats to 3 decimal places
     for k,v in update_row.items():
         if isinstance(v, float):
@@ -713,7 +713,6 @@ def analyse_all_samples(
             cursor.execute("SELECT `Sample ID`, `Last snapshot`, `Last analysis` FROM results")
             results = cursor.fetchall()
         dtformat = '%Y-%m-%d %H:%M:%S'
-        print([r for r in results])
         samples_to_analyse = [
             r[0] for r in results
             if r[0] and (
@@ -722,14 +721,16 @@ def analyse_all_samples(
                 datetime.strptime(r[1], dtformat) > datetime.strptime(r[2], dtformat)
             )
         ]
-        print(f"Analyzing: {samples_to_analyse}")
-    if mode == 'if_not_exists':
+        print(f"Analysing {len(samples_to_analyse)} samples")
+    elif mode == 'if_not_exists':
         with sqlite3.connect(config["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT `Sample ID` FROM results WHERE `Last analysis` IS NULL")
             results = cursor.fetchall()
         samples_to_analyse = [r[0] for r in results]
-        print(f"Analyzing: {samples_to_analyse}")
+        print(f"Analysing {len(samples_to_analyse)} samples")
+    else:
+        print("Analysing all samples")
 
     for batch_folder in os.listdir(snapshot_folder):
         for sample in os.listdir(os.path.join(snapshot_folder, batch_folder)):
