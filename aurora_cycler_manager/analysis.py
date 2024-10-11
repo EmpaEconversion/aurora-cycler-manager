@@ -532,107 +532,110 @@ def analyse_cycles(
         cycle_dict[col] = sample_data.get(col, None)
 
     # Calculate additional quantities from cycling data and add to cycle_dict
+    analyse_cycles = True
     if not cycle_dict['Cycle']:
         print(f"No cycles found for {sampleid}")
-        return df, cycle_dict, metadata
+        analyse_cycles = False
     if len(cycle_dict['Cycle']) == 1 and not complete:
         print(f"No complete cycles found for {sampleid}")
-        return df, cycle_dict, metadata
-    last_idx = -1 if complete else -2
+        analyse_cycles = False
 
-    cycle_dict['First formation efficiency (%)'] = cycle_dict['Efficiency (%)'][0]
-    cycle_dict['First formation specific discharge capacity (mAh/g)'] = cycle_dict['Specific discharge capacity (mAh/g)'][0]
-    cycle_dict['Initial specific discharge capacity (mAh/g)'] = cycle_dict['Specific discharge capacity (mAh/g)'][initial_cycle-1] if formed else None
-    cycle_dict['Initial efficiency (%)'] = cycle_dict['Efficiency (%)'][initial_cycle-1] if formed else None
-    cycle_dict['Capacity loss (%)'] = 100 - cycle_dict['Normalised discharge capacity (%)'][last_idx] if formed else None
-    cycle_dict['Last specific discharge capacity (mAh/g)'] = cycle_dict['Specific discharge capacity (mAh/g)'][last_idx]
-    cycle_dict['Last efficiency (%)'] = cycle_dict['Efficiency (%)'][last_idx]
-    cycle_dict['Formation average voltage (V)'] = np.mean(cycle_dict['Charge average voltage (V)'][:initial_cycle-1]) if formed else None
-    cycle_dict['Formation average current (A)'] = np.mean(cycle_dict['Charge average current (A)'][:initial_cycle-1]) if formed else None
-    cycle_dict['Initial delta V (V)'] = cycle_dict['Delta V (V)'][initial_cycle-1] if formed else None
+    if analyse_cycles:
+        last_idx = -1 if complete else -2
 
-    # Calculate cycles to x% of initial discharge capacity
-    pcents = [95,90,85,80,75,70,60,50]
-    norm = cycle_dict['Normalised discharge capacity (%)']
-    for pcent in pcents:
-        cycle_dict[f'Cycles to {pcent}% capacity'] = next(
-            (i + 1 - initial_cycle for i in range(initial_cycle-1, len(norm) - 1)
-            if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
-    norm = cycle_dict['Normalised discharge energy (%)']
-    for pcent in pcents:
-        cycle_dict[f'Cycles to {pcent}% energy'] = next(
-            (i + 1 - initial_cycle for i in range(initial_cycle-1, len(norm) - 1)
-            if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
+        cycle_dict['First formation efficiency (%)'] = cycle_dict['Efficiency (%)'][0]
+        cycle_dict['First formation specific discharge capacity (mAh/g)'] = cycle_dict['Specific discharge capacity (mAh/g)'][0]
+        cycle_dict['Initial specific discharge capacity (mAh/g)'] = cycle_dict['Specific discharge capacity (mAh/g)'][initial_cycle-1] if formed else None
+        cycle_dict['Initial efficiency (%)'] = cycle_dict['Efficiency (%)'][initial_cycle-1] if formed else None
+        cycle_dict['Capacity loss (%)'] = 100 - cycle_dict['Normalised discharge capacity (%)'][last_idx] if formed else None
+        cycle_dict['Last specific discharge capacity (mAh/g)'] = cycle_dict['Specific discharge capacity (mAh/g)'][last_idx]
+        cycle_dict['Last efficiency (%)'] = cycle_dict['Efficiency (%)'][last_idx]
+        cycle_dict['Formation average voltage (V)'] = np.mean(cycle_dict['Charge average voltage (V)'][:initial_cycle-1]) if formed else None
+        cycle_dict['Formation average current (A)'] = np.mean(cycle_dict['Charge average current (A)'][:initial_cycle-1]) if formed else None
+        cycle_dict['Initial delta V (V)'] = cycle_dict['Delta V (V)'][initial_cycle-1] if formed else None
 
-    cycle_dict['Run ID'] = _run_from_sample(sampleid)
+        # Calculate cycles to x% of initial discharge capacity
+        pcents = [95,90,85,80,75,70,60,50]
+        norm = cycle_dict['Normalised discharge capacity (%)']
+        for pcent in pcents:
+            cycle_dict[f'Cycles to {pcent}% capacity'] = next(
+                (i + 1 - initial_cycle for i in range(initial_cycle-1, len(norm) - 1)
+                if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
+        norm = cycle_dict['Normalised discharge energy (%)']
+        for pcent in pcents:
+            cycle_dict[f'Cycles to {pcent}% energy'] = next(
+                (i + 1 - initial_cycle for i in range(initial_cycle-1, len(norm) - 1)
+                if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
 
-    # Add times to cycle_dict
-    uts_steps = {}
-    for step in [3,5,6,10]:
-        datetime_str = sample_data.get(f"Timestamp step {step}", None)
-        if not datetime_str:
-            uts_steps[step] = np.nan
-            continue
-        datetime_object = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M:%S')
-        datetime_object = timezone.localize(datetime_object)
-        uts_steps[step] = datetime_object.timestamp()
-    job_start = df['uts'].iloc[0]
-    cycle_dict['Electrolyte to press (s)'] = round(uts_steps[10] - np.nanmin([uts_steps[3],uts_steps[5]]))
-    cycle_dict['Electrolyte to electrode (s)'] = round(uts_steps[6] - np.nanmin([uts_steps[3],uts_steps[5]]))
-    cycle_dict['Electrode to protection (s)'] = round(job_start - uts_steps[6])
-    cycle_dict['Press to protection (s)'] = round(job_start - uts_steps[10])
+        cycle_dict['Run ID'] = _run_from_sample(sampleid)
 
-    # Update the database with some of the results
-    flag = None
-    job_complete = status and status.endswith('c')
-    if pipeline:
-        if not job_complete:
-            if formed and cycle_dict['Capacity loss (%)'] > 20:
-                flag = 'Cap loss'
-            if cycle_dict['First formation efficiency (%)'] < 60:
-                flag = 'Form eff'
-            if formed and cycle_dict['Initial efficiency (%)'] < 50:
-                flag = 'Init eff'
-            if formed and cycle_dict['Initial specific discharge capacity (mAh/g)'] < 100:
-                flag = 'Init cap'
-        else:
-            flag = 'Complete'
-    update_row = {
-        'Pipeline': pipeline,
-        'Status': status,
-        'Flag': flag,
-        'Number of cycles': int(max(cycle_dict['Cycle'])),
-        'Capacity loss (%)': cycle_dict['Capacity loss (%)'],
-        'Max voltage (V)': cycle_dict['Max voltage (V)'],
-        'Formation C': cycle_dict['Formation C'],
-        'Cycling C': cycle_dict['Cycle C'],
-        'First formation efficiency (%)': cycle_dict['First formation efficiency (%)'],
-        'Initial specific discharge capacity (mAh/g)': cycle_dict['Initial specific discharge capacity (mAh/g)'],
-        'Initial efficiency (%)': cycle_dict['Initial efficiency (%)'],
-        'Last specific discharge capacity (mAh/g)': cycle_dict['Last specific discharge capacity (mAh/g)'],
-        'Last efficiency (%)': cycle_dict['Last efficiency (%)'],
-        'Last analysis': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        # Only add the following keys if they are not None, otherwise they set to NULL in database
-        **({'Last snapshot': last_snapshot} if last_snapshot else {}),
-        **({'Snapshot status': snapshot_status} if snapshot_status else {}),
-        **({'Snapshot pipeline': snapshot_pipeline} if snapshot_pipeline else {}),
-    }
+        # Add times to cycle_dict
+        uts_steps = {}
+        for step in [3,5,6,10]:
+            datetime_str = sample_data.get(f"Timestamp step {step}", None)
+            if not datetime_str:
+                uts_steps[step] = np.nan
+                continue
+            datetime_object = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M:%S')
+            datetime_object = timezone.localize(datetime_object)
+            uts_steps[step] = datetime_object.timestamp()
+        job_start = df['uts'].iloc[0]
+        cycle_dict['Electrolyte to press (s)'] = round(uts_steps[10] - np.nanmin([uts_steps[3],uts_steps[5]]))
+        cycle_dict['Electrolyte to electrode (s)'] = round(uts_steps[6] - np.nanmin([uts_steps[3],uts_steps[5]]))
+        cycle_dict['Electrode to protection (s)'] = round(job_start - uts_steps[6])
+        cycle_dict['Press to protection (s)'] = round(job_start - uts_steps[10])
 
-    # round any floats to 3 decimal places
-    for k,v in update_row.items():
-        if isinstance(v, float):
-            update_row[k] = round(v,3)
+        # Update the database with some of the results
+        flag = None
+        job_complete = status and status.endswith('c')
+        if pipeline:
+            if not job_complete:
+                if formed and cycle_dict['Capacity loss (%)'] > 20:
+                    flag = 'Cap loss'
+                if cycle_dict['First formation efficiency (%)'] < 60:
+                    flag = 'Form eff'
+                if formed and cycle_dict['Initial efficiency (%)'] < 50:
+                    flag = 'Init eff'
+                if formed and cycle_dict['Initial specific discharge capacity (mAh/g)'] < 100:
+                    flag = 'Init cap'
+            else:
+                flag = 'Complete'
+        update_row = {
+            'Pipeline': pipeline,
+            'Status': status,
+            'Flag': flag,
+            'Number of cycles': int(max(cycle_dict['Cycle'])),
+            'Capacity loss (%)': cycle_dict['Capacity loss (%)'],
+            'Max voltage (V)': cycle_dict['Max voltage (V)'],
+            'Formation C': cycle_dict['Formation C'],
+            'Cycling C': cycle_dict['Cycle C'],
+            'First formation efficiency (%)': cycle_dict['First formation efficiency (%)'],
+            'Initial specific discharge capacity (mAh/g)': cycle_dict['Initial specific discharge capacity (mAh/g)'],
+            'Initial efficiency (%)': cycle_dict['Initial efficiency (%)'],
+            'Last specific discharge capacity (mAh/g)': cycle_dict['Last specific discharge capacity (mAh/g)'],
+            'Last efficiency (%)': cycle_dict['Last efficiency (%)'],
+            'Last analysis': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            # Only add the following keys if they are not None, otherwise they set to NULL in database
+            **({'Last snapshot': last_snapshot} if last_snapshot else {}),
+            **({'Snapshot status': snapshot_status} if snapshot_status else {}),
+            **({'Snapshot pipeline': snapshot_pipeline} if snapshot_pipeline else {}),
+        }
 
-    with sqlite3.connect(db_path) as conn:
-        cursor = conn.cursor()
-        # insert a row with sampleid if it doesn't exist
-        cursor.execute("INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)", (sampleid,))
-        # update the row
-        columns = ", ".join([f"`{k}` = ?" for k in update_row.keys()])
-        cursor.execute(
-            f"UPDATE results SET {columns} WHERE `Sample ID` = ?",
-            (*update_row.values(), sampleid)
-        )
+        # round any floats to 3 decimal places
+        for k,v in update_row.items():
+            if isinstance(v, float):
+                update_row[k] = round(v,3)
+
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            # insert a row with sampleid if it doesn't exist
+            cursor.execute("INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)", (sampleid,))
+            # update the row
+            columns = ", ".join([f"`{k}` = ?" for k in update_row.keys()])
+            cursor.execute(
+                f"UPDATE results SET {columns} WHERE `Sample ID` = ?",
+                (*update_row.values(), sampleid)
+            )
 
     if save_cycle_dict or save_merged_hdf or save_merged_jsongz:
         save_folder = os.path.dirname(job_files[0])
