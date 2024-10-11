@@ -445,8 +445,12 @@ def analyse_cycles(
     discharge_avg_I = []
     started_charge = False
     started_discharge = False
-    for cycle, group_df in df.groupby('Cycle'):
+    for step, group_df in df.groupby('Step'):
+        cycle = group_df['Cycle'].iloc[0]
         if cycle <= 0:
+            if len(group_df) > 10:
+                started_charge = False
+                started_discharge = False
             continue
         charge_data = group_df[
             (group_df['Iavg (A)'] > 0) &
