@@ -47,6 +47,13 @@ def get_database(config: dict) -> dict:
         'jobs': [{'field' : col, 'filter': True, 'tooltipField': col} for col in db_data['jobs'][0].keys()],
         'pipelines': [{'field' : col, 'filter': True, 'tooltipField': col} for col in db_data['pipelines'][0].keys()],
     }
+
+    # Use custom comparator for pipeline column
+    pipeline_field = next((col for col in db_columns['pipelines'] if col['field'] == 'Pipeline'), None)
+    if pipeline_field:
+        pipeline_field['comparator'] = {'function': 'pipelineComparatorCustom'}
+        pipeline_field['sort'] = 'asc'
+        
     return {'data':db_data, 'column_defs': db_columns}
 
 def cramers_v(x: ArrayLike, y: ArrayLike) -> float:
