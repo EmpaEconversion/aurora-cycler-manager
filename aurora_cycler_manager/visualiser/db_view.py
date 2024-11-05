@@ -442,16 +442,19 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     @app.callback(
         Output("load-modal", "is_open"),
         Output("load-modal-body", "children"),
+        Output("load-incrememt", "style"),
         Input('load-button', 'n_clicks'),
         Input('load-yes-close', 'n_clicks'),
         Input('load-no-close', 'n_clicks'),
         State('load-modal', 'is_open'),
         State('table', 'selectedRows'),
+        State('table-data-store', 'data'),
     )
-    def load_sample_button(load_clicks, yes_clicks, no_clicks, is_open, selected_rows):
+    def load_sample_button(load_clicks, yes_clicks, no_clicks, is_open, selected_rows, db_data):
         if not selected_rows or not ctx.triggered:
-            return is_open, no_update
-        options = [{'label': name, 'value': name} for name in get_sample_names(config)]
+            return is_open, no_update, no_update
+        possible_samples = [s.get('Sample ID', None) for s in db_data['data']['samples']]
+        options = [{'label': s, 'value': s} for s in possible_samples if s]
         dropdowns = [
             html.Div(
                 children=[
@@ -474,13 +477,50 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         ]
         children = ["Select the samples you want to load"] + dropdowns
         button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        if len(selected_rows) > 1:
+            increment = {'display': 'inline-block'}
+        else:
+            increment = {'display': 'none'}
         if button_id == 'load-button':
-            return not is_open, children
+            return not is_open, children, increment
         elif button_id == 'load-yes-close' and yes_clicks:
-            return False, no_update
+            return False, no_update, increment
         elif button_id == 'load-no-close' and no_clicks:
-            return False, no_update
-        return is_open, no_update
+            return False, no_update, increment
+        return is_open, no_update, increment
+    
+    # When auto-increment is pressed, increment the sample ID for each selected pipeline
+    @app.callback(
+        Output({'type':'load-dropdown','index':ALL}, 'value'),
+        Input('load-incrememt', 'n_clicks'),
+        Input('load-clear', 'n_clicks'),
+        State({'type':'load-dropdown','index':ALL}, 'value'),
+        State('table-data-store', 'data'),
+    )
+    def update_load_selection(inc_clicks, clear_clicks, selected_samples, db_data):
+        if not ctx.triggered:
+            return selected_samples
+        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+        # If clear, clear all selected samples
+        if button_id == 'load-clear':
+            return [[] for _ in selected_samples]
+        
+        # If auto-increment, go through the list, if the sample is empty increment the previous sample
+        if button_id == 'load-incrememt':
+            possible_samples = [s.get('Sample ID', None) for s in db_data['data']['samples']]
+            for i in range(1,len(selected_samples)):
+                if not selected_samples[i]:
+                    prev_sample = selected_samples[i-1]
+                    if prev_sample:
+                        prev_sample_number = prev_sample.split('_')[-1]
+                        #convert to int, increment, convert back to string with same padding
+                        new_sample_number = str(int(prev_sample_number)+1).zfill(len(prev_sample_number))
+                        new_sample = '_'.join(prev_sample.split('_')[:-1]) + '_' + new_sample_number
+                        if new_sample in possible_samples:
+                            selected_samples[i] = new_sample
+        return selected_samples
+
     # When load is pressed, load samples and refresh the database
     @app.callback(
         Output('loading-database', 'children', allow_duplicate=True),
