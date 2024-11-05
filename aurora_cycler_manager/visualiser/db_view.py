@@ -51,18 +51,16 @@ def db_view_layout(config: dict) -> html.Div:
                             dbc.Button("Force update database", id='update-database', color='warning', outline=True, className='me-1', disabled = not permissions),
                             html.Div(style={'margin-top': '10px'}),
                             # Buttons to select which table to display
-                            dbc.RadioItems(
-                                id='table-select',
-                                inline=True,
-                                options=[
-                                    {'label': 'Samples', 'value': 'samples'},
-                                    {'label': 'Results', 'value': 'results'},
-                                    {'label': 'Jobs', 'value': 'jobs'},
-                                    {'label': 'Pipelines', 'value': 'pipelines'},
+                            dbc.Tabs(
+                                [
+                                    dbc.Tab(label = 'Pipelines', tab_id = 'pipelines', active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
+                                    dbc.Tab(label = 'Samples', tab_id = 'samples', active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
+                                    dbc.Tab(label = 'Jobs', tab_id = 'jobs', active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
+                                    dbc.Tab(label = 'Results', tab_id = 'results', active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
                                 ],
-                                value='pipelines',
+                                id='table-select',
+                                active_tab='pipelines',
                             ),
-                            html.Div(style={'margin-top': '10px'}),
                             # Main table for displaying info from database
                             dag.AgGrid(
                                 id='table',
@@ -122,6 +120,12 @@ def db_view_layout(config: dict) -> html.Div:
                                 [
                                     dbc.Button(
                                         "Load", id="load-yes-close", className="ms-auto", color='primary', n_clicks=0
+                                    ),
+                                    dbc.Button(
+                                        "Auto-increment", id="load-incrememt", className="ms-auto", color='light', n_clicks=0
+                                    ),
+                                    dbc.Button(
+                                        "Clear all", id="load-clear", className="ms-auto", color='light', n_clicks=0
                                     ),
                                     dbc.Button(
                                         "Go back", id="load-no-close", className="ms-auto", color='secondary', n_clicks=0
@@ -310,7 +314,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output('cancel-button', 'style'),
         Output('view-button', 'style'),
         Output('snapshot-button', 'style'),
-        Input('table-select', 'value'),
+        Input('table-select', 'active_tab'),
         Input('table-data-store', 'data'),
     )
     def update_table(table, data):
@@ -377,7 +381,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output('view-button', 'disabled'),
         Output('snapshot-button', 'disabled'),
         Input('table', 'selectedRows'),
-        State('table-select', 'value'),
+        State('table-select', 'active_tab'),
     )
     def enable_buttons(selected_rows, table):
         load, eject, ready, unready, submit, cancel, view, snapshot = True,True,True,True,True,True,True,True
