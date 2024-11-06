@@ -164,6 +164,43 @@ class ServerManager:
                             f"Timestamp column '{col}' in the sample file is not in the correct format. "
                             "Please use the format 'YYYY-MM-DD HH:MM:SS'."
                         ) from exc
+                    
+        # Calculate/overwrite certain columns
+        # Active material masses
+        required_columns = ["Anode mass (mg)", "Anode current collector mass (mg)", "Anode active material mass fraction"]
+        if all(col in df.columns for col in required_columns):
+            df["Anode active material mass (mg)"] = (
+                (df["Anode mass (mg)"] - df["Anode current collector mass (mg)"])
+                * df["Anode active material mass fraction"]
+            )
+        required_columns = ["Cathode mass (mg)", "Cathode current collector mass (mg)", "Cathode active material mass fraction"]
+        if all(col in df.columns for col in required_columns):
+            df["Cathode active material mass (mg)"] = (
+                (df["Cathode mass (mg)"] - df["Cathode current collector mass (mg)"])
+                * df["Cathode active material mass fraction"]
+            )
+        # Capacities
+        required_columns = ["Anode active material mass (mg)", "Anode balancing specific capacity (mAh/g)"]
+        if all(col in df.columns for col in required_columns):
+            df["Anode balancing capacity (mAh)"] = (
+                1e-3 * df["Anode active material mass (mg)"] * df["Anode balancing specific capacity (mAh/g)"]
+            )
+        required_columns = ["Cathode active material mass (mg)", "Cathode balancing specific capacity (mAh/g)"]
+        if all(col in df.columns for col in required_columns):
+            df["Cathode balancing capacity (mAh)"] = (
+                1e-3 * df["Cathode active material mass (mg)"] * df["Cathode balancing specific capacity (mAh/g)"]
+            )
+        # N:P ratio overlap factor
+        required_columns = ["Anode diameter (mm)", "Cathode diameter (mm)"]
+        if all(col in df.columns for col in required_columns):
+            df["N:P ratio overlap factor"] = df["Anode diameter (mm)"] / df["Cathode diameter (mm)"]
+        # Actual N:P ratio
+        required_columns = ["Anode active material mass (mg)", "Cathode active material mass (mg)", "N:P ratio overlap factor"]
+        if all(col in df.columns for col in required_columns):
+            df["Actual N:P ratio"] = (
+                df["Anode active material mass (mg)"] * df["N:P ratio overlap factor"]
+                / df["Cathode active material mass (mg)"]
+            )
 
         # Insert the new data into the database
         with sqlite3.connect(self.db) as conn:
