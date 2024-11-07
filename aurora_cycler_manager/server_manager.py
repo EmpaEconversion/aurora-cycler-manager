@@ -110,7 +110,15 @@ class ServerManager:
             csv_file : str
                 The path to the csv file to insert
         """
+        # If csv is over 1 MB, do not insert
+        if os.path.getsize(csv_file) > 1e6:
+            warnings.warn(f"File {csv_file} is over 1 MB, skipping", RuntimeWarning)
         df = pd.read_csv(csv_file,delimiter=';')
+        # If csv contains more than 1000 rows or 100 columns, do not insert
+        if len(df) > 1000:
+            warnings.warn(f"File {csv_file} contains more than 1000 rows, skipping", RuntimeWarning)
+
+        # Load the config file
         current_dir = os.path.dirname(os.path.abspath(__file__))
         config_path = os.path.join(current_dir, '..', 'config.json')
         with open(config_path, encoding = 'utf-8') as f:
