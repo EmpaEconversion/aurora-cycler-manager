@@ -290,6 +290,9 @@ def convert_neware_data(
     }
 
     if output_jsongz_file:
+        if not sampleid:
+            print(f"Not saving {file_path}, no valid Sample ID found")
+            return data, metadata
         folder = os.path.join(config["Processed snapshots folder path"], _run_from_sample(sampleid),sampleid)
         if not os.path.exists(folder):
             os.makedirs(folder)
