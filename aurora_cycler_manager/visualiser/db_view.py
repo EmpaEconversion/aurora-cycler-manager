@@ -64,18 +64,29 @@ def db_view_layout(config: dict) -> html.Div:
                             # Main table for displaying info from database
                             dag.AgGrid(
                                 id='table',
-                                dashGridOptions = {"enableCellTextSelection": False, "tooltipShowDelay": 1000, 'rowSelection': 'multiple'},
+                                dashGridOptions = {"enableCellTextSelection": False, "ensureDomOrder": True, "tooltipShowDelay": 1000, 'rowSelection': 'multiple'},
+                                defaultColDef={"filter": True, "sortable": True, "floatingFilter": True},
                                 style={"height": "calc(90vh - 220px)", "width": "100%", "minHeight": "400px"},
                             ),
-                            # Buttons to interact with the database
-                            dbc.Button("Load", id='load-button', color='primary', outline=True, className='me-1'),
-                            dbc.Button("Eject", id='eject-button', color='primary', outline=True, className='me-1'),
-                            dbc.Button("Ready", id='ready-button', color='primary', outline=True, className='me-1'),
-                            dbc.Button("Unready", id='unready-button', color='primary', outline=True, className='me-1'),
-                            dbc.Button("Submit", id='submit-button', color='primary', outline=True, className='me-1'),
-                            dbc.Button("Cancel", id='cancel-button', color='danger', outline=True, className='me-1'),
-                            dbc.Button("View data", id='view-button', color='primary', outline=True, className='me-1'),
-                            dbc.Button("Snapshot", id='snapshot-button', color='primary', outline=True, className='me-1'),
+                            html.Div(
+                                [
+                                    html.Div(
+                                        [
+                                            dbc.Button("Load", id='load-button', color='primary', outline=True, className='me-1'),
+                                            dbc.Button("Eject", id='eject-button', color='primary', outline=True, className='me-1'),
+                                            dbc.Button("Ready", id='ready-button', color='primary', outline=True, className='me-1'),
+                                            dbc.Button("Unready", id='unready-button', color='primary', outline=True, className='me-1'),
+                                            dbc.Button("Submit", id='submit-button', color='primary', outline=True, className='me-1'),
+                                            dbc.Button("Cancel", id='cancel-button', color='danger', outline=True, className='me-1'),
+                                            dbc.Button("View data", id='view-button', color='primary', outline=True, className='me-1'),
+                                            dbc.Button("Snapshot", id='snapshot-button', color='primary', outline=True, className='me-1'),
+                                        ], 
+                                        style={'display': 'flex', 'flex-wrap': 'wrap'}
+                                    ),
+                                html.Div("test", id="table-info", style={'margin-left': 'auto', 'text-align': 'right', 'flex-grow': '1'})
+                                ],
+                                style={'display': 'flex', 'flex-wrap': 'wrap'}
+                            ),
                         ]
                     ),
                     # Pop up modals for interacting with the database after clicking buttons
@@ -405,6 +416,19 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
             if any([s['Sample ID'] is not None for s in selected_rows]):
                 view = False
         return load, eject, ready, unready, submit, cancel, view, snapshot
+
+    @app.callback(
+        Output('table-info', 'children'),
+        Input('table', 'selectedRows'),
+        Input('table', 'rowData'),
+        Input('table', 'virtualRowData'),
+    )
+    def update_table_info(selected_rows, row_data, filtered_row_data):
+        total_rows = len(row_data)
+        filtered_rows_count = len(filtered_row_data) if (filtered_row_data != None) else total_rows
+        selected_rows_count = len(selected_rows) if selected_rows else 0
+
+        return f"Selected: {selected_rows_count}, Filtered: {filtered_rows_count}, Total: {total_rows}"
 
     # Eject button pop up
     @app.callback(
