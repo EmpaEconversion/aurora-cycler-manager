@@ -159,7 +159,7 @@ def harvest_all_neware_files(force_copy = False) -> None:
 def get_neware_metadata(file_path: str) -> dict:
     # Get the test info, including barcode / remarks
     warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
-    df = pd.read_excel(file_path, sheet_name="test", header=None)
+    df = pd.read_excel(file_path, sheet_name="test", header=None, engine='calamine')
 
     # In first column, find index where value is "Test information" and "Step plan"
     test_idx = df[df.iloc[:, 0] == "Test information"].index[0]
@@ -230,7 +230,7 @@ def get_neware_metadata(file_path: str) -> dict:
     return test_info, sampleid
 
 def get_neware_data(file_path: str) -> dict:
-    df = pd.read_excel(file_path, sheet_name="record", header=0)
+    df = pd.read_excel(file_path, sheet_name="record", header=0, engine='calamine')
     output_df = pd.DataFrame()
     output_df["V (V)"] = df["Voltage(V)"]
     output_df["I (A)"] = df["Current(A)"]
