@@ -38,7 +38,7 @@ external_stylesheets = [dbc.themes.BOOTSTRAP]
 app = Dash(__name__, external_stylesheets=external_stylesheets)
 app.title = "Aurora Visualiser"
 app.layout = html.Div(
-    style = {'height': 'calc(100vh - 30px)','overflow': 'hidden'},
+    className='responsive-container',
     children = [
         dcc.Tabs(
             id = "tabs",
