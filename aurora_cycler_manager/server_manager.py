@@ -209,6 +209,11 @@ class ServerManager:
                 df["Anode balancing capacity (mAh)"] * df["N:P ratio overlap factor"]
                 / df["Cathode balancing capacity (mAh)"]
             )
+        # Run ID - if column is missing or where it is empty, find from the sample ID
+        run_ID = _run_from_sample(df["Sample ID"])
+        if "Run ID" not in df.columns:
+            df["Run ID"] = run_ID
+        df["Run ID"] = df["Run ID"].fillna(run_ID)
 
         # Insert the new data into the database
         with sqlite3.connect(self.db) as conn:
