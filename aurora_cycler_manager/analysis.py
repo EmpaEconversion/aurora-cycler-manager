@@ -21,6 +21,7 @@ import json
 import gzip
 import fractions
 import pytz
+import warnings
 import yaml
 import numpy as np
 import pandas as pd
@@ -30,6 +31,8 @@ import seaborn as sns
 import plotly.express as px
 from plotly.subplots import make_subplots
 from aurora_cycler_manager.version import __version__, __url__
+
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="All-NaN axis encountered")
 
 def convert_tomato_json(
         snapshot_file: str,
@@ -584,10 +587,17 @@ def analyse_cycles(
             datetime_object = timezone.localize(datetime_object)
             uts_steps[step] = datetime_object.timestamp()
         job_start = df['uts'].iloc[0]
-        cycle_dict['Electrolyte to press (s)'] = round(uts_steps[10] - np.nanmin([uts_steps[3],uts_steps[5]]))
-        cycle_dict['Electrolyte to electrode (s)'] = round(uts_steps[6] - np.nanmin([uts_steps[3],uts_steps[5]]))
-        cycle_dict['Electrode to protection (s)'] = round(job_start - uts_steps[6])
-        cycle_dict['Press to protection (s)'] = round(job_start - uts_steps[10])
+
+        def _time_diff(uts_start: float, uts_end: float) -> float:
+            if np.isnan(uts_start) or np.isnan(uts_end):
+                return np.nan
+            return round(uts_end - uts_start)
+        
+        first_electrolyte = np.nanmin([uts_steps[3],uts_steps[5]])
+        cycle_dict['Electrolyte to press (s)'] = _time_diff(first_electrolyte, uts_steps[10])
+        cycle_dict['Electrolyte to electrode (s)'] = _time_diff(first_electrolyte, uts_steps[6])
+        cycle_dict['Electrode to protection (s)'] = _time_diff(uts_steps[6], job_start)
+        cycle_dict['Press to protection (s)'] = _time_diff(uts_steps[10], job_start)
 
         # Update the database with some of the results
         flag = None
