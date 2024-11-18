@@ -201,13 +201,13 @@ class ServerManager:
         # N:P ratio overlap factor
         required_columns = ["Anode diameter (mm)", "Cathode diameter (mm)"]
         if all(col in df.columns for col in required_columns):
-            df["N:P ratio overlap factor"] = df["Anode diameter (mm)"] / df["Cathode diameter (mm)"]
+            df["N:P ratio overlap factor"] = (df["Cathode diameter (mm)"]**2 / df["Anode diameter (mm)"]**2).fillna(0)
         # Actual N:P ratio
-        required_columns = ["Anode active material mass (mg)", "Cathode active material mass (mg)", "N:P ratio overlap factor"]
+        required_columns = ["Anode balancing capacity (mAh)", "Cathode balancing capacity (mAh)", "N:P ratio overlap factor"]
         if all(col in df.columns for col in required_columns):
             df["Actual N:P ratio"] = (
-                df["Anode active material mass (mg)"] * df["N:P ratio overlap factor"]
-                / df["Cathode active material mass (mg)"]
+                df["Anode balancing capacity (mAh)"] * df["N:P ratio overlap factor"]
+                / df["Cathode balancing capacity (mAh)"]
             )
 
         # Insert the new data into the database
