@@ -562,17 +562,32 @@ def analyse_cycles(
         cycle_dict['Initial delta V (V)'] = cycle_dict['Delta V (V)'][initial_cycle-1] if formed else None
 
         # Calculate cycles to x% of initial discharge capacity
+        def _find_first_element(arr: np.ndarray, start_idx: int) -> int:
+            """ Find the first element in array that is 1 where at least 1 of the next 2 elements are also 1.
+            Since cycles are 1-indexed and arrays are 0-indexed, this gives the first cycle BEFORE a condition is met.
+            """
+            if len(arr) - start_idx < 3:
+                return None
+            for i in range(start_idx, len(arr)-2):
+                if arr[i] == 0:
+                    continue
+                if arr[i+1] == 1 or arr[i+2] == 1:
+                    return i
+            return None
+
         pcents = [95,90,85,80,75,70,60,50]
-        norm = cycle_dict['Normalised discharge capacity (%)']
+        norm = np.array(cycle_dict['Normalised discharge capacity (%)'])
         for pcent in pcents:
-            cycle_dict[f'Cycles to {pcent}% capacity'] = next(
-                (i + 1 - initial_cycle for i in range(initial_cycle-1, len(norm) - 1)
-                if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
-        norm = cycle_dict['Normalised discharge energy (%)']
+            cycle_dict[f'Cycles to {pcent}% capacity'] = _find_first_element(
+                norm<pcent,
+                initial_cycle-1,
+            ) if formed else None
+        norm = np.array(cycle_dict['Normalised discharge energy (%)'])
         for pcent in pcents:
-            cycle_dict[f'Cycles to {pcent}% energy'] = next(
-                (i + 1 - initial_cycle for i in range(initial_cycle-1, len(norm) - 1)
-                if norm[i] < pcent and norm[i+1] < pcent), None) if formed else None
+            cycle_dict[f'Cycles to {pcent}% energy'] = _find_first_element(
+                norm<pcent,
+                initial_cycle-1,
+            ) if formed else None
 
         cycle_dict['Run ID'] = _run_from_sample(sampleid)
 
