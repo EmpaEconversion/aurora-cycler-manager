@@ -235,8 +235,14 @@ def get_neware_data(file_path: str) -> dict:
     output_df["V (V)"] = df["Voltage(V)"]
     output_df["I (A)"] = df["Current(A)"]
     output_df["technique"] = df["Step Type"]
-    output_df["loop_number"] = 0
-    output_df["cycle_number"] = df["Cycle Index"]
+    output_df["loop_number"] = df["Cycle Index"]
+
+    # Every time the Step Type changes from a string containing "DChg" or "Rest" increment the cycle number
+    output_df["cycle_number"] = (
+        df["Step Type"].str.contains(r" DChg| DCHg|Rest", regex=True).shift(1) & 
+        df["Step Type"].str.contains(r" Chg", regex=True)
+    ).cumsum()
+
     output_df["index"] = 0
     # convert date string from df["Date"] in format YYYY-MM-DD HH:MM:SS to uts timestamp in seconds
     output_df["uts"] = df["Date"].apply(lambda x: datetime.strptime(x, "%Y-%m-%d %H:%M:%S").timestamp())
