@@ -106,10 +106,11 @@ def convert_tomato_json(
                 sample_data = dict(cursor.fetchone())
         except Exception as e:
             print(f"Error getting job and sample data from database: {e}")
-            job_data = None
-            sample_data = None
+            job_data = {}
+            sample_data = {}
 
         # Create metadata
+        job_data["job_type"] = "tomato_0_2_biologic"
         metadata = {
             "provenance": {
                 "snapshot_file": snapshot_file,
@@ -120,12 +121,11 @@ def convert_tomato_json(
                         "repo_version": __version__,
                         "method": "analysis.py convert_tomato_json",
                         "datetime": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    }
-                    
+                    },
                 },
             },
-            "job_data": job_data if job_data is not None else {},
-            "sample_data": sample_data if sample_data is not None else {},
+            "job_data": job_data,
+            "sample_data": sample_data,
             "glossary": {
                 "uts": "Unix time stamp in seconds",
                 "V (V)": "Cell voltage in volts",
@@ -299,7 +299,6 @@ def combine_jobs(
         },
         'sample_data': metadatas[-1].get('sample_data',{}),
         'job_data': [m.get('job_data',{}) for m in metadatas],
-        'mpr_metadata': [m.get('mpr_metadata',{}) for m in metadatas],
         'glossary': {
             'uts': 'Unix time stamp in seconds',
             'V (V)': 'Cell voltage in volts',
@@ -360,74 +359,85 @@ def analyse_cycles(
 
     sample_data = metadata.get('sample_data',{})
     sampleid = sample_data.get('Sample ID',None)
-    job_data = metadata.get('job_data',[])
-    mpr_metadata = metadata.get('mpr_metadata',[])
-    snapshot_status = job_data[-1].get('Snapshot status',None)
-    snapshot_pipeline = job_data[-1].get('Pipeline',None)
-    last_snapshot = job_data[-1].get('Last snapshot',None)
+    job_data = metadata.get('job_data',None)
+    snapshot_status = job_data[-1].get('Snapshot status',None) if job_data else None
+    snapshot_pipeline = job_data[-1].get('Pipeline',None) if job_data else None
+    last_snapshot = job_data[-1].get('Last snapshot',None) if job_data else None
 
     # Extract useful information from the metadata
     mass_mg = sample_data.get('Cathode active material mass (mg)',np.nan)
-    # Extract information from the tomato or mpr job data
-    assert not (any(job_data) and any(mpr_metadata)), "Both tomato job and mpr data found, cannot be processed"
 
     max_V = 0
     formation_C = 0
     cycle_C = 0
     
+    # TODO separate formation and cycling C-rates and voltages, get C-rates for mpr and neware
+
     # TOMATO DATA
-    # TODO separate max voltage in formation and cycling
     pipeline = None
     status = None
-    if any(job_data):
-        payloads = [j.get('Payload',[]) for j in job_data]
-        with sqlite3.connect(db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
-            row = cursor.fetchone()
-            if row:
-                pipeline = row[0]
-                job_id = row[1]
-                if job_id:
-                    cursor.execute("SELECT `Status` FROM jobs WHERE `Job ID` = ?", (f"{job_id}",))
-                    status = cursor.fetchone()[0]
-    
-        for payload in payloads:
-            for method in payload.get('method',[]):
-                voltage = method.get('limit_voltage_max',0)
-                if voltage > max_V:
-                    max_V = voltage
+    if job_data:
+        job_types = [j.get('job_type',None) for j in job_data]
+        if all(jt == job_types[0] for jt in job_types):
+            job_type = job_types[0]
+        else:
+            raise ValueError("Different job types found in job data")
+        
+        match job_type:
+            # tomato 0.2.3 using biologic driver
+            case "tomato_0_2_biologic":
+                payloads = [j.get("Payload",[]) for j in job_data]
+                with sqlite3.connect(db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
+                    row = cursor.fetchone()
+                    if row:
+                        pipeline = row[0]
+                        job_id = row[1]
+                        if job_id:
+                            cursor.execute("SELECT `Status` FROM jobs WHERE `Job ID` = ?", (f"{job_id}",))
+                            status = cursor.fetchone()[0]
+            
+                for payload in payloads:
+                    for method in payload.get("method",[]):
+                        voltage = method.get("limit_voltage_max",0)
+                        max_V = max(voltage, max_V)
 
-        for payload in payloads:
-            for method in payload.get('method',[]):
-                if method.get('technique',None) == 'loop':
-                    if method['n_gotos'] < 4: # it is probably formation
-                        for m in payload.get('method',[]):
-                            if 'current' in m and 'C' in m['current']:
-                                try:
-                                    formation_C = _c_to_float(m['current'])
-                                except ValueError:
-                                    print(f"Not a valid C-rate: {m['current']}")
-                                    formation_C = 0
-                                break
-                    if method.get('n_gotos',0) > 10: # it is probably cycling
-                        for m in payload.get('method',[]):
-                            if 'current' in m and 'C' in m['current']:
-                                try:
-                                    cycle_C = _c_to_float(m['current'])
-                                except ValueError:
-                                    print(f"Not a valid C-rate: {m['current']}")
-                                    cycle_C = 0
-                                break
+                for payload in payloads:
+                    for method in payload.get("method",[]):
+                        if method.get("technique",None) == "loop":
+                            if method["n_gotos"] < 4: # it is probably formation
+                                for m in payload.get("method",[]):
+                                    if "current" in m and "C" in m["current"]:
+                                        try:
+                                            formation_C = _c_to_float(m["current"])
+                                        except ValueError:
+                                            print(f"Not a valid C-rate: {m['current']}")
+                                            formation_C = 0
+                                        break
+                            if method.get("n_gotos",0) > 10: # it is probably cycling
+                                for m in payload.get("method",[]):
+                                    if "current" in m and "C" in m["current"]:
+                                        try:
+                                            cycle_C = _c_to_float(m["current"])
+                                        except ValueError:
+                                            print(f"Not a valid C-rate: {m['current']}")
+                                            cycle_C = 0
+                                        break
 
-    # MPR DATA
-    # TODO get formation and cycle C, separate max voltage in formation and cycling
-    if any(mpr_metadata):
-        for m in mpr_metadata:
-            for params in m.get('params',[]):
-                V = round(params.get("EM",0),3)
-                if V > max_V:
-                    max_V = V
+            # ec-lab mpr
+            case "eclab_mpr":
+                for m in job_data:
+                    for params in m.get('params',[]):
+                        V = round(params.get("EM",0),3)
+                        max_V = max(V, max_V)
+
+            # Neware xlsx
+            case "neware_xlsx":
+                for m in job_data:
+                    V = max(float(step.get('Voltage(V)',0)) for step in m['Payload'])
+                    max_V = max(V, max_V)
+
 
     # Fill some missing values
     if not formation_C:

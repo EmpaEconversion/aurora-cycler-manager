@@ -260,8 +260,9 @@ def convert_neware_data(
         output_jsongz_file (bool): Whether to save the file as a gzipped json
     """
 
-    # Get test information and Sample ID    
-    test_info, sampleid = get_neware_metadata(file_path)
+    # Get test information and Sample ID
+    job_data, sampleid = get_neware_metadata(file_path)
+    job_data["job_type"] = "neware_xlsx"
 
     # Get data
     data = get_neware_data(file_path)
@@ -291,7 +292,7 @@ def convert_neware_data(
                 },
             }
         },
-        "neware_metadata": test_info,
+        "job_data": job_data,
         "sample_data": sample_data,
     }
 

@@ -262,8 +262,9 @@ def convert_mpr(
             sample_data = None
 
         # Get job data from the snapshot file
-        mpr_metadata = json.loads(data.attrs['original_metadata'])
-        yadg_metadata = {k: v for k, v in data.attrs.items() if k.startswith('yadg')}
+        mpr_metadata = json.loads(data.attrs["original_metadata"])
+        mpr_metadata["job_type"] = "eclab_mpr"
+        yadg_metadata = {k: v for k, v in data.attrs.items() if k.startswith("yadg")}
 
         # Metadata to add
         timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
@@ -276,11 +277,11 @@ def convert_mpr(
                         "repo_url": __url__,
                         "repo_version": __version__,
                         "method": "eclab_harvester.convert_mpr",
-                        "datetime": datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S %z'),
+                        "datetime": datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S %z"),
                     },
-                }
+                },
             },
-            "mpr_metadata": mpr_metadata,
+            "job_data": mpr_metadata,
             "sample_data": sample_data if sample_data is not None else {},
         }
 
