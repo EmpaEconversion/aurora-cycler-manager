@@ -1,0 +1,15 @@
+[tool.ruff]
+line-length = 120
+select = ["ALL"]
+ignore = [
+    "N806",
+    "T201",
+    "FA102",
+    "PD901",
+    "FBT001",
+    "FBT002",
+    "PLR2004",
+    "TD002",
+    "TD003",
+]
+fix = true
