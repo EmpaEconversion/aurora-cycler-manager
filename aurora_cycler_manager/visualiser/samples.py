@@ -24,9 +24,7 @@ def samples_menu(config: dict) -> html.Div:
             html.H5("Select samples to plot:"),
             dcc.Dropdown(
                 id='samples-dropdown',
-                options=[
-                    {'label': name, 'value': name} for name in get_sample_names(config)
-                ],
+                options=[], # updated by callback
                 value=[],
                 multi=True,
             ),
@@ -204,6 +202,14 @@ def samples_layout(config: dict) -> html.Div:
 #--------------------------------- CALLBACKS ----------------------------------#
 def register_samples_callbacks(app: Dash, config: dict) -> None:
     """ Register all callbacks for the samples tab. """
+
+    # Sample list has updated, update dropdowns
+    @app.callback(
+        Output('samples-dropdown', 'options'),
+        Input('samples-store', 'data'),
+    )
+    def update_samples_dropdown(samples):
+        return [{'label': name, 'value': name} for name in samples]
 
     # Update the samples data store
     @app.callback(

@@ -66,7 +66,12 @@ app.layout = html.Div(
                 )
             ]
         ),
-    ]
+        dcc.Interval(id='db-update-interval', interval=1000*60*60), # Auto-refresh database every hour
+        dcc.Store(id='config-store', data = config),
+        dcc.Store(id='table-data-store', data = {'data':[], 'column_defs':[]}),
+        dcc.Store(id='samples-store', data = []),
+        dcc.Store(id='batches-store', data = []),
+    ],
 )
 
 # Register all callback functions

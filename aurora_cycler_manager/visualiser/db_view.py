@@ -9,7 +9,7 @@ import paramiko
 from dash import Dash, dcc, html, Input, Output, State, callback_context as ctx, no_update, ALL
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
-from aurora_cycler_manager.visualiser.funcs import get_sample_names, get_database
+from aurora_cycler_manager.visualiser.funcs import get_sample_names, get_batch_names, get_database
 from aurora_cycler_manager.server_manager import ServerManager
 
 # Server manager
@@ -26,9 +26,6 @@ except (paramiko.SSHException, FileNotFoundError):
 
 #-------------------------------------- Database view layout --------------------------------------#
 def db_view_layout(config: dict) -> html.Div:
-    # Get the database data when loading layout
-    db_data = get_database(config)
-    
     # Layout
     return html.Div(
         style={'height': '100%', 'overflowY': 'scroll', 'overflowX': 'scroll', 'padding': '10px'},
@@ -43,10 +40,9 @@ def db_view_layout(config: dict) -> html.Div:
                     html.Div(
                         style={'height': '100%'},
                         children = [
-                            dcc.Store(id='table-data-store', data=db_data),
                             # Buttons to refresh or update the database
                             html.P(children = f"Last refreshed: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}", id='last-refreshed'),
-                            html.P(children = f"Last updated: {db_data['data']['pipelines'][0]['Last checked']}", id='last-updated'),
+                            html.P(children = f"Click refresh to sync to database, click force update to updated statuses from cyclers.", id='last-updated'),
                             dbc.Button("Refresh database", id='refresh-database', color='primary', outline=True, className='me-1'),
                             dbc.Button("Force update database", id='update-database', color='warning', outline=True, className='me-1', disabled = not permissions),
                             html.Div(style={'margin-top': '10px'}),
@@ -358,15 +354,18 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output('table-data-store', 'data'),
         Output('last-refreshed', 'children'),
         Output('last-updated', 'children'),
+        Output('samples-store', 'data'),
+        Output('batches-store', 'data'),
         Input('refresh-database', 'n_clicks'),
+        Input('db-update-interval', 'n_intervals'),
     )
-    def refresh_database(n_clicks):
-        if n_clicks is None:
-            return no_update
+    def refresh_database(n_clicks, n_intervals):
         db_data = get_database(config)
         dt_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         last_checked = db_data['data']['pipelines'][0]['Last checked']
-        return db_data, f"Last refreshed: {dt_string}", f"Last updated: {last_checked}"
+        samples = [s['Sample ID'] for s in db_data['data']['samples']]
+        batches = get_batch_names(config)
+        return db_data, f"Last refreshed: {dt_string}", f"Last updated: {last_checked}", samples, batches
 
     # Update the database i.e. connect to servers and grab new info, then refresh the local data
     @app.callback(
