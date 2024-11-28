@@ -19,6 +19,7 @@ if root_dir not in sys.path:
 import aurora_cycler_manager.server_manager as server_manager
 from aurora_cycler_manager.analysis import plot_all_samples, plot_all_batches, analyse_all_samples, analyse_all_batches
 from aurora_cycler_manager.eclab_harvester import get_all_mprs, convert_all_mprs
+from aurora_cycler_manager.neware_harvester import harvest_all_neware_files, convert_all_neware_data
 
 matplotlib.use('Agg')
 
@@ -97,6 +98,14 @@ def daemon_loop(update_time: float = None, snapshot_times: list = None):
                 logging.debug(traceback.format_exc())
             else:
                 logging.info("mprs downloaded and converted")
+            try:
+                harvest_all_neware_files()
+                convert_all_neware_data()
+            except Exception as e:
+                logging.critical("Error converting neware files: %s", e)
+                logging.debug(traceback.format_exc())
+            else:
+                logging.info("neware files downloaded and converted")
             try:
                 analyse_all_samples()
                 plot_all_samples()

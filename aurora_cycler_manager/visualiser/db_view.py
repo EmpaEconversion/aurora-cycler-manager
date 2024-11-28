@@ -9,7 +9,7 @@ import paramiko
 from dash import Dash, dcc, html, Input, Output, State, callback_context as ctx, no_update, ALL
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
-from aurora_cycler_manager.visualiser.funcs import get_sample_names, get_database
+from aurora_cycler_manager.visualiser.funcs import get_sample_names, get_batch_names, get_database
 from aurora_cycler_manager.server_manager import ServerManager
 
 # Server manager
@@ -26,9 +26,6 @@ except (paramiko.SSHException, FileNotFoundError):
 
 #-------------------------------------- Database view layout --------------------------------------#
 def db_view_layout(config: dict) -> html.Div:
-    # Get the database data when loading layout
-    db_data = get_database(config)
-    
     # Layout
     return html.Div(
         style={'height': '100%', 'overflowY': 'scroll', 'overflowX': 'scroll', 'padding': '10px'},
@@ -43,41 +40,49 @@ def db_view_layout(config: dict) -> html.Div:
                     html.Div(
                         style={'height': '100%'},
                         children = [
-                            dcc.Store(id='table-data-store', data=db_data),
                             # Buttons to refresh or update the database
                             html.P(children = f"Last refreshed: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}", id='last-refreshed'),
-                            html.P(children = f"Last updated: {db_data['data']['pipelines'][0]['Last checked']}", id='last-updated'),
+                            html.P(children = f"Click refresh to sync to database, click force update to updated statuses from cyclers.", id='last-updated'),
                             dbc.Button("Refresh database", id='refresh-database', color='primary', outline=True, className='me-1'),
                             dbc.Button("Force update database", id='update-database', color='warning', outline=True, className='me-1', disabled = not permissions),
                             html.Div(style={'margin-top': '10px'}),
                             # Buttons to select which table to display
-                            dbc.RadioItems(
-                                id='table-select',
-                                inline=True,
-                                options=[
-                                    {'label': 'Samples', 'value': 'samples'},
-                                    {'label': 'Results', 'value': 'results'},
-                                    {'label': 'Jobs', 'value': 'jobs'},
-                                    {'label': 'Pipelines', 'value': 'pipelines'},
+                            dbc.Tabs(
+                                [
+                                    dbc.Tab(label = 'Pipelines', tab_id = 'pipelines', active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
+                                    dbc.Tab(label = 'Samples', tab_id = 'samples', active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
+                                    dbc.Tab(label = 'Jobs', tab_id = 'jobs', active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
+                                    dbc.Tab(label = 'Results', tab_id = 'results', active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
                                 ],
-                                value='pipelines',
+                                id='table-select',
+                                active_tab='pipelines',
                             ),
-                            html.Div(style={'margin-top': '10px'}),
                             # Main table for displaying info from database
                             dag.AgGrid(
                                 id='table',
-                                dashGridOptions = {"enableCellTextSelection": False, "tooltipShowDelay": 1000, 'rowSelection': 'multiple'},
+                                dashGridOptions = {"enableCellTextSelection": False, "ensureDomOrder": True, "tooltipShowDelay": 1000, 'rowSelection': 'multiple'},
+                                defaultColDef={"filter": True, "sortable": True, "floatingFilter": True},
                                 style={"height": "calc(90vh - 220px)", "width": "100%", "minHeight": "400px"},
                             ),
-                            # Buttons to interact with the database
-                            dbc.Button("Load", id='load-button', color='primary', outline=True, className='me-1'),
-                            dbc.Button("Eject", id='eject-button', color='primary', outline=True, className='me-1'),
-                            dbc.Button("Ready", id='ready-button', color='primary', outline=True, className='me-1'),
-                            dbc.Button("Unready", id='unready-button', color='primary', outline=True, className='me-1'),
-                            dbc.Button("Submit", id='submit-button', color='primary', outline=True, className='me-1'),
-                            dbc.Button("Cancel", id='cancel-button', color='danger', outline=True, className='me-1'),
-                            dbc.Button("View data", id='view-button', color='primary', outline=True, className='me-1'),
-                            dbc.Button("Snapshot", id='snapshot-button', color='primary', outline=True, className='me-1'),
+                            html.Div(
+                                [
+                                    html.Div(
+                                        [
+                                            dbc.Button("Load", id='load-button', color='primary', outline=True, className='me-1'),
+                                            dbc.Button("Eject", id='eject-button', color='primary', outline=True, className='me-1'),
+                                            dbc.Button("Ready", id='ready-button', color='primary', outline=True, className='me-1'),
+                                            dbc.Button("Unready", id='unready-button', color='primary', outline=True, className='me-1'),
+                                            dbc.Button("Submit", id='submit-button', color='primary', outline=True, className='me-1'),
+                                            dbc.Button("Cancel", id='cancel-button', color='danger', outline=True, className='me-1'),
+                                            dbc.Button("View data", id='view-button', color='primary', outline=True, className='me-1'),
+                                            dbc.Button("Snapshot", id='snapshot-button', color='primary', outline=True, className='me-1'),
+                                        ], 
+                                        style={'display': 'flex', 'flex-wrap': 'wrap'}
+                                    ),
+                                html.Div("test", id="table-info", style={'margin-left': 'auto', 'text-align': 'right', 'flex-grow': '1'})
+                                ],
+                                style={'display': 'flex', 'flex-wrap': 'wrap'}
+                            ),
                         ]
                     ),
                     # Pop up modals for interacting with the database after clicking buttons
@@ -122,6 +127,12 @@ def db_view_layout(config: dict) -> html.Div:
                                 [
                                     dbc.Button(
                                         "Load", id="load-yes-close", className="ms-auto", color='primary', n_clicks=0
+                                    ),
+                                    dbc.Button(
+                                        "Auto-increment", id="load-incrememt", className="ms-auto", color='light', n_clicks=0
+                                    ),
+                                    dbc.Button(
+                                        "Clear all", id="load-clear", className="ms-auto", color='light', n_clicks=0
                                     ),
                                     dbc.Button(
                                         "Go back", id="load-no-close", className="ms-auto", color='secondary', n_clicks=0
@@ -310,7 +321,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output('cancel-button', 'style'),
         Output('view-button', 'style'),
         Output('snapshot-button', 'style'),
-        Input('table-select', 'value'),
+        Input('table-select', 'active_tab'),
         Input('table-data-store', 'data'),
     )
     def update_table(table, data):
@@ -343,15 +354,18 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output('table-data-store', 'data'),
         Output('last-refreshed', 'children'),
         Output('last-updated', 'children'),
+        Output('samples-store', 'data'),
+        Output('batches-store', 'data'),
         Input('refresh-database', 'n_clicks'),
+        Input('db-update-interval', 'n_intervals'),
     )
-    def refresh_database(n_clicks):
-        if n_clicks is None:
-            return no_update
+    def refresh_database(n_clicks, n_intervals):
         db_data = get_database(config)
         dt_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         last_checked = db_data['data']['pipelines'][0]['Last checked']
-        return db_data, f"Last refreshed: {dt_string}", f"Last updated: {last_checked}"
+        samples = [s['Sample ID'] for s in db_data['data']['samples']]
+        batches = get_batch_names(config)
+        return db_data, f"Last refreshed: {dt_string}", f"Last updated: {last_checked}", samples, batches
 
     # Update the database i.e. connect to servers and grab new info, then refresh the local data
     @app.callback(
@@ -377,7 +391,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output('view-button', 'disabled'),
         Output('snapshot-button', 'disabled'),
         Input('table', 'selectedRows'),
-        State('table-select', 'value'),
+        State('table-select', 'active_tab'),
     )
     def enable_buttons(selected_rows, table):
         load, eject, ready, unready, submit, cancel, view, snapshot = True,True,True,True,True,True,True,True
@@ -401,6 +415,19 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
             if any([s['Sample ID'] is not None for s in selected_rows]):
                 view = False
         return load, eject, ready, unready, submit, cancel, view, snapshot
+
+    @app.callback(
+        Output('table-info', 'children'),
+        Input('table', 'selectedRows'),
+        Input('table', 'rowData'),
+        Input('table', 'virtualRowData'),
+    )
+    def update_table_info(selected_rows, row_data, filtered_row_data):
+        total_rows = len(row_data)
+        filtered_rows_count = len(filtered_row_data) if (filtered_row_data != None) else total_rows
+        selected_rows_count = len(selected_rows) if selected_rows else 0
+
+        return f"Selected: {selected_rows_count}, Filtered: {filtered_rows_count}, Total: {total_rows}"
 
     # Eject button pop up
     @app.callback(
@@ -442,16 +469,19 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     @app.callback(
         Output("load-modal", "is_open"),
         Output("load-modal-body", "children"),
+        Output("load-incrememt", "style"),
         Input('load-button', 'n_clicks'),
         Input('load-yes-close', 'n_clicks'),
         Input('load-no-close', 'n_clicks'),
         State('load-modal', 'is_open'),
         State('table', 'selectedRows'),
+        State('table-data-store', 'data'),
     )
-    def load_sample_button(load_clicks, yes_clicks, no_clicks, is_open, selected_rows):
+    def load_sample_button(load_clicks, yes_clicks, no_clicks, is_open, selected_rows, db_data):
         if not selected_rows or not ctx.triggered:
-            return is_open, no_update
-        options = [{'label': name, 'value': name} for name in get_sample_names(config)]
+            return is_open, no_update, no_update
+        possible_samples = [s.get('Sample ID', None) for s in db_data['data']['samples']]
+        options = [{'label': s, 'value': s} for s in possible_samples if s]
         dropdowns = [
             html.Div(
                 children=[
@@ -474,13 +504,50 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         ]
         children = ["Select the samples you want to load"] + dropdowns
         button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        if len(selected_rows) > 1:
+            increment = {'display': 'inline-block'}
+        else:
+            increment = {'display': 'none'}
         if button_id == 'load-button':
-            return not is_open, children
+            return not is_open, children, increment
         elif button_id == 'load-yes-close' and yes_clicks:
-            return False, no_update
+            return False, no_update, increment
         elif button_id == 'load-no-close' and no_clicks:
-            return False, no_update
-        return is_open, no_update
+            return False, no_update, increment
+        return is_open, no_update, increment
+    
+    # When auto-increment is pressed, increment the sample ID for each selected pipeline
+    @app.callback(
+        Output({'type':'load-dropdown','index':ALL}, 'value'),
+        Input('load-incrememt', 'n_clicks'),
+        Input('load-clear', 'n_clicks'),
+        State({'type':'load-dropdown','index':ALL}, 'value'),
+        State('table-data-store', 'data'),
+    )
+    def update_load_selection(inc_clicks, clear_clicks, selected_samples, db_data):
+        if not ctx.triggered:
+            return selected_samples
+        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+        # If clear, clear all selected samples
+        if button_id == 'load-clear':
+            return [[] for _ in selected_samples]
+        
+        # If auto-increment, go through the list, if the sample is empty increment the previous sample
+        if button_id == 'load-incrememt':
+            possible_samples = [s.get('Sample ID', None) for s in db_data['data']['samples']]
+            for i in range(1,len(selected_samples)):
+                if not selected_samples[i]:
+                    prev_sample = selected_samples[i-1]
+                    if prev_sample:
+                        prev_sample_number = prev_sample.split('_')[-1]
+                        #convert to int, increment, convert back to string with same padding
+                        new_sample_number = str(int(prev_sample_number)+1).zfill(len(prev_sample_number))
+                        new_sample = '_'.join(prev_sample.split('_')[:-1]) + '_' + new_sample_number
+                        if new_sample in possible_samples:
+                            selected_samples[i] = new_sample
+        return selected_samples
+
     # When load is pressed, load samples and refresh the database
     @app.callback(
         Output('loading-database', 'children', allow_duplicate=True),

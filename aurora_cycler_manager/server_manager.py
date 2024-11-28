@@ -110,7 +110,15 @@ class ServerManager:
             csv_file : str
                 The path to the csv file to insert
         """
+        # If csv is over 1 MB, do not insert
+        if os.path.getsize(csv_file) > 1e6:
+            warnings.warn(f"File {csv_file} is over 1 MB, skipping", RuntimeWarning)
         df = pd.read_csv(csv_file,delimiter=';')
+        # If csv contains more than 1000 rows or 100 columns, do not insert
+        if len(df) > 1000:
+            warnings.warn(f"File {csv_file} contains more than 1000 rows, skipping", RuntimeWarning)
+
+        # Load the config file
         current_dir = os.path.dirname(os.path.abspath(__file__))
         config_path = os.path.join(current_dir, '..', 'config.json')
         with open(config_path, encoding = 'utf-8') as f:
@@ -164,6 +172,48 @@ class ServerManager:
                             f"Timestamp column '{col}' in the sample file is not in the correct format. "
                             "Please use the format 'YYYY-MM-DD HH:MM:SS'."
                         ) from exc
+                    
+        # Calculate/overwrite certain columns
+        # Active material masses
+        required_columns = ["Anode mass (mg)", "Anode current collector mass (mg)", "Anode active material mass fraction"]
+        if all(col in df.columns for col in required_columns):
+            df["Anode active material mass (mg)"] = (
+                (df["Anode mass (mg)"] - df["Anode current collector mass (mg)"])
+                * df["Anode active material mass fraction"]
+            )
+        required_columns = ["Cathode mass (mg)", "Cathode current collector mass (mg)", "Cathode active material mass fraction"]
+        if all(col in df.columns for col in required_columns):
+            df["Cathode active material mass (mg)"] = (
+                (df["Cathode mass (mg)"] - df["Cathode current collector mass (mg)"])
+                * df["Cathode active material mass fraction"]
+            )
+        # Capacities
+        required_columns = ["Anode active material mass (mg)", "Anode balancing specific capacity (mAh/g)"]
+        if all(col in df.columns for col in required_columns):
+            df["Anode balancing capacity (mAh)"] = (
+                1e-3 * df["Anode active material mass (mg)"] * df["Anode balancing specific capacity (mAh/g)"]
+            )
+        required_columns = ["Cathode active material mass (mg)", "Cathode balancing specific capacity (mAh/g)"]
+        if all(col in df.columns for col in required_columns):
+            df["Cathode balancing capacity (mAh)"] = (
+                1e-3 * df["Cathode active material mass (mg)"] * df["Cathode balancing specific capacity (mAh/g)"]
+            )
+        # N:P ratio overlap factor
+        required_columns = ["Anode diameter (mm)", "Cathode diameter (mm)"]
+        if all(col in df.columns for col in required_columns):
+            df["N:P ratio overlap factor"] = (df["Cathode diameter (mm)"]**2 / df["Anode diameter (mm)"]**2).fillna(0)
+        # Actual N:P ratio
+        required_columns = ["Anode balancing capacity (mAh)", "Cathode balancing capacity (mAh)", "N:P ratio overlap factor"]
+        if all(col in df.columns for col in required_columns):
+            df["Actual N:P ratio"] = (
+                df["Anode balancing capacity (mAh)"] * df["N:P ratio overlap factor"]
+                / df["Cathode balancing capacity (mAh)"]
+            )
+        # Run ID - if column is missing or where it is empty, find from the sample ID
+        if "Run ID" not in df.columns:
+            df["Run ID"] = df["Sample ID"].apply(lambda x: _run_from_sample(x))
+        else:
+            df["Run ID"] = df["Run ID"].fillna(df["Sample ID"].apply(lambda x: _run_from_sample(x)))
 
         # Insert the new data into the database
         with sqlite3.connect(self.db) as conn:

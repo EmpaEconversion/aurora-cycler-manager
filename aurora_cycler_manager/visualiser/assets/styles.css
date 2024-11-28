@@ -10,6 +10,32 @@ html, body {
 #app {
     height: 100%;
 }
+/* Default style for narrow screens */
+.responsive-container {
+    width: 100%;
+    height: calc(100vh - 30px);
+    overflow: hidden;
+}
+
+/* Style for wide screens */
+@media (min-width: 1400px) {
+    .responsive-container {
+        width: calc(100% - (100vw - 1400px)/4);
+        height: 100vh;
+        margin: 0px auto;
+        box-shadow: #c0c0c0 20px 10px 80px;
+    }
+}
+
+/* Style for wide screens */
+@media (min-width: 2500px) {
+    .responsive-container {
+        width: calc(100% - (100vw - 1950px)/2);
+        height: 100vh;
+        margin: 0px auto;
+        box-shadow: #c0c0c0 20px 10px 80px;
+    }
+}
 
 /* ===== TABS ===== */
 .tab {
@@ -24,6 +50,12 @@ html, body {
 /* Customize the font of the selected tab */
 .tab--selected {
     font-weight: bold; /* Adjust the font weight */
+}
+/* tab content */
+.tab-content {
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 10px;
 }
 
 /* ===== MENUS ===== */

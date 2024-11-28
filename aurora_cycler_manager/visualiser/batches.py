@@ -22,9 +22,7 @@ def batches_menu(config: dict) -> html.Div:
             html.H5("Select batches to plot:"),
             dcc.Dropdown(
                 id='batches-dropdown',
-                options=[
-                    {'label': name, 'value': name} for name in get_batch_names(config)
-                ],
+                options=[], # Updated by callback
                 value=[],
                 multi=True,
             ),
@@ -202,7 +200,15 @@ def batches_layout(config: dict) -> html.Div:
 
 def register_batches_callbacks(app: Dash, config: dict) -> None:
     """ Register all callbacks for the batches tab. """
-    
+
+    # Batch list has updated, update dropdowns
+    @app.callback(
+        Output('batches-dropdown', 'options'),
+        Input('batches-store', 'data'),
+    )
+    def update_batches_dropdown(batches):
+        return [{'label': name, 'value': name} for name in batches]
+
     # Update the batches data store
     @app.callback(
         Output('batches-data-store', 'data'),
