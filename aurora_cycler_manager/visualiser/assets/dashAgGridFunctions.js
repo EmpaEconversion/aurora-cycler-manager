@@ -25,7 +25,7 @@ function makePipelineComparable(pipeline) {
     }
 
     // Split the pipeline string by '-'
-    const parts = pipeline.split('-');
+    let parts = pipeline.split('-');
 
     // Iterate over the parts and pad numbers with zeros
     for (let i = 0; i < parts.length; i++) {
@@ -35,5 +35,10 @@ function makePipelineComparable(pipeline) {
     }
 
     // Join the parts back together with '-'
-    return parts.join('-');
+    pipeline = parts.join('-');
+
+    // Now split by "_" and put the first part at the end
+    parts = pipeline.split('_');
+    pipeline = parts.slice(1).join('_') + '_' + parts[0];
+    return pipeline;
 }
