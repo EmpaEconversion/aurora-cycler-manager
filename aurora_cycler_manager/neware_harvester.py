@@ -199,9 +199,8 @@ def get_neware_metadata(file_path: str) -> dict:
     test_info["Payload"] = payload_dict
 
     # Get sampleid from test_info
-    sampleid = test_info.get("Barcode", None)
-    if not sampleid:
-        sampleid = test_info.get("Remarks", None)
+    barcode_sampleid = test_info.get("Barcode", None)
+    remark_sampleid = test_info.get("Remarks", None)
     
     # Check against known samples
     with sqlite3.connect(db_path) as conn:
@@ -210,22 +209,24 @@ def get_neware_metadata(file_path: str) -> dict:
         rows = cursor.fetchall()
         cursor.close()
     known_samples = [row[0] for row in rows]
-
-    # If sampleid is not known, it might be using the convention 'date-number-other'
-    if sampleid not in known_samples:
-        # Extract date and number
-        sampleid_parts = re.split('_|-', sampleid)
-        if len(sampleid_parts) > 1:
-            sampleid_date = sampleid_parts[0]
-            sampleid_number = sampleid_parts[1].zfill(2) # pad with zeros
-        # Check if this is consistent with any known samples
-        possible_samples = [s for s in known_samples if s.startswith(sampleid_date) and s.endswith(sampleid_number)]
-        if len(possible_samples) == 1:
-            print(f"Barcode {sampleid} inferred as Sample ID {possible_samples[0]}")
-            sampleid = possible_samples[0]
+    for sampleid in [barcode_sampleid, remark_sampleid]:
+        # If sampleid is not known, it might be using the convention 'date-number-other'
+        if sampleid not in known_samples:
+            # Extract date and number
+            sampleid_parts = re.split('_|-', sampleid)
+            if len(sampleid_parts) > 1:
+                sampleid_date = sampleid_parts[0]
+                sampleid_number = sampleid_parts[1].zfill(2) # pad with zeros
+            # Check if this is consistent with any known samples
+            possible_samples = [s for s in known_samples if s.startswith(sampleid_date) and s.endswith(sampleid_number)]
+            if len(possible_samples) == 1:
+                print(f"Barcode {sampleid} inferred as Sample ID {possible_samples[0]}")
+                sampleid = possible_samples[0]
+            else:
+                print(f"Sample ID {sampleid} not found in database")
+                sampleid = None
         else:
-            print(f"Sample ID {sampleid} not found in database")
-            sampleid = None
+            break
 
     return test_info, sampleid
 
