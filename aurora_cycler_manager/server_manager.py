@@ -26,7 +26,7 @@ import traceback
 from typing import Literal, Tuple
 import pandas as pd
 import paramiko
-from aurora_cycler_manager.cycler_servers import TomatoServer
+from aurora_cycler_manager.cycler_servers import CyclerServer, TomatoServer
 from aurora_cycler_manager.database_setup import create_config, create_database
 from aurora_cycler_manager.analysis import convert_tomato_json, _run_from_sample
 
@@ -371,6 +371,23 @@ class ServerManager:
             result = cursor.fetchall()
         return result
 
+    def find_server(self, label: str) -> CyclerServer:
+        """Get the server object from the label."""
+        if not label:
+            msg = (
+                "No server label found from query, there is probably a mistake in the query. "
+                "E.g. if you are searching for a sample ID, the ID might be wrong."
+            )
+            raise ValueError(msg)
+        server = next((server for server in self.servers if server.label == label), None)
+        if not server:
+            msg = (
+                f"Server with label {label} not found. "
+                "Either there is a mistake in the label name or you do not have access to the server."
+            )
+            raise ValueError(msg)
+        return server
+
     @staticmethod
     def sort_pipeline(df: pd.DataFrame) -> pd.DataFrame:
         """ For sorting pipelines so e.g. MPG2-1-2 comes before MPG2-1-10."""
@@ -514,7 +531,7 @@ class ServerManager:
         result = self.execute_sql("SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?", (sample,))
         # Get pipeline and load
         result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
-        server = next((server for server in self.servers if server.label == result[0][0]), None)
+        server = self.find_server(result[0][0])
         print(f"Loading {sample} on server: {server.label}")
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
@@ -541,7 +558,7 @@ class ServerManager:
         """
         # Find server associated with pipeline
         result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
-        server = next((server for server in self.servers if server.label == result[0][0]), None)
+        server = self.find_server(result[0][0])
         print(f"Ejecting {pipeline} on server: {server.label}")
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
@@ -568,7 +585,7 @@ class ServerManager:
         """
         # find server with pipeline, if there is more than one throw an error
         result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
-        server = next((server for server in self.servers if server.label == result[0][0]), None)
+        server = self.find_server(result[0][0])
         print(f"Readying {pipeline} on server: {server.label}")
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
@@ -595,7 +612,7 @@ class ServerManager:
         """
         # Find server with pipeline, if there is more than one throw an error
         result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
-        server = next((server for server in self.servers if server.label == result[0][0]), None)
+        server = self.find_server(result[0][0])
         print(f"Unreadying {pipeline} on server: {server.label}")
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
@@ -641,7 +658,7 @@ class ServerManager:
 
         # Find the server with the sample loaded, if there is more than one throw an error
         result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Sample ID` = ?", (sample,))
-        server = next((server for server in self.servers if server.label == result[0][0]), None)
+        server = self.find_server(result[0][0])
 
         # Check if json_file is a string that could be a file path or a JSON string
         if isinstance(json_file, str):
@@ -685,7 +702,7 @@ class ServerManager:
         """
         result = self.execute_sql("SELECT `Server label`, `Job ID on server` FROM jobs WHERE `Job ID` = ?", (jobid,))
         server_label, jobid_on_server = result[0]
-        server = next((server for server in self.servers if server.label == server_label), None)
+        server = self.find_server(server_label)
         output = server.cancel(jobid_on_server)
         # If no error, assume job is cancelled and update the database
         self.execute_sql(
@@ -763,8 +780,7 @@ class ServerManager:
                 continue
 
             # Otherwise snapshot the job
-            server = next((server for server in self.servers if server.label == server_label), None)
-            assert server is not None, f"Server {server_label} not found"
+            server = self.find_server(server_label)
 
             print(f"Snapshotting sample {sample_id} job {jobid}")
             try:
@@ -876,14 +892,14 @@ class ServerManager:
             raise ValueError(f"Job {samp_or_jobid} not found in the database")
 
         jobid_on_server, server_label = result[0]
-        server = next((server for server in self.servers if server.label == server_label), None)
+        server = self.find_server(server_label)
         return server.get_last_data(jobid_on_server)
 
     def update_payload(self, jobid: str) -> None:
         """ Get the payload information from a job ID. """
         result = self.execute_sql("SELECT `Job ID on server`, `Server label` FROM jobs WHERE `Job ID` = ?", (jobid,))
         jobid_on_server, server_label = result[0]
-        server = next((server for server in self.servers if server.label == server_label), None)
+        server = self.find_server(server_label)
         try:
             jobdata = server.get_job_data(jobid_on_server)
         except FileNotFoundError:
