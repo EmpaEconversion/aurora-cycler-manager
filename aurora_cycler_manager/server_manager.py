@@ -91,12 +91,16 @@ class ServerManager:
         self.servers=[]
         for server_config in server_list:
             if server_config["server_type"] == "tomato":
-                self.servers.append(
-                    TomatoServer(
-                        server_config,
-                        self.private_key
+                try:
+                    self.servers.append(
+                        TomatoServer(
+                            server_config,
+                            self.private_key,
+                       ),
                     )
-                )
+                except (OSError, ValueError, TimeoutError, paramiko.SSHException) as exc:
+                    print(f"CRITICAL: Server {server_config['label']} could not be created, skipping")
+                    print(f"Error: {exc}")
             else:
                 print(f"Server type {server_config['server_type']} not recognized, skipping")
 
