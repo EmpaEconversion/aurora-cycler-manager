@@ -510,8 +510,7 @@ def analyse_cycles(
     formed = len(charge_capacity_mAh) >= initial_cycle
     # A row is added if charge data is complete and discharge started
     # Last dict may have incomplete discharge data
-    # TODO: remove incomplete cycles based on voltage limits
-    if snapshot_status != "c":
+    if snapshot_status in ["r","cd","ce"]:  # This only works for tomato, harvesters will assume last cycle complete
         if started_charge and started_discharge:
             # Probably recorded an incomplete discharge for last recorded cycle
             discharge_capacity_mAh[-1] = np.nan
