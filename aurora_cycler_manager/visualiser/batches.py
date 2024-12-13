@@ -94,21 +94,7 @@ def batches_layout(config: dict) -> html.Div:
     return html.Div(
         style={'height': '100%'}, 
         children = [
-            dcc.Loading(
-                id='loading-page',
-                type='circle',
-                children=[ dcc.Store(id='batches-data-store', data={'data_batch_cycle': {}}),],
-                style={
-                    'position': 'fixed',
-                    'bottom': '1%',
-                    'left': '1%',
-                    'size': '500%',
-                    'zIndex': 1000
-                },
-                parent_style={
-                    'position': 'relative'
-                },
-            ),
+            dcc.Store(id='batches-data-store', data={'data_batch_cycle': {}}),
             PanelGroup(
                 id="batches-panel-group",
                 children=[

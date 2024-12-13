@@ -30,278 +30,275 @@ def db_view_layout(config: dict) -> html.Div:
     return html.Div(
         style={'height': '100%', 'overflowY': 'scroll', 'overflowX': 'scroll', 'padding': '10px'},
         children = [
-            dcc.Loading(
-                id='loading-database',
-                type='circle',
-                delay_show=200,
-                overlay_style={"visibility":"visible", "filter": "blur(2px)"},
+            # invisible div just to make the loading spinner work when no outputs are changed
+            html.Div(  
+                id="loading-database",
+                style={"display": "none"}
+            ),
+            html.Div(
                 style={'height': '100%'},
-                children=[
+                children = [
+                    # Buttons to refresh or update the database
+                    html.P(children = f"Last refreshed: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}", id='last-refreshed',style={'display': 'inline-block'}),
+                    html.P(children = f"Click refresh to sync to database, click force update to updated statuses from cyclers.", id='last-updated',style={'display': 'inline-block', 'margin-left': '10px'}),
+                    html.Br(),
+                    dbc.Button("Refresh database", id='refresh-database', color='primary', outline=True, className='me-1'),
+                    dbc.Button("Force update database", id='update-database', color='warning', outline=True, className='me-1', disabled = not accessible_servers),
+                    html.Div(style={'margin-top': '10px'}),
+                    # Buttons to select which table to display
+                    dbc.Tabs(
+                        [
+                            dbc.Tab(label = 'Pipelines', tab_id = 'pipelines', active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
+                            dbc.Tab(label = 'Samples', tab_id = 'samples', active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
+                            dbc.Tab(label = 'Jobs', tab_id = 'jobs', active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
+                            dbc.Tab(label = 'Results', tab_id = 'results', active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
+                        ],
+                        id='table-select',
+                        active_tab='pipelines',
+                    ),
+                    # Main table for displaying info from database
+                    dag.AgGrid(
+                        id='table',
+                        dashGridOptions = {"enableCellTextSelection": False, "ensureDomOrder": True, "tooltipShowDelay": 1000, 'rowSelection': 'multiple'},
+                        defaultColDef={"filter": True, "sortable": True, "floatingFilter": True},
+                        style={"height": "calc(90vh - 220px)", "width": "100%", "minHeight": "400px"},
+                    ),
                     html.Div(
-                        style={'height': '100%'},
-                        children = [
-                            # Buttons to refresh or update the database
-                            html.P(children = f"Last refreshed: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}", id='last-refreshed'),
-                            html.P(children = f"Click refresh to sync to database, click force update to updated statuses from cyclers.", id='last-updated'),
-                            dbc.Button("Refresh database", id='refresh-database', color='primary', outline=True, className='me-1'),
-                            dbc.Button("Force update database", id='update-database', color='warning', outline=True, className='me-1', disabled = not permissions),
-                            html.Div(style={'margin-top': '10px'}),
-                            # Buttons to select which table to display
-                            dbc.Tabs(
-                                [
-                                    dbc.Tab(label = 'Pipelines', tab_id = 'pipelines', active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
-                                    dbc.Tab(label = 'Samples', tab_id = 'samples', active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
-                                    dbc.Tab(label = 'Jobs', tab_id = 'jobs', active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
-                                    dbc.Tab(label = 'Results', tab_id = 'results', active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
-                                ],
-                                id='table-select',
-                                active_tab='pipelines',
-                            ),
-                            # Main table for displaying info from database
-                            dag.AgGrid(
-                                id='table',
-                                dashGridOptions = {"enableCellTextSelection": False, "ensureDomOrder": True, "tooltipShowDelay": 1000, 'rowSelection': 'multiple'},
-                                defaultColDef={"filter": True, "sortable": True, "floatingFilter": True},
-                                style={"height": "calc(90vh - 220px)", "width": "100%", "minHeight": "400px"},
-                            ),
+                        [
                             html.Div(
                                 [
-                                    html.Div(
-                                        [
-                                            dbc.Button("Load", id='load-button', color='primary', outline=True, className='me-1'),
-                                            dbc.Button("Eject", id='eject-button', color='primary', outline=True, className='me-1'),
-                                            dbc.Button("Ready", id='ready-button', color='primary', outline=True, className='me-1'),
-                                            dbc.Button("Unready", id='unready-button', color='primary', outline=True, className='me-1'),
-                                            dbc.Button("Submit", id='submit-button', color='primary', outline=True, className='me-1'),
-                                            dbc.Button("Cancel", id='cancel-button', color='danger', outline=True, className='me-1'),
-                                            dbc.Button("View data", id='view-button', color='primary', outline=True, className='me-1'),
-                                            dbc.Button("Snapshot", id='snapshot-button', color='primary', outline=True, className='me-1'),
-                                        ], 
-                                        style={'display': 'flex', 'flex-wrap': 'wrap'}
-                                    ),
-                                html.Div("test", id="table-info", style={'margin-left': 'auto', 'text-align': 'right', 'flex-grow': '1'})
-                                ],
+                                    dbc.Button("Load", id='load-button', color='primary', outline=True, className='me-1'),
+                                    dbc.Button("Eject", id='eject-button', color='primary', outline=True, className='me-1'),
+                                    dbc.Button("Ready", id='ready-button', color='primary', outline=True, className='me-1'),
+                                    dbc.Button("Unready", id='unready-button', color='primary', outline=True, className='me-1'),
+                                    dbc.Button("Submit", id='submit-button', color='primary', outline=True, className='me-1'),
+                                    dbc.Button("Cancel", id='cancel-button', color='danger', outline=True, className='me-1'),
+                                    dbc.Button("View data", id='view-button', color='primary', outline=True, className='me-1'),
+                                    dbc.Button("Snapshot", id='snapshot-button', color='primary', outline=True, className='me-1'),
+                                ], 
                                 style={'display': 'flex', 'flex-wrap': 'wrap'}
+                            ),
+                        html.Div("Loading...", id="table-info", style={'margin-left': 'auto', 'text-align': 'right', 'flex-grow': '1'})
+                        ],
+                        style={'display': 'flex', 'flex-wrap': 'wrap'}
+                    ),
+                ]
+            ),
+            # Pop up modals for interacting with the database after clicking buttons
+            # Eject
+            dbc.Modal(
+                [
+                    dbc.ModalHeader(dbc.ModalTitle("Eject")),
+                    dbc.ModalBody(id='eject-modal-body',children="Are you sure you want eject the selected samples?"),
+                    dbc.ModalFooter(
+                        [
+                            dbc.Button(
+                                "Eject", id="eject-yes-close", className="ms-auto", n_clicks=0, color='primary'
+                            ),
+                            dbc.Button(
+                                "Go back", id="eject-no-close", className="ms-auto", n_clicks=0, color='secondary'
                             ),
                         ]
                     ),
-                    # Pop up modals for interacting with the database after clicking buttons
-                    # Eject
-                    dbc.Modal(
-                        [
-                            dbc.ModalHeader(dbc.ModalTitle("Eject")),
-                            dbc.ModalBody(id='eject-modal-body',children="Are you sure you want eject the selected samples?"),
-                            dbc.ModalFooter(
-                                [
-                                    dbc.Button(
-                                        "Eject", id="eject-yes-close", className="ms-auto", n_clicks=0, color='primary'
-                                    ),
-                                    dbc.Button(
-                                        "Go back", id="eject-no-close", className="ms-auto", n_clicks=0, color='secondary'
-                                    ),
-                                ]
+                ],
+                id="eject-modal",
+                is_open=False,
+            ),
+            # Load
+            dbc.Modal(
+                [
+                    dbc.ModalHeader(dbc.ModalTitle("Load")),
+                    dbc.ModalBody(
+                        id='load-modal-body',
+                        children=[
+                            "Select the samples you want to load",
+                            dcc.Dropdown(
+                                id='load-dropdown',
+                                options=[
+                                    {'label': name, 'value': name} for name in get_sample_names(config)
+                                ],
+                                value=[],
+                                multi=True,
                             ),
-                        ],
-                        id="eject-modal",
-                        is_open=False,
+                        ]
                     ),
-                    # Load
-                    dbc.Modal(
+                    dbc.ModalFooter(
                         [
-                            dbc.ModalHeader(dbc.ModalTitle("Load")),
-                            dbc.ModalBody(
-                                id='load-modal-body',
+                            dbc.Button(
+                                "Load", id="load-yes-close", className="ms-auto", color='primary', n_clicks=0
+                            ),
+                            dbc.Button(
+                                "Auto-increment", id="load-incrememt", className="ms-auto", color='light', n_clicks=0
+                            ),
+                            dbc.Button(
+                                "Clear all", id="load-clear", className="ms-auto", color='light', n_clicks=0
+                            ),
+                            dbc.Button(
+                                "Go back", id="load-no-close", className="ms-auto", color='secondary', n_clicks=0
+                            ),
+                        ]
+                    ),
+                    dcc.Store(id='load-modal-store', data={}),
+                ],
+                id="load-modal",
+                is_open=False,
+            ),
+            # Ready
+            dbc.Modal(
+                [
+                    dbc.ModalHeader(dbc.ModalTitle("Ready")),
+                    dbc.ModalBody(
+                        id='ready-modal-body',
+                        children="""
+                            Are you sure you want ready the selected pipelines?
+                            You must force update the database afterwards to check if tomato has started the job(s).
+                        """
+                    ),
+                    dbc.ModalFooter(
+                        [
+                            dbc.Button(
+                                "Ready", id="ready-yes-close", className="ms-auto", n_clicks=0, color='primary'
+                            ),
+                            dbc.Button(
+                                "Go back", id="ready-no-close", className="ms-auto", n_clicks=0, color='secondary'
+                            ),
+                        ]
+                    ),
+                ],
+                id="ready-modal",
+                is_open=False,
+            ),
+            # Unready
+            dbc.Modal(
+                [
+                    dbc.ModalHeader(dbc.ModalTitle("Unready")),
+                    dbc.ModalBody(id='unready-modal-body',children="Are you sure you want un-ready the selected pipelines?"),
+                    dbc.ModalFooter(
+                        [
+                            dbc.Button(
+                                "Unready", id="unready-yes-close", className="ms-auto", n_clicks=0, color='primary'
+                            ),
+                            dbc.Button(
+                                "Go back", id="unready-no-close", className="ms-auto", n_clicks=0, color='secondary'
+                            ),
+                        ]
+                    ),
+                ],
+                id="unready-modal",
+                is_open=False,
+            ),
+            # Submit
+            dbc.Modal(
+                [
+                    dcc.Store(id='payload', data={}),
+                    dbc.ModalHeader(dbc.ModalTitle("Submit")),
+                    dbc.ModalBody(
+                        id='submit-modal-body',
+                        style={'width': '100%'},
+                        children=[
+                            "Select a tomato .json payload to submit",
+                            dcc.Upload(
+                                id='submit-upload',
+                                children=html.Div([
+                                    'Drag and Drop or ',
+                                    html.A('Select Files')
+                                ]),
+                                style={
+                                    'width': '100%',
+                                    'height': '60px',
+                                    'lineHeight': '60px',
+                                    'borderWidth': '1px',
+                                    'borderStyle': 'dashed',
+                                    'borderRadius': '8px',
+                                    'textAlign': 'center',
+                                },
+                                accept='.json',
+                                multiple=False,
+                            ),
+                            html.P(children="No file selected", id='validator'),
+                            html.Div(style={'margin-top': '10px'}),
+                            html.Div([
+                                html.Label("Calculate C-rate by:", htmlFor='submit-crate'),
+                                dcc.Dropdown(
+                                    id='submit-crate',
+                                    options=[
+                                        {'value': 'areal', 'label': 'areal capacity x area from db'},
+                                        {'value': 'mass', 'label': 'specific capacity x mass  from db'},
+                                        {'value': 'nominal', 'label': 'nominal capacity from db'},
+                                        {'value': 'custom', 'label': 'custom capacity value'},
+                                    ],
+                                )
+                            ]),
+                            html.Div(
+                                id='submit-capacity-div',
                                 children=[
-                                    "Select the samples you want to load",
-                                    dcc.Dropdown(
-                                        id='load-dropdown',
-                                        options=[
-                                            {'label': name, 'value': name} for name in get_sample_names(config)
-                                        ],
-                                        value=[],
-                                        multi=True,
-                                    ),
-                                ]
+                                    "Capacity = ",
+                                    dcc.Input(id='submit-capacity', type='number', min=0, max=10),
+                                    " mAh"
+                                ],
+                                style={'display': 'none'},
                             ),
-                            dbc.ModalFooter(
-                                [
-                                    dbc.Button(
-                                        "Load", id="load-yes-close", className="ms-auto", color='primary', n_clicks=0
-                                    ),
-                                    dbc.Button(
-                                        "Auto-increment", id="load-incrememt", className="ms-auto", color='light', n_clicks=0
-                                    ),
-                                    dbc.Button(
-                                        "Clear all", id="load-clear", className="ms-auto", color='light', n_clicks=0
-                                    ),
-                                    dbc.Button(
-                                        "Go back", id="load-no-close", className="ms-auto", color='secondary', n_clicks=0
-                                    ),
-                                ]
-                            ),
-                            dcc.Store(id='load-modal-store', data={}),
-                        ],
-                        id="load-modal",
-                        is_open=False,
+                        ]
                     ),
-                    # Ready
-                    dbc.Modal(
+                    dbc.ModalFooter(
                         [
-                            dbc.ModalHeader(dbc.ModalTitle("Ready")),
-                            dbc.ModalBody(
-                                id='ready-modal-body',
-                                children="""
-                                    Are you sure you want ready the selected pipelines?
-                                    You must force update the database afterwards to check if tomato has started the job(s).
-                                """
+                            dbc.Button(
+                                "Submit", id="submit-yes-close", className="ms-auto", n_clicks=0, color='primary', disabled=True
                             ),
-                            dbc.ModalFooter(
-                                [
-                                    dbc.Button(
-                                        "Ready", id="ready-yes-close", className="ms-auto", n_clicks=0, color='primary'
-                                    ),
-                                    dbc.Button(
-                                        "Go back", id="ready-no-close", className="ms-auto", n_clicks=0, color='secondary'
-                                    ),
-                                ]
+                            dbc.Button(
+                                "Go back", id="submit-no-close", className="ms-auto", n_clicks=0, color='secondary'
                             ),
-                        ],
-                        id="ready-modal",
-                        is_open=False,
+                        ]
                     ),
-                    # Unready
-                    dbc.Modal(
+                ],
+                id="submit-modal",
+                is_open=False,
+            ),
+            # Cancel
+            dbc.Modal(
+                [
+                    dbc.ModalHeader(dbc.ModalTitle("Cancel")),
+                    dbc.ModalBody(id='cancel-modal-body',children="Are you sure you want to cancel the selected jobs?"),
+                    dbc.ModalFooter(
                         [
-                            dbc.ModalHeader(dbc.ModalTitle("Unready")),
-                            dbc.ModalBody(id='unready-modal-body',children="Are you sure you want un-ready the selected pipelines?"),
-                            dbc.ModalFooter(
-                                [
-                                    dbc.Button(
-                                        "Unready", id="unready-yes-close", className="ms-auto", n_clicks=0, color='primary'
-                                    ),
-                                    dbc.Button(
-                                        "Go back", id="unready-no-close", className="ms-auto", n_clicks=0, color='secondary'
-                                    ),
-                                ]
+                            dbc.Button(
+                                "Cancel", id="cancel-yes-close", className="ms-auto", n_clicks=0, color='danger'
                             ),
-                        ],
-                        id="unready-modal",
-                        is_open=False,
+                            dbc.Button(
+                                "Go back", id="cancel-no-close", className="ms-auto", n_clicks=0, color='secondary'
+                            ),
+                        ]
                     ),
-                    # Submit
-                    dbc.Modal(
+                ],
+                id="cancel-modal",
+                is_open=False,
+            ),
+            # Snapshot
+            dbc.Modal(
+                [
+                    dbc.ModalHeader(dbc.ModalTitle("Snapshot")),
+                    dbc.ModalBody(
+                        id='snapshot-modal-body',
+                        children="""
+                            Do you want to snapshot the selected samples?
+                            This could take minutes per sample depending on data size.
+                        """,
+                    ),
+                    dbc.ModalFooter(
                         [
-                            dcc.Store(id='payload', data={}),
-                            dbc.ModalHeader(dbc.ModalTitle("Submit")),
-                            dbc.ModalBody(
-                                id='submit-modal-body',
-                                style={'width': '100%'},
-                                children=[
-                                    "Select a tomato .json payload to submit",
-                                    dcc.Upload(
-                                        id='submit-upload',
-                                        children=html.Div([
-                                            'Drag and Drop or ',
-                                            html.A('Select Files')
-                                        ]),
-                                        style={
-                                            'width': '100%',
-                                            'height': '60px',
-                                            'lineHeight': '60px',
-                                            'borderWidth': '1px',
-                                            'borderStyle': 'dashed',
-                                            'borderRadius': '8px',
-                                            'textAlign': 'center',
-                                        },
-                                        accept='.json',
-                                        multiple=False,
-                                    ),
-                                    html.P(children="No file selected", id='validator'),
-                                    html.Div(style={'margin-top': '10px'}),
-                                    html.Div([
-                                        html.Label("Calculate C-rate by:", htmlFor='submit-crate'),
-                                        dcc.Dropdown(
-                                            id='submit-crate',
-                                            options=[
-                                                {'value': 'areal', 'label': 'areal capacity x area from db'},
-                                                {'value': 'mass', 'label': 'specific capacity x mass  from db'},
-                                                {'value': 'nominal', 'label': 'nominal capacity from db'},
-                                                {'value': 'custom', 'label': 'custom capacity value'},
-                                            ],
-                                        )
-                                    ]),
-                                    html.Div(
-                                        id='submit-capacity-div',
-                                        children=[
-                                            "Capacity = ",
-                                            dcc.Input(id='submit-capacity', type='number', min=0, max=10),
-                                            " mAh"
-                                        ],
-                                        style={'display': 'none'},
-                                    ),
-                                ]
+                            dbc.Button(
+                                "Snapshot", id="snapshot-yes-close", className="ms-auto", n_clicks=0, color='warning'
                             ),
-                            dbc.ModalFooter(
-                                [
-                                    dbc.Button(
-                                        "Submit", id="submit-yes-close", className="ms-auto", n_clicks=0, color='primary', disabled=True
-                                    ),
-                                    dbc.Button(
-                                        "Go back", id="submit-no-close", className="ms-auto", n_clicks=0, color='secondary'
-                                    ),
-                                ]
+                            dbc.Button(
+                                "Go back", id="snapshot-no-close", className="ms-auto", n_clicks=0, color='secondary'
                             ),
                         ],
-                        id="submit-modal",
-                        is_open=False,
                     ),
-                    # Cancel
-                    dbc.Modal(
-                        [
-                            dbc.ModalHeader(dbc.ModalTitle("Cancel")),
-                            dbc.ModalBody(id='cancel-modal-body',children="Are you sure you want to cancel the selected jobs?"),
-                            dbc.ModalFooter(
-                                [
-                                    dbc.Button(
-                                        "Cancel", id="cancel-yes-close", className="ms-auto", n_clicks=0, color='danger'
-                                    ),
-                                    dbc.Button(
-                                        "Go back", id="cancel-no-close", className="ms-auto", n_clicks=0, color='secondary'
-                                    ),
-                                ]
-                            ),
-                        ],
-                        id="cancel-modal",
-                        is_open=False,
-                    ),
-                    # Snapshot
-                    dbc.Modal(
-                        [
-                            dbc.ModalHeader(dbc.ModalTitle("Snapshot")),
-                            dbc.ModalBody(
-                                id='snapshot-modal-body',
-                                children="""
-                                    Do you want to snapshot the selected samples?
-                                    This could take minutes per sample depending on data size.
-                                """
-                            ),
-                            dbc.ModalFooter(
-                                [
-                                    dbc.Button(
-                                        "Snapshot", id="snapshot-yes-close", className="ms-auto", n_clicks=0, color='warning'
-                                    ),
-                                    dbc.Button(
-                                        "Go back", id="snapshot-no-close", className="ms-auto", n_clicks=0, color='secondary'
-                                    ),
-                                ]
-                            ),
-                        ],
-                        id="snapshot-modal",
-                        is_open=False,
-                    ),
-                ]
-            )
-        ]
+                ],
+                id="snapshot-modal",
+                is_open=False,
+            ),
+        ],
     )
 
 #------------------------------------- Database view callbacks ------------------------------------#

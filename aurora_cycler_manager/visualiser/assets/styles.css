@@ -104,3 +104,12 @@ html, body {
 .resize-handle-horizontal:hover,.resize-handle-vertical:hover {
     background-color: rgb(120, 120, 120);
 }
+
+/* ===== SPINNER ===== */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+.spinner-spin {
+    animation: spin 2s linear infinite;
+}
