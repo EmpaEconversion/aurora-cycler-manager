@@ -15,7 +15,7 @@ from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 from aurora_cycler_manager.visualiser.funcs import correlation_matrix
 
 graph_template = "seaborn"
-graph_margin = {"l": 25, "r": 10, "t": 50, "b": 25}
+graph_margin = {"l": 50, "r": 10, "t": 50, "b": 50}
 colorscales = px.colors.named_colorscales()
 
 batches_menu = html.Div(
@@ -92,12 +92,74 @@ batches_menu = html.Div(
     ],
 )
 
+batch_cycle_graph = dcc.Graph(
+    id="batch-cycle-graph",
+    figure={
+        "data": [],
+        "layout": go.Layout(
+            template = graph_template,
+            margin = graph_margin,
+            title = "vs cycle",
+            xaxis = {"title": "X-axis Title"},
+            yaxis = {"title": "Y-axis Title"},
+        ),
+    },
+    config={
+        "scrollZoom": True,
+        "displaylogo":False,
+        "toImageButtonOptions": {"format": "svg"},
+    },
+    style={"height": "100%"},
+)
+
+batch_correlation_map = dcc.Graph(
+    id="batch-correlation-map",
+    figure={
+        "data": [],
+        "layout": go.Layout(
+            template=graph_template,
+            margin=graph_margin,
+            title="Click to show correlation",
+            xaxis={"title": "X-axis Title"},
+            yaxis={"title": "Y-axis Title"},
+        ),
+    },
+    config={
+        "scrollZoom": False,
+        "displaylogo":False,
+        "modeBarButtonsToRemove" : ["zoom2d","pan2d","zoomIn2d","zoomOut2d","autoScale2d","resetScale2d"],
+        "toImageButtonOptions": {"format": "png", "width": 1000, "height": 800},
+    },
+    style={"height": "100%"},
+)
+
+batch_correlation_graph = dcc.Graph(
+    id="batch-correlation-graph",
+    figure={
+        "data": [],
+        "layout": go.Layout(
+            template=graph_template,
+            margin = graph_margin,
+            title="params",
+            xaxis={"title": "X-axis Title"},
+            yaxis={"title": "Y-axis Title"},
+        ),
+    },
+    config={
+        "scrollZoom": True,
+        "displaylogo":False,
+        "toImageButtonOptions": {"format": "svg"}
+    },
+    style={"height": "100%"},
+)
+
 batches_layout =  html.Div(
     style = {"height": "100%"},
     children = [
         dcc.Store(id="batches-data-store", data={"data_batch_cycle": {}}),
         PanelGroup(
             id="batches-panel-group",
+            direction="horizontal",
             children=[
                 Panel(
                     id="batches-menu",
@@ -109,29 +171,16 @@ batches_layout =  html.Div(
                 PanelResizeHandle(html.Div(className="resize-handle-horizontal")),
                 Panel(
                     id="graphs",
+                    minSizePercentage=50,
                     children=[
                         PanelGroup(
                             id="graph group",
+                            direction="vertical",
                             children=[
                                 Panel(
+                                    batch_cycle_graph,
                                     id="top graph",
-                                    children=[
-                                        dcc.Graph(
-                                            id="batch-cycle-graph",
-                                            figure={
-                                                "data": [],
-                                                "layout": go.Layout(
-                                                    template = graph_template,
-                                                    margin = graph_margin,
-                                                    title = "vs cycle",
-                                                    xaxis = {"title": "X-axis Title"},
-                                                    yaxis = {"title": "Y-axis Title"},
-                                                ),
-                                            },
-                                            config={"scrollZoom": True, "displaylogo":False,  "toImageButtonOptions": {"format": "svg"}},
-                                            style={"height": "100%"},
-                                        ),
-                                    ]),
+                                ),
                                 PanelResizeHandle(
                                     html.Div(className="resize-handle-vertical"),
                                 ),
@@ -140,63 +189,28 @@ batches_layout =  html.Div(
                                     children=[
                                         PanelGroup(
                                             id="bottom graph group",
+                                            direction="horizontal",
                                             children=[
                                                 Panel(
+                                                    batch_correlation_map,
                                                     id="bottom left graph",
-                                                    children=[
-                                                        dcc.Graph(
-                                                            id="batch-correlation-map",
-                                                            figure={
-                                                                "data": [],
-                                                                "layout": go.Layout(
-                                                                    template=graph_template,
-                                                                    margin=graph_margin,
-                                                                    title="Click to show correlation",
-                                                                    xaxis={"title": "X-axis Title"},
-                                                                    yaxis={"title": "Y-axis Title"},
-                                                                ),
-                                                            },
-                                                            config={"scrollZoom": False, "displaylogo":False, "modeBarButtonsToRemove" : ["zoom2d","pan2d","zoomIn2d","zoomOut2d","autoScale2d","resetScale2d"], "toImageButtonOptions": {"format": "png", "width": 1000, "height": 800}},
-                                                            style={"height": "100%"},
-                                                        ),
-                                                    ],
                                                 ),
                                                 PanelResizeHandle(
                                                     html.Div(className="resize-handle-horizontal"),
                                                 ),
                                                 Panel(
+                                                    batch_correlation_graph,
                                                     id="bottom right graph",
-                                                    children=[
-                                                        dcc.Graph(
-                                                            id="batch-correlation-graph",
-                                                            figure={
-                                                                "data": [],
-                                                                "layout": go.Layout(
-                                                                    template=graph_template,
-                                                                    margin = graph_margin,
-                                                                    title="params",
-                                                                    xaxis={"title": "X-axis Title"},
-                                                                    yaxis={"title": "Y-axis Title"},
-                                                                ),
-                                                            },
-                                                            config={"scrollZoom": True, "displaylogo":False, "toImageButtonOptions": {"format": "svg"}},
-                                                            style={"height": "100%"},
-                                                        ),
-                                                    ],
                                                 ),
                                             ],
-                                            direction="horizontal",
                                         ),
                                     ],
                                 ),
                             ],
-                            direction="vertical",
                         ),
                     ],
-                    minSizePercentage=50,
                 ),
             ],
-            direction="horizontal",
         ),
     ],
 )

@@ -84,123 +84,124 @@ samples_menu =  html.Div(
         ],
     )
 
+time_graph = dcc.Graph(
+    id="time-graph",
+    style={"height": "100%"},
+    config={"scrollZoom":True, "displaylogo":False},
+    figure={
+        "data": [],
+        "layout": go.Layout(
+            template = graph_template,
+            margin = graph_margin,
+            title="vs time",
+            xaxis={"title": "X-axis Title"},
+            yaxis={"title": "Y-axis Title"},
+            showlegend=False,
+        ),
+    },
+)
+
+cycles_graph = dcc.Graph(
+    id="cycles-graph",
+    style={"height": "100%"},
+    config={"scrollZoom":True, "displaylogo":False},
+    figure={
+        "data": [],
+        "layout": go.Layout(
+            template = graph_template,
+            margin = graph_margin,
+            title = "vs cycle",
+            xaxis = {"title": "X-axis Title"},
+            yaxis = {"title": "Y-axis Title"},
+            showlegend=False,
+        ),
+    },
+)
+
+one_cycle_graph = dcc.Graph(
+    id="cycle-graph",
+    config={"scrollZoom":True, "displaylogo":False},
+    style={"height": "100%"},
+    figure={
+        "data": [],
+        "layout": go.Layout(
+            template = graph_template,
+            margin = graph_margin,
+            title = "One cycle",
+            xaxis = {"title": "X-axis Title"},
+            yaxis = {"title": "Y-axis Title"},
+            showlegend=False,
+        ),
+    },
+)
+
 samples_layout =  html.Div(
-        style={"height": "100%"},
-        children = [
-            dcc.Store(
-                id="samples-data-store",
-                data={"data_sample_time": {}, "data_sample_cycle": {}},
-            ),
-            PanelGroup(
-                id="samples-panel-group",
-                direction="horizontal",
-                style={"height": "100%"},
-                children=[
-                    Panel(
-                        id="samples-menu",
-                        className="menu-panel",
-                        children=samples_menu,
-                        defaultSizePercentage=16,
-                        collapsible=True,
-                    ),
-                    PanelResizeHandle(
-                        html.Div(className="resize-handle-horizontal"),
-                    ),
-                    Panel(
-                        id="samples-graphs",
-                        minSizePercentage=50,
-                        children=[
-                            PanelGroup(
-                                id="samples-graph-group",
-                                direction="vertical",
-                                children=[
-                                    Panel(
-                                        id="samples-top-graph",
-                                        children=[
-                                            dcc.Graph(
-                                                id="time-graph",
-                                                style={"height": "100%"},
-                                                config={"scrollZoom":True, "displaylogo":False},
-                                                figure={
-                                                    "data": [],
-                                                    "layout": go.Layout(
-                                                        template = graph_template,
-                                                        margin = graph_margin,
-                                                        title="vs time",
-                                                        xaxis={"title": "X-axis Title"},
-                                                        yaxis={"title": "Y-axis Title"},
-                                                        showlegend=False,
-                                                    ),
-                                                },
-                                            ),
-                                        ]),
-                                    PanelResizeHandle(
-                                        html.Div(className="resize-handle-vertical"),
-                                    ),
-                                    Panel(
-                                        id="samples-bottom-graphs",
-                                        children=[
-                                            PanelGroup(
-                                                id="samples-bottom-graph-group",
-                                                direction="horizontal",
-                                                children=[
-                                                    Panel(
-                                                        id="samples-bottom-left-graph",
-                                                        children=[
-                                                            dcc.Graph(
-                                                                id="cycles-graph",
-                                                                style={"height": "100%"},
-                                                                config={"scrollZoom":True, "displaylogo":False},
-                                                                figure={
-                                                                    "data": [],
-                                                                    "layout": go.Layout(
-                                                                        template = graph_template,
-                                                                        margin = graph_margin,
-                                                                        title = "vs cycle",
-                                                                        xaxis = {"title": "X-axis Title"},
-                                                                        yaxis = {"title": "Y-axis Title"},
-                                                                        showlegend=False,
-                                                                    ),
-                                                                },
-                                                            ),
-                                                        ],
-                                                    ),
-                                                    PanelResizeHandle(
-                                                        html.Div(className="resize-handle-horizontal"),
-                                                    ),
-                                                    Panel(
-                                                        id="samples-bottom-right-graph",
-                                                        children=[
-                                                            dcc.Graph(
-                                                                id="cycle-graph",
-                                                                config={"scrollZoom":True, "displaylogo":False},
-                                                                style={"height": "100%"},
-                                                                figure={
-                                                                    "data": [],
-                                                                    "layout": go.Layout(
-                                                                        template = graph_template,
-                                                                        margin = graph_margin,
-                                                                        title = "One cycle",
-                                                                        xaxis = {"title": "X-axis Title"},
-                                                                        yaxis = {"title": "Y-axis Title"},
-                                                                        showlegend=False,
-                                                                    ),
-                                                                },
-                                                            ),
-                                                        ],
-                                                    ),
-                                                ],
-                                            ),
-                                        ],
-                                    ),
-                                ],
-                            ),
-                        ],
-                    ),
-                ],
-            ),
-        ],
-    )
+    style={"height": "100%"},
+    children = [
+        dcc.Store(
+            id="samples-data-store",
+            data={"data_sample_time": {}, "data_sample_cycle": {}},
+        ),
+        PanelGroup(
+            id="samples-panel-group",
+            direction="horizontal",
+            style={"height": "100%"},
+            children=[
+                Panel(
+                    id="samples-menu",
+                    className="menu-panel",
+                    children=samples_menu,
+                    defaultSizePercentage=16,
+                    collapsible=True,
+                ),
+                PanelResizeHandle(
+                    html.Div(className="resize-handle-horizontal"),
+                ),
+                Panel(
+                    id="samples-graphs",
+                    minSizePercentage=50,
+                    children=[
+                        PanelGroup(
+                            id="samples-graph-group",
+                            direction="vertical",
+                            children=[
+                                Panel(
+                                    time_graph,
+                                    id="samples-top-graph",
+                                ),
+                                PanelResizeHandle(
+                                    html.Div(className="resize-handle-vertical"),
+                                ),
+                                Panel(
+                                    id="samples-bottom-graphs",
+                                    children=[
+                                        PanelGroup(
+                                            id="samples-bottom-graph-group",
+                                            direction="horizontal",
+                                            children=[
+                                                Panel(
+                                                    cycles_graph,
+                                                    id="samples-bottom-left-graph",
+                                                ),
+                                                PanelResizeHandle(
+                                                    html.Div(className="resize-handle-horizontal"),
+                                                ),
+                                                Panel(
+                                                    one_cycle_graph,
+                                                    id="samples-bottom-right-graph",
+                                                ),
+                                            ],
+                                        ),
+                                    ],
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+            ],
+        ),
+    ],
+)
 
 #--------------------------------- CALLBACKS ----------------------------------#
 def register_samples_callbacks(app: Dash, config: dict) -> None:
