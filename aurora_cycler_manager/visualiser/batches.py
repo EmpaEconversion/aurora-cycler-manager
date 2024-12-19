@@ -9,7 +9,7 @@ import textwrap
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objs as go
-from dash import Dash, Input, Output, dcc, html, no_update
+from dash import Dash, Input, Output, State, dcc, html, no_update
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
 from aurora_cycler_manager.visualiser.funcs import correlation_matrix
@@ -114,16 +114,13 @@ batch_cycle_graph = dcc.Graph(
 
 batch_correlation_map = dcc.Graph(
     id="batch-correlation-map",
-    figure={
-        "data": [],
-        "layout": go.Layout(
-            template=graph_template,
-            margin=graph_margin,
-            title="Click to show correlation",
-            xaxis={"title": "X-axis Title"},
-            yaxis={"title": "Y-axis Title"},
-        ),
-    },
+    figure=px.imshow([[0]],color_continuous_scale="balance",aspect="auto",zmin=-1,zmax=1).update_layout(
+        template = graph_template,
+        margin = graph_margin,
+        coloraxis_colorbar={"title": "Correlation","tickvals": [-1, 0, 1], "ticktext": ["-1", "0", "1"]},
+        xaxis={"tickfont": {"size": 8}},
+        yaxis={"tickfont": {"size": 8}},
+    ),
     config={
         "scrollZoom": False,
         "displaylogo":False,
@@ -232,23 +229,19 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
     @app.callback(
         Output("batches-data-store", "data"),
         Output("batch-cycle-y", "options"),
+        Output("batch-cycle-y", "value"),
         Output("batch-cycle-color", "options"),
         Output("batch-cycle-style", "options"),
         Output("batch-correlation-color", "options"),
         Input("batches-dropdown", "value"),
-        Input("batches-data-store", "data"),
+        State("batch-cycle-y", "value"),
+        State("batches-data-store", "data"),
     )
-    def update_batch_data(batches, data):
-        # Remove batches no longer in dropdown
-        for batch in list(data["data_batch_cycle"].keys()):
-            if batch not in batches:
-                data["data_batch_cycle"].pop(batch)
-
+    def update_batch_data(batches, y_val, data):
+        # TODO add faster way to add/subtract data instead of re-reading all files
         data_folder = config["Batches folder path"]
-
+        data["data_batch_cycle"] = []
         for batch in batches:
-            if batch in data["data_batch_cycle"]:
-                continue
             file_location = os.path.join(data_folder, batch)
             files = os.listdir(file_location)
             try:
@@ -257,105 +250,92 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
                 continue
             with open(f"{file_location}/{analysed_file}", encoding="utf-8") as f:
                 json_data = json.load(f)
-            data["data_batch_cycle"][batch] = json_data["data"]
+            # add batch to every sample in json_data["data"]
+            [sample.update({"Batch": batch}) for sample in json_data["data"]]
+            data["data_batch_cycle"] += json_data["data"]
 
-        data_list = []
-        for value in data["data_batch_cycle"].values():
-            data_list += value
+        # Remove duplicate samples
+        sample_id = [d["Sample ID"] for d in data["data_batch_cycle"]]
+        data["data_batch_cycle"] = [d for d in data["data_batch_cycle"] if sample_id.count(d["Sample ID"]) == 1]
 
-        data["data_all_samples"] = data_list
-
-        # Update the y-axis options
-        y_vars = {"Normalised discharge capacity (%)"}
-        for data_dict in data_list:
+        # y-axis options are lists in data
+        # color options are non-lists
+        y_vars = set()
+        color_vars = set()
+        for data_dict in data["data_batch_cycle"]:
             y_vars.update([k for k,v in data_dict.items() if isinstance(v,list)])
-        y_vars = list(y_vars)
-
-        color_vars = {"Max voltage (V)", "Actual N:P ratio", "1/Formation C", "Electrolyte name"}
-        for data_dict in data["data_all_samples"]:
             color_vars.update([k for k,v in data_dict.items() if not isinstance(v,list)])
+        y_vars = list(y_vars)
         color_vars = list(color_vars)
 
-        return data, y_vars, color_vars, color_vars, color_vars
+        # Set a default y choice if none is picked
+        print(y_vars and (not y_val or y_val not in y_vars))
+        if y_vars and (not y_val or y_val not in y_vars):
+            if "Specific discharge capacity (mAh/g)" in y_vars:
+                y_val = "Specific discharge capacity (mAh/g)"
+            elif "Discharge capacity (mAh)" in y_vars:
+                y_val = "Discharge capacity (mAh)"
+            else:
+                y_val = y_vars[0]
+
+        return data, y_vars, y_val, color_vars, color_vars, color_vars
 
     # Update the batch cycle graph
     @app.callback(
         Output("batch-cycle-graph", "figure"),
-        Output("batch-cycle-y", "value"),
+        State("batch-cycle-graph", "figure"),
         Input("batches-data-store", "data"),
         Input("batch-cycle-y", "value"),
         Input("batch-cycle-color", "value"),
         Input("batch-cycle-colormap", "value"),
         Input("batch-cycle-style", "value"),
     )
-    def update_batch_cycle_graph(data, variable, color, colormap, style):
-        fig = px.scatter().update_layout(title="No data...", xaxis_title="Cycle", yaxis_title="")
-        fig.update_layout(template = graph_template, margin=graph_margin)
+    def update_batch_cycle_graph(fig, data, variable, color, colormap, style):
+        # remove old data
+        fig["data"] = []
         if not data or not data["data_batch_cycle"]:
-            return fig, variable
+            fig["layout"]["title"] = "No data..."
+            return fig
 
-        # data['data_batch_cycle'] is a dict with keys as batch names and values as dicts
-        data_list = []
-        for value in data["data_batch_cycle"].values():
-            data_list += value
-        df = pd.concat(pd.DataFrame(d) for d in data_list)
+        # data["data_batch_cycle"] is a list of dicts of samples
+        if not data["data_batch_cycle"]:
+            fig["layout"]["title"] = "No data..."
+            return fig
+        # Add 1/Formation C if Formation C is in the data
+        [d.update({"1/Formation C": 1 / d["Formation C"] if d["Formation C"] != 0 else 0}) for d in data["data_batch_cycle"] if "Formation C" in d]
 
-        if df.empty:
-            return fig, variable
+        fig["layout"]["yaxis"]["title"] = variable
+        fig["layout"]["title"] = f"{variable} vs cycle"
 
-        # Use Plotly Express to create the scatter plot
-        # TODO copy the stuff from other plots here
-        if "Formation C" in df.columns:
-            df["1/Formation C"] = 1 / df["Formation C"]
+        # add trace for each sample
+        for sample in data["data_batch_cycle"]:
+            trace = go.Scattergl(
+                x=sample["Cycle"],
+                y=sample[variable],
+                mode="lines+markers",
+                name=sample["Sample ID"],
+                line={"width": 1},
+                marker={"size": 5},
+            )
+            fig["data"].append(trace)
 
-        if not variable:
-            if "Specific discharge capacity (mAh/g)" in df.columns:
-                variable = "Specific discharge capacity (mAh/g)"
-            elif "Discharge capacity (mAh)" in df.columns:
-                variable = "Discharge capacity (mAh)"
-        fig.update_layout(
-            title=f"{variable} vs cycle",
-        )
-
-        fig = px.scatter(
-            df,
-            x="Cycle",
-            y=variable,
-            color=color,
-            color_continuous_scale=colormap,
-            symbol=style,
-            hover_name="Sample ID",
-            template=graph_template,
-        )
-        fig.update_layout(margin=graph_margin)
-        fig.update_coloraxes(colorbar_title_side="right")
-
-        return fig, variable
+        return fig
 
     # Update the correlation map
     @app.callback(
         Output("batch-correlation-map", "figure"),
         Output("batch-correlation-x", "options"),
         Output("batch-correlation-y", "options"),
+        State("batch-correlation-map", "figure"),
         Input("batches-data-store", "data"),
     )
-    def update_correlation_map(data):
+    def update_correlation_map(fig, data):
         # data is a list of dicts
-        fig = px.imshow([[0]],color_continuous_scale="balance",aspect="auto",zmin=-1,zmax=1)
-        fig.update_layout(
-            template = graph_template,
-            margin = graph_margin,
-            coloraxis_colorbar={"title": "Correlation","tickvals": [-1, 0, 1], "ticktext": ["-1", "0", "1"]},
-            xaxis={"tickfont": {"size": 10}},
-            yaxis={"tickfont": {"size": 10}},
-        )
+        fig["data"] = []
         if not data["data_batch_cycle"]:
             return fig, [], []
-        data_list = []
-        for value in data["data_batch_cycle"].values():
-            data_list += value
-        data = [{k: v for k, v in d.items() if not isinstance(v, list) and v} for d in data_list]
-        dfs = [pd.DataFrame(d, index=[0]) for d in data]
+        data_correlations = [{k:v for k,v in s.items() if v and not isinstance(v, list)} for s in data["data_batch_cycle"]]
+        dfs = [pd.DataFrame(d, index=[0]) for d in data_correlations]
         if not dfs:
             return fig, [], []
         df = pd.concat(dfs, ignore_index=True)
@@ -388,9 +368,18 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         corr = correlation_matrix(df)
 
         # Use Plotly Express to create the heatmap
-        fig.data[0].x = df.columns
-        fig.data[0].y = df.columns
-        fig.data[0].z = corr
+        fig["data"] = [
+            go.Heatmap(
+                z=corr,
+                x=df.columns,
+                y=df.columns,
+                colorscale="balance",
+                zmin=-1,
+                zmax=1,
+                hoverongaps=False,
+                hoverinfo="x+y+z",
+            ),
+        ]
 
         return fig, options, options
 
@@ -411,72 +400,47 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
     # On changing x and y axes, update the correlation graph
     @app.callback(
         Output("batch-correlation-graph", "figure"),
+        State("batch-correlation-graph", "figure"),
         Input("batches-data-store", "data"),
         Input("batch-correlation-x", "value"),
         Input("batch-correlation-y", "value"),
         Input("batch-correlation-color", "value"),
         Input("batch-correlation-colorscale", "value"),
     )
-    def update_correlation_graph(data, xvar, yvar, color, colormap):
+    def update_correlation_graph(fig, data, xvar, yvar, color, colormap):
+        fig["data"] = []
         if not xvar or not yvar:
-            fig = px.scatter()
-            fig.update_layout(
-                template = graph_template,
-                margin = graph_margin,
-                xaxis_title="X-axis Title",
-                yaxis_title="Y-axis Title",
-            )
             return fig
-        data_list = []
-        for value in data["data_batch_cycle"].values():
-            data_list += value
-        data = [{k: v for k, v in d.items() if not isinstance(v, list) and v} for d in data_list]
-        dfs = [pd.DataFrame(d, index=[0]) for d in data]
-        if not dfs:
-            fig = px.scatter().update_layout(xaxis_title="X-axis Title", yaxis_title="Y-axis Title")
-            fig.update_layout(template = graph_template, margin = graph_margin)
-            return fig
-        df = pd.concat(dfs, ignore_index=True)
-        if "Formation C" in df.columns:
-            df["1/Formation C"] = 1 / df["Formation C"]
-
-        hover_columns = [
-            "Max voltage (V)",
-            "Anode type",
-            "Cathode type",
-            "Anode active material mass (mg)",
-            "Cathode active material mass (mg)",
+        fig["layout"]["title"] = f"{xvar} vs {yvar}"
+        fig["layout"]["xaxis"]["title"] = xvar
+        fig["layout"]["yaxis"]["title"] = yvar
+        hover_info = [
+            "Sample ID",
             "Actual N:P ratio",
-            # "Electrolyte name",
-            "Electrolyte description",
-            # "Electrolyte amount (uL)",
-            "First formation efficiency (%)",
-            "First formation specific discharge capacity (mAh/g)",
-            # "Initial specific discharge capacity (mAh/g)",
-            # "Initial efficiency (%)",
+            "Formation C",
+            "Rack position",
+            "Run ID",
         ]
-        # remove columns which are not in the data
-        hover_columns = [col for col in hover_columns if col in df.columns]
-        hover_data = {col: True for col in hover_columns}
-
-        fig = px.scatter(
-            df,
-            x=xvar,
-            y=yvar,
-            color=color,
-            color_continuous_scale=colormap,
-            custom_data=df[hover_columns],
-            hover_name="Sample ID",
-            hover_data=hover_data,
+        customdata = [[s.get(col,"") for col in hover_info] for s in data["data_batch_cycle"]]
+        trace = go.Scatter(
+            x=[s[xvar] for s in data["data_batch_cycle"]],
+            y=[s[yvar] for s in data["data_batch_cycle"]],
+            mode="markers",
+            marker={
+                "size": 10,
+                "line": {"width": 1, "color": "black"},
+            },
+            customdata=customdata,
+            hovertemplate="<br>".join(
+                [
+                    "Sample ID: %{customdata[0]}",
+                    f"{xvar}: %{{x}}",
+                    f"{yvar}: %{{y}}",
+                ] +
+                [f"{col}: %{{customdata[{i+1}]}}" for i, col in enumerate(hover_info[1:])] +
+                ["<extra></extra>"],
+            ),
         )
-        fig.update_traces(
-            marker={"size": 10,"line": {"color": "black", "width": 1}},
-        )
-        fig.update_coloraxes(colorbar_title_side="right")
-        fig.update_layout(
-            xaxis_title=xvar,
-            yaxis_title=yvar,
-            template = graph_template,
-            margin = graph_margin,
-        )
+        fig["data"] = [trace]
+        # TODO add colours
         return fig

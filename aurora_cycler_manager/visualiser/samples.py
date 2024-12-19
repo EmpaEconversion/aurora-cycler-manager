@@ -8,9 +8,8 @@ import os
 
 import numpy as np
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objs as go
-from dash import Dash, Input, Output, dcc, html
+from dash import Dash, Input, Output, State, dcc, html
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
 from aurora_cycler_manager.analysis import _run_from_sample, combine_jobs
@@ -221,7 +220,7 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
         Output("samples-time-y", "options"),
         Output("samples-cycles-y", "options"),
         Input("samples-dropdown", "value"),
-        Input("samples-data-store", "data"),
+        State("samples-data-store", "data"),
     )
     def update_sample_data(samples, data):
         # Get rid of samples that are no longer selected
@@ -298,22 +297,21 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
     # Update the time graph
     @app.callback(
         Output("time-graph", "figure"),
+        State("time-graph", "figure"),
         Input("samples-data-store", "data"),
         Input("samples-time-x", "value"),
         Input("samples-time-units", "value"),
         Input("samples-time-y", "value"),
     )
-    def update_time_graph(data, xvar, xunits, yvar):
-        fig = px.scatter()
-        fig.update_layout(
-            template = graph_template,
-            margin = graph_margin,
-            title = "No data...",
-            xaxis_title = f"Time ({xunits.lower()})",
-            yaxis_title=yvar,
-            showlegend=False,
-        )
+    def update_time_graph(fig, data, xvar, xunits, yvar):
+        fig["data"] = []
+        fig["layout"]["xaxis"]["title"] = f"Time ({xunits.lower()})" if xunits else None
+        fig["layout"]["yaxis"]["title"] = yvar
         if not data["data_sample_time"] or not xvar or not yvar or not xunits:
+            if not data["data_sample_time"]:
+                fig["layout"]["title"] = "No data..."
+            elif not xvar or not yvar or not xunits:
+                fig["layout"]["title"] = "Select x and y variables"
             return fig
 
         multiplier = {"Seconds": 1, "Minutes": 60, "Hours": 3600, "Days": 86400}[xunits]
@@ -328,18 +326,16 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
             else:
                 offset=0
 
-            trace = go.Scatter(
+            trace = go.Scattergl(
                 x=(np.array(data_dict["uts"]) - offset) / multiplier,
                 y=data_dict[yvar],
                 mode="lines",
                 name=sample,
                 hovertemplate=f"{sample}<br>Time: %{{x}}<br>{yvar}: %{{y}}<extra></extra>",
             )
-            fig.add_trace(trace)
+            fig["data"].append(trace)
 
-        fig.update_layout(
-            title=f"{yvar} vs time",
-        )
+        fig["layout"]["title"] = f"{yvar} vs time"
 
         return fig
 
@@ -347,20 +343,17 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
     # Update the cycles graph
     @app.callback(
         Output("cycles-graph", "figure"),
+        State("cycles-graph", "figure"),
         Input("samples-data-store", "data"),
         Input("samples-cycles-y", "value"),
     )
-    def update_cycles_graph(data, yvar):
-        fig = px.scatter()
-        fig.update_layout(
-            template = graph_template,
-            margin = graph_margin,
-            title = "No data...",
-            xaxis_title = "Cycle",
-            yaxis_title = yvar,
-            showlegend = False,
-        )
-        if not data["data_sample_cycle"] or not yvar:
+    def update_cycles_graph(fig, data, yvar):
+        fig["data"] = []
+        if not data["data_sample_cycle"]:
+            fig["layout"]["title"] = "No data..."
+            return fig
+        if not yvar:
+            fig["layout"]["title"] = "Select y variable"
             return fig
         for sample, cycle_dict in data["data_sample_cycle"].items():
             trace = go.Scatter(
@@ -370,29 +363,26 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
                 name=sample,
                 hovertemplate=f"{sample}<br>Cycle: %{{x}}<br>{yvar}: %{{y}}<extra></extra>",
             )
-            fig.add_trace(trace)
-        fig.update_layout(title=f"{yvar} vs cycle")
+            fig["data"].append(trace)
+        fig["layout"]["title"] = f"{yvar} vs cycle"
         return fig
 
     # Update the one cycle graph
     @app.callback(
         Output("cycle-graph", "figure"),
+        State("cycle-graph", "figure"),
         Input("cycles-graph", "clickData"),
         Input("samples-data-store", "data"),
         Input("samples-cycle-x", "value"),
         Input("samples-cycle-y", "value"),
     )
-    def update_cycle_graph(clickData, data, xvar, yvar):
-        fig = px.scatter()
-        fig.update_layout(
-            template = graph_template,
-            margin = graph_margin,
-            title = "No data...",
-            xaxis_title=xvar,
-            yaxis_title=yvar,
-            showlegend=False,
-        )
-        if not data["data_sample_cycle"] or not xvar or not yvar:
+    def update_cycle_graph(fig, clickData, data, xvar, yvar):
+        fig["data"] = []
+        if not data["data_sample_cycle"]:
+            fig["layout"]["title"] = "No data..."
+            return fig
+        if not xvar or not yvar:
+            fig["layout"]["title"] = "Select x and y variables"
             return fig
         if not clickData:
             cycle = 1
@@ -401,10 +391,11 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
             # 'points' is a list of dicts with keys 'curveNumber', 'pointNumber', 'pointIndex', 'x', 'y', 'text'
             point = clickData["points"][0]
             cycle = point["x"]
-        for sample, data_dict in data["data_sample_time"].items():
+        for i, (sample, data_dict) in enumerate(data["data_sample_time"].items()):
             # find where the cycle = cycle
             mask = np.array(data_dict["Cycle"]) == cycle
             if not any(mask):
+                # TODO increment colour anyway
                 continue
             mask_dict = {}
             mask_dict["V (V)"] = np.array(data_dict["V (V)"])[mask]
@@ -417,7 +408,7 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
                 name=sample,
                 hovertemplate=f"{sample}<br>{xvar}: %{{x}}<br>{yvar}: %{{y}}<extra></extra>",
             )
-            fig.add_trace(trace)
+            fig["data"].append(trace)
 
-        fig.update_layout(title=f"{yvar} vs {xvar} for cycle {cycle}")
+        fig["layout"]["title"] = f"{yvar} vs {xvar} for cycle {cycle}"
         return fig
