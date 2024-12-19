@@ -56,6 +56,8 @@ class ServerManager:
         
         Reads configuration from './config.json' to connect to the database and servers.
         """
+        self.servers=[]
+
         current_dir = os.path.dirname(os.path.abspath(__file__))
         config_path = os.path.join(current_dir, '..', 'config.json')
         
@@ -81,18 +83,19 @@ class ServerManager:
         self.private_key = paramiko.RSAKey.from_private_key_file(private_key_path)
 
         print("Creating cycler server objects")
-        self.get_servers()
+        self.servers = self.get_servers()
+        if not self.servers:
+            raise ValueError("No servers found in config file, please check the config file.")
         print("Server manager initialised, consider updating database with update_db()")
 
-    def get_servers(self) -> None:
-        """ Create the cycler server objects from the config file. """
+    def get_servers(self) -> list[CyclerServer]:
+        """Create the cycler server objects from the config file."""
         server_list = self.config["Servers"]
-
-        self.servers=[]
+        servers = []
         for server_config in server_list:
             if server_config["server_type"] == "tomato":
                 try:
-                    self.servers.append(
+                    servers.append(
                         TomatoServer(
                             server_config,
                             self.private_key,
@@ -103,6 +106,7 @@ class ServerManager:
                     print(f"Error: {exc}")
             else:
                 print(f"Server type {server_config['server_type']} not recognized, skipping")
+        return servers
 
     def insert_sample_file(self, csv_file: str) -> None:
         """ Add a sample csv file to the database.
