@@ -1,6 +1,6 @@
 """Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
 
-Harvest EC-lab .mpr files and convert to aurora-compatible gzipped json files. 
+Harvest EC-lab .mpr files and convert to aurora-compatible gzipped json files.
 
 Define the machines to grab files from in the config.json file.
 
@@ -34,15 +34,15 @@ import paramiko
 import pytz
 import yadg
 
-root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if root_dir not in sys.path:
     sys.path.append(root_dir)
 from aurora_cycler_manager.version import __version__, __url__
 
 # Load configuration
 current_dir = os.path.dirname(os.path.abspath(__file__))
-config_path = os.path.join(current_dir, '..', 'config.json')
-with open(config_path, encoding = 'utf-8') as f:
+config_path = os.path.join(current_dir, "..", "config.json")
+with open(config_path, encoding = "utf-8") as f:
     config = json.load(f)
 eclab_config = config["EC-lab harvester"]
 db_path = config["Database path"]
@@ -92,7 +92,7 @@ def get_mprs(
         ssh.connect(server_hostname, username=server_username, pkey=local_private_key)
 
         # Shell commands to find files modified since cutoff date
-        # TODO need to grab all the filenames and modified dates, copy if they are newer than local files not just cutoff date
+        # TODO: grab all the filenames and modified dates, copy if they are newer than local files not just cutoff date
         if server_shell_type == "powershell":
             command = (
                 f'Get-ChildItem -Path \'{server_copy_folder}\' -Recurse '
@@ -135,21 +135,21 @@ def get_mprs(
         cursor.execute(
             "INSERT OR IGNORE INTO harvester (`Server label`, `Server hostname`, `Folder`) "
             "VALUES (?, ?, ?)",
-            (server_label, server_hostname, server_copy_folder)
+            (server_label, server_hostname, server_copy_folder),
         )
         cursor.execute(
             "UPDATE harvester "
             "SET `Last snapshot` = ? "
             "WHERE `Server label` = ? AND `Server hostname` = ? AND `Folder` = ?",
-            (current_datetime.strftime("%Y-%m-%d %H:%M:%S"), server_label, server_hostname, server_copy_folder)
+            (current_datetime.strftime("%Y-%m-%d %H:%M:%S"), server_label, server_hostname, server_copy_folder),
         )
         cursor.close()
 
 def get_all_mprs(force_copy: bool = False) -> None:
     """Get all MPR files from the folders specified in the config.
 
-    The config file needs a key "EC-lab harvester" with a key "Snapshots folder 
-    path" with a location to save to, and a key "Servers" containing a list of 
+    The config file needs a key "EC-lab harvester" with a key "Snapshots folder
+    path" with a location to save to, and a key "Servers" containing a list of
     dictionaries with the keys "label" and "EC-lab folder location".
     The "label" must match a server in the "Servers" list in the main config.
     """
@@ -169,9 +169,9 @@ def get_all_mprs(force_copy: bool = False) -> None:
 def convert_mpr(
         sampleid: str,
         mpr_file: str,
-        output_hdf_file: str = None,
-        output_jsongz_file: str = None,
-        capacity_Ah: float = None,
+        output_hdf_file: str|None = None,
+        output_jsongz_file: str|None = None,
+        capacity_Ah: float|None = None,
         ) -> pd.DataFrame:
     """Convert a ec-lab mpr to dataframe, optionally save as hdf5 or zipped json file.
 
@@ -203,7 +203,7 @@ def convert_mpr(
     output_jsongz_file = os.path.normpath(output_jsongz_file) if output_jsongz_file else None
 
     creation_date = datetime.fromtimestamp(
-        os.path.getmtime(mpr_file)
+        os.path.getmtime(mpr_file),
     ).strftime("%Y-%m-%d %H:%M:%S")
 
     # Extract data from mpr file
@@ -217,23 +217,23 @@ def convert_mpr(
         # Grab the start time from mpl file
         mpl_file = mpr_file.replace(".mpr",".mpl")
         try:
-            with open(mpl_file, encoding='ANSI') as f:
+            with open(mpl_file, encoding="ANSI") as f:
                 lines = f.readlines()
             for line in lines:
                 # Find the start datetime from the mpl
                 found_start_time = False
                 if line.startswith("Acquisition started on : "):
                     datetime_str = line.split(":",1)[1].strip()
-                    datetime_object = datetime.strptime(datetime_str, '%m/%d/%Y %H:%M:%S.%f')
+                    datetime_object = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")
                     timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
                     uts_timestamp = timezone.localize(datetime_object).timestamp()
                     df["uts"] = df["uts"] + uts_timestamp
                     found_start_time = True
                     break
             if not found_start_time:
-                warnings.warn(f"Incorrect start time in {mpr_file} and no start time in found {mpl_file}")
+                warnings.warn(f"Incorrect start time in {mpr_file} and no start time in found {mpl_file}", stacklevel=2)
         except FileNotFoundError:
-            warnings.warn(f"Incorrect start time in {mpr_file} and no mpl file found.")
+            warnings.warn(f"Incorrect start time in {mpr_file} and no mpl file found.", stacklevel=2)
 
     # Only keep certain columns in dataframe
     df["V (V)"] = data.data_vars["Ewe"].to_numpy()
@@ -294,7 +294,7 @@ def convert_mpr(
                 output_hdf_file,
                 key="cycling",
                 complib="blosc",
-                complevel=2
+                complevel=2,
             )
             # Open the HDF5 file with h5py and add metadata
             with h5py.File(output_hdf_file, "a") as file:

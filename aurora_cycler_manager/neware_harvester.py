@@ -1,6 +1,6 @@
-""" Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia
+"""Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
 
-Harvest Neware data files and convert to aurora-compatible gzipped json files. 
+Harvest Neware data files and convert to aurora-compatible gzipped json files.
 
 Define the machines to grab files from in the config.json file.
 
@@ -18,26 +18,27 @@ processed snapshot folder.
 
 Run the script to harvest and convert all neware files.
 """
-import os
-import sys
-import json
-import sqlite3
-import warnings
 import gzip
+import json
+import os
 import re
-import paramiko
-import pandas as pd
+import sqlite3
+import sys
 from datetime import datetime
-root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+import pandas as pd
+import paramiko
+
+root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if root_dir not in sys.path:
     sys.path.append(root_dir)
 from aurora_cycler_manager.analysis import _run_from_sample
-from aurora_cycler_manager.version import __version__, __url__
+from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
 current_dir = os.path.dirname(os.path.abspath(__file__))
-config_path = os.path.join(current_dir, '..', 'config.json')
-with open(config_path, encoding = 'utf-8') as f:
+config_path = os.path.join(current_dir, "..", "config.json")
+with open(config_path, encoding = "utf-8") as f:
     config = json.load(f)
 neware_config = config.get("Neware harvester", {})
 db_path = config["Database path"]
@@ -49,11 +50,11 @@ def harvest_neware_files(
     server_shell_type: str,
     server_copy_folder: str,
     local_folder: str,
-    local_private_key_path: str = None,
+    local_private_key_path: str | None = None,
     force_copy: bool = False,
 ) -> None:
-    """ Get Neware files from subfolders of specified folder.
-    
+    """Get Neware files from subfolders of specified folder.
+
     Args:
         server_label (str): Label of the server
         server_hostname (str): Hostname of the server
@@ -61,27 +62,23 @@ def harvest_neware_files(
         server_shell_type (str): Type of shell to use (powershell or cmd)
         server_copy_folder (str): Folder to search and copy TODO file types
         local_folder (str): Folder to copy files to
-        local_private_key (str, optional): Local private key path for ssh
+        local_private_key_path (str, optional): Local private key path for ssh
         force_copy (bool): Copy all files regardless of modification date
+
     """
-    if force_copy:  # Set cutoff date to 1970
-        cutoff_datetime = datetime.fromtimestamp(0)
-    else:  # Set cutoff date to last snapshot from database
+    cutoff_datetime = datetime.fromtimestamp(0)  # Set default cutoff date
+    if not force_copy:  # Set cutoff date to last snapshot from database
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                f"SELECT `Last snapshot` FROM harvester WHERE "
-                f"`Server label`='{server_label}' "
-                f"AND `Server hostname`='{server_hostname}' "
-                f"AND `Folder`='{server_copy_folder}'"
+                "SELECT `Last snapshot` FROM harvester WHERE `Server label`=? AND `Server hostname`=? AND `Folder`=?",
+                (server_label, server_hostname, server_copy_folder),
             )
             result = cursor.fetchone()
             cursor.close()
         if result:
-            cutoff_datetime = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
-        else:
-            cutoff_datetime = datetime.fromtimestamp(0)
-    cutoff_date_str = cutoff_datetime.strftime('%Y-%m-%d %H:%M:%S')
+            cutoff_datetime = datetime.strptime(result[0], "%Y-%m-%d %H:%M:%S")
+    cutoff_date_str = cutoff_datetime.strftime("%Y-%m-%d %H:%M:%S")
 
     # Connect to the server and copy the files
     with paramiko.SSHClient() as ssh:
@@ -91,7 +88,7 @@ def harvest_neware_files(
         ssh.connect(server_hostname, username=server_username, key_filename=local_private_key_path)
 
         # Shell commands to find files modified since cutoff date
-        # TODO need to grab all the filenames and modified dates, copy if they are newer than local files not just cutoff date
+        # TODO: grab all the filenames and modified dates, copy if they are newer than local files not just cutoff date
         if server_shell_type == "powershell":
             command = (
                 f'Get-ChildItem -Path \'{server_copy_folder}\' -Recurse '
@@ -107,9 +104,11 @@ def harvest_neware_files(
         stdin, stdout, stderr = ssh.exec_command(command)
 
         # Parse the output
-        output = stdout.read().decode('utf-8').strip()
-        error = stderr.read().decode('utf-8').strip()
-        assert not stderr.read(), f"Error finding modified files: {stderr.read()}"
+        output = stdout.read().decode("utf-8").strip()
+        error = stderr.read().decode("utf-8").strip()
+        if error:
+            msg = f"Error finding modified files: {error}"
+            raise RuntimeError(msg)
         modified_files = output.splitlines()
         print(f"Found {len(modified_files)} files modified since {cutoff_date_str}")
 
@@ -132,18 +131,18 @@ def harvest_neware_files(
         cursor.execute(
             "INSERT OR IGNORE INTO harvester (`Server label`, `Server hostname`, `Folder`) "
             "VALUES (?, ?, ?)",
-            (server_label, server_hostname, server_copy_folder)
+            (server_label, server_hostname, server_copy_folder),
         )
         cursor.execute(
             "UPDATE harvester "
             "SET `Last snapshot` = ? "
             "WHERE `Server label` = ? AND `Server hostname` = ? AND `Folder` = ?",
-            (current_datetime.strftime('%Y-%m-%d %H:%M:%S'), server_label, server_hostname, server_copy_folder)
+            (current_datetime.strftime("%Y-%m-%d %H:%M:%S"), server_label, server_hostname, server_copy_folder),
         )
         cursor.close()
 
-def harvest_all_neware_files(force_copy = False) -> None:
-    """ Get neware files from all servers specified in the config. """
+def harvest_all_neware_files(force_copy: bool = False) -> None:
+    """Get neware files from all servers specified in the config."""
     for server in neware_config["Servers"]:
         harvest_neware_files(
             server_label = server["label"],
@@ -153,13 +152,21 @@ def harvest_all_neware_files(force_copy = False) -> None:
             server_copy_folder = server["Neware folder location"],
             local_folder = neware_config["Snapshots folder path"],
             local_private_key_path = config["SSH private key path"],
-            force_copy = force_copy
+            force_copy = force_copy,
         )
 
 def get_neware_metadata(file_path: str) -> dict:
+    """Get metadata from a neware xlsx file.
+
+    Args:
+        file_path (str): Path to the neware xlsx file
+
+    Returns:
+        dict: Metadata from the file
+
+    """
     # Get the test info, including barcode / remarks
-    warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
-    df = pd.read_excel(file_path, sheet_name="test", header=None, engine='calamine')
+    df = pd.read_excel(file_path, sheet_name="test", header=None, engine="calamine")
 
     # In first column, find index where value is "Test information" and "Step plan"
     test_idx = df[df.iloc[:, 0] == "Test information"].index[0]
@@ -171,17 +178,17 @@ def get_neware_metadata(file_path: str) -> dict:
     test_settings = test_settings.dropna(axis=0, how="all")
 
     # Flatten and convert to dict
-    flattened = test_settings.values.flatten().tolist()
-    flattened = [str(x) for x in flattened if str(x) != 'nan']
-    test_info = {flattened[i]: flattened[i+1] for i in range(0, len(flattened), 2) if flattened[i] and flattened[i] != '-'}
-    test_info = {k: v for k, v in test_info.items() if (k and k != '-' and k != 'nan') or (v and v != '-' and v != 'nan')}
+    flattened = test_settings.to_numpy().flatten().tolist()
+    flattened = [str(x) for x in flattened if str(x) != "nan"]
+    test_info = {flattened[i]: flattened[i+1] for i in range(0, len(flattened), 2) if flattened[i] and flattened[i] != "-"}
+    test_info = {k: v for k, v in test_info.items() if (k and k not in ("-", "nan")) or (v and v not in ("-", "nan"))}
 
     # Payload
     payload = df.iloc[step_idx+2:, :]
     payload.columns = df.iloc[step_idx+1]
     payload_dict = payload.to_dict(orient="records")
 
-    payload_dict = [{k: v for k, v in record.items() if str(v) != 'nan'} for record in payload_dict]
+    payload_dict = [{k: v for k, v in record.items() if str(v) != "nan"} for record in payload_dict]
 
     # In Neware step information, 'Cycle' steps have different columns defined within the row
     # E.g. the "Voltage (V)" column has a value like "Cycle count:2"
@@ -219,7 +226,9 @@ def get_neware_metadata(file_path: str) -> dict:
                 sampleid_date = sampleid_parts[0]
                 sampleid_number = sampleid_parts[1].zfill(2) # pad with zeros
                 # Check if this is consistent with any known samples
-                possible_samples = [s for s in known_samples if s.startswith(sampleid_date) and s.endswith(sampleid_number)]
+                possible_samples = [
+                    s for s in known_samples if s.startswith(sampleid_date) and s.endswith(sampleid_number)
+                ]
                 if len(possible_samples) == 1:
                     sampleid = possible_samples[0]
                     print(f"Barcode {possible_sampleid} inferred as Sample ID {sampleid}")
@@ -233,7 +242,8 @@ def get_neware_metadata(file_path: str) -> dict:
     return test_info, sampleid
 
 def get_neware_data(file_path: str) -> dict:
-    df = pd.read_excel(file_path, sheet_name="record", header=0, engine='calamine')
+    """Convert Neware xlsx file to dictionary."""
+    df = pd.read_excel(file_path, sheet_name="record", header=0, engine="calamine")
     output_df = pd.DataFrame()
     output_df["V (V)"] = df["Voltage(V)"]
     output_df["I (A)"] = df["Current(A)"]
@@ -242,27 +252,30 @@ def get_neware_data(file_path: str) -> dict:
 
     # Every time the Step Type changes from a string containing "DChg" or "Rest" increment the cycle number
     output_df["cycle_number"] = (
-        df["Step Type"].str.contains(r" DChg| DCHg|Rest", regex=True).shift(1) & 
+        df["Step Type"].str.contains(r" DChg| DCHg|Rest", regex=True).shift(1) &
         df["Step Type"].str.contains(r" Chg", regex=True)
     ).cumsum()
 
     output_df["index"] = 0
     # convert date string from df["Date"] in format YYYY-MM-DD HH:MM:SS to uts timestamp in seconds
     output_df["uts"] = df["Date"].apply(lambda x: datetime.strptime(x, "%Y-%m-%d %H:%M:%S").timestamp())
-    return output_df.to_dict(orient='list')
+    return output_df.to_dict(orient="list")
 
 def convert_neware_data(
         file_path: str,
         output_jsongz_file: bool = True,
 ) -> tuple[dict, dict]:
-    """ Convert a neware file to a dataframe and save as a gzipped json file.
+    """Convert a neware file to a dataframe and save as a gzipped json file.
 
     Args:
         file_path (str): Path to the neware file
         sampleid (str): Sample ID
         output_jsongz_file (bool): Whether to save the file as a gzipped json
-    """
 
+    Returns:
+        tuple[dict, dict]: Data and metadata
+
+    """
     # Get test information and Sample ID
     job_data, sampleid = get_neware_metadata(file_path)
     job_data["job_type"] = "neware_xlsx"
@@ -275,14 +288,14 @@ def convert_neware_data(
     if sampleid:
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute(f"SELECT * FROM samples WHERE `Sample ID`='{sampleid}'")
+            cursor.execute("SELECT * FROM samples WHERE `Sample ID`=?", (sampleid,))
             row = cursor.fetchone()
             if row:
                 columns = [column[0] for column in cursor.description]
                 sample_data = dict(zip(columns, row))
 
     # Metadata to add
-    current_datetime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     metadata = {
         "provenance": {
             "snapshot_file": file_path,
@@ -293,7 +306,7 @@ def convert_neware_data(
                     "method": "neware_harvester.convert_neware_data",
                     "datetime": current_datetime,
                 },
-            }
+            },
         },
         "job_data": job_data,
         "sample_data": sample_data,
@@ -307,32 +320,32 @@ def convert_neware_data(
         if not os.path.exists(folder):
             os.makedirs(folder)
         output_jsongz_file = os.path.join(folder, "snapshot."+os.path.basename(file_path).replace(".xlsx", ".json.gz"))
-        with gzip.open(output_jsongz_file, 'wt') as f:
-            json.dump({'data': data, 'metadata': metadata}, f)
+        with gzip.open(output_jsongz_file, "wt") as f:
+            json.dump({"data": data, "metadata": metadata}, f)
 
         # Update the database
         creation_date = datetime.fromtimestamp(
-            os.path.getmtime(file_path)
-        ).strftime('%Y-%m-%d %H:%M:%S')
+            os.path.getmtime(file_path),
+        ).strftime("%Y-%m-%d %H:%M:%S")
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
-                (sampleid,)
+                (sampleid,),
             )
             cursor.execute(
                 "UPDATE results "
                 "SET `Last snapshot` = ? "
                 "WHERE `Sample ID` = ?",
-                (creation_date, sampleid)
+                (creation_date, sampleid),
             )
             cursor.close()
 
     return data, metadata
 
 def convert_all_neware_data() -> None:
-    """ Converts all neware files to gzipped json files. 
-    
+    """Convert all neware files to gzipped json files.
+
     The config file needs a key "Neware harvester" with the keys "Snapshots folder path"
     """
     raw_folder = neware_config["Snapshots folder path"]
@@ -347,5 +360,5 @@ def convert_all_neware_data() -> None:
         convert_neware_data(file)
 
 if __name__ == "__main__":
-    # harvest_all_neware_files()
+    harvest_all_neware_files()
     convert_all_neware_data()
