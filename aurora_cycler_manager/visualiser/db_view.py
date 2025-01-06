@@ -13,7 +13,7 @@ from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
 from dash import callback_context as ctx
 
 from aurora_cycler_manager.server_manager import ServerManager
-from aurora_cycler_manager.visualiser.funcs import get_batch_names, get_database, get_sample_names
+from aurora_cycler_manager.visualiser.funcs import get_batch_names, get_database, get_sample_names, delete_samples
 
 # Server manager
 # If user cannot ssh connect then disable features that require it
@@ -77,6 +77,7 @@ def db_view_layout(config: dict) -> html.Div:
                                     dbc.Button("Cancel", id="cancel-button", color="danger", outline=True, className="me-1"),
                                     dbc.Button("View data", id="view-button", color="primary", outline=True, className="me-1"),
                                     dbc.Button("Snapshot", id="snapshot-button", color="primary", outline=True, className="me-1"),
+                                    dbc.Button("Delete", id="delete-button", color="danger", outline=True, className="me-1"),
                                 ],
                                 style={"display": "flex", "flex-wrap": "wrap"},
                             ),
@@ -300,6 +301,31 @@ def db_view_layout(config: dict) -> html.Div:
                 id="snapshot-modal",
                 is_open=False,
             ),
+            # Delete
+            dbc.Modal(
+                [
+                    dbc.ModalHeader(dbc.ModalTitle("Delete")),
+                    dbc.ModalBody(
+                        id="delete-modal-body",
+                        children="""
+                            Are you sure you want to delete the selected samples?
+                            Samples will only stay deleted if the .csv files in the data folder are also deleted.
+                        """,
+                        ),
+                    dbc.ModalFooter(
+                        [
+                            dbc.Button(
+                                "Delete", id="delete-yes-close", className="ms-auto", n_clicks=0, color="danger",
+                            ),
+                            dbc.Button(
+                                "Go back", id="delete-no-close", className="ms-auto", n_clicks=0, color="secondary",
+                            ),
+                        ],
+                    ),
+                ],
+                id="delete-modal",
+                is_open=False,
+            ),
         ],
     )
 
@@ -320,6 +346,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output("cancel-button", "style"),
         Output("view-button", "style"),
         Output("snapshot-button", "style"),
+        Output("delete-button", "style"),
         Input("table-select", "active_tab"),
         Input("table-data-store", "data"),
     )
@@ -332,6 +359,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         submit = {"display": "none"}
         view = {"display": "none"}
         snapshot = {"display": "none"}
+        delete = {"display": "none"}
         if table == "pipelines":
             load = {"display": "inline-block"}
             eject = {"display": "inline-block"}
@@ -343,10 +371,14 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
             snapshot = {"display": "inline-block"}
         elif table == "jobs":
             cancel = {"display": "inline-block"}
-        elif table == "samples" or table == "results":
+        elif table == "results":
             view = {"display": "inline-block"}
             snapshot = {"display": "inline-block"}
-        return data["data"][table], data["column_defs"][table], load, eject, ready, unready, submit, cancel, view, snapshot
+        elif table == "samples":
+            view = {"display": "inline-block"}
+            snapshot = {"display": "inline-block"}
+            delete = {"display": "inline-block"}
+        return data["data"][table], data["column_defs"][table], load, eject, ready, unready, submit, cancel, view, snapshot, delete
 
     # Refresh the local data from the database
     @app.callback(
@@ -389,11 +421,12 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output("cancel-button", "disabled"),
         Output("view-button", "disabled"),
         Output("snapshot-button", "disabled"),
+        Output("delete-button", "disabled"),
         Input("table", "selectedRows"),
         State("table-select", "active_tab"),
     )
     def enable_buttons(selected_rows, table):
-        load, eject, ready, unready, submit, cancel, view, snapshot = True,True,True,True,True,True,True,True
+        load, eject, ready, unready, submit, cancel, view, snapshot, delete = True,True,True,True,True,True,True,True,True
         if selected_rows:  # Must have something selected
             if accessible_servers:  # Must have permissions to do anything except view
                 if table == "pipelines":
@@ -408,12 +441,16 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
                 elif table == "jobs":
                     if all([s["Status"] in ["r","q","qw"] for s in selected_rows]):
                         cancel = False
-                elif table == "results" or table == "samples":
+                elif table == "results":
                     if all([s["Sample ID"] is not None for s in selected_rows]):
                         snapshot = False
+                elif table == "samples":
+                    if all([s["Sample ID"] is not None for s in selected_rows]):
+                        snapshot = False
+                        delete = False
             if any([s["Sample ID"] is not None for s in selected_rows]):
                 view = False
-        return load, eject, ready, unready, submit, cancel, view, snapshot
+        return load, eject, ready, unready, submit, cancel, view, snapshot, delete
 
     @app.callback(
         Output("table-info", "children"),
@@ -803,3 +840,36 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
             print(f"Snapshotting {row['Sample ID']}")
             sm.snapshot(row["Sample ID"])
         return no_update
+
+    # Delete button pop up
+    @app.callback(
+        Output("delete-modal", "is_open"),
+        Input("delete-button", "n_clicks"),
+        Input("delete-yes-close", "n_clicks"),
+        Input("delete-no-close", "n_clicks"),
+        State("delete-modal", "is_open"),
+    )
+    def delete_sample_button(delete_clicks, yes_clicks, no_clicks, is_open):
+        if not ctx.triggered:
+            return is_open
+        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        if button_id == "delete-button":
+            return not is_open
+        if button_id == "delete-yes-close" and yes_clicks or button_id == "delete-no-close" and no_clicks:
+            return False
+        return is_open, no_update, no_update, no_update
+    # When delete confirmed, delete the samples and refresh the database
+    @app.callback(
+        Output("loading-database", "children", allow_duplicate=True),
+        Output("refresh-database", "n_clicks", allow_duplicate=True),
+        Input("delete-yes-close", "n_clicks"),
+        State("table", "selectedRows"),
+        prevent_initial_call=True,
+    )
+    def delete_sample(yes_clicks, selected_rows):
+        if not yes_clicks:
+            return no_update, 0
+        sample_ids = [s["Sample ID"] for s in selected_rows]
+        print(f"Deleting {sample_ids}")
+        delete_samples(config, sample_ids)
+        return no_update, 1
