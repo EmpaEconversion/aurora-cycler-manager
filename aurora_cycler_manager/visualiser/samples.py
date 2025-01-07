@@ -245,24 +245,24 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
                 files = os.listdir(file_location)
             except FileNotFoundError:
                 continue
-            if any(f.startswith("full") and f.endswith(".json.gz") for f in files):
+            if any(f.startswith("full") and f.endswith(".h5") for f in files):
+                filepath = next(f for f in files if f.startswith("full") and f.endswith(".h5"))
+                df = pd.read_hdf(f"{file_location}/{filepath}")
+                data["data_sample_time"][sample] = df.to_dict(orient="list")
+            elif any(f.startswith("full") and f.endswith(".json.gz") for f in files):
                 filepath = next(f for f in files if f.startswith("full") and f.endswith(".json.gz"))
                 with gzip.open(f"{file_location}/{filepath}", "rb") as f:
                     data_dict = json.load(f)["data"]
                 data["data_sample_time"][sample] = data_dict
-            elif any(f.startswith("full") and f.endswith(".h5") for f in files):
-                filepath = next(f for f in files if f.startswith("full") and f.endswith(".h5"))
-                df = pd.read_hdf(f"{file_location}/{filepath}")
-                data["data_sample_time"][sample] = df.to_dict(orient="list")
             else:
                 cycling_files = [
                     os.path.join(file_location,f) for f in files
-                    if (f.startswith("snapshot") and f.endswith(".json.gz"))
+                    if (f.startswith("snapshot") and f.endswith(".h5"))
                 ]
                 if not cycling_files:
                     cycling_files = [
                         os.path.join(file_location,f) for f in files
-                        if (f.startswith("snapshot") and f.endswith(".h5"))
+                        if (f.startswith("snapshot") and f.endswith(".json.gz"))
                     ]
                     if not cycling_files:
                         print(f"No cycling files found in {file_location}")

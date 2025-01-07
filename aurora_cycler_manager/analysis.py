@@ -555,17 +555,21 @@ def analyse_cycles(
         if save_merged_hdf or save_merged_jsongz:
             df = df.drop(columns=["dt (s)", "Iavg (A)"])
         if save_merged_hdf:
+            output_hdf5_file = f"{save_folder}/full.{sampleid}.h5"
+            # change to 32 bit floats
+            # for some reason the file becomes much larger with uts in 32 bit, so keep it as 64 bit
+            for col in ["V (V)", "I (A)", "dQ (mAh)"]:
+                if col in df.columns:
+                    df[col] = df[col].astype(np.float32)
             df.to_hdf(
-                f"{save_folder}/full.{sampleid}.h5",
-                key="cycling",
+                output_hdf5_file,
+                key="data",
+                mode="w",
                 complib="blosc",
-                complevel=4,
+                complevel=9,
             )
-            with h5py.File(f"{save_folder}/full.{sampleid}.h5", "a") as file:
-                for key, value in metadata.items():
-                    if isinstance(value, (dict, list)):
-                        new_value = json.dumps(value)
-                    file["cycling"].attrs[key] = new_value
+            with h5py.File(output_hdf5_file, "a") as f:
+                f.create_dataset("metadata", data=json.dumps(metadata))
         if save_merged_jsongz:
             with gzip.open(f"{save_folder}/full.{sampleid}.json.gz", "wt", encoding="utf-8") as f:
                 json.dump({"data": df.to_dict(orient="list"), "metadata": metadata}, f)
@@ -584,16 +588,22 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
         config = json.load(f)
     data_folder = config["Processed snapshots folder path"]
     file_location = os.path.join(data_folder, run_id, sample)
+    # Prioritise .h5 files
     job_files = [
         os.path.join(file_location,f) for f in os.listdir(file_location)
-        if (f.startswith("snapshot") and f.endswith(".json.gz"))
+        if (f.startswith("snapshot") and f.endswith(".h5"))
     ]
-    if not job_files:  # check if there are .h5 files
+    if not job_files:  # check if there are .json.gz files
         job_files = [
             os.path.join(file_location,f) for f in os.listdir(file_location)
-            if (f.startswith("snapshot") and f.endswith(".h5"))
+            if (f.startswith("snapshot") and f.endswith(".json.gz"))
         ]
-    df, cycle_dict, metadata = analyse_cycles(job_files, save_cycle_dict=True, save_merged_hdf=False, save_merged_jsongz=True)
+    df, cycle_dict, metadata = analyse_cycles(
+        job_files,
+        save_cycle_dict=True,
+        save_merged_hdf=True,
+        save_merged_jsongz=False
+    )
     with sqlite3.connect(config["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute(
