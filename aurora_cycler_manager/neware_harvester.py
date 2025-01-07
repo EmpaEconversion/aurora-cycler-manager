@@ -1,20 +1,21 @@
 """Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
 
-Harvest Neware data files and convert to aurora-compatible gzipped json files.
+Harvest Neware data files and convert to aurora-compatible .json.gz / .h5 files.
 
 Define the machines to grab files from in the config.json file.
 
-get_neware_data will copy all files from specified folders on a remote machine, if they have been
-modified since the last time the function was called.
+get_neware_data will copy all files from specified folders on a remote machine,
+if they have been modified since the last time the function was called.
 
 get_all_neware_data does this for all machines defined in the config.
 
-convert_neware_data converts a neware file to a dataframe and optionally saves it as a gzipped json
-file. This file contains all cycling data as well as metadata and information about the sample from
-the database.
+convert_neware_data converts the file to a pandas dataframe and metadata
+dictionary, and optionally saves as a hdf5 file or gzipped json file. This file
+contains all cycling data as well as metadata and information about the sample
+from the database.
 
-convert_all_neware_data does this for all files in the local snapshot folder, and saves them to the
-processed snapshot folder.
+convert_all_neware_data does this for all files in the local snapshot folder,
+and saves them to the processed snapshot folder.
 
 Run the script to harvest and convert all neware files.
 """
@@ -24,10 +25,14 @@ import os
 import re
 import sqlite3
 import sys
+import zipfile
 from datetime import datetime
 
+import h5py
+import NewareNDA
 import pandas as pd
 import paramiko
+import xmltodict
 
 root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if root_dir not in sys.path:
@@ -92,16 +97,16 @@ def harvest_neware_files(
         if server_shell_type == "powershell":
             command = (
                 f'Get-ChildItem -Path \'{server_copy_folder}\' -Recurse '
-                f'| Where-Object {{ $_.LastWriteTime -gt \'{cutoff_date_str}\' -and ($_.Extension -eq \'.xlsx\' -or $_.Extension -eq \'.csv\')}} '
+                f'| Where-Object {{ $_.LastWriteTime -gt \'{cutoff_date_str}\' -and ($_.Extension -eq \'.xlsx\' -or $_.Extension -eq \'.ndax\')}} '
                 f'| Select-Object -ExpandProperty FullName'
             )
         elif server_shell_type == "cmd":
             command = (
                 f'powershell.exe -Command "Get-ChildItem -Path \'{server_copy_folder}\' -Recurse '
-                f'| Where-Object {{ $_.LastWriteTime -gt \'{cutoff_date_str}\' -and ($_.Extension -eq \'.xlsx\' -or $_.Extension -eq \'.csv\')}} '
+                f'| Where-Object {{ $_.LastWriteTime -gt \'{cutoff_date_str}\' -and ($_.Extension -eq \'.xlsx\' -or $_.Extension -eq \'.ndax\')}} '
                 f'| Select-Object -ExpandProperty FullName"'
             )
-        stdin, stdout, stderr = ssh.exec_command(command)
+        _stdin, stdout, stderr = ssh.exec_command(command)
 
         # Parse the output
         output = stdout.read().decode("utf-8").strip()
@@ -114,6 +119,7 @@ def harvest_neware_files(
 
         # Copy the files using SFTP
         current_datetime = datetime.now()  # Keep time of copying for database
+        new_files = []
         with ssh.open_sftp() as sftp:
             for file in modified_files:
                 # Maintain the folder structure when copying
@@ -124,6 +130,7 @@ def harvest_neware_files(
                     os.makedirs(local_dir)
                 print(f"Copying {file} to {local_path}")
                 sftp.get(file, local_path)
+                new_files.append(local_path)
 
     # Update the database
     with sqlite3.connect(db_path) as conn:
@@ -141,10 +148,13 @@ def harvest_neware_files(
         )
         cursor.close()
 
+    return new_files
+
 def harvest_all_neware_files(force_copy: bool = False) -> None:
     """Get neware files from all servers specified in the config."""
+    all_new_files = []
     for server in neware_config["Servers"]:
-        harvest_neware_files(
+        new_files = harvest_neware_files(
             server_label = server["label"],
             server_hostname = server["hostname"],
             server_username = server["username"],
@@ -154,8 +164,10 @@ def harvest_all_neware_files(force_copy: bool = False) -> None:
             local_private_key_path = config["SSH private key path"],
             force_copy = force_copy,
         )
+        all_new_files.extend(new_files)
+    return all_new_files
 
-def get_neware_metadata(file_path: str) -> dict:
+def get_neware_xlsx_metadata(file_path: str) -> dict:
     """Get metadata from a neware xlsx file.
 
     Args:
@@ -193,7 +205,17 @@ def get_neware_metadata(file_path: str) -> dict:
     # In Neware step information, 'Cycle' steps have different columns defined within the row
     # E.g. the "Voltage (V)" column has a value like "Cycle count:2"
     # We find these entires, and rename the key e.g. "Voltage (V)": "Cycle count:2" becomes "Cycle count": 2
+    rename = {
+        "Voltage(V)": "Voltage (V)",
+        "Current(A)": "Current (A)",
+        "Time(s)": "Time (s)",
+        "Cut-off curr.(A)": "Cut-off current (A)",
+    }
     for record in payload_dict:
+        # change Voltage(V) to Voltage (V) if it exists
+        for k, v in rename.items():
+            if k in record:
+                record[v] = record.pop(k)
         if record.get("Step Name") == "Cycle":
             # find values with ":" in them, and split them into key value pairs, delete the original key
             bad_key_vals = {k: v for k, v in record.items() if ":" in str(v)}
@@ -204,10 +226,147 @@ def get_neware_metadata(file_path: str) -> dict:
 
     # Add to test_info
     test_info["Payload"] = payload_dict
+    return test_info
 
+# change every dict with {'Value': 'some value'} to 'some value'
+def _scrub_dict(d: dict) -> dict:
+    """Scrub 'Value' and 'Main' keys from dict."""
+    for k,v in d.items():
+        if isinstance(v,dict):
+            if "Value" in v:
+                d[k] = v["Value"]
+            elif "Main" in v:
+                d[k] = v["Main"]
+            _scrub_dict(v)
+    return d
+
+def _convert_dict_values(d: dict) -> dict:
+    """Convert values in step.xml dict to floats and scale to SI units."""
+    for key, value in d.items():
+        if isinstance(value, dict):
+            if key == "Volt":
+                for sub_key in value:
+                    value[sub_key] = float(value[sub_key])/10000
+            elif key in ("Curr", "Time"):
+                for sub_key in value:
+                    value[sub_key] = float(value[sub_key])/1000
+            else:
+                _convert_dict_values(value)
+        elif isinstance(value, str):
+            if key in ("Volt", "Stop_Volt"):
+                d[key] = float(value)/10000
+            elif key in ("Curr", "Stop_Curr", "Time"):
+                d[key] = float(value)/1000
+    return d
+
+state_dict = {
+    "1": "CC Chg",
+    "2": "CC DChg",
+    "3": "CV Chg",
+    "4": "Rest",
+    "5": "Cycle",
+    "6": "End",
+    "7": "CCCV Chg",
+    "8": "CP DChg",
+    "9": "CP Chg",
+    "10": "CR DChg",
+    "13": "Pause",
+    "16": "Pulse",
+    "17": "SIM",
+    "19": "CV DChg",
+    "20": "CCCV DChg",
+    "21": "Control",
+    "26": "CPCV DChg",
+    "27": "CPCV Chg",
+}
+# For switching back to ints from NewareNDA
+state_dict_rev = {v: int(k) for k, v in state_dict.items()}
+state_dict_rev_underscored = {v.replace(" ","_"): int(k) for k, v in state_dict.items()}
+
+def _clean_ndax_step(d: dict) -> dict:
+    """Extract useful info from dict from step.xml inside .ndax file."""
+    # get rid of 'root' 'config' keys
+    d = d["root"]["config"]
+    # scrub 'Value' and 'Main' keys
+    d = _scrub_dict(d)
+    # put 'Head_Info' dict into the main dict
+    d.update(d.pop("Head_Info"))
+
+    # convert all values to floats
+    _convert_dict_values(d)
+
+    # convert 'Step_Info' to a more readable 'Payload' list
+    step_list = []
+    step_info = d.pop("Step_Info")
+    for k,v in step_info.items():
+        if k == "Num":
+            continue
+        new_step = {}
+        new_step["Step Index"] = int(v.get("Step_ID"))
+        new_step["Step Name"] = state_dict.get(v.get("Step_Type"),"Unknown")
+        record = v.get("Record")
+        if record:
+            new_step["Record settings"] = (
+                str(record.get("Time")) + "s/" +
+                str(record.get("Curr","0")) + "A/" +
+                str(record.get("Volt","0")) + "V"
+            )
+        limit = v.get("Limit")
+        if limit:
+            new_step["Current (A)"] = limit.get("Curr",0)
+            new_step["Voltage (V)"] = limit.get("Volt",0)
+            new_step["Time (s)"] = limit.get("Time",0)
+            new_step["Cut-off voltage (V)"] = limit.get("Stop_Volt",0)
+            new_step["Cut-off current (A)"] = limit.get("Stop_Curr",0)
+            other = limit.get("Other",{})
+            if other:
+                new_step["Cycle count"] = int(other.get("Cycle_Count",0))
+                new_step["Start step ID"] = int(other.get("Start_Step_ID",0))
+        # remove keys where value is 0 and add to list
+        new_step = {k:v for k,v in new_step.items() if v != 0}
+        step_list.append(new_step)
+    d["Payload"] = step_list
+    # Change some keys for consistency with xlsx
+    d["Remarks"] = d.pop("Remark")
+    d["Start step ID"] = int(d.pop("Start_Step",1))
+    # Get rid of keys that are not useful
+    unwanted_keys = ["SMBUS","Whole_Prt","Guid","Operate","type","version","SCQ","SCQ_F","RateType","Scale"]
+    for k in unwanted_keys:
+        d.pop(k,None)
+    return d
+
+def get_neware_ndax_metadata(file_path: str) -> dict:
+    """Extract metadata from Neware .ndax file.
+
+    Args:
+        file_path (str): Path to the .ndax file
+
+    Returns:
+        dict: Metadata from the file
+
+    """
+    # Get step.xml and testinfo.xml from the .ndax file
+    # get the step info from step.xml
+    zf = zipfile.PyZipFile(file_path)
+    step = zf.read("Step.xml")
+    step_parsed = xmltodict.parse(step.decode(),attr_prefix="")
+    metadata = _clean_ndax_step(step_parsed)
+
+    # add test info
+    testinfo = zf.read("TestInfo.xml")
+    testinfo = xmltodict.parse(testinfo.decode(),attr_prefix="").get("root",{}).get("config",{}).get("TestInfo",{})
+    metadata["Barcode"] = testinfo.get("Barcode")
+    metadata["Start time"] = testinfo.get("StartTime")
+    metadata["Step name"] = testinfo.get("StepName")
+    metadata["Voltage range (V)"] = float(testinfo.get("VoltRange",0))
+    metadata["Current range (mA)"] = float(testinfo.get("CurrRange",0))
+    return metadata
+
+def get_sampleid_from_metadata(metadata: dict) -> str:
+    """Get sample ID from Remarks or Barcode in the Neware metadata."""
     # Get sampleid from test_info
-    barcode_sampleid = test_info.get("Barcode", None)
-    remark_sampleid = test_info.get("Remarks", None)
+    barcode_sampleid = metadata.get("Barcode")
+    remark_sampleid = metadata.get("Remarks")
     sampleid = None
 
     # Check against known samples
@@ -239,49 +398,65 @@ def get_neware_metadata(file_path: str) -> dict:
             break
     if not sampleid:
         print(f"Barcode: '{barcode_sampleid}', or Remark: '{remark_sampleid}' not recognised as a Sample ID")
-    return test_info, sampleid
+    return sampleid
 
-def get_neware_data(file_path: str) -> dict:
+def get_neware_xlsx_data(file_path: str) -> pd.DataFrame:
     """Convert Neware xlsx file to dictionary."""
     df = pd.read_excel(file_path, sheet_name="record", header=0, engine="calamine")
     output_df = pd.DataFrame()
     output_df["V (V)"] = df["Voltage(V)"]
     output_df["I (A)"] = df["Current(A)"]
-    output_df["technique"] = df["Step Type"]
-    output_df["loop_number"] = df["Cycle Index"]
-
+    output_df["technique"] = df["Step Type"].apply(lambda x: state_dict_rev.get(x, -1)).astype(int)
     # Every time the Step Type changes from a string containing "DChg" or "Rest" increment the cycle number
     output_df["cycle_number"] = (
         df["Step Type"].str.contains(r" DChg| DCHg|Rest", regex=True).shift(1) &
         df["Step Type"].str.contains(r" Chg", regex=True)
     ).cumsum()
-
-    output_df["index"] = 0
     # convert date string from df["Date"] in format YYYY-MM-DD HH:MM:SS to uts timestamp in seconds
     output_df["uts"] = df["Date"].apply(lambda x: datetime.strptime(x, "%Y-%m-%d %H:%M:%S").timestamp())
-    return output_df.to_dict(orient="list")
+    return output_df
+
+def get_neware_ndax_data(file_path: str) -> pd.DataFrame:
+    """Convert Neware ndax file to dictionary."""
+    df = NewareNDA.read(file_path)
+    output_df = pd.DataFrame()
+    output_df["V (V)"] = df["Voltage"]
+    output_df["I (A)"] = (df["Current(mA)"] / 1000)
+    output_df["technique"] = df["Status"].apply(lambda x: state_dict_rev_underscored.get(x, 0)).astype(int)
+    output_df["cycle_number"] = (
+        df["Status"].str.contains(r"_DChg|_DCHg|Rest", regex=True).shift(1) &
+        df["Status"].str.contains(r"_Chg", regex=True)
+    ).cumsum()
+    # convert datetime timestamp to uts timestamp in seconds
+    output_df["uts"] = df["Timestamp"].apply(lambda x: x.timestamp())
+    return output_df
 
 def convert_neware_data(
         file_path: str,
-        output_jsongz_file: bool = True,
-) -> tuple[dict, dict]:
+        output_jsongz_file: bool = False,
+        output_hdf5_file: bool = True,
+) -> tuple[pd.DataFrame, dict]:
     """Convert a neware file to a dataframe and save as a gzipped json file.
 
     Args:
         file_path (str): Path to the neware file
-        sampleid (str): Sample ID
         output_jsongz_file (bool): Whether to save the file as a gzipped json
+        output_hdf5_file (bool): Whether to save the file as a hdf5
 
     Returns:
-        tuple[dict, dict]: Data and metadata
+        tuple[pd.DataFrame, dict]: DataFrame containing the cycling data and metadata
 
     """
     # Get test information and Sample ID
-    job_data, sampleid = get_neware_metadata(file_path)
-    job_data["job_type"] = "neware_xlsx"
-
-    # Get data
-    data = get_neware_data(file_path)
+    if file_path.endswith(".xlsx"):
+        job_data = get_neware_xlsx_metadata(file_path)
+        job_data["job_type"] = "neware_xlsx"
+        data = get_neware_xlsx_data(file_path)
+    elif file_path.endswith(".ndax"):
+        job_data = get_neware_ndax_metadata(file_path)
+        job_data["job_type"] = "neware_ndax"
+        data = get_neware_ndax_data(file_path)
+    sampleid = get_sampleid_from_metadata(job_data)
 
     # If there is a valid Sample ID, get sample metadata from database
     sample_data = None
@@ -295,6 +470,7 @@ def convert_neware_data(
                 sample_data = dict(zip(columns, row))
 
     # Metadata to add
+    job_data["Technique codes"] = state_dict
     current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     metadata = {
         "provenance": {
@@ -312,16 +488,34 @@ def convert_neware_data(
         "sample_data": sample_data,
     }
 
-    if output_jsongz_file:
+    if output_jsongz_file or output_hdf5_file:
         if not sampleid:
             print(f"Not saving {file_path}, no valid Sample ID found")
             return data, metadata
         folder = os.path.join(config["Processed snapshots folder path"], _run_from_sample(sampleid),sampleid)
         if not os.path.exists(folder):
             os.makedirs(folder)
-        output_jsongz_file = os.path.join(folder, "snapshot."+os.path.basename(file_path).replace(".xlsx", ".json.gz"))
-        with gzip.open(output_jsongz_file, "wt") as f:
-            json.dump({"data": data, "metadata": metadata}, f)
+
+        if output_jsongz_file:
+            output_jsongz_file = os.path.join(folder, "snapshot."+os.path.basename(file_path).replace(".xlsx", ".json.gz").replace(".ndax", ".json.gz"))
+            with gzip.open(output_jsongz_file, "wt") as f:
+                json.dump({"data": data.to_dict(orient="list"), "metadata": metadata}, f)
+
+        if output_hdf5_file:  # Save as hdf5
+            output_hdf5_file = os.path.join(folder, "snapshot."+os.path.basename(file_path).replace(".xlsx", ".h5").replace(".ndax", ".h5"))
+            # Ensure smallest data types are used
+            data = data.astype({"V (V)": "float32", "I (A)": "float32"})
+            data = data.astype({"technique": "int16", "cycle_number": "int32"})
+            data.to_hdf(
+                output_hdf5_file,
+                key="data",
+                mode="w",
+                complib="blosc",
+                complevel=9,
+            )
+            # create a dataset called metadata and json dump the metadata
+            with h5py.File(output_hdf5_file, "a") as f:
+                f.create_dataset("metadata", data=json.dumps(metadata))
 
         # Update the database
         creation_date = datetime.fromtimestamp(
@@ -350,15 +544,16 @@ def convert_all_neware_data() -> None:
     """
     raw_folder = neware_config["Snapshots folder path"]
 
-    # Get all xlsx files in the raw folder recursively
+    # Get all xlsx and ndax files in the raw folder recursively
     neware_files = []
     for root, _, files in os.walk(raw_folder):
         for file in files:
-            if file.endswith(".xlsx"):
+            if file.endswith((".xlsx", ".ndax")):
                 neware_files.append(os.path.join(root, file))
     for file in neware_files:
-        convert_neware_data(file)
+        convert_neware_data(file, output_hdf5_file=True)
 
 if __name__ == "__main__":
-    harvest_all_neware_files()
-    convert_all_neware_data()
+    new_files = harvest_all_neware_files()
+    for file in new_files:
+        convert_neware_data(file, output_hdf5_file=True)

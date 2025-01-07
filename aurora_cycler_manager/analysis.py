@@ -287,11 +287,10 @@ def analyse_cycles(
                         max_V = max(V, max_V)
 
             # Neware xlsx
-            case "neware_xlsx":
+            case "neware_xlsx" | "neware_ndax":
                 for m in job_data:
-                    V = max(float(step.get("Voltage(V)",0)) for step in m["Payload"])
+                    V = max(float(step.get("Voltage (V)",0)) for step in m["Payload"])
                     max_V = max(V, max_V)
-
 
     # Fill some missing values
     if not formation_C:
