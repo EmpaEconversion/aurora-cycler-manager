@@ -28,7 +28,8 @@ import pandas as pd
 import paramiko
 from aurora_cycler_manager.cycler_servers import CyclerServer, TomatoServer
 from aurora_cycler_manager.database_setup import create_config, create_database
-from aurora_cycler_manager.analysis import convert_tomato_json, _run_from_sample
+from aurora_cycler_manager.tomato_converter import convert_tomato_json
+from aurora_cycler_manager.analysis import _run_from_sample
 
 class ServerManager:
     """ The ServerManager: class is the only class in the server_manager module.
@@ -820,7 +821,8 @@ class ServerManager:
             # Process the file and save to processed snapshots folder
             convert_tomato_json(
                 f"{local_save_location}/snapshot.{jobid}.json",
-                output_jsongz_file=f"{local_save_location_processed}/snapshot.{jobid}.json.gz",
+                output_hdf_file = True,
+                output_jsongz_file = False,
             )
 
         return
