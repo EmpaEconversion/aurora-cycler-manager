@@ -356,7 +356,7 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
             fig["layout"]["title"] = "Select y variable"
             return fig
         for sample, cycle_dict in data["data_sample_cycle"].items():
-            trace = go.Scatter(
+            trace = go.Scattergl(
                 x=cycle_dict["Cycle"],
                 y=cycle_dict[yvar],
                 mode="lines+markers",
@@ -401,7 +401,7 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
             mask_dict["V (V)"] = np.array(data_dict["V (V)"])[mask]
             mask_dict["Q (mAh)"] = np.array(data_dict["dQ (mAh)"])[mask].cumsum()
             mask_dict["dQdV (mAh/V)"] = smoothed_derivative(mask_dict["V (V)"], mask_dict["Q (mAh)"])
-            trace = go.Scatter(
+            trace = go.Scattergl(
                 x=mask_dict[xvar],
                 y=mask_dict[yvar],
                 mode="lines",
