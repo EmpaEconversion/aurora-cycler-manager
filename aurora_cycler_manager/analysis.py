@@ -38,6 +38,20 @@ from aurora_cycler_manager.version import __url__, __version__
 
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="All-NaN axis encountered")
 
+def _sort_times(start_times: list, end_times: list) -> list:
+    """Sort by start time, if equal only keep the longest."""
+    start_times = np.array(start_times)
+    end_times = np.array(end_times)
+
+    # reverse sort by end time, then sort by start time
+    sorted_indices = np.lexsort((np.array(end_times) * -1, np.array(start_times)))
+    start_times = start_times[sorted_indices]
+    end_times = end_times[sorted_indices]
+
+    # remove duplicate start times, leaving only the first element = the latest end time
+    unique_mask = np.concatenate(([True], start_times[1:] != start_times[:-1]))
+    return sorted_indices[unique_mask]
+
 def combine_jobs(
         job_files: list[str],
 ) -> tuple[pd.DataFrame, dict]:
@@ -66,16 +80,12 @@ def combine_jobs(
     for f in job_files:
         if f.endswith(".h5"):
             dfs.append(pd.read_hdf(f))
-            with h5py.File(f, "r") as file:
-                try:
-                    metadata=json.loads(file["cycling"].attrs["metadata"])
-                    metadatas.append(metadata)
-                    sampleids.append(
-                        metadata.get("sample_data",{}).get("Sample ID",""),
-                    )
-                except KeyError as exc:
-                    print(f"Metadata not found in {f}")
-                    raise KeyError from exc
+            with h5py.File(f, "r") as h5f:
+                metadata = json.loads(h5f["metadata"][()])
+                metadatas.append(metadata)
+                sampleids.append(
+                    metadata.get("sample_data",{}).get("Sample ID",""),
+                )
         elif f.endswith(".json.gz"):
             with gzip.open(f, "rt", encoding="utf-8") as file:
                 data = json.load(file)
@@ -91,7 +101,9 @@ def combine_jobs(
     if not dfs:
         msg = "No 'uts' column found in any of the files"
         raise ValueError(msg)
-    order = np.argsort([df["uts"].iloc[0] for df in dfs])
+    start_times = [df["uts"].iloc[0] for df in dfs]
+    end_tmes = [df["uts"].iloc[-1] for df in dfs]
+    order = _sort_times(start_times, end_tmes)
     dfs = [dfs[i] for i in order]
     job_files = [job_files[i] for i in order]
     metadatas = [metadatas[i] for i in order]
@@ -110,6 +122,8 @@ def combine_jobs(
     df["Iavg (A)"] = np.concatenate([[0],(df["I (A)"].to_numpy()[1:] + df["I (A)"].to_numpy()[:-1]) / 2])
     df["dQ (mAh)"] = 1e3 * df["Iavg (A)"] * df["dt (s)"] / 3600
     df.loc[df["dt (s)"] > 600, "dQ (mAh)"] = 0
+    if "loop_number" not in df.columns:
+        df["loop_number"] = 0
 
     df["group_id"] = (
         (df["loop_number"].shift(-1) < df["loop_number"]) |
@@ -117,7 +131,7 @@ def combine_jobs(
         (df["job_number"].shift(-1) < df["job_number"])
     ).cumsum()
     df["Step"] = df.groupby(["job_number","group_id","cycle_number","loop_number"]).ngroup()
-    df = df.drop(columns=["job_number", "group_id", "cycle_number", "loop_number","index"])
+    df = df.drop(columns=["job_number", "group_id", "cycle_number", "loop_number","index"], errors="ignore")
     df["Cycle"]=0
     cycle=1
     for step, group_df in df.groupby("Step"):
