@@ -13,7 +13,6 @@ from the sample database such as cathode active material mass.
 """
 from __future__ import annotations
 
-import fractions
 import gzip
 import json
 import os
@@ -25,14 +24,10 @@ from datetime import datetime
 from typing import Literal
 
 import h5py
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import plotly.express as px
 import pytz
-import seaborn as sns
 import yaml
-from plotly.subplots import make_subplots
 
 from aurora_cycler_manager.version import __url__, __version__
 
@@ -415,15 +410,11 @@ def analyse_cycles(
         cycle_dict[col] = sample_data.get(col, None)
 
     # Calculate additional quantities from cycling data and add to cycle_dict
-    analyse_cycles = True
     if not cycle_dict["Cycle"]:
         print(f"No cycles found for {sampleid}")
-        analyse_cycles = False
-    if len(cycle_dict["Cycle"]) == 1 and not complete:
+    elif len(cycle_dict["Cycle"]) == 1 and not complete:
         print(f"No complete cycles found for {sampleid}")
-        analyse_cycles = False
-
-    if analyse_cycles:
+    else:  # Analyse the cycling data
         last_idx = -1 if complete else -2
 
         cycle_dict["First formation efficiency (%)"] = cycle_dict["Efficiency (%)"][0]
@@ -667,121 +658,6 @@ def analyse_all_samples(
                 tb = traceback.format_exc()
                 print(f"Failed to analyse {sample} with error {e}\n{tb}")
 
-def plot_sample(sample: str) -> None:
-    """Plot the data for a single sample.
-
-    Will search for the sample in the processed snapshots folder and plot V(t)
-    and capacity(cycle).
-
-    """
-    run_id = _run_from_sample(sample)
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(current_dir, "..", "config.json")
-    with open(config_path, encoding = "utf-8") as f:
-        config = json.load(f)
-    data_folder = config["Processed snapshots folder path"]
-    file_location = f"{data_folder}/{run_id}/{sample}"
-    save_location = f"{config['Graphs folder path']}/{run_id}"
-
-    # plot V(t)
-    files = os.listdir(file_location)
-    cycling_file = next((f for f in files if (f.startswith("full") and f.endswith(".json.gz"))), None)
-    if not cycling_file:
-        print(f"No full cycling file found in {file_location}")
-        return
-    with gzip.open(f"{file_location}/{cycling_file}", "rt", encoding="utf-8") as f:
-        data = json.load(f)["data"]
-    df = pd.DataFrame(data)
-    df = df.sort_values("uts")
-    fig, ax = plt.subplots(figsize=(6,4),dpi=72)
-    plt.plot(pd.to_datetime(df["uts"], unit="s"),df["V (V)"])
-    plt.ylabel("Voltage (V)")
-    plt.xticks(rotation=45)
-    plt.title(sample)
-    if not os.path.exists(save_location):
-        os.makedirs(save_location)
-    fig.savefig(f"{save_location}/{sample}_V(t).png",bbox_inches="tight")
-
-    # plot capacity
-    analysed_file = next((f for f in files if (f.startswith("cycles") and f.endswith(".json"))), None)
-    if not analysed_file:
-        print(f"No files starting with 'cycles' found in {file_location}.")
-        return
-    with open(f"{file_location}/{analysed_file}", encoding="utf-8") as f:
-        cycle_dict = json.load(f)
-        cycle_df = pd.DataFrame(cycle_dict["data"])
-    if cycle_df.empty:
-        msg = f"Empty dataframe for {sample}"
-        raise ValueError(msg)
-    if "Cycle" not in cycle_df.columns:
-        msg = f"No 'Cycle' column in {sample}"
-        raise ValueError(msg)
-    fig, ax = plt.subplots(2,1,sharex=True,figsize=(6,4),dpi=72)
-    ax[0].plot(cycle_df["Cycle"],cycle_df["Discharge capacity (mAh)"],".-")
-    ax[1].plot(cycle_df["Cycle"],cycle_df["Efficiency (%)"],".-")
-    ax[0].set_ylabel("Discharge capacity (mAh)")
-    ax[1].set_ylabel("Efficiency (%)")
-    ax[1].set_xlabel("Cycle")
-    ax[0].set_title(sample)
-    fig.savefig(f"{save_location}/{sample}_Capacity.png",bbox_inches="tight")
-    with sqlite3.connect(config["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE results SET `Last plotted` = ? WHERE `Sample ID` = ?",
-            (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), sample),
-        )
-        conn.commit()
-        cursor.close()
-
-def plot_all_samples(
-        snapshot_folder: str | None = None,
-        sampleid_contains: str | None = None,
-        mode: Literal["always","new_data","if_not_exists"] = "new_data",
-    ) -> None:
-    """Plot all samples in the processed snapshots folder.
-
-    Args: snapshot_folder (str): path to the folder containing the processed
-        snapshots. Defaults to the path in the config file.
-    """
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(current_dir, "..", "config.json")
-    with open(config_path, encoding = "utf-8") as f:
-        config = json.load(f)
-    if not snapshot_folder:
-        snapshot_folder = config["Processed snapshots folder path"]
-    if mode == "new_data":
-        with sqlite3.connect(config["Database path"]) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT `Sample ID`, `Last analysis`, `Last plotted` FROM results")
-            results = cursor.fetchall()
-        dtformat = "%Y-%m-%d %H:%M:%S"
-        samples_to_plot = [
-            r[0] for r in results
-            if r[0] and (
-                not r[1] or
-                not r[2] or
-                datetime.strptime(r[1], dtformat) > datetime.strptime(r[2], dtformat)
-            )
-        ]
-    if mode == "if_not_exists":
-        with sqlite3.connect(config["Database path"]) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT `Sample ID` FROM results WHERE `Last plotted` IS NULL")
-            results = cursor.fetchall()
-        samples_to_plot = [r[0] for r in results]
-    for run_folder in os.listdir(snapshot_folder):
-        for sample in os.listdir(f"{snapshot_folder}/{run_folder}"):
-            if sampleid_contains and sampleid_contains not in sample:
-                continue
-            if mode != "always" and sample not in samples_to_plot:
-                continue
-            try:
-                print("Plotting", sample)
-                plot_sample(sample)
-                plt.close("all")
-            except (ValueError, KeyError, PermissionError, RuntimeError, FileNotFoundError) as e:
-                print(f"Failed to plot {sample} with error {e}")
-
 def parse_sample_plotting_file(
         file_path: str = "K:/Aurora/cucumber/graph_config.yml",
     ) -> dict:
@@ -907,261 +783,6 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
     with open(f"{save_location}/batch.{plot_name}.json","w",encoding="utf-8") as f:
         json.dump({"data":cycle_dicts, "metadata": metadata},f)
 
-def plot_batch(plot_name: str, batch: dict) -> None:
-    """Plot the data for a batch of samples.
-
-    Args:
-        plot_name (str): name of the plot
-        batch (dict): dict with 'samples' key containing list of samples to plot
-            and any other plotting options e.g. group_by, palette, etc.
-
-    """
-    # Load the data
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(current_dir, "..", "config.json")
-    with open(config_path, encoding = "utf-8") as f:
-        config = json.load(f)
-    save_location = os.path.join(config["Batches folder path"],plot_name)
-    filename = next((f for f in os.listdir(save_location) if f.startswith("batch") and f.endswith(".json")), None)
-    if not filename:
-        msg = f"No batch data found for {plot_name}"
-        raise FileNotFoundError(msg)
-    with open(os.path.join(save_location,filename),encoding="utf-8") as f:
-        data = json.load(f)
-    cycle_dicts = data.get("data",[])
-    data = [pd.DataFrame(d) for d in cycle_dicts if not pd.DataFrame(d).dropna(how="all").empty]
-    cycle_df = pd.concat(pd.DataFrame(d) for d in data).reset_index(drop=True)
-
-    palette = batch.get("palette", "deep")
-    group_by = batch.get("group_by")
-
-    n_cycles = max(cycle_df["Cycle"])
-    if n_cycles > 10:
-        cycles_to_plot = [1] + list(range(0, n_cycles, n_cycles // 10))[1:]
-    else:
-        cycles_to_plot = list(range(1, n_cycles + 1))
-    plot_data = cycle_df[cycle_df["Cycle"].isin(cycles_to_plot)]
-
-    # Set limits
-    discharge_ylim = batch.get("discharge_ylim")
-    if discharge_ylim:
-        d_ymin, d_ymax = sorted(discharge_ylim)
-    else:
-        d_ymin = max(0, 0.95*cycle_df["Specific discharge capacity (mAh/g)"].min())
-        d_ymax = cycle_df["Specific discharge capacity (mAh/g)"].max()*1.05
-    efficiency_ylim = batch.get("efficiency_ylim")
-    if efficiency_ylim:
-        e_ymin, e_ymax = sorted(efficiency_ylim)
-    else:
-        e_ymin = max(70, 0.9*cycle_df["Efficiency (%)"].min())
-        e_ymax = min(101, cycle_df["Efficiency (%)"].max()*1.1)
-
-    ### STRIP PLOT ###
-    fig, ax = plt.subplots(2,1,sharex=True,figsize=(8,5),dpi=300)
-    ax[0].set_ylabel("Discharge\ncapacity (mAh/g)")
-    sns.stripplot(
-        ax=ax[0],
-        data=plot_data,
-        x="Cycle",
-        y="Specific discharge capacity (mAh/g)",
-        size=3,
-        edgecolor="k",
-        palette=palette,
-        hue = group_by,
-    )
-    sns.stripplot(
-        ax=ax[1],
-        data=plot_data,
-        x="Cycle",
-        y="Efficiency (%)",
-        size=3,
-        edgecolor="k",
-        palette=palette,
-        hue = group_by,
-    )
-    ax[0].set_ylim(d_ymin, d_ymax)
-    ax[1].set_ylim(e_ymin, e_ymax)
-    fig.tight_layout()
-    try:
-        fig.savefig(f"{save_location}/{plot_name}_Capacity_strip.pdf",bbox_inches="tight")
-    except PermissionError:
-        print(f"Permission error saving {save_location}/{plot_name}_Capacity_strip.pdf")
-    plt.close("all")
-
-    ### Swarm plot ###
-    fig, ax = plt.subplots(2,1,sharex=True,figsize=(8,5),dpi=300)
-    ax[0].set_ylabel("Discharge\ncapacity (mAh/g)")
-    sns.swarmplot(
-        ax=ax[0],
-        data=plot_data,
-        x="Cycle",
-        y="Specific discharge capacity (mAh/g)",
-        size=3,
-        dodge=True,
-        edgecolor="k",
-        palette=palette,
-        hue = group_by,
-    )
-    sns.swarmplot(
-        ax=ax[1],
-        data=plot_data,
-        x="Cycle",
-        y="Efficiency (%)",
-        size=3,
-        dodge=True,
-        edgecolor="k",
-        palette=palette,
-        hue = group_by,
-    )
-    ax[0].set_ylim(d_ymin, d_ymax)
-    ax[1].set_ylim(e_ymin, e_ymax)
-    fig.tight_layout()
-    try:
-        fig.savefig(f"{save_location}/{plot_name}_Capacity_swarm.pdf",bbox_inches="tight")
-    except PermissionError:
-        print(f"Permission error saving {save_location}/{plot_name}_Capacity_swarm.pdf")
-    plt.close("all")
-
-    ### Box plot ###
-    fig, ax = plt.subplots(2,1,sharex=True,figsize=(8,5),dpi=300)
-    ax[0].set_ylabel("Discharge\ncapacity (mAh/g)")
-    sns.boxplot(
-        ax=ax[0],
-        data=plot_data,
-        x="Cycle",
-        y="Specific discharge capacity (mAh/g)",
-        fill=False,
-        palette=palette,
-        hue = group_by,
-    )
-    sns.boxplot(
-        ax=ax[1],
-        data=plot_data,
-        x="Cycle",
-        y="Efficiency (%)",
-        fill=False,
-        palette=palette,
-        hue = group_by,
-    )
-    ax[0].set_ylim(d_ymin, d_ymax)
-    ax[1].set_ylim(e_ymin, e_ymax)
-    fig.tight_layout()
-    try:
-        fig.savefig(f"{save_location}/{plot_name}_Capacity_box.pdf",bbox_inches="tight")
-    except PermissionError:
-        print(f"Permission error saving {save_location}/{plot_name}_Capacity_box.pdf")
-    plt.close("all")
-
-    ### Interative plot ###
-    if group_by:  # Group points by 'group_by' column and sample id
-        sorted_df = cycle_df.sort_values(by=[group_by, "Sample ID"])
-        sorted_df["Group_Number"] = sorted_df.groupby([group_by, "Sample ID"]).ngroup()
-    else:  # Just group by sample id
-        sorted_df = cycle_df.sort_values(by="Sample ID")
-        sorted_df["Group_Number"] = sorted_df.groupby("Sample ID").ngroup()
-    # Apply an offset to the 'Cycle' column based on group number
-    num_combinations = sorted_df["Group_Number"].nunique()
-    offsets = np.linspace(-0.25, 0.25, num_combinations)
-    group_to_offset = dict(zip(sorted_df["Group_Number"].unique(), offsets))
-    sorted_df["Offset"] = sorted_df["Group_Number"].map(group_to_offset)
-    sorted_df["Jittered cycle"] = sorted_df["Cycle"] + sorted_df["Offset"]
-    cycle_df = sorted_df.drop(columns=["Group_Number"])  # drop the temporary column
-
-    # We usually want voltage as a categorical
-    cycle_df["Max voltage (V)"] = cycle_df["Max voltage (V)"].astype(str)
-    # C-rate should be a fraction
-    cycle_df["Formation C/"] = cycle_df["Formation C"].apply(
-        lambda x: str(fractions.Fraction(x).limit_denominator()),
-        )
-    cycle_df["Formation C"] = 1/cycle_df["Formation C"]
-    cycle_df["Cycle C/"] = cycle_df["Cycle C"].apply(
-        lambda x: str(fractions.Fraction(x).limit_denominator()),
-        )
-    cycle_df["Cycle C"] = 1/cycle_df["Cycle C"]
-    cycle_df["Formation C"] = pd.to_numeric(cycle_df["Formation C"], errors="coerce")
-    hover_columns = [
-        "Sample ID",
-        "Cycle",
-        "Specific discharge capacity (mAh/g)",
-        "Efficiency (%)",
-        "Max voltage (V)",
-        "Formation C/",
-        "Cycle C/",
-        "Cathode active material mass (mg)",
-        "Electrolyte name",
-        "Actual N:P ratio",
-    ]
-    hover_template = (
-        "Sample ID: %{customdata[0]}<br>"
-        "Cycle: %{customdata[1]}<br>"
-        "Specific discharge capacity (mAh/g): %{customdata[2]:.2f}<br>"
-        "Efficiency (%): %{customdata[3]:.3f}<br>"
-        "Max voltage (V): %{customdata[4]}<br>"
-        "Formation C-rate: %{customdata[5]}<br>"
-        "Cycle C-rate: %{customdata[6]}<br>"
-        "Cathode active material mass (mg): %{customdata[7]:.4f}<br>"
-        "Electrolyte: %{customdata[8]}<br>"
-        "N:P ratio: %{customdata[9]:.4f}<br><extra></extra>"
-    )
-
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,vertical_spacing=0.1)
-    fig.update_layout(
-        template = "ggplot2",
-    )
-    hex_colours = sns.color_palette(palette, num_combinations).as_hex()
-    scatter1 = px.scatter(
-        cycle_df,
-        x="Jittered cycle",
-        y="Specific discharge capacity (mAh/g)",
-        color=group_by,
-        color_discrete_sequence=hex_colours,
-        custom_data=cycle_df[hover_columns],
-    )
-    for trace in scatter1.data:
-        trace.hovertemplate = hover_template
-        fig.add_trace(trace, row=1, col=1)
-
-    scatter2 = px.scatter(
-        cycle_df,
-        x="Jittered cycle",
-        y="Efficiency (%)",
-        color=group_by,
-        color_discrete_sequence=hex_colours,
-        custom_data=cycle_df[hover_columns],
-    )
-    for trace in scatter2.data:
-        trace.showlegend = False
-        trace.hovertemplate = hover_template
-        fig.add_trace(trace, row=2, col=1)
-
-    fig.update_xaxes(title_text="Cycle", row=2, col=1)
-    if discharge_ylim:
-        ymin, ymax = sorted(discharge_ylim)
-    else:
-        ymin = max(0, 0.95*cycle_df["Specific discharge capacity (mAh/g)"].min())
-        ymax = cycle_df["Specific discharge capacity (mAh/g)"].max()*1.05
-    fig.update_yaxes(title_text="Specific discharge<br>capacity (mAh/g)", row=1, col=1, range=[ymin, ymax])
-    ymin = max(70, cycle_df["Efficiency (%)"].min())
-    ymax = min(101, 1.05*cycle_df["Efficiency (%)"].max())
-    fig.update_yaxes(title_text="Efficiency (%)", row=2, col=1, range=[ymin, ymax])
-    if group_by:
-        fig.update_layout(
-            legend_title_text=group_by,
-            )
-    fig.update_layout(coloraxis = {"colorscale": palette})
-
-    # save the plot
-    try:
-        fig.write_html(
-            os.path.join(save_location,f"{plot_name}_interactive.html"),
-            config={"scrollZoom":True, "displaylogo": False},
-        )
-    except PermissionError:
-        print(
-            "Permission error saving "
-            f"{os.path.join(save_location,f'{plot_name}_interactive.html')}",
-        )
-
 def analyse_all_batches(
         graph_config_path: str= "K:/Aurora/cucumber/graph_config.yml",
     ) -> None:
@@ -1181,27 +802,6 @@ def analyse_all_batches(
             analyse_batch(plot_name,batch)
         except (ValueError, KeyError, PermissionError, RuntimeError, FileNotFoundError) as e:
             print(f"Failed to analyse {plot_name} with error {e}")
-
-def plot_all_batches(
-        graph_config_path: str= "K:/Aurora/cucumber/graph_config.yml",
-    ) -> None:
-    """Plot all the batches according to the configuration file.
-
-    Args:
-        graph_config_path (str): path to the yaml file containing the plotting config
-            Defaults to "K:/Aurora/cucumber/graph_config.yml"
-
-    Will search for analysed data in the processed snapshots folder and plot and
-    save the capacity and efficiency vs cycle for each batch of samples.
-
-    """
-    batches = parse_sample_plotting_file(graph_config_path)
-    for plot_name, batch in batches.items():
-        try:
-            plot_batch(plot_name,batch)
-        except AssertionError as e:
-            print(f"Failed to plot {plot_name} with error {e}")
-        plt.close("all")
 
 def _c_to_float(c_rate: str) -> float:
     """Convert a C-rate string to a float.
