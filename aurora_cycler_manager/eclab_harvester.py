@@ -386,17 +386,19 @@ def convert_all_mprs() -> None:
     """
     # walk through raw_folder and get the sample ID
     raw_folder = eclab_config["Snapshots folder path"]
-    for _dirpath, _dirnames, filenames in os.walk(raw_folder):
+    for dirpath, _dirnames, filenames in os.walk(raw_folder):
         for filename in filenames:
             if filename.endswith(".mpr"):
+                full_path = Path(dirpath) / filename
                 try:
                     convert_mpr(
-                        mpr_path,
+                        full_path,
                         output_jsongz_file=False,
                         output_hdf5_file=True,
                     )
-                except (ValueError, IndexError) as e:
-                    print(f"Error getting sample ID: {e}")
+                    print(f"Converted {full_path}")
+                except (ValueError, IndexError, KeyError, RuntimeError) as e:
+                    print(f"Error converting {full_path}: {e}")
                     continue
 
 if __name__ == "__main__":
