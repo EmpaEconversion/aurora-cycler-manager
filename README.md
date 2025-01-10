@@ -1,45 +1,67 @@
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/3cd5c5b3-0921-45e7-a2d4-4d9acdab894f" width="500" align="center" alt="Aurora robot tools">
+  <img src="https://github.com/user-attachments/assets/bd006861-ad54-4a85-937c-3f9458ec717c#gh-light-mode-only" width="500" align="center" alt="Aurora cycler manager">
+  <img src="https://github.com/user-attachments/assets/a4bd3db5-5c16-4be8-9655-45e34b6d9e06#gh-dark-mode-only" width="500" align="center" alt="Aurora cycler manager">
 </p>
+
 </br>
 
-Tools for managing a database and multiple Tomato battery cycler servers.
+Cycler management, data pipeline, and data visualisation for Empa's robotic battery lab.
 
-The database tracks all samples produced by the Aurora robot, all cycler channels and their status, all jobs that have been run on every sample, and the combined results for each sample.
+- Track samples, experiments and results with a database.
+- Sample data is imported from the Aurora battery assembly robot.
+- Automatically harvest and analyse cycling data.
+- Results in consistent, open format including metadata with provenance tracking and sample information.
+- Reads data from `tomato` servers, Biologic's EC-lab, and Neware's BTS software running on different machines.
+- Control experiments on `tomato` servers with a graphical interface.
+- Convenient, in-depth data exploration using `Dash`-based webapp.
 
 ### Jobs
 
-The Aurora cycler manager can be used to do all Tomato Ketchup functions (load, submit, eject, ready, cancel, snapshot) from one place to multiple Tomato servers. Jobs can be submitted using C-rates, and can automatically calculate the current required based on measured electrode masses from the robot.
+The Aurora cycler manager can be used to do all `tomato` functions (load, submit, eject, ready, cancel, snapshot) from one place to multiple `tomato` servers. Jobs can be submitted using C-rates, and can automatically calculate the current required based on measured electrode masses from the robot.
 
-### Snapshots
+### Data harvesting
 
-Functions are available to snapshot all jobs, or only jobs that have new data recorded since the previous snapshot. There is also a script for harvesting data from jobs run directly on Biologic EC-lab, which builds on the mpr conversion capabilities of yadg. The snapshotting and harvesting is automated by running periodically with a daemon script.
+Functions are available to snapshot and download data from `tomato` servers. Harvesters are available to download new data from Biologic's EC-lab, converting from the closed .mpr filetype using `yadg`, and from Neware's BTS .xlsx reports or closed .ndax files using `NewareNDA`.
 
 ### Analysis
 
-Cycling data is converted to .hdf5 files with provenance tracked metadata. The voltage and current vs time data is analysed to extract per-cycle data such as charge and discharge capacities. There are also functions for plotting sample data.
+Full cycling data (voltage and current vs time) is converted to fast, efficient .h5 files with provenance tracked metadata. This data is analysed to extract per-cycle summary data such as charge and discharge capacities, stored alongside metadata in a .json file.
 
-Batches of samples can be defined in a .yaml file, which can then be merged into one data file and plotted together.
+### Visualisation
 
-There is also a data visualiser based on Plotly Dash which allows for rapid and interactive viewing of data, as well as control of the cyclers through a graphical interface.
+A web-app based on `Plotly Dash` allows rapid, interactive viewing of data, as well as the ability to control experiments on tomato cyclers through the graphical interface.
 
 ## Installation
 
 Clone the repo, pip install requirements in requirements.txt, preferably in a virtual environment.
 
-Run database_setup.py to create a default config file and database, then make the changes you want in the configuration.
+If using "view-only":
+- Run visualiser/app.py
+- This will create a config.json file in the root directory
+- In config.json fill in 'Shared config path' to point to the shared configuration file
+- Run visualiser/app.py again to start viewing data
 
-To connect to a tomato server, Tomato (v0.2.3) must be configured on the remote PC and you must be authorised to ssh connect to the PC. Currently the script is only suitable for Windows PCs with either Command Prompt or Powershell default shells.
+If you want to interact with cyclers, this works using OpenSSH:
+- Generate a public/private key pair on your system with `ssh-keygen`
+- Ensure your public key is authorized on the system running the cycler
+- In config.json fill in 'SSH private key path' and 'Snapshots folder path'
+- Snapshots folder path stores the raw data downloaded from cyclers which is processed. This data can be deleted any time.
+
+If you are setting up the system and shared configuration file:
+- Run database_setup.py to create a default shared config file and sqlite database
+- Move the configuration and database anywhere - this is designed for use on a network drive
+- Fill in the empty fields in the configuration file
+- To connect and control `tomato` servers, `tomato v0.2.3` must be configured on the remote PC
+- To harvest from EC-lab or Neware cyclers, set data to save/backup to some location and specify this location in the shared configuration file
+- Run the daemon.py script to periodically download and analyse new data and update the database
 
 ## Usage
 
-Place output .csv files from the Aurora robot into the samples folder defined in the config file.
+Place output .csv files from the Aurora robot into the samples folder defined in the configuration.
 
-Either load samples, submit jobs and ready pipelines using Tomato directly, or write a script to use the functions in server_manager.py.
+Either load samples, submit jobs and ready pipelines using `tomato` directly, or use the `Dash` app, or write a script to use the functions in server_manager.py.
 
-Run daemon.py to periodically update the database with the samples, job statuses, as well as periodically harvest data from the cyclers and run analysis. This can also harvest data from EC-lab directly if eclab_harvester.py is configured.
-
-Run visualiser/app.py to view an interactive visualiser of the results for samples and batches of samples, and to control the cyclers.
+Run visualiser/app.py to view an interactive visualiser of the results for samples and batches of samples, and to control `tomato` cyclers.
 
 ## Contributors
 
