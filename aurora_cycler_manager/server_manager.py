@@ -19,7 +19,6 @@ automatically.
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import traceback
 import warnings
@@ -38,12 +37,14 @@ from aurora_cycler_manager.tomato_converter import convert_tomato_json
 
 
 class ServerManager:
-    """The ServerManager: class is the only class in the server_manager module.
+    """The ServerManager class manages the database and cycling servers.
 
-    Typical usage:
+    This class is used in the app and the daemon. However the class can also be used by itself if
+    you want finer control over e.g. job submission.
+
+    Typical usage in a script:
 
         # This will connect to servers and update the database
-        # Add sample files to ./samples folder and they will be added to the database automatically
         sm = ServerManager()
 
         # Load a sample, submit a job, ready the pipeline
@@ -56,12 +57,21 @@ class ServerManager:
 
         # Snapshot a job or sample to get the data
         sm.snapshot("sample_id")
+
+        # Use analysis.analyse_sample("sample_id") to analyse the data
+        # After this it can be viewed in the app
     """
 
     def __init__(self) -> None:
         """Initialize the server manager object."""
         print("Creating cycler server objects")
         self.config = get_config()
+        if not self.config.get("SSH private key path"):
+            msg = "'SSH private key path' not found in config file. Cannot connect to servers."
+            raise ValueError(msg)
+        if not self.config.get("Snapshots folder path"):
+            msg = "'Snapshots folder path' not found in config file. Cannot save snapshots."
+            raise ValueError(msg)
         self.servers = self.get_servers()
         if not self.servers:
             msg = "No servers found in config file, please check the config file."
@@ -91,19 +101,20 @@ class ServerManager:
                 print(f"Server type {server_config['server_type']} not recognized, skipping")
         return servers
 
-    def insert_sample_file(self, csv_file: str) -> None:
+    def insert_sample_file(self, csv_file: Path | str) -> None:
         """Add a sample csv file to the database.
 
         The csv file must have a header row with the column names. The columns should match the
         columns defined in the config.json file. At least a 'Sample ID' column is required.
 
         Args:
-            csv_file : str
+            csv_file : Path or str
                 The path to the csv file to insert
 
         """
+        csv_file = Path(csv_file)
         # If csv is over 1 MB, do not insert
-        if Path(csv_file).stat().st_size > 1e6:
+        if csv_file.stat().st_size > 1e6:
             warnings.warn(f"File {csv_file} is over 1 MB, skipping", RuntimeWarning, stacklevel=2)
         df = pd.read_csv(csv_file,delimiter=";")
         # If csv contains more than 1000 rows or 100 columns, do not insert
@@ -166,7 +177,11 @@ class ServerManager:
 
         # Calculate/overwrite certain columns
         # Active material masses
-        required_columns = ["Anode mass (mg)", "Anode current collector mass (mg)", "Anode active material mass fraction"]
+        required_columns = [
+            "Anode mass (mg)",
+            "Anode current collector mass (mg)",
+            "Anode active material mass fraction",
+        ]
         if all(col in df.columns for col in required_columns):
             df["Anode active material mass (mg)"] = (
                 (df["Anode mass (mg)"] - df["Anode current collector mass (mg)"])
@@ -209,9 +224,9 @@ class ServerManager:
         # Insert the new data into the database
         with sqlite3.connect(self.config["Database path"]) as conn:
             cursor = conn.cursor()
-            for _, row in df.iterrows():
+            for _, raw_row in df.iterrows():
                 # Remove empty columns from the row
-                row = row.dropna()
+                row = raw_row.dropna()
                 if row.empty:
                     continue
                 # Check if the row has sample ID and cathode capacity
@@ -246,12 +261,12 @@ class ServerManager:
 
     def update_samples(self) -> None:
         """Add all csv files in samples folder to the db."""
-        samples_folder = self.config["Samples folder path"]
-        if not os.path.exists(samples_folder):
-            os.makedirs(samples_folder)
-        for file in os.listdir(samples_folder):
-            if file.endswith(".csv"):
-                self.insert_sample_file(os.path.join(samples_folder,file))
+        samples_folder = Path(self.config["Samples folder path"])
+        if not samples_folder.exists():
+            samples_folder.mkdir(parents=True, exist_ok=True)
+        for file in samples_folder.iterdir():
+            if file.suffix == ".csv":
+                self.insert_sample_file(file)
             else:
                 warnings.warn(
                     f"File {file} in samples folder is not a csv file, skipping",
@@ -263,14 +278,14 @@ class ServerManager:
         """Update the jobs table in the database with the current job status."""
         for server in self.servers:
             jobs = server.get_jobs()
-            dt = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             label = server.label
             hostname = server.hostname
             if jobs:
                 with sqlite3.connect(self.config["Database path"]) as conn:
                     cursor = conn.cursor()
                     for jobid_on_server, jobname, status, pipeline in zip(
-                        jobs["jobid"], jobs["jobname"], jobs["status"], jobs["pipeline"]
+                        jobs["jobid"], jobs["jobname"], jobs["status"], jobs["pipeline"],
                         ):
                         # If pipeline is none, do not update (keep old value)
                         if pipeline is None:
@@ -279,7 +294,7 @@ class ServerManager:
                                 "SET `Status` = ?, `Jobname` = ?, `Server label` = ?, "
                                 "`Server hostname` = ?, `Last checked` = ? "
                                 "WHERE `Job ID` = ?",
-                                (status, jobname, label, hostname, dt, f"{label}-{jobid_on_server}")
+                                (status, jobname, label, hostname, dt, f"{label}-{jobid_on_server}"),
                             )
                         else:
                             cursor.execute(
@@ -288,7 +303,7 @@ class ServerManager:
                                 "`Server Hostname` = ?, `Job ID on server` = ?, "
                                 "`Last Checked` = ? "
                                 "WHERE `Job ID` = ?",
-                                (status, pipeline, jobname, label, hostname, jobid_on_server, dt, f"{label}-{jobid_on_server}")
+                                (status, pipeline, jobname, label, hostname, jobid_on_server, dt, f"{label}-{jobid_on_server}"),
                             )
                     conn.commit()
 
@@ -296,20 +311,20 @@ class ServerManager:
         """Update the pipelines table in the database with the current status."""
         for server in self.servers:
             status = server.get_pipelines()
-            dt = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             label = server.label
             hostname = server.hostname
             if status:
                 with sqlite3.connect(self.config["Database path"]) as conn:
                     cursor = conn.cursor()
-                    for ready, pipeline, sampleid, jobid_on_server in zip(status["ready"],status["pipeline"], status["sampleid"], status['jobid']):
+                    for ready, pipeline, sampleid, jobid_on_server in zip(status["ready"],status["pipeline"], status["sampleid"], status["jobid"]):
                         jobid = f"{label}-{jobid_on_server}" if jobid_on_server else None
                         cursor.execute(
                             "INSERT OR REPLACE INTO pipelines "
                             "(`Pipeline`, `Sample ID`, `Job ID`, `Ready`, `Last Checked`, "
                             "`Server label`, `Server Hostname`, `Job ID on server`) "
                             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                            (pipeline, sampleid, jobid, ready, dt, label, hostname, jobid_on_server)
+                            (pipeline, sampleid, jobid, ready, dt, label, hostname, jobid_on_server),
                         )
                     conn.commit()
 
@@ -409,13 +424,19 @@ class ServerManager:
     def get_queue(self) -> pd.DataFrame:
         """Return all running and queued jobs as a DataFrame."""
         columns = ["Job ID", "Sample ID", "Status", "Server label"]
-        result = self.execute_sql("SELECT `Job ID`, `Sample ID`, `Status`, `Server label` FROM jobs WHERE `Status` IN ('q', 'qw', 'r', 'rd')")
+        result = self.execute_sql(
+            "SELECT `Job ID`, `Sample ID`, `Status`, `Server label` FROM jobs "
+            "WHERE `Status` IN ('q', 'qw', 'r', 'rd')",
+        )
         return self.sort_job(pd.DataFrame(result, columns=columns))
 
     def get_jobs(self) -> pd.DataFrame:
         """Return all jobs as a DataFrame."""
         columns = ["Job ID", "Sample ID", "Status", "Server label"]
-        result = self.execute_sql("SELECT `Job ID`, `Sample ID`, `Status`, `Server label` FROM jobs WHERE `Status` IN ('q', 'qw', 'r', 'rd', 'c', 'cd')")
+        result = self.execute_sql(
+            "SELECT `Job ID`, `Sample ID`, `Status`, `Server label` FROM jobs "
+            "WHERE `Status` IN ('q', 'qw', 'r', 'rd', 'c', 'cd')",
+        )
         return  self.sort_job(pd.DataFrame(result, columns=columns))
 
     def get_sample_capacity(
@@ -433,7 +454,7 @@ class ServerManager:
                 The mode to calculate the capacity. Must be 'areal', 'mass', or 'nominal'
                 areal: calculate from anode/cathode C-rate definition areal capacity (mAh/cm2) and
                     anode/cathode Diameter (mm)
-                mass: calculate from anode/cathode C-rate definition specific capacity (mAh/g) and 
+                mass: calculate from anode/cathode C-rate definition specific capacity (mAh/g) and
                     anode/cathode active material mass (mg)
                 nominal: use C-rate definition capacity (mAh)
             ignore_anode : bool, optional
@@ -528,7 +549,7 @@ class ServerManager:
                 # Update database preemtively
                 self.execute_sql(
                     "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
-                    (sample, pipeline)
+                    (sample, pipeline),
                 )
         return output
 
@@ -557,7 +578,7 @@ class ServerManager:
                 # Update database preemtively
                 self.execute_sql(
                     "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = 0 WHERE `Pipeline` = ?",
-                    (pipeline,)
+                    (pipeline,),
                 )
         return output
 
@@ -615,7 +636,7 @@ class ServerManager:
                 # Update database preemtively
                 self.execute_sql(
                     "UPDATE pipelines SET `Ready` = 0 WHERE `Pipeline` = ?",
-                    (pipeline,)
+                    (pipeline,),
                 )
         return output
 
@@ -661,7 +682,7 @@ class ServerManager:
                 payload = json.loads(json_file)
             except json.JSONDecodeError:
                 # If it fails, assume json_file is a file path
-                with open(json_file, "r", encoding="utf-8") as f:
+                with Path(json_file).open("r") as f:
                     payload = json.load(f)
         elif not isinstance(json_file, dict):
             msg = "json_file must be a file path, a JSON string, or a dictionary"
@@ -677,11 +698,11 @@ class ServerManager:
         self.execute_sql(
             "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Job ID on server`, "
             "`Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (full_jobid, sample, server.label, int(jobid), dt, json_string, comment)
+            (full_jobid, sample, server.label, int(jobid), dt, json_string, comment),
         )
         self.execute_sql(
             "UPDATE pipelines SET `Job ID on server` = ?, `Job ID` = ?, `Server Label` = ?, `Server Hostname` = ? WHERE `Sample ID` = ?",
-            (int(jobid), full_jobid, server.label, server.hostname, sample)
+            (int(jobid), full_jobid, server.label, server.hostname, sample),
         )
 
     def cancel(self, jobid: str) -> str:
@@ -733,13 +754,13 @@ class ServerManager:
             result = self.execute_sql(
                 "SELECT `Sample ID`, `Status`, `Job ID on server`, `Server label`, `Snapshot Status` "
                 "FROM jobs WHERE `Sample ID` = ? ",
-                (samp_or_jobid,)
+                (samp_or_jobid,),
             )
         else:  # it's a job ID
             result = self.execute_sql(
                 "SELECT `Sample ID`, `Status`, `Job ID on server`, `Server label`, `Snapshot Status` "
                 "FROM jobs WHERE `Job ID` = ?",
-                (samp_or_jobid,)
+                (samp_or_jobid,),
             )
         if not result:
             msg = f"Sample or job ID '{samp_or_jobid}' not found in the database."
@@ -747,7 +768,7 @@ class ServerManager:
 
         for sample_id, status, jobid_on_server, server_label, snapshot_status in result:
             jobid = f"{server_label}-{jobid_on_server}"
-            if not sample_id: # TODO should this update the db as well?
+            if not sample_id:  # TODO: should this update the db as well?
                 print(f"Job {server_label}-{jobid_on_server} has no sample, skipping.")
                 continue
             # Check that sample is known
@@ -828,7 +849,7 @@ class ServerManager:
 
         Args:
             sampleid_contains : str, optional
-                A string that the sample ID must contain to be snapshot. By default all samples are 
+                A string that the sample ID must contain to be snapshot. By default all samples are
                 considered for snapshotting.
             mode : str, optional
                 When to make a new snapshot. Can be one of the following:

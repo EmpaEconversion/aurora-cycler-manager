@@ -9,17 +9,12 @@ Allows users to view current information in the database, and control cyclers
 remotely, loading, ejecting, and submitting jobs to samples.
 """
 
-import sys
 import webbrowser
-from pathlib import Path
-from threading import Thread
 
 import dash_bootstrap_components as dbc
 from dash import Dash, dcc, html
+from waitress import serve
 
-root_dir = Path(__file__).resolve().parents[2]
-if root_dir not in sys.path:
-    sys.path.append(str(root_dir))
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.visualiser.batches import batches_layout, register_batches_callbacks
 from aurora_cycler_manager.visualiser.db_view import db_view_layout, register_db_view_callbacks
@@ -110,9 +105,10 @@ register_samples_callbacks(app,config)
 register_batches_callbacks(app,config)
 register_db_view_callbacks(app,config)
 
+def main() -> None:
+    """Open a web browser and run the app."""
+    webbrowser.open_new("http://localhost:8050")
+    serve(app.server, host="127.0.0.1", port=8050)
+
 if __name__ == "__main__":
-    def open_browser() -> None:
-        """Open the default web browser to view the app."""
-        webbrowser.open_new("http://localhost:8050")
-    Thread(target=open_browser).start()
-    app.run_server(debug=True, use_reloader=True)
+    main()

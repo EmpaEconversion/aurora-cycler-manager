@@ -1,6 +1,20 @@
 """Version information for the Aurora cycler manager package."""
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 
-__version__ = "0.5.0"
+import toml
+
+
+def get_version() -> str:
+    """Get version information."""
+    try:
+        return version("aurora-cycler-manager")
+    except PackageNotFoundError:
+        pyproject_path = Path(__file__).parent / "pyproject.toml"
+        with pyproject_path.open("r") as f:
+            return toml.load(f)["project"]["version"]+"-dev"
+
+__version__ = get_version()
 __author__ = "Graham Kimbell"
 __title__ = "Aurora cycler manager"
 __license__ = "MIT"

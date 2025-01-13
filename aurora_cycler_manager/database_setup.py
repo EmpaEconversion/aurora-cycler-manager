@@ -8,15 +8,11 @@ file paths and server information. The database samples table is created
 with columns specified in the config file, with alternative names for handling
 different naming conventions in output files.
 """
-import argparse
 import json
 import sqlite3
 import sys
 from pathlib import Path
 
-root_dir = Path(__file__).resolve().parents[1]
-if root_dir not in sys.path:
-    sys.path.append(str(root_dir))
 from aurora_cycler_manager.config import get_config
 
 base_dir = Path(__file__).resolve().parents[1]
@@ -273,14 +269,8 @@ def create_database(config_path: Path) -> None:
         else:
             print(f"Created database at {database_path}")
 
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Set up Aurora database and storage.")
-    parser.add_argument(
-        "-f", "--folder", type=str, help="Folder path used for Aurora database and data storage",
-    )
-    args = parser.parse_args()
-
+def main() -> None:
+    """Create the shared config and database files."""
     try:
         config = get_config()
         if config.get("Shared config path") and config.get("Database path"):
@@ -294,47 +284,66 @@ if __name__ == "__main__":
     except (ValueError,FileNotFoundError):
         pass
 
-    if args.folder:
-        base_dir = Path(args.folder).resolve()
-    else:
-        base_dir = Path(input("Please enter the folder path to be used for Aurora database and data storage:")).resolve()
+    root_dir = Path(__file__).resolve().parents[1]
 
-    base_dir = Path(base_dir).resolve()
-
-    # If it doesn't exist, ask user if they want to create the folder
-    if not base_dir.exists():
-        if input(f"Folder {base_dir} does not exist. Create it? (yes/no): ") == "yes":
-            base_dir.mkdir(parents=True)
-        else:
+    choice = input("Connect to an existing configuration and database? (yes/no):")
+    if choice in ["yes","y"]:
+        shared_config_path = input("Please enter the path to the shared_config.json file:")
+        # Check if shared_config already exists
+        if not Path(shared_config_path).exists():
+            print("File does not exist, exiting.")
+            sys.exit()
+        # Update the user config file with the shared config path
+        with (root_dir/"config.json").open("w") as f:
+            config = json.load(f)
+            config["Shared config path"] = shared_config_path
+            json.dump(config, f, indent=4)
+        # If this runs successfully, the user can now run the app
+        get_config()
+        print("Successfully connected to existing configuration. Run the app with 'aurora-app'")
+    elif choice in ["no", "n"]:
+        choice = input("Create a new config, database and file structure? (yes/no):")
+        if choice not in ["yes","y"]:
             print("Exiting")
             sys.exit()
+        base_dir = Path(input("Please enter the folder path to be used for Aurora database and data storage:")).resolve()
+        # If it doesn't exist, ask user if they want to create the folder
+        if not base_dir.exists():
+            if input(f"Folder {base_dir} does not exist. Create it? (yes/no): ") == "yes":
+                base_dir.mkdir(parents=True)
+            else:
+                print("Exiting")
+                sys.exit()
 
-    # Create the folder structure
-    (base_dir / "database").mkdir(exist_ok=True)
-    (base_dir / "samples").mkdir(exist_ok=True)
-    (base_dir / "snapshots").mkdir(exist_ok=True)
-    (base_dir / "batches").mkdir(exist_ok=True)
-    (base_dir / "payloads").mkdir(exist_ok=True)
-    print(f"Created folder structure in {base_dir}")
+        # Create the folder structure
+        (base_dir / "database").mkdir(exist_ok=True)
+        (base_dir / "samples").mkdir(exist_ok=True)
+        (base_dir / "snapshots").mkdir(exist_ok=True)
+        (base_dir / "batches").mkdir(exist_ok=True)
+        (base_dir / "payloads").mkdir(exist_ok=True)
+        print(f"Created folder structure in {base_dir}")
 
-    # Create the config file, if it already exists warn the user
-    config_path = base_dir/"database"/"shared_config.json"
-    if config_path.exists() and input(f"Config file {config_path} already exists. Overwrite it? (yes/no): ") != "yes":
-            print("Exiting")
-    with (base_dir/"database"/"shared_config.json").open("w") as f:
-        json.dump(default_config(base_dir), f, indent=4)
-    # Read the user config file and update with the shared config file
-    try:
-        config = get_config()
-    except (FileNotFoundError, ValueError):
-        # If it didn't exist before, get_config will have created a blank file
-        with (root_dir/"config.json").open("r") as f:
-            config = json.load(f)
-    config["Shared config path"] = str(config_path)
-    with (root_dir/"config.json").open("w") as f:
-        json.dump(config, f, indent=4)
-    print(f"Created shared config file at {config_path}")
-    print(f"Updated user config at {root_dir/"config.json"} to point to shared config file")
+        # Create the config file, if it already exists warn the user
+        config_path = base_dir/"database"/"shared_config.json"
+        if config_path.exists() and input(f"Config file {config_path} already exists. Overwrite it? (yes/no): ") != "yes":
+                print("Exiting")
+        with (base_dir/"database"/"shared_config.json").open("w") as f:
+            json.dump(default_config(base_dir), f, indent=4)
+        # Read the user config file and update with the shared config file
+        try:
+            config = get_config()
+        except (FileNotFoundError, ValueError):
+            # If it didn't exist before, get_config will have created a blank file
+            with (root_dir/"config.json").open("r") as f:
+                config = json.load(f)
+        config["Shared config path"] = str(config_path)
+        with (root_dir/"config.json").open("w") as f:
+            json.dump(config, f, indent=4)
+        print(f"Created shared config file at {config_path}")
+        print(f"Updated user config at {root_dir/"config.json"} to point to shared config file")
 
-    # Create the database
-    create_database(config_path)
+        # Create the database
+        create_database(config_path)
+
+if __name__ == "__main__":
+    main()

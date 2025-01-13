@@ -23,7 +23,6 @@ import json
 import os
 import re
 import sqlite3
-import sys
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -35,9 +34,6 @@ import paramiko
 import pytz
 import yadg
 
-root_dir = Path(__file__).resolve().parents[1]
-if root_dir not in sys.path:
-    sys.path.append(str(root_dir))
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.version import __url__, __version__
 
@@ -397,7 +393,7 @@ def convert_all_mprs() -> None:
                     print(f"Error converting {full_path}: {e}")
                     continue
 
-if __name__ == "__main__":
+def main() -> None:
     new_files = get_all_mprs()
     for mpr_path in new_files:
         try:
@@ -409,3 +405,6 @@ if __name__ == "__main__":
         except (ValueError, IndexError, KeyError, RuntimeError) as e:  # noqa: PERF203
             print(f"Error converting {mpr_path}: {e}")
             continue
+
+if __name__ == "__main__":
+    main()

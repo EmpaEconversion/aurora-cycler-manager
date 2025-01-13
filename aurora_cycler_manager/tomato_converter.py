@@ -13,18 +13,13 @@ folder.
 """
 import gzip
 import json
-import os
 import sqlite3
-import sys
 from datetime import datetime
 from pathlib import Path
 
 import h5py
 import pandas as pd
 
-root_dir = Path(__file__).resolve().parents[1]
-if root_dir not in sys.path:
-    sys.path.append(str(root_dir))
 from aurora_cycler_manager.analysis import _run_from_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.version import __url__, __version__
@@ -33,14 +28,14 @@ config = get_config()
 snapshot_folder = Path(config["Snapshots folder path"]) / "tomato_snapshots"
 
 def convert_tomato_json(
-        snapshot_file: str,
+        snapshot_file_path: Path | str,
         output_hdf_file: bool = True,
         output_jsongz_file: bool = False,
     ) -> tuple[pd.DataFrame, dict]:
     """Convert a raw json file from tomato to a pandas dataframe.
 
     Args:
-        snapshot_file (str): path to the raw json file
+        snapshot_file_path (Path or str): path to the raw json file
         output_hdf_file (str, optional): path to save the output hdf5 file
         output_jsongz_file (str, optional): path to save the output json.gz file
 
@@ -65,7 +60,8 @@ def convert_tomato_json(
 
     """
     # Extract data from the json file
-    with open(snapshot_file, encoding="utf-8") as f:
+    snapshot_file_path = Path(snapshot_file_path)
+    with snapshot_file_path.open("r") as f:
         input_dict = json.load(f)
     n_steps = len(input_dict["steps"])
     data = []
@@ -86,7 +82,7 @@ def convert_tomato_json(
 
     # Get metadata
     # Try to get the job number from the snapshot file and add to metadata
-    json_filename = os.path.basename(snapshot_file)
+    json_filename = snapshot_file_path.name
     jobid = "".join(json_filename.split(".")[1:-1])
     # look up jobid in the database
     try:
@@ -107,7 +103,7 @@ def convert_tomato_json(
     job_data["job_type"] = "tomato_0_2_biologic"
     metadata = {
         "provenance": {
-            "snapshot_file": str(snapshot_file),
+            "snapshot_file": str(snapshot_file_path),
             "tomato_metadata": input_dict["metadata"],
             "aurora_metadata": {
                 "json_conversion": {
@@ -137,16 +133,14 @@ def convert_tomato_json(
         if not folder.exists():
             folder.mkdir(parents=True)
 
-        snapshot_filename = Path(snapshot_file).name
-
         if output_jsongz_file:
-            jsongz_filepath = folder / snapshot_filename.replace(".json", ".json.gz")
+            jsongz_filepath = folder / json_filename.replace(".json", ".json.gz")
             full_data = {"data": data.to_dict(orient="list"), "metadata": metadata}
             with gzip.open(jsongz_filepath, "wt", encoding="utf-8") as f:
                 json.dump(full_data, f)
 
         if output_hdf_file:
-            hdf5_filepath = folder / snapshot_filename.replace(".json", ".h5")
+            hdf5_filepath = folder / json_filename.replace(".json", ".h5")
             data = data.astype({"V (V)": "float32", "I (A)": "float32"})
             data = data.astype({
                 "technique": "int16",

@@ -10,20 +10,25 @@ import logging
 import sys
 import traceback
 from datetime import datetime, timedelta
-from pathlib import Path
 from time import sleep
 
-root_dir = Path(__file__).resolve().parents[1]
-if root_dir not in sys.path:
-    sys.path.append(str(root_dir))
-import aurora_cycler_manager.server_manager as server_manager
+from aurora_cycler_manager import server_manager
 from aurora_cycler_manager.analysis import analyse_all_batches, analyse_all_samples
-from aurora_cycler_manager.eclab_harvester import convert_mpr, get_all_mprs
-from aurora_cycler_manager.neware_harvester import convert_neware_data, harvest_all_neware_files
+from aurora_cycler_manager.eclab_harvester import main as harvest_eclab
+from aurora_cycler_manager.neware_harvester import main as harvest_neware
 
-STOP_FLAG = False
 
-def daemon_loop(update_time: float | None = None, snapshot_times: list | None = None):
+def handle_exceptions(func: callable) -> None:
+    """Log exceptions instead of raising."""
+    try:
+        func()
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except Exception as e:
+        logging.critical("Error in %s: %s", func.__name__, e)
+        logging.debug(traceback.format_exc())
+
+def daemon_loop(update_time: float | None = 300, snapshot_times: list | None = None) -> None:
     """Run main loop for updating, snapshotting and plotting.
 
     Args:
@@ -33,6 +38,10 @@ def daemon_loop(update_time: float | None = None, snapshot_times: list | None = 
             default ['02:00']
 
     """
+    if snapshot_times is None:
+        snapshot_times = ["02:00"]
+
+    # Set up logging
     logging.basicConfig(
         filename="daemon.log",
         level=logging.INFO,
@@ -65,67 +74,33 @@ def daemon_loop(update_time: float | None = None, snapshot_times: list | None = 
     logging.info("Next snapshot at %s", next_run_time)
 
     sm=server_manager.ServerManager()
-    try:
-        sm.update_db()
-    except Exception as e:
-        logging.critical("Error updating database: %s", e)
-        logging.debug(traceback.format_exc())
-    logging.info("Server manager initialised, entering main loop...")
-    while not STOP_FLAG:
+    sm.update_db()
+
+    # Main loop
+    while True:
         sleep(update_time)
         now = datetime.now()
         logging.info("Updating database...")
-        try:
-            sm.update_db()
-        except Exception as e:
-            logging.critical("Error updating database: %s", e)
-            logging.debug(traceback.format_exc())
-        if now >= next_run_time:
-            logging.info("Snapshotting database...")
-            try:
-                sm.snapshot_all()
-            except Exception as e:
-                logging.critical("Error snapshotting: %s", e)
-                logging.debug(traceback.format_exc())
-            else:
-                logging.info("Snapshotting complete")
-            try:
-                new_files = get_all_mprs()
-                for mpr_path in new_files:
-                    convert_mpr(mpr_path)
-            except Exception as e:
-                logging.critical("Error converting mprs: %s", e)
-                logging.debug(traceback.format_exc())
-            else:
-                logging.info("mprs downloaded and converted")
-            try:
-                new_files = harvest_all_neware_files()
-                for file in new_files:
-                    convert_neware_data(file)
-            except Exception as e:
-                logging.critical("Error converting neware files: %s", e)
-                logging.debug(traceback.format_exc())
-            else:
-                logging.info("neware files downloaded and converted")
-            try:
-                analyse_all_samples()
-                analyse_all_batches()
-            except Exception as e:
-                logging.critical("Error analysing and plotting: %s", e)
-                logging.debug(traceback.format_exc())
-            else:
-                logging.info("Plotting complete")
 
-            # Calculate the next run time for the snapshot
+        handle_exceptions(sm.update_db)
+
+        if now >= next_run_time:
+            handle_exceptions(sm.snapshot_all)
+            handle_exceptions(harvest_neware)
+            handle_exceptions(harvest_eclab)
+            handle_exceptions(analyse_all_samples)
+            handle_exceptions(analyse_all_batches)
+
+            # Calculate the next run time for the snapshotting and analysing
             now = datetime.now()
             snapshot_datetimes = [datetime.combine(now, datetime.strptime(t, "%H:%M").time()) for t in snapshot_times]
             snapshot_datetimes = [t if t > now else t + timedelta(days=1) for t in snapshot_datetimes]
             next_run_time = min(snapshot_datetimes)
             logging.info("Next snapshot at %s", next_run_time)
 
+def main() -> None:
+    """Run the daemon, stop with KeyboardInterrupt."""
+    daemon_loop()
+
 if __name__ == "__main__":
-    try:
-        daemon_loop(update_time = 300, snapshot_times = ["02:00"])
-    except KeyboardInterrupt:
-        logging.info("Killing daemon")
-        STOP_FLAG = True
+    main()

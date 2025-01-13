@@ -1,3 +1,37 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aurora-cycler-manager"
+requires-python = ">=3.8"
+version = "0.5.0"
+dependencies = [
+    "yadg",
+    "pytz",
+    "paramiko",
+    "pandas",
+    "numpy",
+    "h5py",
+    "xmltodict",
+    "NewareNDA",
+    "scp",
+    "dash",
+    "scipy",
+    "dash_bootstrap_components",
+    "dash_resizable_panels",
+    "dash_ag_grid",
+    "python-calamine",
+    "tables",
+    "toml",
+    "waitress",
+]
+
+[project.scripts]
+aurora-setup = "aurora_cycler_manager.setup:main"
+aurora-app = "aurora_cycler_manager.visualiser.app:main"
+aurora-daemon = "aurora_cycler_manager.daemon:main"
+
 [tool.ruff]
 line-length = 120
 select = ["ALL"]

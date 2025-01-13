@@ -24,7 +24,6 @@ import json
 import os
 import re
 import sqlite3
-import sys
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -35,9 +34,6 @@ import pandas as pd
 import paramiko
 import xmltodict
 
-root_dir = Path(__file__).resolve().parents[1]
-if root_dir not in sys.path:
-    sys.path.append(str(root_dir))
 from aurora_cycler_manager.analysis import _run_from_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.version import __url__, __version__
@@ -550,10 +546,14 @@ def convert_all_neware_data() -> None:
         except ValueError as e:  # noqa: PERF203
             print(f"Error converting {file}: {e}")
 
-if __name__ == "__main__":
+def main() -> None:
+    """Run the main function."""
     new_files = harvest_all_neware_files()
     for file in new_files:
         try:
             convert_neware_data(file, output_hdf5_file=True)
         except ValueError as e:  # noqa: PERF203
             print(f"Error converting {file}: {e}")
+
+if __name__ == "__main__":
+    main()
