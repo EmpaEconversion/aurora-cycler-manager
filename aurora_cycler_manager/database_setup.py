@@ -268,7 +268,7 @@ def create_database(config_path: Path) -> None:
 
 def main() -> None:
     """Create the shared config and database files."""
-    root_dir = Path(__file__).resolve()
+    root_dir = Path(__file__).resolve().parent
     config_path = root_dir / "config.json"
 
     try:
