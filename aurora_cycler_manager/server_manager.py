@@ -124,29 +124,31 @@ class ServerManager:
         # Load the config file
         column_config = self.config["Sample database"]
 
-        # Create a dictionary for easy lookup of alternative names
+        # Create a dictionary for lookup of alternative and case insensitive names
         col_names = [col["Name"] for col in column_config]
         alt_name_dict = {
-            alt_name: item["Name"] for item in column_config for alt_name in item["Alternative names"]
+            alt_name.lower(): item["Name"] for item in column_config for alt_name in item["Alternative names"]
         }
+        # Add on the main names in lower case
+        alt_name_dict.update({col.lower(): col for col in col_names})
 
-        # Check each column in the DataFrame
+        # Rename columns to match the database
+        rename = {}
+        drop = []
         for column in df.columns:
-            if column in alt_name_dict:
-                # The column is an alternative name, change to the corresponding main name
-                df = df.rename(columns={column: alt_name_dict[column]})
-
-        # Skip columns that do not exist in col_names
-        df = df[[col for col in df.columns if col in col_names]]
-        # Warn if there are columns that are not in the database
-        for col in df.columns:
-            if col not in col_names:
+            new_col_name = alt_name_dict.get(column.lower(), None)
+            if new_col_name:
+                rename[column] = new_col_name
+            else:
+                drop.append(column)
                 warnings.warn(
-                    f"Column '{col}' in the sample file {csv_file} is not in the database. "
+                    f"Column '{column}' in the sample file {csv_file} is not in the database. "
                     "Skipping this column.",
                     RuntimeWarning,
                     stacklevel=2,
                 )
+        df = df.rename(columns=rename)
+        df = df.drop(columns=drop)
 
         # Check that all essential columns exist
         essential_keys = ["Sample ID"]

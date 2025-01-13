@@ -14,7 +14,7 @@ def get_config() -> dict:
 
     """
     current_dir = Path(__file__).resolve().parent
-    user_config_path = current_dir / ".." / "config.json"
+    user_config_path = current_dir / "config.json"
 
     # if there is no user config file, create one
     if not user_config_path.exists():
@@ -26,6 +26,7 @@ def get_config() -> dict:
                         "SSH private key path" : "",
                         "Snapshots folder path" : "",
                     },
+                    indent = 4,
                 ),
             )
             msg = f"""

@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.scripts]
-aurora-setup = "aurora_cycler_manager.setup:main"
+aurora-setup = "aurora_cycler_manager.database_setup:main"
 aurora-app = "aurora_cycler_manager.visualiser.app:main"
 aurora-daemon = "aurora_cycler_manager.daemon:main"
 

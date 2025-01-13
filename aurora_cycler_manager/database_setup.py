@@ -15,9 +15,6 @@ from pathlib import Path
 
 from aurora_cycler_manager.config import get_config
 
-base_dir = Path(__file__).resolve().parents[1]
-config_path = base_dir / "config.json"
-shared_config_path = base_dir / "shared_config.json"
 
 def default_config(base_dir: Path) -> dict:
     """Create default shared config file."""
@@ -73,63 +70,63 @@ def default_config(base_dir: Path) -> dict:
         "Sample database" : [
             {"Name" : "Sample ID", "Alternative names" : ["sampleid"], "Type" : "VARCHAR(255) PRIMARY KEY"},
             {"Name" : "Run ID", "Alternative names" : [], "Type" : "VARCHAR(255)"},
-            {"Name" : "Cell number", "Alternative names" : ["Cell Number","Battery_Number"], "Type" : "INT"},
-            {"Name" : "Actual N:P ratio", "Alternative names" : ["Actual N:P Ratio"], "Type" : "FLOAT"},
-            {"Name" : "Rack position", "Alternative names" : ["Rack Position","Rack_Position"], "Type" : "INT"},
+            {"Name" : "Cell number", "Alternative names" : ["Battery_Number"], "Type" : "INT"},
+            {"Name" : "Actual N:P ratio", "Alternative names" : [], "Type" : "FLOAT"},
+            {"Name" : "Rack position", "Alternative names" : ["Rack_Position"], "Type" : "INT"},
             {"Name" : "Separator", "Alternative names" : [], "Type" : "VARCHAR(255)"},
-            {"Name" : "Electrolyte name", "Alternative names" : ["Electrolyte Name","Electrolyte"], "Type" : "VARCHAR(255)"},
-            {"Name" : "Electrolyte description", "Alternative names" : ["Electrolyte Description"], "Type" : "TEXT"},
-            {"Name" : "Electrolyte position", "Alternative names" : ["Electrolyte Position"], "Type" : "INT"},
-            {"Name" : "Electrolyte amount (uL)", "Alternative names" : ["Electrolyte Amount (uL)","Electrolyte Amount"], "Type" : "FLOAT"},
-            {"Name" : "Electrolyte dispense order", "Alternative names" : ["Electrolyte Dispense Order"], "Type" : "VARCHAR(255)"},
-            {"Name" : "Electrolyte amount before separator (uL)", "Alternative names" : ["Electrolyte Amount Before Separator (uL)", "Electrolyte Amount Before Seperator (uL)"], "Type" : "FLOAT"},
-            {"Name" : "Electrolyte amount after separator (uL)", "Alternative names" : ["Electrolyte Amount After Separator (uL)","Electrolyte Amount After Seperator (uL)"], "Type" : "FLOAT"},
-            {"Name" : "Anode rack position", "Alternative names" : ["Anode Rack Position","Anode Position"], "Type" : "INT"},
-            {"Name" : "Anode type", "Alternative names" : ["Anode Type"], "Type" : "VARCHAR(255)"},
-            {"Name" : "Anode description", "Alternative names" : ["Anode Description"], "Type" : "TEXT"},
-            {"Name" : "Anode diameter (mm)", "Alternative names" : ["Anode Diameter (mm)", "Anode_Diameter", "Anode Diameter"], "Type" : "FLOAT"},
+            {"Name" : "Electrolyte name", "Alternative names" : ["Electrolyte"], "Type" : "VARCHAR(255)"},
+            {"Name" : "Electrolyte description", "Alternative names" : [], "Type" : "TEXT"},
+            {"Name" : "Electrolyte position", "Alternative names" : [], "Type" : "INT"},
+            {"Name" : "Electrolyte amount (uL)", "Alternative names" : ["Electrolyte Amount"], "Type" : "FLOAT"},
+            {"Name" : "Electrolyte dispense order", "Alternative names" : [], "Type" : "VARCHAR(255)"},
+            {"Name" : "Electrolyte amount before separator (uL)", "Alternative names" : ["Electrolyte Amount Before Seperator (uL)"], "Type" : "FLOAT"},
+            {"Name" : "Electrolyte amount after separator (uL)", "Alternative names" : ["Electrolyte Amount After Seperator (uL)"], "Type" : "FLOAT"},
+            {"Name" : "Anode rack position", "Alternative names" : ["Anode Position"], "Type" : "INT"},
+            {"Name" : "Anode type", "Alternative names" : [], "Type" : "VARCHAR(255)"},
+            {"Name" : "Anode description", "Alternative names" : [], "Type" : "TEXT"},
+            {"Name" : "Anode diameter (mm)", "Alternative names" : ["Anode_Diameter", "Anode Diameter"], "Type" : "FLOAT"},
             {"Name" : "Anode mass (mg)", "Alternative names" : ["Anode Weight (mg)", "Anode Weight"], "Type" : "FLOAT"},
             {"Name" : "Anode current collector mass (mg)", "Alternative names" : ["Anode Current Collector Weight (mg)"], "Type" : "FLOAT"},
-            {"Name" : "Anode active material mass fraction", "Alternative names" : ["Anode Active Material Weight Fraction", "Anode AM Content"], "Type" : "FLOAT"},
+            {"Name" : "Anode active material mass fraction", "Alternative names" : ["Anode AM Content"], "Type" : "FLOAT"},
             {"Name" : "Anode active material mass (mg)", "Alternative names" : ["Anode Active Material Weight (mg)", "Anode AM Weight (mg)"], "Type" : "FLOAT"},
-            {"Name" : "Anode C-rate definition areal capacity (mAh/cm2)", "Alternative names" : ["Anode C-rate Definition Areal Capacity (mAh/cm2)"], "Type" : "FLOAT"},
-            {"Name" : "Anode C-rate definition specific capacity (mAh/g)", "Alternative names" : ["Anode C-rate Definition Specific Capacity (mAh/g)"], "Type" : "FLOAT"},
-            {"Name" : "Anode balancing specific capacity (mAh/g)", "Alternative names" : ["Anode Balancing Specific Capacity (mAh/g)","Anode Practical Capacity (mAh/g)","Anode Nominal Specific Capacity (mAh/g)"], "Type" : "FLOAT"},
-            {"Name" : "Anode balancing capacity (mAh)", "Alternative names" : ["Anode Balancing Capacity (mAh)","Anode Capacity (mAh)"], "Type" : "FLOAT"},
-            {"Name" : "Cathode rack position", "Alternative names" : ["Cathode Rack Position","Cathode Position"], "Type" : "INT"},
-            {"Name" : "Cathode type", "Alternative names" : ["Cathode Type"], "Type" : "VARCHAR(255)"},
-            {"Name" : "Cathode description", "Alternative names" : ["Cathode Description"], "Type" : "TEXT"},
-            {"Name" : "Cathode diameter (mm)", "Alternative names" : ["Cathode Diameter (mm)", "Cathode_Diameter", "Cathode Diameter"], "Type" : "FLOAT"},
+            {"Name" : "Anode C-rate definition areal capacity (mAh/cm2)", "Alternative names" : [], "Type" : "FLOAT"},
+            {"Name" : "Anode C-rate definition specific capacity (mAh/g)", "Alternative names" : [], "Type" : "FLOAT"},
+            {"Name" : "Anode balancing specific capacity (mAh/g)", "Alternative names" : ["Anode Practical Capacity (mAh/g)","Anode Nominal Specific Capacity (mAh/g)"], "Type" : "FLOAT"},
+            {"Name" : "Anode balancing capacity (mAh)", "Alternative names" : ["Anode Capacity (mAh)"], "Type" : "FLOAT"},
+            {"Name" : "Cathode rack position", "Alternative names" : ["Cathode Position"], "Type" : "INT"},
+            {"Name" : "Cathode type", "Alternative names" : [], "Type" : "VARCHAR(255)"},
+            {"Name" : "Cathode description", "Alternative names" : [], "Type" : "TEXT"},
+            {"Name" : "Cathode diameter (mm)", "Alternative names" : ["Cathode_Diameter", "Cathode Diameter"], "Type" : "FLOAT"},
             {"Name" : "Cathode mass (mg)", "Alternative names" : ["Cathode Weight (mg)"], "Type" : "FLOAT"},
             {"Name" : "Cathode current collector mass (mg)", "Alternative names" : ["Cathode Current Collector Weight (mg)"], "Type" : "FLOAT"},
             {"Name" : "Cathode active material mass fraction", "Alternative names" : ["Cathode Active Material Weight Fraction","Cathode AM Content"], "Type" : "FLOAT"},
             {"Name" : "Cathode active material mass (mg)", "Alternative names" : ["Cathode Active Material Weight (mg)","Cathode AM Weight (mg)"], "Type" : "FLOAT"},
-            {"Name" : "Cathode C-rate definition areal capacity (mAh/cm2)", "Alternative names" : ["Cathode C-rate Definition Areal Capacity (mAh/cm2)"], "Type" : "FLOAT"},
-            {"Name" : "Cathode C-rate definition specific capacity (mAh/g)", "Alternative names" : ["Cathode C-rate Definition Specific Capacity (mAh/g)"], "Type" : "FLOAT"},
-            {"Name" : "Cathode balancing specific capacity (mAh/g)", "Alternative names" : ["Cathode Balancing Specific Capacity (mAh/g)","Cathode Practical Capacity (mAh/g)","Cathode Nominal Specific Capacity (mAh/g)"], "Type" : "FLOAT"},
-            {"Name" : "Cathode balancing capacity (mAh)", "Alternative names" : ["Cathode Balancing Capacity (mAh)","Cathode Capacity (mAh)"], "Type" : "FLOAT"},
-            {"Name" : "C-rate definition capacity (mAh)", "Alternative names" : ["C-rate Definition Capacity (mAh)","Capacity (mAh)", "C-rate Capacity (mAh)"], "Type" : "FLOAT"},
-            {"Name" : "Target N:P ratio", "Alternative names" : ["Target N:P Ratio"], "Type" : "FLOAT"},
-            {"Name" : "Minimum N:P ratio", "Alternative names" : ["Minimum N:P Ratio"], "Type" : "FLOAT"},
-            {"Name" : "Maximum N:P ratio", "Alternative names" : ["Maximum N:P Ratio"], "Type" : "FLOAT"},
+            {"Name" : "Cathode C-rate definition areal capacity (mAh/cm2)", "Alternative names" : [], "Type" : "FLOAT"},
+            {"Name" : "Cathode C-rate definition specific capacity (mAh/g)", "Alternative names" : [], "Type" : "FLOAT"},
+            {"Name" : "Cathode balancing specific capacity (mAh/g)", "Alternative names" : ["Cathode Practical Capacity (mAh/g)","Cathode Nominal Specific Capacity (mAh/g)"], "Type" : "FLOAT"},
+            {"Name" : "Cathode balancing capacity (mAh)", "Alternative names" : ["Cathode Capacity (mAh)"], "Type" : "FLOAT"},
+            {"Name" : "C-rate definition capacity (mAh)", "Alternative names" : ["Capacity (mAh)", "C-rate Capacity (mAh)"], "Type" : "FLOAT"},
+            {"Name" : "Target N:P ratio", "Alternative names" : [], "Type" : "FLOAT"},
+            {"Name" : "Minimum N:P ratio", "Alternative names" : [], "Type" : "FLOAT"},
+            {"Name" : "Maximum N:P ratio", "Alternative names" : [], "Type" : "FLOAT"},
             {"Name" : "N:P ratio overlap factor", "Alternative names" : [], "Type" : "FLOAT"},
-            {"Name" : "Casing type", "Alternative names" : ["Casing Type"], "Type" : "VARCHAR(255)"},
-            {"Name" : "Separator diameter (mm)", "Alternative names" : ["Separator Diameter (mm)"], "Type" : "FLOAT"},
+            {"Name" : "Casing type", "Alternative names" : [], "Type" : "VARCHAR(255)"},
+            {"Name" : "Separator diameter (mm)", "Alternative names" : [], "Type" : "FLOAT"},
             {"Name" : "Spacer (mm)", "Alternative names" : [], "Type" : "FLOAT"},
             {"Name" : "Comment", "Alternative names" : ["Comments"], "Type" : "TEXT"},
             {"Name" : "Barcode", "Alternative names" : [], "Type" : "VARCHAR(255)"},
             {"Name" : "Subbatch number", "Alternative names" : ["Batch Number","Subbatch"], "Type" : "INT"},
-            {"Name" : "Timestamp step 1", "Alternative names" : ["Timestamp Step 1"], "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 2", "Alternative names" : ["Timestamp Step 2"], "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 3", "Alternative names" : ["Timestamp Step 3"], "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 4", "Alternative names" : ["Timestamp Step 4"], "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 5", "Alternative names" : ["Timestamp Step 5"], "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 6", "Alternative names" : ["Timestamp Step 6"], "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 7", "Alternative names" : ["Timestamp Step 7"], "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 8", "Alternative names" : ["Timestamp Step 8"], "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 9", "Alternative names" : ["Timestamp Step 9"], "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 10", "Alternative names" : ["Timestamp Step 10"], "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 11", "Alternative names" : ["Timestamp Step 11"], "Type" : "DATETIME"},
+            {"Name" : "Timestamp step 1", "Alternative names" : [], "Type" : "DATETIME"},
+            {"Name" : "Timestamp step 2", "Alternative names" : [], "Type" : "DATETIME"},
+            {"Name" : "Timestamp step 3", "Alternative names" : [], "Type" : "DATETIME"},
+            {"Name" : "Timestamp step 4", "Alternative names" : [], "Type" : "DATETIME"},
+            {"Name" : "Timestamp step 5", "Alternative names" : [], "Type" : "DATETIME"},
+            {"Name" : "Timestamp step 6", "Alternative names" : [], "Type" : "DATETIME"},
+            {"Name" : "Timestamp step 7", "Alternative names" : [], "Type" : "DATETIME"},
+            {"Name" : "Timestamp step 8", "Alternative names" : [], "Type" : "DATETIME"},
+            {"Name" : "Timestamp step 9", "Alternative names" : [], "Type" : "DATETIME"},
+            {"Name" : "Timestamp step 10", "Alternative names" : [], "Type" : "DATETIME"},
+            {"Name" : "Timestamp step 11", "Alternative names" : [], "Type" : "DATETIME"},
         ],
     }
 
@@ -271,6 +268,9 @@ def create_database(config_path: Path) -> None:
 
 def main() -> None:
     """Create the shared config and database files."""
+    root_dir = Path(__file__).resolve()
+    config_path = root_dir / "config.json"
+
     try:
         config = get_config()
         if config.get("Shared config path") and config.get("Database path"):
@@ -283,8 +283,6 @@ def main() -> None:
                 sys.exit()
     except (ValueError,FileNotFoundError):
         pass
-
-    root_dir = Path(__file__).resolve().parents[1]
 
     choice = input("Connect to an existing configuration and database? (yes/no):")
     if choice in ["yes","y"]:

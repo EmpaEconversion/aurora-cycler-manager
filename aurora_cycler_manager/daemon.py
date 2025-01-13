@@ -28,7 +28,11 @@ def handle_exceptions(func: callable) -> None:
         logging.critical("Error in %s: %s", func.__name__, e)
         logging.debug(traceback.format_exc())
 
-def daemon_loop(update_time: float | None = 300, snapshot_times: list | None = None) -> None:
+def daemon_loop(
+        update_time: float | None = 300,
+        snapshot_times: list | None = None,
+        save_log: bool = False,
+    ) -> None:
     """Run main loop for updating, snapshotting and plotting.
 
     Args:
@@ -43,7 +47,7 @@ def daemon_loop(update_time: float | None = 300, snapshot_times: list | None = N
 
     # Set up logging
     logging.basicConfig(
-        filename="daemon.log",
+        filename="aurora-daemon.log" if save_log else None,
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
