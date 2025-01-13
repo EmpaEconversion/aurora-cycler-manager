@@ -1,4 +1,4 @@
-"""Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia
+"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
 
 Database view tab layout and callbacks for the visualiser app.
 """
@@ -13,7 +13,7 @@ from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
 from dash import callback_context as ctx
 
 from aurora_cycler_manager.server_manager import ServerManager
-from aurora_cycler_manager.visualiser.funcs import get_batch_names, get_database, get_sample_names, delete_samples
+from aurora_cycler_manager.visualiser.funcs import delete_samples, get_batch_names, get_database, get_sample_names
 
 # Server manager
 # If user cannot ssh connect then disable features that require it
@@ -21,13 +21,14 @@ accessible_servers = []
 try:
     sm = ServerManager()
     accessible_servers = [s.label for s in sm.servers]
-except (paramiko.SSHException, FileNotFoundError):
-    print("You do not have permission to write to the servers. Disabling these features.")
+except (paramiko.SSHException, FileNotFoundError, ValueError):
+    print("You do not have permission to write to the servers. Running in view-only mode.")
     sm = None
 
 
 #-------------------------------------- Database view layout --------------------------------------#
 def db_view_layout(config: dict) -> html.Div:
+    """Create database Dash layout."""
     # Layout
     return html.Div(
         style={"height": "100%", "overflowY": "scroll", "overflowX": "scroll", "padding": "10px"},

@@ -1,4 +1,4 @@
-"""Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
 
 Harvest EC-lab .mpr files and convert to aurora-compatible .json.gz / .h5 files.
 
@@ -35,18 +35,15 @@ import paramiko
 import pytz
 import yadg
 
-root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+root_dir = Path(__file__).resolve().parents[1]
 if root_dir not in sys.path:
-    sys.path.append(root_dir)
-from aurora_cycler_manager.version import __version__, __url__
+    sys.path.append(str(root_dir))
+from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
-current_dir = os.path.dirname(os.path.abspath(__file__))
-config_path = os.path.join(current_dir, "..", "config.json")
-with open(config_path, encoding = "utf-8") as f:
-    config = json.load(f)
-eclab_config = config["EC-lab harvester"]
-db_path = config["Database path"]
+config = get_config()
+snapshot_folder = Path(config["Snapshots folder path"]) / "eclab_snapshots"
 
 def get_mprs(
     server_label: str,
@@ -74,7 +71,7 @@ def get_mprs(
     if force_copy:  # Set cutoff date to 1970
         cutoff_datetime = datetime.fromtimestamp(0)
     else:  # Set cutoff date to last snapshot from database
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(config["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT `Last snapshot` FROM harvester WHERE `Server label`=? AND `Server hostname`=? AND `Folder`=?",
@@ -133,7 +130,7 @@ def get_mprs(
                 new_files.append(local_path)
 
     # Update the database
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(config["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "INSERT OR IGNORE INTO harvester (`Server label`, `Server hostname`, `Folder`) "
@@ -159,16 +156,15 @@ def get_all_mprs(force_copy: bool = False) -> None:
     The "label" must match a server in the "Servers" list in the main config.
     """
     all_new_files = []
-    for server in eclab_config["Servers"]:
-        server_config = next((s for s in config["Servers"] if s["label"] == server["label"]), None)
+    for server in config["EC-lab harvester"]["Servers"]:
         new_files = get_mprs(
             server["label"],
-            server_config["hostname"],
-            server_config["username"],
-            server_config["shell_type"],
+            server["hostname"],
+            server["username"],
+            server["shell_type"],
             server["EC-lab folder location"],
             paramiko.RSAKey.from_private_key_file(config["SSH private key path"]),
-            eclab_config["Snapshots folder path"],
+            snapshot_folder,
             force_copy,
         )
         all_new_files.extend(new_files)
@@ -250,7 +246,7 @@ def convert_mpr(
 
     # get sample data from database
     try:
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(config["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM samples WHERE `Sample ID`=?", (sample_id,))
             row = cursor.fetchone()
@@ -297,6 +293,7 @@ def convert_mpr(
             jsongz_filepath = folder / ("snapshot." + mpr_filename.replace(".mpr", ".json.gz"))
             with gzip.open(jsongz_filepath, "wt") as f:
                 json.dump({"data": df.to_dict(orient="list"), "metadata": metadata}, f)
+            print(f"Saved {jsongz_filepath}")
 
         if output_hdf5_file:  # Save as hdf5
             hdf5_filepath = folder / ("snapshot." + mpr_filename.replace(".mpr", ".h5"))
@@ -313,9 +310,10 @@ def convert_mpr(
             # create a dataset called metadata and json dump the metadata
             with h5py.File(hdf5_filepath, "a") as f:
                 f.create_dataset("metadata", data=json.dumps(metadata))
+            print(f"Saved {hdf5_filepath}")
 
         # Update the database
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(config["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
@@ -335,8 +333,7 @@ def get_sampleid_from_mpr(mpr_rel_path: str) -> str:
     # split the relative path into parts
     parts = Path(mpr_rel_path).parts
 
-    run_id_lookup = eclab_config.get("Run ID lookup", {})
-    db_path = config["Database path"]
+    run_id_lookup = config["EC-lab harvester"].get("Run ID lookup", {})
 
     # Usually the run_ID is the 2nd parent folder and the sample number is the level above
     # If this is not the case, try the 3rd parent folder and 1st parent folder
@@ -351,7 +348,7 @@ def get_sampleid_from_mpr(mpr_rel_path: str) -> str:
             continue
         run_id = run_id_lookup.get(run_folder, None)
         if not run_id:
-            with sqlite3.connect(db_path) as conn:
+            with sqlite3.connect(config["Database path"]) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT `Run ID` FROM samples WHERE `Sample ID` LIKE ?", (f"%{run_folder}%",))
                 result = cursor.fetchone()
@@ -385,8 +382,7 @@ def convert_all_mprs() -> None:
     lookups for folders that are named differently to run ID on the server.
     """
     # walk through raw_folder and get the sample ID
-    raw_folder = eclab_config["Snapshots folder path"]
-    for dirpath, _dirnames, filenames in os.walk(raw_folder):
+    for dirpath, _dirnames, filenames in os.walk(snapshot_folder):
         for filename in filenames:
             if filename.endswith(".mpr"):
                 full_path = Path(dirpath) / filename
@@ -404,8 +400,12 @@ def convert_all_mprs() -> None:
 if __name__ == "__main__":
     new_files = get_all_mprs()
     for mpr_path in new_files:
-        convert_mpr(
-            mpr_path,
-            output_jsongz_file=False,
-            output_hdf5_file=True,
-        )
+        try:
+            convert_mpr(
+                mpr_path,
+                output_jsongz_file=False,
+                output_hdf5_file=True,
+            )
+        except (ValueError, IndexError, KeyError, RuntimeError) as e:  # noqa: PERF203
+            print(f"Error converting {mpr_path}: {e}")
+            continue

@@ -1,4 +1,4 @@
-"""Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
 
 Functions used for parsing, analysing and plotting.
 
@@ -15,12 +15,12 @@ from __future__ import annotations
 
 import gzip
 import json
-import os
 import re
 import sqlite3
 import traceback
 import warnings
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 import h5py
@@ -29,9 +29,12 @@ import pandas as pd
 import pytz
 import yaml
 
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.version import __url__, __version__
 
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="All-NaN axis encountered")
+
+config = get_config()
 
 def _sort_times(start_times: list, end_times: list) -> list:
     """Sort by start time, if equal only keep the longest."""
@@ -48,7 +51,7 @@ def _sort_times(start_times: list, end_times: list) -> list:
     return sorted_indices[unique_mask]
 
 def combine_jobs(
-        job_files: list[str],
+        job_files: list[Path],
 ) -> tuple[pd.DataFrame, dict]:
     """Read multiple job files and return a single dataframe.
 
@@ -64,16 +67,12 @@ def combine_jobs(
         dict: metadata from the files
 
     """
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(current_dir, "..", "config.json")
-    with open(config_path, encoding = "utf-8") as f:
-        config = json.load(f)
     # Get the metadata from the files
     dfs = []
     metadatas = []
     sampleids = []
     for f in job_files:
-        if f.endswith(".h5"):
+        if f.name.endswith(".h5"):
             dfs.append(pd.read_hdf(f))
             with h5py.File(f, "r") as h5f:
                 metadata = json.loads(h5f["metadata"][()])
@@ -81,7 +80,7 @@ def combine_jobs(
                 sampleids.append(
                     metadata.get("sample_data",{}).get("Sample ID",""),
                 )
-        elif f.endswith(".json.gz"):
+        elif f.name.endswith(".json.gz"):
             with gzip.open(f, "rt", encoding="utf-8") as file:
                 data = json.load(file)
                 dfs.append(pd.DataFrame(data["data"]))
@@ -148,14 +147,14 @@ def combine_jobs(
         "provenance": {
             "aurora_metadata": {
                 "data_merging": {
-                    "job_files": job_files,
+                    "job_files": [str(f) for f in job_files],
                     "repo_url": __url__,
                     "repo_version": __version__,
                     "method": "analysis.combine_jobs",
                     "datetime": datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S %z"),
                 },
             },
-            "original_file_provenance": {f: m["provenance"] for f, m in zip(job_files, metadatas)},
+            "original_file_provenance": {str(f): m["provenance"] for f, m in zip(job_files, metadatas)},
         },
         "sample_data": metadatas[-1].get("sample_data",{}),
         "job_data": [m.get("job_data",{}) for m in metadatas],
@@ -163,10 +162,7 @@ def combine_jobs(
             "uts": "Unix time stamp in seconds",
             "V (V)": "Cell voltage in volts",
             "I (A)": "Current across cell in amps",
-            "dt (s)": "Time between data points in seconds",
-            "Iavg (A)": "Average current between adjacent datapoints in amps",
             "dQ (mAh)": "Change in charge between adjacent datapoints in mAh",
-            "Step": "A step is unique combination of job file, cycle number and loop number, this can be a full charge/discharge cycle, but can also be e.g. a protection step",
             "Cycle": "A cycle is a step which is considered a full, valid charge/discharge cycle, see the function specified in provenance for the criteria",
         },
     }
@@ -174,7 +170,7 @@ def combine_jobs(
     return df, metadata
 
 def analyse_cycles(
-        job_files: list[str],
+        job_files: list[Path],
         voltage_lower_cutoff: float = 0,
         voltage_upper_cutoff: float = 5,
         save_cycle_dict: bool = False,
@@ -184,7 +180,7 @@ def analyse_cycles(
     """Take multiple dataframes, merge and analyse the cycling data.
 
     Args:
-        job_files (List[str]): list of paths to the json.gz job files
+        job_files (List[Path]): list of paths to the json.gz job files
         voltage_lower_cutoff (float, optional): lower cutoff for voltage data
         voltage_upper_cutoff (float, optional): upper cutoff for voltage data
         save_cycle_dict (bool, optional): save the cycle_dict as a json file
@@ -199,12 +195,6 @@ def analyse_cycles(
     TODO: Add save location as an argument.
 
     """
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(current_dir, "..", "config.json")
-    with open(config_path, encoding = "utf-8") as f:
-        config = json.load(f)
-    db_path = config["Database path"]
-
     df, metadata = combine_jobs(job_files)
 
     # update metadata
@@ -250,7 +240,7 @@ def analyse_cycles(
             # tomato 0.2.3 using biologic driver
             case "tomato_0_2_biologic":
                 payloads = [j.get("Payload",[]) for j in job_data]
-                with sqlite3.connect(db_path) as conn:
+                with sqlite3.connect(config["Database path"]) as conn:
                     cursor = conn.cursor()
                     cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
                     row = cursor.fetchone()
@@ -523,7 +513,7 @@ def analyse_cycles(
             if isinstance(v, float):
                 update_row[k] = round(v,3)
 
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(config["Database path"]) as conn:
             cursor = conn.cursor()
             # insert a row with sampleid if it doesn't exist
             cursor.execute("INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)", (sampleid,))
@@ -535,13 +525,9 @@ def analyse_cycles(
             )
 
     if save_cycle_dict or save_merged_hdf or save_merged_jsongz:
-        save_folder = os.path.dirname(job_files[0])
-        if not save_folder:
-            save_folder = "."
-        if not os.path.exists(save_folder):
-            os.makedirs(save_folder)
+        save_folder = job_files[0].parent
         if save_cycle_dict:
-            with open(f"{save_folder}/cycles.{sampleid}.json","w",encoding="utf-8") as f:
+            with (save_folder / f"cycles.{sampleid}.json").open("w", encoding="utf-8") as f:
                 json.dump({"data": cycle_dict, "metadata": metadata},f)
         if save_merged_hdf or save_merged_jsongz:
             df = df.drop(columns=["dt (s)", "Iavg (A)"])
@@ -562,7 +548,7 @@ def analyse_cycles(
             with h5py.File(output_hdf5_file, "a") as f:
                 f.create_dataset("metadata", data=json.dumps(metadata))
         if save_merged_jsongz:
-            with gzip.open(f"{save_folder}/full.{sampleid}.json.gz", "wt", encoding="utf-8") as f:
+            with gzip.open(save_folder/f"full.{sampleid}.json.gz", "wt", encoding="utf-8") as f:
                 json.dump({"data": df.to_dict(orient="list"), "metadata": metadata}, f)
     return df, cycle_dict, metadata
 
@@ -573,27 +559,16 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
 
     """
     run_id = _run_from_sample(sample)
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(current_dir, "..", "config.json")
-    with open(config_path, encoding = "utf-8") as f:
-        config = json.load(f)
-    data_folder = config["Processed snapshots folder path"]
-    file_location = os.path.join(data_folder, run_id, sample)
+    file_location = Path(config["Processed snapshots folder path"]) / run_id / sample
     # Prioritise .h5 files
-    job_files = [
-        os.path.join(file_location,f) for f in os.listdir(file_location)
-        if (f.startswith("snapshot") and f.endswith(".h5"))
-    ]
+    job_files = list(file_location.glob("snapshot.*.h5"))
     if not job_files:  # check if there are .json.gz files
-        job_files = [
-            os.path.join(file_location,f) for f in os.listdir(file_location)
-            if (f.startswith("snapshot") and f.endswith(".json.gz"))
-        ]
+        job_files = list(file_location.glob("snapshot.*.json.gz"))
     df, cycle_dict, metadata = analyse_cycles(
         job_files,
         save_cycle_dict=True,
         save_merged_hdf=True,
-        save_merged_jsongz=False
+        save_merged_jsongz=False,
     )
     with sqlite3.connect(config["Database path"]) as conn:
         cursor = conn.cursor()
@@ -613,12 +588,6 @@ def analyse_all_samples(
         string in the sampleid
 
     """
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(current_dir, "..", "config.json")
-    with open(config_path, encoding = "utf-8") as f:
-        config = json.load(f)
-    snapshot_folder = config["Processed snapshots folder path"]
-
     if mode == "new_data":
         with sqlite3.connect(config["Database path"]) as conn:
             cursor = conn.cursor()
@@ -633,38 +602,34 @@ def analyse_all_samples(
                 datetime.strptime(r[1], dtformat) > datetime.strptime(r[2], dtformat)
             )
         ]
-        print(f"Analysing {len(samples_to_analyse)} samples")
     elif mode == "if_not_exists":
         with sqlite3.connect(config["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT `Sample ID` FROM results WHERE `Last analysis` IS NULL")
             results = cursor.fetchall()
         samples_to_analyse = [r[0] for r in results]
-        print(f"Analysing {len(samples_to_analyse)} samples")
-    else:
-        print("Analysing all samples")
 
-    for batch_folder in os.listdir(snapshot_folder):
-        for sample in os.listdir(os.path.join(snapshot_folder, batch_folder)):
-            if sampleid_contains and sampleid_contains not in sample:
-                continue
-            if mode != "always" and sample not in samples_to_analyse:
-                continue
-            try:
-                analyse_sample(sample)
-            except KeyError as e:
-                print(f"No metadata found for {sample}: {e}")
-            except (ValueError, PermissionError, RuntimeError, FileNotFoundError) as e:
-                tb = traceback.format_exc()
-                print(f"Failed to analyse {sample} with error {e}\n{tb}")
+    for batch_folder in Path(config["Processed snapshots folder path"]).iterdir():
+        if batch_folder.is_dir():
+            for sample in batch_folder.iterdir():
+                if sampleid_contains and sampleid_contains not in sample.name:
+                    continue
+                if mode != "always" and sample.name not in samples_to_analyse:
+                    continue
+                try:
+                    analyse_sample(sample.name)
+                except KeyError as e:
+                    print(f"No metadata found for {sample.name}: {e}")
+                except (ValueError, PermissionError, RuntimeError, FileNotFoundError) as e:
+                    tb = traceback.format_exc()
+                    print(f"Failed to analyse {sample.name} with error {e}\n{tb}")
 
 def parse_sample_plotting_file(
-        file_path: str = "K:/Aurora/cucumber/graph_config.yml",
+        file_path: Path,
     ) -> dict:
     """Read the graph config file and returns a dictionary of the batches to plot.
 
     Args: file_path (str): path to the yaml file containing the plotting configuration
-        Defaults to "K:/Aurora/cucumber/graph_config.yml"
 
     Returns: dict: dictionary of the batches to plot
         Dictionary contains the plot name as the key and a dictionary of the batch details as the
@@ -673,13 +638,9 @@ def parse_sample_plotting_file(
     TODO: Put the graph config location in the config file.
 
     """
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(current_dir, "..", "config.json")
-    with open(config_path, encoding = "utf-8") as f:
-        config = json.load(f)
-    data_folder = config["Processed snapshots folder path"]
+    data_folder = Path(config["Processed snapshots folder path"])
 
-    with open(file_path, encoding = "utf-8") as file:
+    with file_path.open(encoding="utf-8") as file:
         batches = yaml.safe_load(file)
 
     for plot_name, batch in batches.items():
@@ -698,10 +659,11 @@ def parse_sample_plotting_file(
                     transformed_samples.extend([f"{run_id}_{i:02d}" for i in sample_numbers])
                 elif sample_range == "all":
                     # Check the folders
-                    if os.path.exists(f"{data_folder}/{run_id}"):
-                        transformed_samples.extend(os.listdir(f"{data_folder}/{run_id}"))
+                    run_path = data_folder/run_id
+                    if run_path.exists():
+                        transformed_samples.extend([f.name for f in run_path.iterdir() if f.is_dir()])
                     else:
-                        print(f"Folder {data_folder}/{run_id} does not exist")
+                        print(f"Folder {run_path!s} does not exist")
                 else:
                     numbers = re.findall(r"\d+", sample_range)
                     start, end = map(int, numbers) if len(numbers) == 2 else (int(numbers[0]), int(numbers[0]))
@@ -710,8 +672,9 @@ def parse_sample_plotting_file(
         # Check if individual sample folders exist
         for sample in transformed_samples:
             run_id = _run_from_sample(sample)
-            if not os.path.exists(f"{data_folder}/{run_id}/{sample}"):
-                print(f"Folder {data_folder}/{run_id}/{sample} does not exist")
+            sample_folder = Path(data_folder) / run_id / sample
+            if not sample_folder.exists():
+                print(f"{sample} has no data folder, removing from list")
                 # remove this element from the list
                 transformed_samples.remove(sample)
 
@@ -722,27 +685,22 @@ def parse_sample_plotting_file(
 
 def analyse_batch(plot_name: str, batch: dict) -> None:
     """Combine data for a batch of samples."""
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(current_dir, "..", "config.json")
-    with open(config_path, encoding = "utf-8") as f:
-        config = json.load(f)
-    data_folder = config["Processed snapshots folder path"]
-    save_location = os.path.join(config["Batches folder path"],plot_name)
-    if not os.path.exists(save_location):
-        os.makedirs(save_location)
+    save_location = Path(config["Batches folder path"]) / plot_name
+    if not save_location.exists():
+        save_location.mkdir(parents=True, exist_ok=True)
     samples = batch.get("samples")
     cycle_dicts = []
     metadata = {"sample_metadata":{}}
     for sample in samples:
         # get the anaylsed data
         run_id = _run_from_sample(sample)
-        sample_folder = os.path.join(data_folder,run_id,sample)
+        sample_folder = Path(config["Processed snapshots folder path"]) / run_id / sample
         try:
             analysed_file = next(
-                f for f in os.listdir(sample_folder)
-                if (f.startswith("cycles") and f.endswith(".json"))
+                f for f in sample_folder.iterdir()
+                if (f.name.startswith("cycles.") and f.name.endswith(".json"))
             )
-            with open(f"{sample_folder}/{analysed_file}", encoding="utf-8") as f:
+            with analysed_file.open(encoding="utf-8") as f:
                 data = json.load(f)
                 cycle_dict = data.get("data",{})
                 metadata["sample_metadata"][sample] = data.get("metadata",{})
@@ -780,12 +738,10 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
     with pd.ExcelWriter(f"{save_location}/batch.{plot_name}.xlsx") as writer:
         only_lists.to_excel(writer, sheet_name="Data by cycle", index=False)
         only_vals.to_excel(writer, sheet_name="Results by sample", index=False)
-    with open(f"{save_location}/batch.{plot_name}.json","w",encoding="utf-8") as f:
+    with (save_location / f"batch.{plot_name}.json").open("w", encoding="utf-8") as f:
         json.dump({"data":cycle_dicts, "metadata": metadata},f)
 
-def analyse_all_batches(
-        graph_config_path: str= "K:/Aurora/cucumber/graph_config.yml",
-    ) -> None:
+def analyse_all_batches() -> None:
     """Analyses all the batches according to the configuration file.
 
     Args:
@@ -796,7 +752,7 @@ def analyse_all_batches(
     save the capacity and efficiency vs cycle for each batch of samples.
 
     """
-    batches = parse_sample_plotting_file(graph_config_path)
+    batches = parse_sample_plotting_file(Path(config["Graph config path"]))
     for plot_name, batch in batches.items():
         try:
             analyse_batch(plot_name,batch)

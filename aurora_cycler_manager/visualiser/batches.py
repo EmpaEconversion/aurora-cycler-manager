@@ -1,4 +1,4 @@
-"""Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
 
 Batches tab layout and callbacks for the visualiser app.
 """
@@ -380,7 +380,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         # get the color for each trace
         if color:
             colormap = all_color_scales.get(colormap, all_color_scales.get("Viridis"))
-            color_values = [sample[color] for sample in data["data_batch_cycle"]]
+            color_values = [sample.get(color, None) for sample in data["data_batch_cycle"]]
             cmin, cmax = 0, 1
 
             # Try to figure out the coloring mode

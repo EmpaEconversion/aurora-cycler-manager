@@ -1,4 +1,4 @@
-"""Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
 
 Web-based visualiser for the Aurora cycler manager based on Dash and Plotly.
 
@@ -9,7 +9,6 @@ Allows users to view current information in the database, and control cyclers
 remotely, loading, ejecting, and submitting jobs to samples.
 """
 
-import json
 import sys
 import webbrowser
 from pathlib import Path
@@ -21,6 +20,7 @@ from dash import Dash, dcc, html
 root_dir = Path(__file__).resolve().parents[2]
 if root_dir not in sys.path:
     sys.path.append(str(root_dir))
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.visualiser.batches import batches_layout, register_batches_callbacks
 from aurora_cycler_manager.visualiser.db_view import db_view_layout, register_db_view_callbacks
 from aurora_cycler_manager.visualiser.samples import register_samples_callbacks, samples_layout
@@ -30,10 +30,7 @@ from aurora_cycler_manager.visualiser.samples import register_samples_callbacks,
 #======================================================================================================================#
 
 # Config file
-current_dir = Path(__file__).resolve().parent
-config_path = current_dir / ".." / ".." / "config.json"
-with config_path.open(encoding = "utf-8") as f:
-    config = json.load(f)
+config = get_config()
 
 # Spinner
 custom_spinner=html.Div(

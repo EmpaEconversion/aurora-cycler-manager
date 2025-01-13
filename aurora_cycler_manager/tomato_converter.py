@@ -22,17 +22,15 @@ from pathlib import Path
 import h5py
 import pandas as pd
 
-root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+root_dir = Path(__file__).resolve().parents[1]
 if root_dir not in sys.path:
-    sys.path.append(root_dir)
-from aurora_cycler_manager.version import __version__, __url__
+    sys.path.append(str(root_dir))
 from aurora_cycler_manager.analysis import _run_from_sample
+from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.version import __url__, __version__
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-config_path = os.path.join(current_dir, "..", "config.json")
-with open(config_path, encoding = "utf-8") as f:
-    config = json.load(f)
-db_path = config["Database path"]
+config = get_config()
+snapshot_folder = Path(config["Snapshots folder path"]) / "tomato_snapshots"
 
 def convert_tomato_json(
         snapshot_file: str,
@@ -92,7 +90,7 @@ def convert_tomato_json(
     jobid = "".join(json_filename.split(".")[1:-1])
     # look up jobid in the database
     try:
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(config["Database path"]) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             # Get all data about this job
@@ -172,8 +170,7 @@ def convert_all_tomato_jsons(
     sampleid_contains: str = "",
     ) -> None:
     """Goes through all the raw json files in the snapshots folder and converts them to hdf5."""
-    raw_folder = Path(config["Snapshots folder path"])
-    for batch_folder in raw_folder.iterdir():
+    for batch_folder in snapshot_folder.iterdir():
         for sample_folder in batch_folder.iterdir():
             if sampleid_contains and sampleid_contains not in sample_folder.name:
                 continue

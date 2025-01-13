@@ -1,4 +1,4 @@
-"""Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
 
 Useful functions for the visualiser app.
 """
@@ -14,8 +14,7 @@ ArrayLike = Union[list, np.ndarray, pd.Series]
 
 def get_sample_names(config: dict) -> list:
     """Get all sample IDs from the database."""
-    db_path = config["Database path"]
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(config["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT `Sample ID` FROM samples")
         samples = cursor.fetchall()
@@ -23,8 +22,7 @@ def get_sample_names(config: dict) -> list:
 
 def get_batch_names(config: dict) -> list:
     """Get all batch names from the database."""
-    graph_config_path = config["Graph config path"]
-    with open(graph_config_path) as f:
+    with open(config["Graph config path"]) as f:
         graph_config = yaml.safe_load(f)
     return list(graph_config.keys())
 
@@ -59,8 +57,7 @@ def get_database(config: dict) -> dict:
 
 def delete_samples(config: dict, sample_ids: list) -> None:
     """Delete samples from the database."""
-    db_path = config["Database path"]
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(config["Database path"]) as conn:
         cursor = conn.cursor()
         for sample_id in sample_ids:
             cursor.execute("DELETE FROM samples WHERE `Sample ID` = ?", (sample_id,))

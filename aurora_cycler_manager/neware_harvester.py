@@ -1,4 +1,4 @@
-"""Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
 
 Harvest Neware data files and convert to aurora-compatible .json.gz / .h5 files.
 
@@ -27,6 +27,7 @@ import sqlite3
 import sys
 import zipfile
 from datetime import datetime
+from pathlib import Path
 
 import h5py
 import NewareNDA
@@ -34,19 +35,16 @@ import pandas as pd
 import paramiko
 import xmltodict
 
-root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+root_dir = Path(__file__).resolve().parents[1]
 if root_dir not in sys.path:
-    sys.path.append(root_dir)
+    sys.path.append(str(root_dir))
 from aurora_cycler_manager.analysis import _run_from_sample
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
-current_dir = os.path.dirname(os.path.abspath(__file__))
-config_path = os.path.join(current_dir, "..", "config.json")
-with open(config_path, encoding = "utf-8") as f:
-    config = json.load(f)
-neware_config = config.get("Neware harvester", {})
-db_path = config["Database path"]
+config = get_config()
+snapshots_folder = Path(config["Snapshots folder path"]) / "neware_snapshots"
 
 def harvest_neware_files(
     server_label: str,
@@ -73,7 +71,7 @@ def harvest_neware_files(
     """
     cutoff_datetime = datetime.fromtimestamp(0)  # Set default cutoff date
     if not force_copy:  # Set cutoff date to last snapshot from database
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(config["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT `Last snapshot` FROM harvester WHERE `Server label`=? AND `Server hostname`=? AND `Folder`=?",
@@ -133,7 +131,7 @@ def harvest_neware_files(
                 new_files.append(local_path)
 
     # Update the database
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(config["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "INSERT OR IGNORE INTO harvester (`Server label`, `Server hostname`, `Folder`) "
@@ -153,25 +151,25 @@ def harvest_neware_files(
 def harvest_all_neware_files(force_copy: bool = False) -> None:
     """Get neware files from all servers specified in the config."""
     all_new_files = []
-    for server in neware_config["Servers"]:
+    for server in config["Neware harvester"]["Servers"]:
         new_files = harvest_neware_files(
             server_label = server["label"],
             server_hostname = server["hostname"],
             server_username = server["username"],
             server_shell_type = server["shell_type"],
             server_copy_folder = server["Neware folder location"],
-            local_folder = neware_config["Snapshots folder path"],
+            local_folder = snapshots_folder,
             local_private_key_path = config["SSH private key path"],
             force_copy = force_copy,
         )
         all_new_files.extend(new_files)
     return all_new_files
 
-def get_neware_xlsx_metadata(file_path: str) -> dict:
+def get_neware_xlsx_metadata(file_path: Path) -> dict:
     """Get metadata from a neware xlsx file.
 
     Args:
-        file_path (str): Path to the neware xlsx file
+        file_path (Path): Path to the neware xlsx file
 
     Returns:
         dict: Metadata from the file
@@ -335,11 +333,11 @@ def _clean_ndax_step(d: dict) -> dict:
         d.pop(k,None)
     return d
 
-def get_neware_ndax_metadata(file_path: str) -> dict:
+def get_neware_ndax_metadata(file_path: Path) -> dict:
     """Extract metadata from Neware .ndax file.
 
     Args:
-        file_path (str): Path to the .ndax file
+        file_path (Path): Path to the .ndax file
 
     Returns:
         dict: Metadata from the file
@@ -370,7 +368,7 @@ def get_sampleid_from_metadata(metadata: dict) -> str:
     sampleid = None
 
     # Check against known samples
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(config["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT `Sample ID` FROM samples")
         rows = cursor.fetchall()
@@ -400,7 +398,7 @@ def get_sampleid_from_metadata(metadata: dict) -> str:
         print(f"Barcode: '{barcode_sampleid}', or Remark: '{remark_sampleid}' not recognised as a Sample ID")
     return sampleid
 
-def get_neware_xlsx_data(file_path: str) -> pd.DataFrame:
+def get_neware_xlsx_data(file_path: Path) -> pd.DataFrame:
     """Convert Neware xlsx file to dictionary."""
     df = pd.read_excel(file_path, sheet_name="record", header=0, engine="calamine")
     output_df = pd.DataFrame()
@@ -416,7 +414,7 @@ def get_neware_xlsx_data(file_path: str) -> pd.DataFrame:
     output_df["uts"] = df["Date"].apply(lambda x: datetime.strptime(x, "%Y-%m-%d %H:%M:%S").timestamp())
     return output_df
 
-def get_neware_ndax_data(file_path: str) -> pd.DataFrame:
+def get_neware_ndax_data(file_path: Path) -> pd.DataFrame:
     """Convert Neware ndax file to dictionary."""
     df = NewareNDA.read(file_path)
     output_df = pd.DataFrame()
@@ -432,14 +430,14 @@ def get_neware_ndax_data(file_path: str) -> pd.DataFrame:
     return output_df
 
 def convert_neware_data(
-        file_path: str,
+        file_path: Path | str,
         output_jsongz_file: bool = False,
         output_hdf5_file: bool = True,
 ) -> tuple[pd.DataFrame, dict]:
     """Convert a neware file to a dataframe and save as a gzipped json file.
 
     Args:
-        file_path (str): Path to the neware file
+        file_path (Path): Path to the neware file
         output_jsongz_file (bool): Whether to save the file as a gzipped json
         output_hdf5_file (bool): Whether to save the file as a hdf5
 
@@ -448,11 +446,12 @@ def convert_neware_data(
 
     """
     # Get test information and Sample ID
-    if file_path.endswith(".xlsx"):
+    file_path = Path(file_path)
+    if file_path.suffix == ".xlsx":
         job_data = get_neware_xlsx_metadata(file_path)
         job_data["job_type"] = "neware_xlsx"
         data = get_neware_xlsx_data(file_path)
-    elif file_path.endswith(".ndax"):
+    elif file_path.suffix == ".ndax":
         job_data = get_neware_ndax_metadata(file_path)
         job_data["job_type"] = "neware_ndax"
         data = get_neware_ndax_data(file_path)
@@ -461,7 +460,7 @@ def convert_neware_data(
     # If there is a valid Sample ID, get sample metadata from database
     sample_data = None
     if sampleid:
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(config["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM samples WHERE `Sample ID`=?", (sampleid,))
             row = cursor.fetchone()
@@ -474,7 +473,7 @@ def convert_neware_data(
     current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     metadata = {
         "provenance": {
-            "snapshot_file": file_path,
+            "snapshot_file": str(file_path),
             "aurora_metadata": {
                 "mpr_conversion" : {
                     "repo_url": __url__,
@@ -492,36 +491,37 @@ def convert_neware_data(
         if not sampleid:
             print(f"Not saving {file_path}, no valid Sample ID found")
             return data, metadata
-        folder = os.path.join(config["Processed snapshots folder path"], _run_from_sample(sampleid),sampleid)
-        if not os.path.exists(folder):
-            os.makedirs(folder)
+        run_id = _run_from_sample(sampleid)
+        folder = Path(config["Processed snapshots folder path"]) / run_id / sampleid
+        if not folder.exists():
+            folder.mkdir(parents=True)
 
         if output_jsongz_file:
-            output_jsongz_file = os.path.join(folder, "snapshot."+os.path.basename(file_path).replace(".xlsx", ".json.gz").replace(".ndax", ".json.gz"))
-            with gzip.open(output_jsongz_file, "wt") as f:
+            file_name = f"snapshot.{file_path.stem}.json.gz"
+            with gzip.open(folder/file_name, "wt") as f:
                 json.dump({"data": data.to_dict(orient="list"), "metadata": metadata}, f)
 
         if output_hdf5_file:  # Save as hdf5
-            output_hdf5_file = os.path.join(folder, "snapshot."+os.path.basename(file_path).replace(".xlsx", ".h5").replace(".ndax", ".h5"))
+            file_name = f"snapshot.{file_path.stem}.h5"
             # Ensure smallest data types are used
             data = data.astype({"V (V)": "float32", "I (A)": "float32"})
             data = data.astype({"technique": "int16", "cycle_number": "int32"})
             data.to_hdf(
-                output_hdf5_file,
+                folder/file_name,
                 key="data",
                 mode="w",
                 complib="blosc",
                 complevel=9,
             )
             # create a dataset called metadata and json dump the metadata
-            with h5py.File(output_hdf5_file, "a") as f:
+            with h5py.File(folder/file_name, "a") as f:
                 f.create_dataset("metadata", data=json.dumps(metadata))
 
         # Update the database
         creation_date = datetime.fromtimestamp(
-            os.path.getmtime(file_path),
+            file_path.stat().st_mtime,
         ).strftime("%Y-%m-%d %H:%M:%S")
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(config["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
@@ -542,18 +542,18 @@ def convert_all_neware_data() -> None:
 
     The config file needs a key "Neware harvester" with the keys "Snapshots folder path"
     """
-    raw_folder = neware_config["Snapshots folder path"]
-
     # Get all xlsx and ndax files in the raw folder recursively
-    neware_files = []
-    for root, _, files in os.walk(raw_folder):
-        for file in files:
-            if file.endswith((".xlsx", ".ndax")):
-                neware_files.append(os.path.join(root, file))
+    neware_files = [file for file in snapshots_folder.rglob("*") if file.suffix in [".xlsx", ".ndax"]]
     for file in neware_files:
-        convert_neware_data(file, output_hdf5_file=True)
+        try:
+            convert_neware_data(file, output_hdf5_file=True)
+        except ValueError as e:  # noqa: PERF203
+            print(f"Error converting {file}: {e}")
 
 if __name__ == "__main__":
     new_files = harvest_all_neware_files()
     for file in new_files:
-        convert_neware_data(file, output_hdf5_file=True)
+        try:
+            convert_neware_data(file, output_hdf5_file=True)
+        except ValueError as e:  # noqa: PERF203
+            print(f"Error converting {file}: {e}")
