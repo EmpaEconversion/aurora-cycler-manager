@@ -1,46 +1,56 @@
-""" Copyright © 2024, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia
+"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
 
-Harvest Neware data files and convert to aurora-compatible gzipped json files. 
+Harvest Neware data files and convert to aurora-compatible .json.gz / .h5 files.
 
 Define the machines to grab files from in the config.json file.
 
-get_neware_data will copy all files from specified folders on a remote machine, if they have been
-modified since the last time the function was called.
+get_neware_data will copy all files from specified folders on a remote machine,
+if they have been modified since the last time the function was called.
 
 get_all_neware_data does this for all machines defined in the config.
 
-convert_neware_data converts a neware file to a dataframe and optionally saves it as a gzipped json
-file. This file contains all cycling data as well as metadata and information about the sample from
-the database.
+convert_neware_data converts the file to a pandas dataframe and metadata
+dictionary, and optionally saves as a hdf5 file or gzipped json file. This file
+contains all cycling data as well as metadata and information about the sample
+from the database.
 
-convert_all_neware_data does this for all files in the local snapshot folder, and saves them to the
-processed snapshot folder.
+convert_all_neware_data does this for all files in the local snapshot folder,
+and saves them to the processed snapshot folder.
 
 Run the script to harvest and convert all neware files.
 """
-import os
-import sys
-import json
-import sqlite3
-import warnings
 import gzip
+import json
+import os
 import re
-import paramiko
-import pandas as pd
+import sqlite3
+import zipfile
 from datetime import datetime
-root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if root_dir not in sys.path:
-    sys.path.append(root_dir)
+from pathlib import Path
+
+import h5py
+import NewareNDA
+import pandas as pd
+import paramiko
+import xmltodict
+
 from aurora_cycler_manager.analysis import _run_from_sample
-from aurora_cycler_manager.version import __version__, __url__
+from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
-current_dir = os.path.dirname(os.path.abspath(__file__))
-config_path = os.path.join(current_dir, '..', 'config.json')
-with open(config_path, encoding = 'utf-8') as f:
-    config = json.load(f)
-neware_config = config.get("Neware harvester", {})
-db_path = config["Database path"]
+config = get_config()
+
+def get_snapshot_folder() -> Path:
+    """Get the path to the snapshot folder for neware files."""
+    snapshot_parent = config.get("Snapshots folder path")
+    if not snapshot_parent:
+        msg = (
+            "No 'Snapshots folder path' in config file. "
+            f"Please fill in the config file at {config.get("User config path")}.",
+        )
+        raise ValueError(msg)
+    return Path(snapshot_parent) / "neware_snapshots"
 
 def harvest_neware_files(
     server_label: str,
@@ -49,11 +59,11 @@ def harvest_neware_files(
     server_shell_type: str,
     server_copy_folder: str,
     local_folder: str,
-    local_private_key_path: str = None,
+    local_private_key_path: str | None = None,
     force_copy: bool = False,
 ) -> None:
-    """ Get Neware files from subfolders of specified folder.
-    
+    """Get Neware files from subfolders of specified folder.
+
     Args:
         server_label (str): Label of the server
         server_hostname (str): Hostname of the server
@@ -61,27 +71,23 @@ def harvest_neware_files(
         server_shell_type (str): Type of shell to use (powershell or cmd)
         server_copy_folder (str): Folder to search and copy TODO file types
         local_folder (str): Folder to copy files to
-        local_private_key (str, optional): Local private key path for ssh
+        local_private_key_path (str, optional): Local private key path for ssh
         force_copy (bool): Copy all files regardless of modification date
+
     """
-    if force_copy:  # Set cutoff date to 1970
-        cutoff_datetime = datetime.fromtimestamp(0)
-    else:  # Set cutoff date to last snapshot from database
-        with sqlite3.connect(db_path) as conn:
+    cutoff_datetime = datetime.fromtimestamp(0)  # Set default cutoff date
+    if not force_copy:  # Set cutoff date to last snapshot from database
+        with sqlite3.connect(config["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                f"SELECT `Last snapshot` FROM harvester WHERE "
-                f"`Server label`='{server_label}' "
-                f"AND `Server hostname`='{server_hostname}' "
-                f"AND `Folder`='{server_copy_folder}'"
+                "SELECT `Last snapshot` FROM harvester WHERE `Server label`=? AND `Server hostname`=? AND `Folder`=?",
+                (server_label, server_hostname, server_copy_folder),
             )
             result = cursor.fetchone()
             cursor.close()
         if result:
-            cutoff_datetime = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
-        else:
-            cutoff_datetime = datetime.fromtimestamp(0)
-    cutoff_date_str = cutoff_datetime.strftime('%Y-%m-%d %H:%M:%S')
+            cutoff_datetime = datetime.strptime(result[0], "%Y-%m-%d %H:%M:%S")
+    cutoff_date_str = cutoff_datetime.strftime("%Y-%m-%d %H:%M:%S")
 
     # Connect to the server and copy the files
     with paramiko.SSHClient() as ssh:
@@ -91,30 +97,33 @@ def harvest_neware_files(
         ssh.connect(server_hostname, username=server_username, key_filename=local_private_key_path)
 
         # Shell commands to find files modified since cutoff date
-        # TODO need to grab all the filenames and modified dates, copy if they are newer than local files not just cutoff date
+        # TODO: grab all the filenames and modified dates, copy if they are newer than local files not just cutoff date
         if server_shell_type == "powershell":
             command = (
                 f'Get-ChildItem -Path \'{server_copy_folder}\' -Recurse '
-                f'| Where-Object {{ $_.LastWriteTime -gt \'{cutoff_date_str}\' -and ($_.Extension -eq \'.xlsx\' -or $_.Extension -eq \'.csv\')}} '
+                f'| Where-Object {{ $_.LastWriteTime -gt \'{cutoff_date_str}\' -and ($_.Extension -eq \'.xlsx\' -or $_.Extension -eq \'.ndax\')}} '
                 f'| Select-Object -ExpandProperty FullName'
             )
         elif server_shell_type == "cmd":
             command = (
                 f'powershell.exe -Command "Get-ChildItem -Path \'{server_copy_folder}\' -Recurse '
-                f'| Where-Object {{ $_.LastWriteTime -gt \'{cutoff_date_str}\' -and ($_.Extension -eq \'.xlsx\' -or $_.Extension -eq \'.csv\')}} '
+                f'| Where-Object {{ $_.LastWriteTime -gt \'{cutoff_date_str}\' -and ($_.Extension -eq \'.xlsx\' -or $_.Extension -eq \'.ndax\')}} '
                 f'| Select-Object -ExpandProperty FullName"'
             )
-        stdin, stdout, stderr = ssh.exec_command(command)
+        _stdin, stdout, stderr = ssh.exec_command(command)
 
         # Parse the output
-        output = stdout.read().decode('utf-8').strip()
-        error = stderr.read().decode('utf-8').strip()
-        assert not stderr.read(), f"Error finding modified files: {stderr.read()}"
+        output = stdout.read().decode("utf-8").strip()
+        error = stderr.read().decode("utf-8").strip()
+        if error:
+            msg = f"Error finding modified files: {error}"
+            raise RuntimeError(msg)
         modified_files = output.splitlines()
         print(f"Found {len(modified_files)} files modified since {cutoff_date_str}")
 
         # Copy the files using SFTP
         current_datetime = datetime.now()  # Keep time of copying for database
+        new_files = []
         with ssh.open_sftp() as sftp:
             for file in modified_files:
                 # Maintain the folder structure when copying
@@ -125,41 +134,56 @@ def harvest_neware_files(
                     os.makedirs(local_dir)
                 print(f"Copying {file} to {local_path}")
                 sftp.get(file, local_path)
+                new_files.append(local_path)
 
     # Update the database
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(config["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "INSERT OR IGNORE INTO harvester (`Server label`, `Server hostname`, `Folder`) "
             "VALUES (?, ?, ?)",
-            (server_label, server_hostname, server_copy_folder)
+            (server_label, server_hostname, server_copy_folder),
         )
         cursor.execute(
             "UPDATE harvester "
             "SET `Last snapshot` = ? "
             "WHERE `Server label` = ? AND `Server hostname` = ? AND `Folder` = ?",
-            (current_datetime.strftime('%Y-%m-%d %H:%M:%S'), server_label, server_hostname, server_copy_folder)
+            (current_datetime.strftime("%Y-%m-%d %H:%M:%S"), server_label, server_hostname, server_copy_folder),
         )
         cursor.close()
 
-def harvest_all_neware_files(force_copy = False) -> None:
-    """ Get neware files from all servers specified in the config. """
-    for server in neware_config["Servers"]:
-        harvest_neware_files(
+    return new_files
+
+def harvest_all_neware_files(force_copy: bool = False) -> None:
+    """Get neware files from all servers specified in the config."""
+    all_new_files = []
+    snapshots_folder = get_snapshot_folder()
+    for server in config["Neware harvester"]["Servers"]:
+        new_files = harvest_neware_files(
             server_label = server["label"],
             server_hostname = server["hostname"],
             server_username = server["username"],
             server_shell_type = server["shell_type"],
             server_copy_folder = server["Neware folder location"],
-            local_folder = neware_config["Snapshots folder path"],
+            local_folder = snapshots_folder,
             local_private_key_path = config["SSH private key path"],
-            force_copy = force_copy
+            force_copy = force_copy,
         )
+        all_new_files.extend(new_files)
+    return all_new_files
 
-def get_neware_metadata(file_path: str) -> dict:
+def get_neware_xlsx_metadata(file_path: Path) -> dict:
+    """Get metadata from a neware xlsx file.
+
+    Args:
+        file_path (Path): Path to the neware xlsx file
+
+    Returns:
+        dict: Metadata from the file
+
+    """
     # Get the test info, including barcode / remarks
-    warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
-    df = pd.read_excel(file_path, sheet_name="test", header=None, engine='calamine')
+    df = pd.read_excel(file_path, sheet_name="test", header=None, engine="calamine")
 
     # In first column, find index where value is "Test information" and "Step plan"
     test_idx = df[df.iloc[:, 0] == "Test information"].index[0]
@@ -171,22 +195,32 @@ def get_neware_metadata(file_path: str) -> dict:
     test_settings = test_settings.dropna(axis=0, how="all")
 
     # Flatten and convert to dict
-    flattened = test_settings.values.flatten().tolist()
-    flattened = [str(x) for x in flattened if str(x) != 'nan']
-    test_info = {flattened[i]: flattened[i+1] for i in range(0, len(flattened), 2) if flattened[i] and flattened[i] != '-'}
-    test_info = {k: v for k, v in test_info.items() if (k and k != '-' and k != 'nan') or (v and v != '-' and v != 'nan')}
+    flattened = test_settings.to_numpy().flatten().tolist()
+    flattened = [str(x) for x in flattened if str(x) != "nan"]
+    test_info = {flattened[i]: flattened[i+1] for i in range(0, len(flattened), 2) if flattened[i] and flattened[i] != "-"}
+    test_info = {k: v for k, v in test_info.items() if (k and k not in ("-", "nan")) or (v and v not in ("-", "nan"))}
 
     # Payload
     payload = df.iloc[step_idx+2:, :]
     payload.columns = df.iloc[step_idx+1]
     payload_dict = payload.to_dict(orient="records")
 
-    payload_dict = [{k: v for k, v in record.items() if str(v) != 'nan'} for record in payload_dict]
+    payload_dict = [{k: v for k, v in record.items() if str(v) != "nan"} for record in payload_dict]
 
     # In Neware step information, 'Cycle' steps have different columns defined within the row
     # E.g. the "Voltage (V)" column has a value like "Cycle count:2"
     # We find these entires, and rename the key e.g. "Voltage (V)": "Cycle count:2" becomes "Cycle count": 2
+    rename = {
+        "Voltage(V)": "Voltage (V)",
+        "Current(A)": "Current (A)",
+        "Time(s)": "Time (s)",
+        "Cut-off curr.(A)": "Cut-off current (A)",
+    }
     for record in payload_dict:
+        # change Voltage(V) to Voltage (V) if it exists
+        for k, v in rename.items():
+            if k in record:
+                record[v] = record.pop(k)
         if record.get("Step Name") == "Cycle":
             # find values with ":" in them, and split them into key value pairs, delete the original key
             bad_key_vals = {k: v for k, v in record.items() if ":" in str(v)}
@@ -197,92 +231,256 @@ def get_neware_metadata(file_path: str) -> dict:
 
     # Add to test_info
     test_info["Payload"] = payload_dict
+    return test_info
 
+# change every dict with {'Value': 'some value'} to 'some value'
+def _scrub_dict(d: dict) -> dict:
+    """Scrub 'Value' and 'Main' keys from dict."""
+    for k,v in d.items():
+        if isinstance(v,dict):
+            if "Value" in v:
+                d[k] = v["Value"]
+            elif "Main" in v:
+                d[k] = v["Main"]
+            _scrub_dict(v)
+    return d
+
+def _convert_dict_values(d: dict) -> dict:
+    """Convert values in step.xml dict to floats and scale to SI units."""
+    for key, value in d.items():
+        if isinstance(value, dict):
+            if key == "Volt":
+                for sub_key in value:
+                    value[sub_key] = float(value[sub_key])/10000
+            elif key in ("Curr", "Time"):
+                for sub_key in value:
+                    value[sub_key] = float(value[sub_key])/1000
+            else:
+                _convert_dict_values(value)
+        elif isinstance(value, str):
+            if key in ("Volt", "Stop_Volt"):
+                d[key] = float(value)/10000
+            elif key in ("Curr", "Stop_Curr", "Time"):
+                d[key] = float(value)/1000
+    return d
+
+state_dict = {
+    "1": "CC Chg",
+    "2": "CC DChg",
+    "3": "CV Chg",
+    "4": "Rest",
+    "5": "Cycle",
+    "6": "End",
+    "7": "CCCV Chg",
+    "8": "CP DChg",
+    "9": "CP Chg",
+    "10": "CR DChg",
+    "13": "Pause",
+    "16": "Pulse",
+    "17": "SIM",
+    "19": "CV DChg",
+    "20": "CCCV DChg",
+    "21": "Control",
+    "26": "CPCV DChg",
+    "27": "CPCV Chg",
+}
+# For switching back to ints from NewareNDA
+state_dict_rev = {v: int(k) for k, v in state_dict.items()}
+state_dict_rev_underscored = {v.replace(" ","_"): int(k) for k, v in state_dict.items()}
+
+def _clean_ndax_step(d: dict) -> dict:
+    """Extract useful info from dict from step.xml inside .ndax file."""
+    # get rid of 'root' 'config' keys
+    d = d["root"]["config"]
+    # scrub 'Value' and 'Main' keys
+    d = _scrub_dict(d)
+    # put 'Head_Info' dict into the main dict
+    d.update(d.pop("Head_Info"))
+
+    # convert all values to floats
+    _convert_dict_values(d)
+
+    # convert 'Step_Info' to a more readable 'Payload' list
+    step_list = []
+    step_info = d.pop("Step_Info")
+    for k,v in step_info.items():
+        if k == "Num":
+            continue
+        new_step = {}
+        new_step["Step Index"] = int(v.get("Step_ID"))
+        new_step["Step Name"] = state_dict.get(v.get("Step_Type"),"Unknown")
+        record = v.get("Record")
+        if record:
+            new_step["Record settings"] = (
+                str(record.get("Time")) + "s/" +
+                str(record.get("Curr","0")) + "A/" +
+                str(record.get("Volt","0")) + "V"
+            )
+        limit = v.get("Limit")
+        if limit:
+            new_step["Current (A)"] = limit.get("Curr",0)
+            new_step["Voltage (V)"] = limit.get("Volt",0)
+            new_step["Time (s)"] = limit.get("Time",0)
+            new_step["Cut-off voltage (V)"] = limit.get("Stop_Volt",0)
+            new_step["Cut-off current (A)"] = limit.get("Stop_Curr",0)
+            other = limit.get("Other",{})
+            if other:
+                new_step["Cycle count"] = int(other.get("Cycle_Count",0))
+                new_step["Start step ID"] = int(other.get("Start_Step_ID",0))
+        # remove keys where value is 0 and add to list
+        new_step = {k:v for k,v in new_step.items() if v != 0}
+        step_list.append(new_step)
+    d["Payload"] = step_list
+    # Change some keys for consistency with xlsx
+    d["Remarks"] = d.pop("Remark")
+    d["Start step ID"] = int(d.pop("Start_Step",1))
+    # Get rid of keys that are not useful
+    unwanted_keys = ["SMBUS","Whole_Prt","Guid","Operate","type","version","SCQ","SCQ_F","RateType","Scale"]
+    for k in unwanted_keys:
+        d.pop(k,None)
+    return d
+
+def get_neware_ndax_metadata(file_path: Path) -> dict:
+    """Extract metadata from Neware .ndax file.
+
+    Args:
+        file_path (Path): Path to the .ndax file
+
+    Returns:
+        dict: Metadata from the file
+
+    """
+    # Get step.xml and testinfo.xml from the .ndax file
+    # get the step info from step.xml
+    zf = zipfile.PyZipFile(file_path)
+    step = zf.read("Step.xml")
+    step_parsed = xmltodict.parse(step.decode(),attr_prefix="")
+    metadata = _clean_ndax_step(step_parsed)
+
+    # add test info
+    testinfo = zf.read("TestInfo.xml")
+    testinfo = xmltodict.parse(testinfo.decode(),attr_prefix="").get("root",{}).get("config",{}).get("TestInfo",{})
+    metadata["Barcode"] = testinfo.get("Barcode")
+    metadata["Start time"] = testinfo.get("StartTime")
+    metadata["Step name"] = testinfo.get("StepName")
+    metadata["Voltage range (V)"] = float(testinfo.get("VoltRange",0))
+    metadata["Current range (mA)"] = float(testinfo.get("CurrRange",0))
+    return metadata
+
+def get_sampleid_from_metadata(metadata: dict) -> str:
+    """Get sample ID from Remarks or Barcode in the Neware metadata."""
     # Get sampleid from test_info
-    sampleid = test_info.get("Barcode", None)
-    if not sampleid:
-        sampleid = test_info.get("Remarks", None)
-    
+    barcode_sampleid = metadata.get("Barcode")
+    remark_sampleid = metadata.get("Remarks")
+    sampleid = None
+
     # Check against known samples
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(config["Database path"]) as conn:
         cursor = conn.cursor()
-        cursor.execute(f"SELECT `Sample ID` FROM samples")
+        cursor.execute("SELECT `Sample ID` FROM samples")
         rows = cursor.fetchall()
         cursor.close()
     known_samples = [row[0] for row in rows]
-
-    # If sampleid is not known, it might be using the convention 'date-number-other'
-    if sampleid not in known_samples:
-        # Extract date and number
-        sampleid_parts = re.split('_|-', sampleid)
-        if len(sampleid_parts) > 1:
-            sampleid_date = sampleid_parts[0]
-            sampleid_number = sampleid_parts[1].zfill(2) # pad with zeros
-        # Check if this is consistent with any known samples
-        possible_samples = [s for s in known_samples if s.startswith(sampleid_date) and s.endswith(sampleid_number)]
-        if len(possible_samples) == 1:
-            print(f"Barcode {sampleid} inferred as Sample ID {possible_samples[0]}")
-            sampleid = possible_samples[0]
+    for possible_sampleid in [remark_sampleid, barcode_sampleid]:
+        if possible_sampleid not in known_samples:
+            # If sampleid is not known, it might be using the convention 'date-number-other'
+            # Extract date and number
+            sampleid_parts = re.split("_|-", possible_sampleid)
+            if len(sampleid_parts) > 1:
+                sampleid_date = sampleid_parts[0]
+                sampleid_number = sampleid_parts[1].zfill(2) # pad with zeros
+                # Check if this is consistent with any known samples
+                possible_samples = [
+                    s for s in known_samples if s.startswith(sampleid_date) and s.endswith(sampleid_number)
+                ]
+                if len(possible_samples) == 1:
+                    sampleid = possible_samples[0]
+                    print(f"Barcode {possible_sampleid} inferred as Sample ID {sampleid}")
+                    break
         else:
-            print(f"Sample ID {sampleid} not found in database")
-            sampleid = None
+            sampleid = possible_sampleid
+            print("Sample ID found:", sampleid)
+            break
+    if not sampleid:
+        print(f"Barcode: '{barcode_sampleid}', or Remark: '{remark_sampleid}' not recognised as a Sample ID")
+    return sampleid
 
-    return test_info, sampleid
-
-def get_neware_data(file_path: str) -> dict:
-    df = pd.read_excel(file_path, sheet_name="record", header=0, engine='calamine')
+def get_neware_xlsx_data(file_path: Path) -> pd.DataFrame:
+    """Convert Neware xlsx file to dictionary."""
+    df = pd.read_excel(file_path, sheet_name="record", header=0, engine="calamine")
     output_df = pd.DataFrame()
     output_df["V (V)"] = df["Voltage(V)"]
     output_df["I (A)"] = df["Current(A)"]
-    output_df["technique"] = df["Step Type"]
-    output_df["loop_number"] = df["Cycle Index"]
-
+    output_df["technique"] = df["Step Type"].apply(lambda x: state_dict_rev.get(x, -1)).astype(int)
     # Every time the Step Type changes from a string containing "DChg" or "Rest" increment the cycle number
     output_df["cycle_number"] = (
-        df["Step Type"].str.contains(r" DChg| DCHg|Rest", regex=True).shift(1) & 
+        df["Step Type"].str.contains(r" DChg| DCHg|Rest", regex=True).shift(1) &
         df["Step Type"].str.contains(r" Chg", regex=True)
     ).cumsum()
-
-    output_df["index"] = 0
     # convert date string from df["Date"] in format YYYY-MM-DD HH:MM:SS to uts timestamp in seconds
     output_df["uts"] = df["Date"].apply(lambda x: datetime.strptime(x, "%Y-%m-%d %H:%M:%S").timestamp())
-    return output_df.to_dict(orient='list')
+    return output_df
+
+def get_neware_ndax_data(file_path: Path) -> pd.DataFrame:
+    """Convert Neware ndax file to dictionary."""
+    df = NewareNDA.read(file_path)
+    output_df = pd.DataFrame()
+    output_df["V (V)"] = df["Voltage"]
+    output_df["I (A)"] = (df["Current(mA)"] / 1000)
+    output_df["technique"] = df["Status"].apply(lambda x: state_dict_rev_underscored.get(x, 0)).astype(int)
+    output_df["cycle_number"] = (
+        df["Status"].str.contains(r"_DChg|_DCHg|Rest", regex=True).shift(1) &
+        df["Status"].str.contains(r"_Chg", regex=True)
+    ).cumsum()
+    # convert datetime timestamp to uts timestamp in seconds
+    output_df["uts"] = df["Timestamp"].apply(lambda x: x.timestamp())
+    return output_df
 
 def convert_neware_data(
-        file_path: str,
-        output_jsongz_file: bool = True,
-) -> tuple[dict, dict]:
-    """ Convert a neware file to a dataframe and save as a gzipped json file.
+        file_path: Path | str,
+        output_jsongz_file: bool = False,
+        output_hdf5_file: bool = True,
+) -> tuple[pd.DataFrame, dict]:
+    """Convert a neware file to a dataframe and save as a gzipped json file.
 
     Args:
-        file_path (str): Path to the neware file
-        sampleid (str): Sample ID
+        file_path (Path): Path to the neware file
         output_jsongz_file (bool): Whether to save the file as a gzipped json
+        output_hdf5_file (bool): Whether to save the file as a hdf5
+
+    Returns:
+        tuple[pd.DataFrame, dict]: DataFrame containing the cycling data and metadata
+
     """
-
     # Get test information and Sample ID
-    job_data, sampleid = get_neware_metadata(file_path)
-    job_data["job_type"] = "neware_xlsx"
-
-    # Get data
-    data = get_neware_data(file_path)
+    file_path = Path(file_path)
+    if file_path.suffix == ".xlsx":
+        job_data = get_neware_xlsx_metadata(file_path)
+        job_data["job_type"] = "neware_xlsx"
+        data = get_neware_xlsx_data(file_path)
+    elif file_path.suffix == ".ndax":
+        job_data = get_neware_ndax_metadata(file_path)
+        job_data["job_type"] = "neware_ndax"
+        data = get_neware_ndax_data(file_path)
+    sampleid = get_sampleid_from_metadata(job_data)
 
     # If there is a valid Sample ID, get sample metadata from database
     sample_data = None
     if sampleid:
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(config["Database path"]) as conn:
             cursor = conn.cursor()
-            cursor.execute(f"SELECT * FROM samples WHERE `Sample ID`='{sampleid}'")
+            cursor.execute("SELECT * FROM samples WHERE `Sample ID`=?", (sampleid,))
             row = cursor.fetchone()
             if row:
                 columns = [column[0] for column in cursor.description]
                 sample_data = dict(zip(columns, row))
 
     # Metadata to add
-    current_datetime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    job_data["Technique codes"] = state_dict
+    current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     metadata = {
         "provenance": {
-            "snapshot_file": file_path,
+            "snapshot_file": str(file_path),
             "aurora_metadata": {
                 "mpr_conversion" : {
                     "repo_url": __url__,
@@ -290,59 +488,84 @@ def convert_neware_data(
                     "method": "neware_harvester.convert_neware_data",
                     "datetime": current_datetime,
                 },
-            }
+            },
         },
         "job_data": job_data,
         "sample_data": sample_data,
     }
 
-    if output_jsongz_file:
+    if output_jsongz_file or output_hdf5_file:
         if not sampleid:
             print(f"Not saving {file_path}, no valid Sample ID found")
             return data, metadata
-        folder = os.path.join(config["Processed snapshots folder path"], _run_from_sample(sampleid),sampleid)
-        if not os.path.exists(folder):
-            os.makedirs(folder)
-        output_jsongz_file = os.path.join(folder, "snapshot."+os.path.basename(file_path).replace(".xlsx", ".json.gz"))
-        with gzip.open(output_jsongz_file, 'wt') as f:
-            json.dump({'data': data, 'metadata': metadata}, f)
+        run_id = _run_from_sample(sampleid)
+        folder = Path(config["Processed snapshots folder path"]) / run_id / sampleid
+        if not folder.exists():
+            folder.mkdir(parents=True)
+
+        if output_jsongz_file:
+            file_name = f"snapshot.{file_path.stem}.json.gz"
+            with gzip.open(folder/file_name, "wt") as f:
+                json.dump({"data": data.to_dict(orient="list"), "metadata": metadata}, f)
+
+        if output_hdf5_file:  # Save as hdf5
+            file_name = f"snapshot.{file_path.stem}.h5"
+            # Ensure smallest data types are used
+            data = data.astype({"V (V)": "float32", "I (A)": "float32"})
+            data = data.astype({"technique": "int16", "cycle_number": "int32"})
+            data.to_hdf(
+                folder/file_name,
+                key="data",
+                mode="w",
+                complib="blosc",
+                complevel=9,
+            )
+            # create a dataset called metadata and json dump the metadata
+            with h5py.File(folder/file_name, "a") as f:
+                f.create_dataset("metadata", data=json.dumps(metadata))
 
         # Update the database
         creation_date = datetime.fromtimestamp(
-            os.path.getmtime(file_path)
-        ).strftime('%Y-%m-%d %H:%M:%S')
-        with sqlite3.connect(db_path) as conn:
+            file_path.stat().st_mtime,
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        with sqlite3.connect(config["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
-                (sampleid,)
+                (sampleid,),
             )
             cursor.execute(
                 "UPDATE results "
                 "SET `Last snapshot` = ? "
                 "WHERE `Sample ID` = ?",
-                (creation_date, sampleid)
+                (creation_date, sampleid),
             )
             cursor.close()
 
     return data, metadata
 
 def convert_all_neware_data() -> None:
-    """ Converts all neware files to gzipped json files. 
-    
+    """Convert all neware files to gzipped json files.
+
     The config file needs a key "Neware harvester" with the keys "Snapshots folder path"
     """
-    raw_folder = neware_config["Snapshots folder path"]
-
-    # Get all xlsx files in the raw folder recursively
-    neware_files = []
-    for root, _, files in os.walk(raw_folder):
-        for file in files:
-            if file.endswith(".xlsx"):
-                neware_files.append(os.path.join(root, file))
+    # Get all xlsx and ndax files in the raw folder recursively
+    snapshots_folder = get_snapshot_folder()
+    neware_files = [file for file in snapshots_folder.rglob("*") if file.suffix in [".xlsx", ".ndax"]]
     for file in neware_files:
-        convert_neware_data(file)
+        try:
+            convert_neware_data(file, output_hdf5_file=True)
+        except ValueError as e:  # noqa: PERF203
+            print(f"Error converting {file}: {e}")
+
+def main() -> None:
+    """Run the main function."""
+    new_files = harvest_all_neware_files()
+    for file in new_files:
+        try:
+            convert_neware_data(file, output_hdf5_file=True)
+        except ValueError as e:  # noqa: PERF203
+            print(f"Error converting {file}: {e}")
 
 if __name__ == "__main__":
-    harvest_all_neware_files()
-    convert_all_neware_data()
+    main()
