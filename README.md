@@ -33,35 +33,48 @@ A web-app based on `Plotly Dash` allows rapid, interactive viewing of data, as w
 
 ## Installation
 
-Clone the repo, pip install requirements in requirements.txt, preferably in a virtual environment.
+In a Python environment:
 
-If using "view-only":
-- Run visualiser/app.py
-- This will create a config.json file in the root directory
-- In config.json fill in 'Shared config path' to point to the shared configuration file
-- Run visualiser/app.py again to start viewing data
+```
+pip install git+https://github.com/EmpaEconversion/aurora-cycler-manager.git
+```
+After successfully installing, run and follow the instructions:
+```
+aurora-setup
+```
+To _view data from an existing set up_:
+- Say yes to 'Connect to an existing configuration and database', then give the path to this folder.
 
-If you want to interact with cyclers, this works using OpenSSH:
+To _interact with servers on an existing set up_:
+- Interacting with servers (submitting jobs, harvesting data etc.) works with OpenSSH
 - Generate a public/private key pair on your system with `ssh-keygen`
 - Ensure your public key is authorized on the system running the cycler
 - In config.json fill in 'SSH private key path' and 'Snapshots folder path'
 - Snapshots folder path stores the raw data downloaded from cyclers which is processed. This data can be deleted any time.
-
-If you are setting up the system and shared configuration file:
-- Run database_setup.py to create a default shared config file and sqlite database
-- Move the configuration and database anywhere - this is designed for use on a network drive
-- Fill in the empty fields in the configuration file
 - To connect and control `tomato` servers, `tomato v0.2.3` must be configured on the remote PC
 - To harvest from EC-lab or Neware cyclers, set data to save/backup to some location and specify this location in the shared configuration file
-- Run the daemon.py script to periodically download and analyse new data and update the database
+
+To _create a new set up_: 
+- Use `aurora-setup` to create a configuration and database - it is currently designed with network storage in mind, so other users can access data.
+- Fill in the configuration file with details about e.g. tomato, Neware and EC-lab servers. Examples are left in the default config file.
 
 ## Usage
 
-Place output .csv files from the Aurora robot into the samples folder defined in the configuration.
+A web app allows users to view analysed data and see the status of samples, jobs, and cyclers, and submit jobs to cyclers if they have access. Run with:
+```
+aurora-app
+```
 
-Either load samples, submit jobs and ready pipelines using `tomato` directly, or use the `Dash` app, or write a script to use the functions in server_manager.py.
+To upload sample information to the database, place output .csv files from the Aurora robot into the samples folder defined in the configuration.
 
-Run visualiser/app.py to view an interactive visualiser of the results for samples and batches of samples, and to control `tomato` cyclers.
+Hand made cells can also be added, a .csv must be created with the headers defined in the shared configuration.
+
+Loading samples, submitting jobs etc. can be performed on `tomato` directly, or using the `aurora-app` GUI, or by writing a Python script to use the functions in server_manager.py.
+
+With SSH access, automatic data harvesting and analysis is run using:
+```
+aurora-daemon
+```
 
 ## Contributors
 
