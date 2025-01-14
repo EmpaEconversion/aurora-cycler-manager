@@ -16,6 +16,19 @@ def get_config() -> dict:
     current_dir = Path(__file__).resolve().parent
     user_config_path = current_dir / "config.json"
 
+    err_msg = f"""
+        Please fill in the config file at {user_config_path}.
+
+        REQUIRED:
+        'Shared config path': Path to the shared config file on the network drive.
+
+        OPTIONAL - if you want to interact directly with cyclers (e.g. load, eject, submit jobs):
+        'SSH private key path': Path to the SSH private key file.
+        'Snapshots folder path': Path to a (local) folder to store unprocessed snapshots e.g. 'C:/aurora-shapshots'.
+
+        You can set the 'Shared config path' by running aurora-setup and following the instructions.
+    """
+
     # if there is no user config file, create one
     if not user_config_path.exists():
         with user_config_path.open("w", encoding = "utf-8") as f:
@@ -29,17 +42,7 @@ def get_config() -> dict:
                     indent = 4,
                 ),
             )
-            msg = f"""
-                Please fill in the config file at {user_config_path}.
-
-                REQUIRED:
-                'Shared config path': Path to the shared config file on the network drive.
-
-                OPTIONAL - if you want to interact directly with cyclers (e.g. load, eject, submit jobs):
-                'SSH private key path': Path to the SSH private key file.
-                'Snapshots folder path': Path to a (local) folder to store unprocessed snapshots e.g. 'C:/aurora-shapshots'.
-            """
-            raise FileNotFoundError(msg)
+            raise FileNotFoundError(err_msg)
 
     with user_config_path.open(encoding = "utf-8") as f:
         config = json.load(f)
@@ -52,17 +55,7 @@ def get_config() -> dict:
         config.update(shared_config)
 
     if not config.get("Database path"):
-        msg = f"""
-                Please fill in the config file at {user_config_path}.
-
-                REQUIRED:
-                'Shared config path': Path to the shared config file on the network drive. If this does not exist, run database_setup.py.
-
-                OPTIONAL - if you want to interact directly with cyclers (e.g. load, eject, submit jobs):
-                'SSH private key path': Path to the SSH private key file.
-                'Snapshots folder path': Path to a (local) folder to store unprocessed snapshots e.g. 'C:/aurora-shapshots'.
-            """
-        raise ValueError(msg)
+        raise ValueError(err_msg)
 
     config["User config path"] = str(user_config_path)
 
