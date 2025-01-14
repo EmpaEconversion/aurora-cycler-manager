@@ -130,20 +130,20 @@ def default_config(base_dir: Path) -> dict:
         ],
     }
 
-def create_database(config_path: Path) -> None:
+def create_database() -> None:
     """Create/update a database file."""
     # Load the configuration
-    with config_path.open("r") as f:
-        config = json.load(f)
+    config = get_config()
     database_path = Path(config["Database path"])
 
     # Check if database file already exists
-    if (database_path/"database.db").exists():
+    if database_path.exists() and database_path.suffix == ".db":
         db_existed=True
+        print(f"Found database at {database_path}")
     else:
+        print(f"No database at {database_path}, creating new database")
         db_existed=False
         database_path.parent.mkdir(exist_ok=True)
-
     # Get the list of columns from the configuration
     columns = config["Sample database"]
     column_definitions = [f'`{col["Name"]}` {col["Type"]}' for col in columns]
@@ -278,36 +278,56 @@ def main() -> None:
             print(f"User config file: {config_path}")
             print(f"Shared config file: {config['Shared config path']}")
             print(f"Database: {config['Database path']}")
-            if input("Continue with another set up? (yes/no): ") != "yes":
+            choice = input("Update existing database entries? (yes/no): ")
+            if choice.lower() in ["yes", "y"]:
+                create_database()
+                sys.exit()
+            choice = input("Continue with another set up? (yes/no): ")
+            if choice not in ["yes", "y"]:
                 print("Exiting")
                 sys.exit()
     except (ValueError,FileNotFoundError):
         pass
 
     choice = input("Connect to an existing configuration and database? (yes/no):")
-    if choice in ["yes","y"]:
-        shared_config_path = input("Please enter the path to the shared_config.json file:")
-        # Check if shared_config already exists
-        if not Path(shared_config_path).exists():
-            print("File does not exist, exiting.")
+    if choice.lower() in ["yes","y"]:
+        shared_config_path = input("Please enter the path to the shared_config.json file or parent folder:")
+        # Remove quotes, spaces etc.
+        shared_config_path = Path(shared_config_path.strip('\'" ')).resolve()
+        # Try to find the shared config file in a few different locations
+        potential_paths = [
+            shared_config_path,
+            shared_config_path/"shared_config.json",
+            shared_config_path/"database"/"shared_config.json",
+        ]
+        for path in potential_paths:
+            if path.exists() and path.suffix == ".json":
+                shared_config_path = path
+                break
+        else:
+            print("Could not find a valid shared config file. Exiting.")
             sys.exit()
+
         # Update the user config file with the shared config path
-        with (root_dir/"config.json").open("w") as f:
+        print(f"Updating user config file at {config_path}")
+        with (config_path).open("r") as f:
             config = json.load(f)
-            config["Shared config path"] = shared_config_path
+        config["Shared config path"] = str(shared_config_path)
+        with (config_path).open("w") as f:
             json.dump(config, f, indent=4)
         # If this runs successfully, the user can now run the app
         get_config()
         print("Successfully connected to existing configuration. Run the app with 'aurora-app'")
-    elif choice in ["no", "n"]:
+    elif choice.lower() in ["no", "n"]:
         choice = input("Create a new config, database and file structure? (yes/no):")
-        if choice not in ["yes","y"]:
+        if choice.lower() not in ["yes","y"]:
             print("Exiting")
             sys.exit()
         base_dir = Path(input("Please enter the folder path to be used for Aurora database and data storage:")).resolve()
         # If it doesn't exist, ask user if they want to create the folder
         if not base_dir.exists():
-            if input(f"Folder {base_dir} does not exist. Create it? (yes/no): ") == "yes":
+            choice = input(f"Folder {base_dir} does not exist. Create it? (yes/no): ")
+            if choice.lower() in ["y", "yes"]:
                 base_dir.mkdir(parents=True)
             else:
                 print("Exiting")
@@ -323,7 +343,9 @@ def main() -> None:
 
         # Create the config file, if it already exists warn the user
         config_path = base_dir/"database"/"shared_config.json"
-        if config_path.exists() and input(f"Config file {config_path} already exists. Overwrite it? (yes/no): ") != "yes":
+        if config_path.exists():
+            choice = input(f"Config file {config_path} already exists. Overwrite it? (yes/no): ")
+            if choice.lower() not in ["yes","y"]:
                 print("Exiting")
         with (base_dir/"database"/"shared_config.json").open("w") as f:
             json.dump(default_config(base_dir), f, indent=4)
@@ -341,7 +363,10 @@ def main() -> None:
         print(f"Updated user config at {root_dir/"config.json"} to point to shared config file")
 
         # Create the database
-        create_database(config_path)
+        create_database()
+
+        print(f"IMPORTANT: Before use you must fill in server details in {config_path}")
+        print("If you change database columns, run this script again.")
 
 if __name__ == "__main__":
     main()

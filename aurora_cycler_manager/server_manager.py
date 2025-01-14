@@ -148,7 +148,14 @@ class ServerManager:
                     stacklevel=2,
                 )
         df = df.rename(columns=rename)
-        df = df.drop(columns=drop)
+        if drop:
+            warnings.warn(
+                    f"Column '{column}' in the sample file {csv_file} is not in the database. "
+                    "Skipping this column.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+            df = df.drop(columns=drop)
 
         # Check that all essential columns exist
         essential_keys = ["Sample ID"]
