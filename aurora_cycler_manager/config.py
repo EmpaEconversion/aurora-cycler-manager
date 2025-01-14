@@ -64,4 +64,6 @@ def get_config() -> dict:
             """
         raise ValueError(msg)
 
+    config["User config path"] = str(user_config_path)
+
     return config

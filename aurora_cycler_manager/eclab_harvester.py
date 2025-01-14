@@ -39,7 +39,17 @@ from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
 config = get_config()
-snapshot_folder = Path(config["Snapshots folder path"]) / "eclab_snapshots"
+
+def get_snapshot_folder() -> Path:
+    """Get the path to the snapshot folder for neware files."""
+    snapshot_parent = config.get("Snapshots folder path")
+    if not snapshot_parent:
+        msg = (
+            "No 'Snapshots folder path' in config file. "
+            f"Please fill in the config file at {config.get("User config path")}.",
+        )
+        raise ValueError(msg)
+    return Path(snapshot_parent) / "eclab_snapshots"
 
 def get_mprs(
     server_label: str,
@@ -152,6 +162,7 @@ def get_all_mprs(force_copy: bool = False) -> None:
     The "label" must match a server in the "Servers" list in the main config.
     """
     all_new_files = []
+    snapshot_folder = get_snapshot_folder()
     for server in config["EC-lab harvester"]["Servers"]:
         new_files = get_mprs(
             server["label"],
@@ -378,6 +389,7 @@ def convert_all_mprs() -> None:
     lookups for folders that are named differently to run ID on the server.
     """
     # walk through raw_folder and get the sample ID
+    snapshot_folder = get_snapshot_folder()
     for dirpath, _dirnames, filenames in os.walk(snapshot_folder):
         for filename in filenames:
             if filename.endswith(".mpr"):

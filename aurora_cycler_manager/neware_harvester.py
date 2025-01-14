@@ -40,7 +40,17 @@ from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
 config = get_config()
-snapshots_folder = Path(config["Snapshots folder path"]) / "neware_snapshots"
+
+def get_snapshot_folder() -> Path:
+    """Get the path to the snapshot folder for neware files."""
+    snapshot_parent = config.get("Snapshots folder path")
+    if not snapshot_parent:
+        msg = (
+            "No 'Snapshots folder path' in config file. "
+            f"Please fill in the config file at {config.get("User config path")}.",
+        )
+        raise ValueError(msg)
+    return Path(snapshot_parent) / "neware_snapshots"
 
 def harvest_neware_files(
     server_label: str,
@@ -147,6 +157,7 @@ def harvest_neware_files(
 def harvest_all_neware_files(force_copy: bool = False) -> None:
     """Get neware files from all servers specified in the config."""
     all_new_files = []
+    snapshots_folder = get_snapshot_folder()
     for server in config["Neware harvester"]["Servers"]:
         new_files = harvest_neware_files(
             server_label = server["label"],
@@ -539,6 +550,7 @@ def convert_all_neware_data() -> None:
     The config file needs a key "Neware harvester" with the keys "Snapshots folder path"
     """
     # Get all xlsx and ndax files in the raw folder recursively
+    snapshots_folder = get_snapshot_folder()
     neware_files = [file for file in snapshots_folder.rglob("*") if file.suffix in [".xlsx", ".ndax"]]
     for file in neware_files:
         try:

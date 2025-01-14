@@ -25,7 +25,17 @@ from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.version import __url__, __version__
 
 config = get_config()
-snapshot_folder = Path(config["Snapshots folder path"]) / "tomato_snapshots"
+
+def get_snapshot_folder() -> Path:
+    """Get the path to the snapshot folder for tomato files."""
+    snapshot_parent = config.get("Snapshots folder path")
+    if not snapshot_parent:
+        msg = (
+            "No 'Snapshots folder path' in config file. "
+            f"Please fill in the config file at {config.get("User config path")}.",
+        )
+        raise ValueError(msg)
+    return Path(snapshot_parent) / "tomato_snapshots"
 
 def convert_tomato_json(
         snapshot_file_path: Path | str,
@@ -160,10 +170,9 @@ def convert_tomato_json(
                 f.create_dataset("metadata", data=json.dumps(metadata))
     return data, metadata
 
-def convert_all_tomato_jsons(
-    sampleid_contains: str = "",
-    ) -> None:
+def convert_all_tomato_jsons(sampleid_contains: str = "") -> None:
     """Goes through all the raw json files in the snapshots folder and converts them to hdf5."""
+    snapshot_folder = get_snapshot_folder()
     for batch_folder in snapshot_folder.iterdir():
         for sample_folder in batch_folder.iterdir():
             if sampleid_contains and sampleid_contains not in sample_folder.name:
