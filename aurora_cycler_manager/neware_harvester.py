@@ -19,6 +19,8 @@ and saves them to the processed snapshot folder.
 
 Run the script to harvest and convert all neware files.
 """
+from __future__ import annotations
+
 import gzip
 import json
 import os

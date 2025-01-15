@@ -11,6 +11,8 @@ information from the database.
 convert_all_tomato_jsons does this for all tomato files in the local snapshot
 folder.
 """
+from __future__ import annotations
+
 import gzip
 import json
 import sqlite3
