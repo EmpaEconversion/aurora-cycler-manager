@@ -42,7 +42,7 @@ def db_view_layout(config: dict) -> html.Div:
                 style={"height": "100%"},
                 children = [
                     # Buttons to refresh or update the database
-                    html.P(children = f"Last refreshed: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}", id="last-refreshed",style={"display": "inline-block"}),
+                    html.P(children = f"Last refreshed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", id="last-refreshed",style={"display": "inline-block"}),
                     html.P(children = "Click refresh to sync to database, click force update to updated statuses from cyclers.", id="last-updated",style={"display": "inline-block", "margin-left": "10px"}),
                     html.Br(),
                     dbc.Button("Refresh database", id="refresh-database", color="primary", outline=True, className="me-1"),
@@ -707,7 +707,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         # TODO use proper tomato schemas to validate the json
         missing_keys = [key for key in ["version","method","tomato"] if key not in payload.keys()]
         if missing_keys:
-            return f"ERROR: {filename} is missing keys: {", ".join(["'"+key+"'" for key in missing_keys])}", {}
+            return f'ERROR: {filename} is missing keys: {", ".join(["'"+key+"'" for key in missing_keys])}', {}
         return f"{filename} loaded", payload
     # Submit pop up - show custom capacity input if custom capacity is selected
     @app.callback(
