@@ -32,7 +32,7 @@ def get_snapshot_folder() -> Path:
     if not snapshot_parent:
         msg = (
             "No 'Snapshots folder path' in config file. "
-            f"Please fill in the config file at {config.get("User config path")}.",
+            f"Please fill in the config file at {config.get('User config path')}.",
         )
         raise ValueError(msg)
     return Path(snapshot_parent) / "tomato_snapshots"

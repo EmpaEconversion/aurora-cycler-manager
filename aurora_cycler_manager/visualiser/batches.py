@@ -495,8 +495,8 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
                     "Cycle: %{x}",
                     f"{yvar}: %{{y}}",
                 ] +
-                ([f"{sdata["color_by"]}: {color_label}"] if sdata["color_by"] else []) +
-                ([f"{sdata["style_by"]}: {style_label}"] if sdata["style_by"] else []) +
+                ([f"{sdata['color_by']}: {color_label}"] if sdata["color_by"] else []) +
+                ([f"{sdata['style_by']}: {style_label}"] if sdata["style_by"] else []) +
                 ["<extra></extra>"],
             )
             trace = go.Scattergl(
