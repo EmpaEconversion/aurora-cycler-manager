@@ -360,7 +360,7 @@ def main() -> None:
         with (root_dir/"config.json").open("w") as f:
             json.dump(config, f, indent=4)
         print(f"Created shared config file at {config_path}")
-        print(f"Updated user config at {root_dir/"config.json"} to point to shared config file")
+        print(f"Updated user config at {root_dir/'config.json'} to point to shared config file")
 
         # Create the database
         create_database()
