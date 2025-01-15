@@ -8,7 +8,9 @@ systems, both of individual samples and of batches of samples.
 Allows users to view current information in the database, and control cyclers
 remotely, loading, ejecting, and submitting jobs to samples.
 """
+from __future__ import annotations
 
+import socket
 import webbrowser
 
 import dash_bootstrap_components as dbc
@@ -105,10 +107,21 @@ register_samples_callbacks(app,config)
 register_batches_callbacks(app,config)
 register_db_view_callbacks(app,config)
 
+def find_free_port(start_port: int = 8050, end_port: int = 8100) -> int:
+    """Find a free port between start_port and end_port."""
+    for port in range(start_port, end_port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex(("127.0.0.1", port)) != 0:
+                return port
+    msg = f"No free ports available between {start_port} and {end_port}"
+    raise RuntimeError(msg)
+
 def main() -> None:
     """Open a web browser and run the app."""
-    webbrowser.open_new("http://localhost:8050")
-    serve(app.server, host="127.0.0.1", port=8050)
+    port = find_free_port()
+    print(f"Running aurora-app on http://localhost:{port}")
+    webbrowser.open_new(f"http://localhost:{port}")
+    serve(app.server, host="127.0.0.1", port=port)
 
 if __name__ == "__main__":
     main()
