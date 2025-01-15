@@ -395,28 +395,27 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
             else:
                 color_mode = "numerical"
 
-            match color_mode:
-                case "none":
+            if color_mode == "none":
                     color_values_norm = [None] * len(color_values)
                     unique_color_labels = [None]
                     unique_color_indices = [0]
-                case "categorical":
+            elif color_mode == "categorical":
                     color_values = [v if v is not None else "None" for v in color_values]
                     len_unique_colors = len(set(color_values))
                     color_values_norm = [list(set(color_values)).index(v)/(len_unique_colors-1) for v in color_values]
                     unique_color_labels, unique_color_indices = np.unique(color_values, return_index=True)
-                case "numerical_categorical":
+            elif color_mode == "numerical_categorical":
                     cmin = min([v for v in color_values if v is not None])
                     cmax = max([v for v in color_values if v is not None])
                     color_values_norm = [(v - cmin) / (cmax - cmin) if v else None for v in color_values]
                     unique_color_labels, unique_color_indices = np.unique(color_values, return_index=True)
-                case "numerical":
+            elif color_mode == "numerical":
                     cmin = min([v for v in color_values if v is not None])
                     cmax = max([v for v in color_values if v is not None])
                     color_values_norm = [(v - cmin) / (cmax - cmin) if v else None for v in color_values]
                     unique_color_labels = [None]
                     unique_color_indices = [0]
-                case "single_value":
+            elif color_mode == "single_value":
                     color_values_norm = [0.5] * len(color_values)
                     unique_color_labels = [color_values[0]]
                     unique_color_indices = [0]

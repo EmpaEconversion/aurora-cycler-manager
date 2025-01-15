@@ -236,60 +236,59 @@ def analyse_cycles(
             msg = "Different job types found in job data"
             raise ValueError(msg)
 
-        match job_type:
-            # tomato 0.2.3 using biologic driver
-            case "tomato_0_2_biologic":
-                payloads = [j.get("Payload",[]) for j in job_data]
-                with sqlite3.connect(config["Database path"]) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
-                    row = cursor.fetchone()
-                    if row:
-                        pipeline = row[0]
-                        job_id = row[1]
-                        if job_id:
-                            cursor.execute("SELECT `Status` FROM jobs WHERE `Job ID` = ?", (f"{job_id}",))
-                            status = cursor.fetchone()[0]
+        # tomato 0.2.3 using biologic driver
+        if job_type == "tomato_0_2_biologic":
+            payloads = [j.get("Payload",[]) for j in job_data]
+            with sqlite3.connect(config["Database path"]) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
+                row = cursor.fetchone()
+                if row:
+                    pipeline = row[0]
+                    job_id = row[1]
+                    if job_id:
+                        cursor.execute("SELECT `Status` FROM jobs WHERE `Job ID` = ?", (f"{job_id}",))
+                        status = cursor.fetchone()[0]
 
-                for payload in payloads:
-                    for method in payload.get("method",[]):
-                        voltage = method.get("limit_voltage_max",0)
-                        max_V = max(voltage, max_V)
+            for payload in payloads:
+                for method in payload.get("method",[]):
+                    voltage = method.get("limit_voltage_max",0)
+                    max_V = max(voltage, max_V)
 
-                for payload in payloads:
-                    for method in payload.get("method",[]):
-                        if method.get("technique",None) == "loop":
-                            if method["n_gotos"] < 4: # it is probably formation
-                                for m in payload.get("method",[]):
-                                    if "current" in m and "C" in m["current"]:
-                                        try:
-                                            formation_C = _c_to_float(m["current"])
-                                        except ValueError:
-                                            print(f"Not a valid C-rate: {m['current']}")
-                                            formation_C = 0
-                                        break
-                            if method.get("n_gotos",0) > 10: # it is probably cycling
-                                for m in payload.get("method",[]):
-                                    if "current" in m and "C" in m["current"]:
-                                        try:
-                                            cycle_C = _c_to_float(m["current"])
-                                        except ValueError:
-                                            print(f"Not a valid C-rate: {m['current']}")
-                                            cycle_C = 0
-                                        break
+            for payload in payloads:
+                for method in payload.get("method",[]):
+                    if method.get("technique",None) == "loop":
+                        if method["n_gotos"] < 4: # it is probably formation
+                            for m in payload.get("method",[]):
+                                if "current" in m and "C" in m["current"]:
+                                    try:
+                                        formation_C = _c_to_float(m["current"])
+                                    except ValueError:
+                                        print(f"Not a valid C-rate: {m['current']}")
+                                        formation_C = 0
+                                    break
+                        if method.get("n_gotos",0) > 10: # it is probably cycling
+                            for m in payload.get("method",[]):
+                                if "current" in m and "C" in m["current"]:
+                                    try:
+                                        cycle_C = _c_to_float(m["current"])
+                                    except ValueError:
+                                        print(f"Not a valid C-rate: {m['current']}")
+                                        cycle_C = 0
+                                    break
 
-            # ec-lab mpr
-            case "eclab_mpr":
-                for m in job_data:
-                    for params in m.get("params",[]):
-                        V = round(params.get("EM",0),3)
-                        max_V = max(V, max_V)
-
-            # Neware xlsx
-            case "neware_xlsx" | "neware_ndax":
-                for m in job_data:
-                    V = max(float(step.get("Voltage (V)",0)) for step in m["Payload"])
+        # ec-lab mpr
+        elif job_type == "eclab_mpr":
+            for m in job_data:
+                for params in m.get("params",[]):
+                    V = round(params.get("EM",0),3)
                     max_V = max(V, max_V)
+
+        # Neware xlsx
+        elif job_type == "neware_xlsx" | "neware_ndax":
+            for m in job_data:
+                V = max(float(step.get("Voltage (V)",0)) for step in m["Payload"])
+                max_V = max(V, max_V)
 
     # Fill some missing values
     if not formation_C:
