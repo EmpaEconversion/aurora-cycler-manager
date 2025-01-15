@@ -707,7 +707,8 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         # TODO use proper tomato schemas to validate the json
         missing_keys = [key for key in ["version","method","tomato"] if key not in payload.keys()]
         if missing_keys:
-            return f'ERROR: {filename} is missing keys: {", ".join(["'"+key+"'" for key in missing_keys])}', {}
+            msg = f"ERROR: {filename} is missing keys: {', '.join(missing_keys)}"
+            return msg, {}
         return f"{filename} loaded", payload
     # Submit pop up - show custom capacity input if custom capacity is selected
     @app.callback(
