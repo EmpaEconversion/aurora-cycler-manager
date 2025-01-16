@@ -280,9 +280,12 @@ def analyse_cycles(
         # ec-lab mpr
         elif job_type == "eclab_mpr":
             for m in job_data:
-                for params in m.get("params",[]):
-                    V = round(params.get("EM",0),3)
-                    max_V = max(V, max_V)
+                params = m.get("params",[])
+                if isinstance(params,list):
+                    for param in params:
+                        if isinstance(param,dict):
+                            V = round(param.get("EM",0),3)
+                            max_V = max(V, max_V)
 
         # Neware xlsx
         elif job_type in ("neware_xlsx", "neware_ndax"):
