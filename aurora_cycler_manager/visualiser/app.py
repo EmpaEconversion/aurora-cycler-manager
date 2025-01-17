@@ -53,7 +53,7 @@ custom_spinner=html.Div(
 )
 
 # Define app and layout
-external_stylesheets = [dbc.themes.BOOTSTRAP]
+external_stylesheets = [dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP, "/assets/style.css"]
 app = Dash(__name__, external_stylesheets=external_stylesheets)
 app.title = "Aurora Visualiser"
 app.layout = html.Div(
@@ -63,8 +63,8 @@ app.layout = html.Div(
             custom_spinner=custom_spinner,
             # make it blurry
             overlay_style={"visibility": "visible", "filter": "blur(2px)"},
-            delay_show=200,
-            delay_hide=50,
+            delay_show=300,
+            delay_hide=100,
             children = [
                 dcc.Tabs(
                     id = "tabs",

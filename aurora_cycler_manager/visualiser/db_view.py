@@ -7,13 +7,16 @@ from __future__ import annotations
 import base64
 import json
 from datetime import datetime
+from pathlib import Path
 
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 import paramiko
 from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
 from dash import callback_context as ctx
+from obvibe.vibing import push_exp
 
+from aurora_cycler_manager.analysis import _run_from_sample
 from aurora_cycler_manager.server_manager import ServerManager
 from aurora_cycler_manager.visualiser.funcs import delete_samples, get_batch_names, get_database, get_sample_names
 
@@ -72,21 +75,32 @@ def db_view_layout(config: dict) -> html.Div:
                         [
                             html.Div(
                                 [
-                                    dbc.Button("Load", id="load-button", color="primary", outline=True, className="me-1"),
-                                    dbc.Button("Eject", id="eject-button", color="primary", outline=True, className="me-1"),
-                                    dbc.Button("Ready", id="ready-button", color="primary", outline=True, className="me-1"),
-                                    dbc.Button("Unready", id="unready-button", color="primary", outline=True, className="me-1"),
-                                    dbc.Button("Submit", id="submit-button", color="primary", outline=True, className="me-1"),
-                                    dbc.Button("Cancel", id="cancel-button", color="danger", outline=True, className="me-1"),
-                                    dbc.Button("View data", id="view-button", color="primary", outline=True, className="me-1"),
-                                    dbc.Button("Snapshot", id="snapshot-button", color="primary", outline=True, className="me-1"),
-                                    dbc.Button("Delete", id="delete-button", color="danger", outline=True, className="me-1"),
+                                    dbc.Button([html.I(className="bi bi-arrow-90deg-down me-2"),"Load"], id="load-button", color="primary", className="me-1"),
+                                    dbc.Button([html.I(className="bi bi-arrow-90deg-right me-2"),"Eject"], id="eject-button", color="primary", className="me-1"),
+                                    dbc.Button([html.I(className="bi bi-play me-2"),"Ready"], id="ready-button", color="primary", className="me-1"),
+                                    dbc.Button([html.I(className="bi bi-slash-circle me-2"),"Unready"], id="unready-button", color="primary", className="me-1"),
+                                    dbc.Button([html.I(className="bi bi-upload me-2"),"Submit"], id="submit-button", color="primary", className="me-1"),
+                                    dbc.Button([html.I(className="bi bi-x-circle me-2"),"Cancel"], id="cancel-button", color="danger", className="me-1"),
+                                    dbc.Button([html.I(className="bi bi-graph-down me-2"),"View data"], id="view-button", color="primary", className="me-1"),
+                                    dbc.Button([html.I(className="bi bi-camera me-2"),"Snapshot"], id="snapshot-button", color="primary", className="me-1"),
+                                    dbc.DropdownMenu(
+                                        [
+                                            dbc.DropdownMenuItem([html.I(className="bi bi-cloud-upload me-2"),"Automatic upload"], id="openbis-auto-button"),
+                                            dbc.DropdownMenuItem([html.I(className="bi bi-cloud-upload me-2"),"Custom upload"], id="openbis-custom-button"),
+                                        ],
+                                        label=html.Span([
+                                            html.Img(src="/assets/openbis.svg", style={"height": "20px", "width": "20px", "vertical-align": "middle"}),
+                                            " OpenBIS",
+                                        ]),
+                                        id="openbis-button", color="primary", className="bi me-1", direction="up",
+                                    ),
+                                    dbc.Button([html.I(className="bi bi-trash3 me-2"),"Delete"], id="delete-button", color="danger", className="me-1"),
                                 ],
                                 style={"display": "flex", "flex-wrap": "wrap"},
                             ),
                         html.Div("Loading...", id="table-info", style={"margin-left": "auto", "text-align": "right", "flex-grow": "1"}),
                         ],
-                        style={"display": "flex", "flex-wrap": "wrap"},
+                        style={"display": "flex", "flex-wrap": "wrap", "margin-top": "5px"},
                     ),
                 ],
             ),
@@ -304,6 +318,81 @@ def db_view_layout(config: dict) -> html.Div:
                 id="snapshot-modal",
                 is_open=False,
             ),
+            # OpenBis
+            dbc.Modal(
+                [
+                    dbc.ModalHeader(dbc.ModalTitle("OpenBis upload")),
+                    dbc.ModalBody(
+                        id="openbis-auto-modal-body",
+                        children=[
+                            "Upload the selected samples to OpenBis?",
+                            html.Div(style={"margin-top": "10px"}),
+                            html.P("",id="openbis-auto-sample-list",style={"whiteSpace": "pre-wrap"}),
+                        ],
+                    ),
+                    dbc.ModalFooter(
+                        [
+                            dbc.Button(
+                                "Upload", id="openbis-auto-yes-close", className="ms-auto", n_clicks=0, color="primary",
+                            ),
+                            dbc.Button(
+                                "Go back", id="openbis-auto-no-close", className="ms-auto", n_clicks=0, color="secondary",
+                            ),
+                        ],
+                    ),
+                ],
+                id="openbis-auto-modal",
+                is_open=False,
+            ),
+            dbc.Modal(
+                [
+                    dbc.ModalHeader(dbc.ModalTitle("Custom OpenBis upload")),
+                    dbc.ModalBody(
+                        id="openbis-custom-modal-body",
+                        children=[
+                            "Select the BattINFO .xlsx.",
+                            html.Div(style={"margin-top": "10px"}),
+                            "Fields in the template will overwrite the fields found from the database",
+                            html.Div(style={"margin-top": "10px"}),
+                            dcc.Upload(
+                                id="openbis-template-upload",
+                                children=html.Div([
+                                    "Drag and Drop or ",
+                                    html.A("Select Files"),
+                                ]),
+                                style={
+                                    "width": "100%",
+                                    "height": "60px",
+                                    "lineHeight": "60px",
+                                    "borderWidth": "1px",
+                                    "borderStyle": "dashed",
+                                    "borderRadius": "8px",
+                                    "textAlign": "center",
+                                },
+                                accept=".xlsx",
+                                multiple=False,
+                            ),
+                            html.P(children="No file selected", id="openbis-validator"),
+                            html.Div(style={"margin-top": "10px"}),
+                            html.P("Samples to upload:"),
+                            html.Div(style={"margin-top": "10px"}),
+                            html.P("",id="openbis-custom-sample-list",style={"whiteSpace": "pre-wrap"}),
+                        ],
+                    ),
+                    dbc.ModalFooter(
+                        [
+                            dbc.Button(
+                                "Upload", id="openbis-custom-yes-close", className="ms-auto", n_clicks=0, color="primary", disabled=True,
+                            ),
+                            dbc.Button(
+                                "Go back", id="openbis-custom-no-close", className="ms-auto", n_clicks=0, color="secondary",
+                            ),
+                        ],
+                    ),
+                ],
+                id="openbis-custom-modal",
+                is_open=False,
+            ),
             # Delete
             dbc.Modal(
                 [
@@ -349,6 +438,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output("cancel-button", "style"),
         Output("view-button", "style"),
         Output("snapshot-button", "style"),
+        Output("openbis-button", "style"),
         Output("delete-button", "style"),
         Input("table-select", "active_tab"),
         Input("table-data-store", "data"),
@@ -362,6 +452,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         submit = {"display": "none"}
         view = {"display": "none"}
         snapshot = {"display": "none"}
+        openbis = {"display": "none"}
         delete = {"display": "none"}
         if table == "pipelines":
             load = {"display": "inline-block"}
@@ -380,8 +471,9 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         elif table == "samples":
             view = {"display": "inline-block"}
             snapshot = {"display": "inline-block"}
+            openbis = {"display": "inline-block"}
             delete = {"display": "inline-block"}
-        return data["data"][table], data["column_defs"][table], load, eject, ready, unready, submit, cancel, view, snapshot, delete
+        return data["data"][table], data["column_defs"][table], load, eject, ready, unready, submit, cancel, view, snapshot, openbis, delete
 
     # Refresh the local data from the database
     @app.callback(
@@ -424,12 +516,13 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output("cancel-button", "disabled"),
         Output("view-button", "disabled"),
         Output("snapshot-button", "disabled"),
+        Output("openbis-button", "disabled"),
         Output("delete-button", "disabled"),
         Input("table", "selectedRows"),
         State("table-select", "active_tab"),
     )
     def enable_buttons(selected_rows, table):
-        load, eject, ready, unready, submit, cancel, view, snapshot, delete = True,True,True,True,True,True,True,True,True
+        load, eject, ready, unready, submit, cancel, view, snapshot, openbis, delete = True,True,True,True,True,True,True,True,True,True
         if selected_rows:  # Must have something selected
             if accessible_servers:  # Must have permissions to do anything except view
                 if table == "pipelines":
@@ -450,10 +543,11 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
                 elif table == "samples":
                     if all([s["Sample ID"] is not None for s in selected_rows]):
                         snapshot = False
+                        openbis = False
                         delete = False
             if any([s["Sample ID"] is not None for s in selected_rows]):
                 view = False
-        return load, eject, ready, unready, submit, cancel, view, snapshot, delete
+        return load, eject, ready, unready, submit, cancel, view, snapshot, openbis, delete
 
     @app.callback(
         Output("table-info", "children"),
@@ -765,6 +859,121 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
             # TODO gracefully handle errors here
             sm.submit(row["Sample ID"], payload, capacity_Ah)
         return no_update, 1
+
+    # OpenBIS auto
+    @app.callback(
+        Output("openbis-auto-modal", "is_open"),
+        Output("openbis-auto-sample-list", "children"),
+        Input("openbis-auto-button", "n_clicks"),
+        Input("openbis-auto-yes-close", "n_clicks"),
+        Input("openbis-auto-no-close", "n_clicks"),
+        State("openbis-auto-modal", "is_open"),
+        State("table", "selectedRows"),
+    )
+    def openbis_auto_button(n_clicks, yes_clicks, no_clicks, is_open, selected_rows):
+        if not ctx.triggered:
+            return is_open, ""
+        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        if button_id == "openbis-auto-button":
+            sample_list = "\n".join([f"{s['Sample ID']}" for s in selected_rows])
+            return not is_open, sample_list
+        if (button_id == "openbis-auto-yes-close" and yes_clicks) or (button_id == "openbis-auto-no-close" and no_clicks):
+            return False, ""
+        return False, ""
+    # When openbis auto confirmed, upload the samples to OpenBis and refresh the database
+    @app.callback(
+        Output("loading-database", "children", allow_duplicate=True),
+        Input("openbis-auto-yes-close", "n_clicks"),
+        State("table", "selectedRows"),
+        prevent_initial_call=True,
+    )
+    def openbis_auto_upload(yes_clicks, selected_rows):
+        if not yes_clicks:
+            return no_update
+        personal_access_token_path = config.get("OpenBIS PAT")
+        user_mapping = config.get("User mapping")
+        if not personal_access_token_path:
+            print("Error: missing OpenBIS personal access token")
+        for sample_id in [s["Sample ID"] for s in selected_rows]:
+            run_id = _run_from_sample(sample_id)
+            sample_folder = Path(config["Processed snapshots folder path"])/run_id/sample_id
+            if not sample_folder.exists():
+                print(f"Error: {sample_folder} does not exist")
+                continue
+            print(f"Uploading {sample_id} to OpenBis")
+            push_exp(
+                personal_access_token_path,
+                str(sample_folder),
+            )
+        return no_update
+
+    # OpenBIS custom
+    @app.callback(
+        Output("openbis-custom-modal", "is_open"),
+        Output("openbis-custom-sample-list", "children"),
+        Input("openbis-custom-button", "n_clicks"),
+        Input("openbis-custom-yes-close", "n_clicks"),
+        Input("openbis-custom-no-close", "n_clicks"),
+        State("openbis-custom-modal", "is_open"),
+        State("table", "selectedRows"),
+    )
+    def openbis_custom_button(n_clicks, yes_clicks, no_clicks, is_open, selected_rows):
+        if not ctx.triggered:
+            return is_open, ""
+        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        if button_id == "openbis-custom-button":
+            sample_list = "\n".join([f"{s['Sample ID']}" for s in selected_rows])
+            return not is_open, sample_list
+        if (button_id == "openbis-custom-yes-close" and yes_clicks) or (button_id == "openbis-custom-no-close" and no_clicks):
+            return False, ""
+        return False, ""
+    # When an xlsx file is uploaded, check if it is valid
+    @app.callback(
+        Output("openbis-validator", "children"),
+        Output("openbis-custom-yes-close", "disabled"),
+        Input("openbis-template-upload", "contents"),
+        Input("openbis-template-upload", "filename"),
+        prevent_initial_call=True,
+    )
+    def check_xlsx(contents, filename):
+        if not contents:
+            return "No file selected", True
+        if not filename.endswith(".xlsx"):
+            return f"ERROR: {filename} is not an .xlsx file", True
+        # Validation can go here
+        return f"{filename} loaded", False
+    # When openbis custom confirmed, upload the samples to OpenBis and refresh the database
+    @app.callback(
+        Output("loading-database", "children", allow_duplicate=True),
+        Input("openbis-custom-yes-close", "n_clicks"),
+        State("table", "selectedRows"),
+        State("openbis-template-upload", "contents"),
+        State("openbis-template-upload", "filename"),
+        prevent_initial_call=True,
+    )
+    def openbis_custom_upload(yes_clicks, selected_rows, contents, filename):
+        if not yes_clicks or not contents or not filename or not selected_rows:
+            return no_update
+        personal_access_token_path = config.get("OpenBIS PAT")
+        user_mapping = config.get("User mapping")
+        if not personal_access_token_path:
+            print("Error: missing OpenBIS personal access token")
+        for sample_id in [s["Sample ID"] for s in selected_rows]:
+            run_id = _run_from_sample(sample_id)
+            sample_folder = Path(config["Processed snapshots folder path"])/run_id/sample_id
+            if not sample_folder.exists():
+                print(f"Error: {sample_folder} does not exist")
+                continue
+            # Put the custom template the user uploaded into the sample folder
+            print(f"Copying {filename} to {sample_folder}")
+            with (sample_folder/f"{sample_id}_custom_metadata.xlsx").open("wb") as f:
+                f.write(base64.b64decode(contents.split(",")[1]))
+            print(f"Uploading {sample_id} to OpenBis with template {filename}")
+            push_exp(
+                str(personal_access_token_path),
+                str(sample_folder),
+            )
+        return no_update
 
     # Cancel button pop up
     @app.callback(
