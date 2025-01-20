@@ -51,10 +51,10 @@ def db_view_layout(config: dict) -> html.Div:
                     # Buttons to select which table to display
                     dbc.Tabs(
                         [
-                            dbc.Tab(label = "Pipelines", tab_id = "pipelines", active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
-                            dbc.Tab(label = "Samples", tab_id = "samples", active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
-                            dbc.Tab(label = "Jobs", tab_id = "jobs", active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
-                            dbc.Tab(label = "Results", tab_id = "results", active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
+                            dbc.Tab(label = "Pipelines", tab_id = "pipelines", activeTabClassName="fw-bold"),
+                            dbc.Tab(label = "Samples", tab_id = "samples", activeTabClassName="fw-bold"),
+                            dbc.Tab(label = "Jobs", tab_id = "jobs", activeTabClassName="fw-bold"),
+                            dbc.Tab(label = "Results", tab_id = "results", activeTabClassName="fw-bold"),
                         ],
                         id="table-select",
                         active_tab="pipelines",
@@ -544,26 +544,26 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         if selected_rows:  # Must have something selected
             if accessible_servers:  # Must have permissions to do anything except view
                 if table == "pipelines":
-                    if all([s["Sample ID"] is not None for s in selected_rows]):
+                    if all(s["Sample ID"] is not None for s in selected_rows):
                         submit, snapshot = False, False
-                        if all([s["Job ID"] is None for s in selected_rows]):
+                        if all(s["Job ID"] is None for s in selected_rows):
                             eject, ready, unready = False, False, False
-                        elif all([s["Job ID"] is not None for s in selected_rows]):
+                        elif all(s["Job ID"] is not None for s in selected_rows):
                             cancel = False
-                    elif all([s["Sample ID"] is None for s in selected_rows]):
+                    elif all(s["Sample ID"] is None for s in selected_rows):
                         load = False
                 elif table == "jobs":
-                    if all([s["Status"] in ["r","q","qw"] for s in selected_rows]):
+                    if all(s["Status"] in ["r","q","qw"] for s in selected_rows):
                         cancel = False
                 elif table == "results":
-                    if all([s["Sample ID"] is not None for s in selected_rows]):
+                    if all(s["Sample ID"] is not None for s in selected_rows):
                         snapshot = False
                 elif table == "samples":
-                    if all([s["Sample ID"] is not None for s in selected_rows]):
+                    if all(s["Sample ID"] is not None for s in selected_rows):
                         snapshot = False
                         openbis = False
                         delete = False
-            if any([s["Sample ID"] is not None for s in selected_rows]):
+            if any(s["Sample ID"] is not None for s in selected_rows):
                 view = False
         return load, eject, ready, unready, submit, cancel, view, snapshot, openbis, delete
 
@@ -575,7 +575,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     )
     def update_table_info(selected_rows, row_data, filtered_row_data):
         total_rows = len(row_data)
-        filtered_rows_count = len(filtered_row_data) if (filtered_row_data != None) else total_rows
+        filtered_rows_count = len(filtered_row_data) if (filtered_row_data is not None) else total_rows
         selected_rows_count = len(selected_rows) if selected_rows else 0
 
         return f"Selected: {selected_rows_count}/{filtered_rows_count}"
@@ -594,7 +594,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "eject-button":
             return not is_open
-        if button_id == "eject-yes-close" and yes_clicks or button_id == "eject-no-close" and no_clicks:
+        if (button_id == "eject-yes-close" and yes_clicks) or (button_id == "eject-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # When eject button confirmed, eject samples and refresh the database
@@ -653,13 +653,10 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         ]
         children = ["Select the samples you want to load"] + dropdowns
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-        if len(selected_rows) > 1:
-            increment = {"display": "inline-block"}
-        else:
-            increment = {"display": "none"}
+        increment = {"display": "inline-block"} if len(selected_rows) > 1 else {"display": "none"}
         if button_id == "load-button":
             return not is_open, children, increment
-        if button_id == "load-yes-close" and yes_clicks or button_id == "load-no-close" and no_clicks:
+        if (button_id == "load-yes-close" and yes_clicks) or (button_id == "load-no-close" and no_clicks):
             return False, no_update, increment
         return is_open, no_update, increment
 
@@ -729,7 +726,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "ready-button":
             return not is_open
-        if button_id == "ready-yes-close" and yes_clicks or button_id == "ready-no-close" and no_clicks:
+        if (button_id == "ready-yes-close" and yes_clicks) or (button_id == "ready-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # When ready button confirmed, ready pipelines and refresh the database
@@ -762,7 +759,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "unready-button":
             return not is_open
-        if button_id == "unready-yes-close" and yes_clicks or button_id == "unready-no-close" and no_clicks:
+        if (button_id == "unready-yes-close" and yes_clicks) or (button_id == "unready-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # When unready button confirmed, unready pipelines and refresh the database
@@ -795,7 +792,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "submit-button":
             return not is_open
-        if button_id == "submit-yes-close" and yes_clicks or button_id == "submit-no-close" and no_clicks:
+        if (button_id == "submit-yes-close" and yes_clicks) or (button_id == "submit-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # Submit pop up - check that the json file is valid
@@ -845,9 +842,8 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     def enable_submit(payload, crate, capacity):
         if not payload or not crate:
             return True  # disabled
-        if crate == "custom":
-            if not capacity or capacity < 0 or capacity > 10:
-                return True  # disabled
+        if crate == "custom" and (not capacity or capacity < 0 or capacity > 10):
+            return True  # disabled
         return False  # enabled
     # When submit button confirmed, submit the payload with sample and capacity, refresh database
     @app.callback(
@@ -864,14 +860,10 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         if not yes_clicks:
             return no_update, 0
         # capacity_Ah: float | 'areal','mass','nominal'
-        if crate_calc == "custom":
-            capacity_Ah = capacity/1000
-        else:
-            capacity_Ah = crate_calc
-        if not isinstance(capacity_Ah, float):
-            if capacity_Ah not in ["areal","mass","nominal"]:
-                print(f"Invalid capacity calculation method: {capacity_Ah}")
-                return no_update, 0
+        capacity_Ah = capacity / 1000 if crate_calc == "custom" else crate_calc
+        if not isinstance(capacity_Ah, float) and capacity_Ah not in ["areal","mass","nominal"]:
+            print(f"Invalid capacity calculation method: {capacity_Ah}")
+            return no_update, 0
         for row in selected_rows:
             print(f"Submitting payload {payload} to sample {row['Sample ID']} with capacity_Ah {capacity_Ah}")
             # TODO gracefully handle errors here
@@ -1021,7 +1013,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "cancel-button":
             return not is_open
-        if button_id == "cancel-yes-close" and yes_clicks or button_id == "cancel-no-close" and no_clicks:
+        if (button_id == "cancel-yes-close" and yes_clicks) or (button_id == "cancel-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # When cancel confirmed, cancel the jobs and refresh the database
@@ -1068,7 +1060,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "snapshot-button":
             return not is_open
-        if button_id == "snapshot-yes-close" and yes_clicks or button_id == "snapshot-no-close" and no_clicks:
+        if (button_id == "snapshot-yes-close" and yes_clicks) or (button_id == "snapshot-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # When snapshot confirmed, snapshot the samples and refresh the database
@@ -1100,7 +1092,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "delete-button":
             return not is_open
-        if button_id == "delete-yes-close" and yes_clicks or button_id == "delete-no-close" and no_clicks:
+        if (button_id == "delete-yes-close" and yes_clicks) or (button_id == "delete-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # When delete confirmed, delete the samples and refresh the database
