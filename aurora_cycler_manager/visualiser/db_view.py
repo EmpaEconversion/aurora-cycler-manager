@@ -38,7 +38,7 @@ def db_view_layout(config: dict) -> html.Div:
     """Create database Dash layout."""
     # Layout
     return html.Div(
-        style={"height": "100%", "overflowY": "scroll", "overflowX": "scroll", "padding": "10px"},
+        style={"height": "100%", "padding": "10px"},
         children = [
             # invisible div just to make the loading spinner work when no outputs are changed
             html.Div(
@@ -46,15 +46,8 @@ def db_view_layout(config: dict) -> html.Div:
                 style={"display": "none"},
             ),
             html.Div(
-                style={"height": "100%"},
+                style={"height": "100%", "overflow": "scroll"},
                 children = [
-                    # Buttons to refresh or update the database
-                    html.P(children = f"Last refreshed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", id="last-refreshed",style={"display": "inline-block"}),
-                    html.P(children = "Click refresh to sync to database, click force update to updated statuses from cyclers.", id="last-updated",style={"display": "inline-block", "margin-left": "10px"}),
-                    html.Br(),
-                    dbc.Button("Refresh database", id="refresh-database", color="primary", outline=True, className="me-1"),
-                    dbc.Button("Force update database", id="update-database", color="warning", outline=True, className="me-1", disabled = not accessible_servers),
-                    html.Div(style={"margin-top": "10px"}),
                     # Buttons to select which table to display
                     dbc.Tabs(
                         [
@@ -71,12 +64,15 @@ def db_view_layout(config: dict) -> html.Div:
                         id="table",
                         dashGridOptions = {"enableCellTextSelection": False, "ensureDomOrder": True, "tooltipShowDelay": 1000, "rowSelection": "multiple"},
                         defaultColDef={"filter": True, "sortable": True, "floatingFilter": True},
-                        style={"height": "calc(90vh - 220px)", "width": "100%", "minHeight": "400px"},
+                        style={"height": "calc(100vh - 240px)", "width": "100%", "minHeight": "300px"},
                     ),
                     html.Div(
-                        [
+                        style={"display": "flex", "justify-content": "space-between", "flex-wrap": "wrap", "margin-top": "5px", "margin-bottom": "20px"},
+                        children = [
+                            # Left aligned buttons
                             html.Div(
-                                [
+                                style={"display": "flex", "flex-wrap": "wrap"},
+                                children = [
                                     dbc.Button([html.I(className="bi bi-arrow-90deg-down me-2"),"Load"], id="load-button", color="primary", className="me-1"),
                                     dbc.Button([html.I(className="bi bi-arrow-90deg-right me-2"),"Eject"], id="eject-button", color="primary", className="me-1"),
                                     dbc.Button([html.I(className="bi bi-play me-2"),"Ready"], id="ready-button", color="primary", className="me-1"),
@@ -98,11 +94,31 @@ def db_view_layout(config: dict) -> html.Div:
                                     ),
                                     dbc.Button([html.I(className="bi bi-trash3 me-2"),"Delete"], id="delete-button", color="danger", className="me-1"),
                                 ],
-                                style={"display": "flex", "flex-wrap": "wrap"},
                             ),
-                        html.Div("Loading...", id="table-info", style={"margin-left": "auto", "text-align": "right", "flex-grow": "1"}),
+                            # Right aligned buttons
+                            html.Div(
+                                style={"display": "flex", "flex-wrap": "wrap", "align-items": "center"},
+                                children=[
+                                    html.Div("Loading...", id="table-info", className="me-1", style={"display": "inline-block", "opacity": "0.5"}),
+                                    dbc.Button(className="bi bi-arrow-clockwise me-2 large-icon", id="refresh-database", color="primary"),
+                                    dbc.Button(className="bi bi-database-down me-2 large-icon", id="update-database", color="warning", disabled = not accessible_servers),
+                                    dbc.Tooltip(
+                                        children = "Refresh database",
+                                        id="last-refreshed",
+                                        target="refresh-database",
+                                        style={"whiteSpace": "pre-wrap"},
+                                        placement="top",
+                                    ),
+                                    dbc.Tooltip(
+                                        children = "Update database from cyclers",
+                                        id="last-updated",
+                                        target="update-database",
+                                        style={"whiteSpace": "pre-wrap"},
+                                        placement="top",
+                                    ),
+                                ],
+                            ),
                         ],
-                        style={"display": "flex", "flex-wrap": "wrap", "margin-top": "5px"},
                     ),
                 ],
             ),
@@ -493,7 +509,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         last_checked = db_data["data"]["pipelines"][0]["Last checked"]
         samples = [s["Sample ID"] for s in db_data["data"]["samples"]]
         batches = get_batch_names(config)
-        return db_data, f"Last refreshed: {dt_string}", f"Last updated: {last_checked}", samples, batches
+        return db_data, f"Refresh database\nLast refreshed: {dt_string}", f"Update database\nLast updated: {last_checked}", samples, batches
 
     # Update the database i.e. connect to servers and grab new info, then refresh the local data
     @app.callback(
@@ -562,7 +578,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         filtered_rows_count = len(filtered_row_data) if (filtered_row_data != None) else total_rows
         selected_rows_count = len(selected_rows) if selected_rows else 0
 
-        return f"Selected: {selected_rows_count}, Filtered: {filtered_rows_count}, Total: {total_rows}"
+        return f"Selected: {selected_rows_count}/{filtered_rows_count}"
 
     # Eject button pop up
     @app.callback(
