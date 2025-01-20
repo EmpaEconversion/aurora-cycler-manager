@@ -904,6 +904,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
             push_exp(
                 personal_access_token_path,
                 str(sample_folder),
+                user_mapping,
             )
         return no_update
 
@@ -972,6 +973,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
             push_exp(
                 str(personal_access_token_path),
                 str(sample_folder),
+                user_mapping,
             )
         return no_update
 
