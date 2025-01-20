@@ -141,20 +141,8 @@ class ServerManager:
                 rename[column] = new_col_name
             else:
                 drop.append(column)
-                warnings.warn(
-                    f"Column '{column}' in the sample file {csv_file} is not in the database. "
-                    "Skipping this column.",
-                    RuntimeWarning,
-                    stacklevel=2,
-                )
         df = df.rename(columns=rename)
         if drop:
-            warnings.warn(
-                    f"Column '{column}' in the sample file {csv_file} is not in the database. "
-                    "Skipping this column.",
-                    RuntimeWarning,
-                    stacklevel=2,
-                )
             df = df.drop(columns=drop)
 
         # Check that all essential columns exist
