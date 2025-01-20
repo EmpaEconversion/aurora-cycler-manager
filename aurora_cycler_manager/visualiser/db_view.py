@@ -14,11 +14,13 @@ import dash_bootstrap_components as dbc
 import paramiko
 from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
 from dash import callback_context as ctx
+from dash_mantine_components import Notification
 from obvibe.vibing import push_exp
 
 from aurora_cycler_manager.analysis import _run_from_sample
 from aurora_cycler_manager.server_manager import ServerManager
 from aurora_cycler_manager.visualiser.funcs import delete_samples, get_batch_names, get_database, get_sample_names
+from aurora_cycler_manager.visualiser.notifications import active_time, idle_time, queue_notification
 
 # Server manager
 # If user cannot ssh connect then disable features that require it
@@ -864,70 +866,51 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     @app.callback(
         Output("openbis-auto-modal", "is_open"),
         Output("openbis-auto-sample-list", "children"),
+        Output("notify-interval", "interval", allow_duplicate=True),
         Input("openbis-auto-button", "n_clicks"),
         Input("openbis-auto-yes-close", "n_clicks"),
         Input("openbis-auto-no-close", "n_clicks"),
         State("openbis-auto-modal", "is_open"),
         State("table", "selectedRows"),
+        prevent_initial_call=True,
     )
     def openbis_auto_button(n_clicks, yes_clicks, no_clicks, is_open, selected_rows):
         if not ctx.triggered:
-            return is_open, ""
+            return is_open, "", idle_time
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "openbis-auto-button":
             sample_list = "\n".join([f"{s['Sample ID']}" for s in selected_rows])
-            return not is_open, sample_list
-        if (button_id == "openbis-auto-yes-close" and yes_clicks) or (button_id == "openbis-auto-no-close" and no_clicks):
-            return False, ""
-        return False, ""
-    # When openbis auto confirmed, upload the samples to OpenBis and refresh the database
-    @app.callback(
-        Output("loading-database", "children", allow_duplicate=True),
-        Input("openbis-auto-yes-close", "n_clicks"),
-        State("table", "selectedRows"),
-        prevent_initial_call=True,
-    )
-    def openbis_auto_upload(yes_clicks, selected_rows):
-        if not yes_clicks:
-            return no_update
-        personal_access_token_path = config.get("OpenBIS PAT")
-        user_mapping = config.get("User mapping")
-        if not personal_access_token_path:
-            print("Error: missing OpenBIS personal access token")
-        for sample_id in [s["Sample ID"] for s in selected_rows]:
-            run_id = _run_from_sample(sample_id)
-            sample_folder = Path(config["Processed snapshots folder path"])/run_id/sample_id
-            if not sample_folder.exists():
-                print(f"Error: {sample_folder} does not exist")
-                continue
-            print(f"Uploading {sample_id} to OpenBis")
-            push_exp(
-                personal_access_token_path,
-                str(sample_folder),
-                user_mapping,
-            )
-        return no_update
+            return not is_open, sample_list, idle_time
+        if (button_id == "openbis-auto-yes-close" and yes_clicks):
+            return False, "", active_time
+        if (button_id == "openbis-auto-no-close" and no_clicks):
+            return False, "", idle_time
+        return False, "", idle_time
 
     # OpenBIS custom
     @app.callback(
         Output("openbis-custom-modal", "is_open"),
         Output("openbis-custom-sample-list", "children"),
+        Output("notify-interval", "interval", allow_duplicate=True),
         Input("openbis-custom-button", "n_clicks"),
         Input("openbis-custom-yes-close", "n_clicks"),
         Input("openbis-custom-no-close", "n_clicks"),
         State("openbis-custom-modal", "is_open"),
         State("table", "selectedRows"),
+        prevent_initial_call=True,
     )
     def openbis_custom_button(n_clicks, yes_clicks, no_clicks, is_open, selected_rows):
         if not ctx.triggered:
-            return is_open, ""
+            return is_open, "", idle_time
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "openbis-custom-button":
             sample_list = "\n".join([f"{s['Sample ID']}" for s in selected_rows])
-            return not is_open, sample_list
-        if (button_id == "openbis-custom-yes-close" and yes_clicks) or (button_id == "openbis-custom-no-close" and no_clicks):
-            return False, ""
-        return False, ""
+            return not is_open, sample_list, idle_time
+        if (button_id == "openbis-custom-yes-close" and yes_clicks):
+            return False, "", active_time
+        if (button_id == "openbis-custom-no-close" and no_clicks):
+            return False, "", idle_time
+        return False, "", idle_time
     # When an xlsx file is uploaded, check if it is valid
     @app.callback(
         Output("openbis-validator", "children"),
@@ -943,18 +926,25 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
             return f"ERROR: {filename} is not an .xlsx file", True
         # Validation can go here
         return f"{filename} loaded", False
-    # When openbis custom confirmed, upload the samples to OpenBis and refresh the database
+    # When openbis auto OR custom confirmed, upload the samples to OpenBis and refresh the database
     @app.callback(
         Output("loading-database", "children", allow_duplicate=True),
+        Output("notify-interval", "interval", allow_duplicate=True),
         Input("openbis-custom-yes-close", "n_clicks"),
+        Input("openbis-auto-yes-close", "n_clicks"),
         State("table", "selectedRows"),
         State("openbis-template-upload", "contents"),
         State("openbis-template-upload", "filename"),
         prevent_initial_call=True,
     )
-    def openbis_custom_upload(yes_clicks, selected_rows, contents, filename):
-        if not yes_clicks or not contents or not filename or not selected_rows:
-            return no_update
+    def openbis_upload(custom_clicks, auto_clicks, selected_rows, contents, filename):
+        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        if button_id == "openbis-custom-yes-close" and custom_clicks:
+            custom = True
+        elif button_id == "openbis-auto-yes-close" and auto_clicks:
+            custom = False
+        else:
+            return no_update, idle_time
         personal_access_token_path = config.get("OpenBIS PAT")
         user_mapping = config.get("User mapping")
         if not personal_access_token_path:
@@ -964,18 +954,42 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
             sample_folder = Path(config["Processed snapshots folder path"])/run_id/sample_id
             if not sample_folder.exists():
                 print(f"Error: {sample_folder} does not exist")
+                queue_notification(Notification(
+                    title="Oh no!",
+                    message=f"{sample_id} doesn't exist in the processed snapshots folder",
+                    action="show",
+                    color="orange",
+                    icon=html.I(className="bi bi-exclamation-triangle"),
+                ))
                 continue
-            # Put the custom template the user uploaded into the sample folder
-            print(f"Copying {filename} to {sample_folder}")
-            with (sample_folder/f"{sample_id}_custom_metadata.xlsx").open("wb") as f:
-                f.write(base64.b64decode(contents.split(",")[1]))
-            print(f"Uploading {sample_id} to OpenBis with template {filename}")
-            push_exp(
-                str(personal_access_token_path),
-                str(sample_folder),
-                user_mapping,
-            )
-        return no_update
+            try:
+                if custom:  # Put the custom template the user uploaded into the sample folder
+                    print(f"Copying {filename} to {sample_folder}")
+                    with (sample_folder/f"{sample_id}_custom_metadata.xlsx").open("wb") as f:
+                        f.write(base64.b64decode(contents.split(",")[1]))
+                print(f"Uploading {sample_id} to OpenBis with template {filename}")
+                push_exp(
+                    str(personal_access_token_path),
+                    str(sample_folder),
+                    user_mapping,
+                )
+                queue_notification(Notification(
+                    title="Success!",
+                    message=f"{sample_id} uploaded to OpenBIS",
+                    action="show",
+                    color="green",
+                    icon=html.I(className="bi bi-check-circle"),
+                ))
+            except Exception as e:
+                print(f"Error: {sample_id} encountered an error: {e}")
+                queue_notification(Notification(
+                    title="Error",
+                    message=f"{sample_id} encountered an error: {e}",
+                    action="show",
+                    color="red",
+                    icon=html.I(className="bi bi-x-circle"),
+                ))
+        return no_update, idle_time
 
     # Cancel button pop up
     @app.callback(

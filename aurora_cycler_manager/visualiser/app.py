@@ -14,17 +14,22 @@ import socket
 import webbrowser
 
 import dash_bootstrap_components as dbc
-from dash import Dash, dcc, html
+import dash_mantine_components as dmc
+from dash import Dash, _dash_renderer, dcc, html
 from waitress import serve
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.visualiser.batches import batches_layout, register_batches_callbacks
 from aurora_cycler_manager.visualiser.db_view import db_view_layout, register_db_view_callbacks
+from aurora_cycler_manager.visualiser.notifications import notifications_layout, register_notifications_callbacks
 from aurora_cycler_manager.visualiser.samples import register_samples_callbacks, samples_layout
 
 #======================================================================================================================#
 #================================================ GLOBAL VARIABLES ====================================================#
 #======================================================================================================================#
+
+# Need to set this for Mantine notifications to work
+_dash_renderer._set_react_version("18.2.0")
 
 # Config file
 config = get_config()
@@ -53,10 +58,10 @@ custom_spinner=html.Div(
 )
 
 # Define app and layout
-external_stylesheets = [dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP, "/assets/style.css"]
+external_stylesheets = [dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP, dmc.styles.NOTIFICATIONS, "/assets/style.css"]
 app = Dash(__name__, external_stylesheets=external_stylesheets)
 app.title = "Aurora Visualiser"
-app.layout = html.Div(
+app.layout = dmc.MantineProvider(html.Div(
     className="responsive-container",
     children = [
         dcc.Loading(
@@ -99,13 +104,16 @@ app.layout = html.Div(
                 dcc.Store(id="batches-store", data = []),
             ],
         ),
+        notifications_layout,
     ],
-)
+))
 
 # Register all callback functions
 register_samples_callbacks(app,config)
 register_batches_callbacks(app,config)
 register_db_view_callbacks(app,config)
+register_notifications_callbacks(app)
+
 
 def find_free_port(start_port: int = 8050, end_port: int = 8100) -> int:
     """Find a free port between start_port and end_port."""
