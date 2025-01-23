@@ -36,6 +36,7 @@ except (paramiko.SSHException, FileNotFoundError, ValueError):
 #-------------------------------------- Database view layout --------------------------------------#
 def db_view_layout(config: dict) -> html.Div:
     """Create database Dash layout."""
+    openbis_disabled = config.get("OpenBIS PAT") is None
     # Layout
     return html.Div(
         style={"height": "100%", "padding": "10px"},
@@ -81,16 +82,23 @@ def db_view_layout(config: dict) -> html.Div:
                                     dbc.Button([html.I(className="bi bi-x-circle me-2"),"Cancel"], id="cancel-button", color="danger", className="me-1"),
                                     dbc.Button([html.I(className="bi bi-graph-down me-2"),"View data"], id="view-button", color="primary", className="me-1"),
                                     dbc.Button([html.I(className="bi bi-camera me-2"),"Snapshot"], id="snapshot-button", color="primary", className="me-1"),
+                                    dbc.Tooltip(
+                                        "You do not have an OpenBIS personal access token in the config. Need key 'OpenBIS PAT' pointing to your PAT.txt file path.",
+                                        placement="top",
+                                        delay={"show": 1000},
+                                        target="openbis-button",
+                                        style={"whiteSpace": "pre-wrap"},
+                                    ) if openbis_disabled else None,
                                     dbc.DropdownMenu(
                                         [
-                                            dbc.DropdownMenuItem([html.I(className="bi bi-cloud-upload me-2"),"Automatic upload"], id="openbis-auto-button"),
-                                            dbc.DropdownMenuItem([html.I(className="bi bi-cloud-upload me-2"),"Custom upload"], id="openbis-custom-button"),
+                                            dbc.DropdownMenuItem([html.I(className="bi bi-cloud-upload me-2"),"Automatic upload"], id="openbis-auto-button", disabled=openbis_disabled),
+                                            dbc.DropdownMenuItem([html.I(className="bi bi-cloud-upload me-2"),"Custom upload"], id="openbis-custom-button", disabled=openbis_disabled),
                                         ],
                                         label=html.Span([
                                             html.Img(src="/assets/openbis.svg", style={"height": "20px", "width": "20px", "vertical-align": "middle"}),
                                             " OpenBIS",
                                         ]),
-                                        id="openbis-button", color="primary", className="bi me-1", direction="up",
+                                        id="openbis-button", color="primary", className="bi me-1", direction="up", disabled=openbis_disabled,
                                     ),
                                     dbc.Button([html.I(className="bi bi-trash3 me-2"),"Delete"], id="delete-button", color="danger", className="me-1"),
                                 ],
@@ -444,6 +452,8 @@ def db_view_layout(config: dict) -> html.Div:
 def register_db_view_callbacks(app: Dash, config: dict) -> None:
     """Register callbacks for the database view layout."""
 
+    openbis_disabled = config.get("OpenBIS PAT") is None
+
     # Update the buttons displayed depending on the table selected
     @app.callback(
         Output("table", "rowData"),
@@ -561,8 +571,9 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
                 elif table == "samples":
                     if all(s["Sample ID"] is not None for s in selected_rows):
                         snapshot = False
-                        openbis = False
                         delete = False
+                        if not openbis_disabled:
+                            openbis = False
             if any(s["Sample ID"] is not None for s in selected_rows):
                 view = False
         return load, eject, ready, unready, submit, cancel, view, snapshot, openbis, delete
