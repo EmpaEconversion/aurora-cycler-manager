@@ -148,6 +148,7 @@ def db_view_layout(config: dict) -> html.Div:
                     ),
                 ],
                 id="eject-modal",
+                centered=True,
                 is_open=False,
             ),
             # Load
@@ -187,6 +188,7 @@ def db_view_layout(config: dict) -> html.Div:
                     dcc.Store(id="load-modal-store", data={}),
                 ],
                 id="load-modal",
+                centered=True,
                 is_open=False,
             ),
             # Ready
@@ -212,6 +214,7 @@ def db_view_layout(config: dict) -> html.Div:
                     ),
                 ],
                 id="ready-modal",
+                centered=True,
                 is_open=False,
             ),
             # Unready
@@ -231,6 +234,7 @@ def db_view_layout(config: dict) -> html.Div:
                     ),
                 ],
                 id="unready-modal",
+                centered=True,
                 is_open=False,
             ),
             # Submit
@@ -298,6 +302,7 @@ def db_view_layout(config: dict) -> html.Div:
                     ),
                 ],
                 id="submit-modal",
+                centered=True,
                 is_open=False,
             ),
             # Cancel
@@ -317,6 +322,7 @@ def db_view_layout(config: dict) -> html.Div:
                     ),
                 ],
                 id="cancel-modal",
+                centered=True,
                 is_open=False,
             ),
             # Snapshot
@@ -342,6 +348,7 @@ def db_view_layout(config: dict) -> html.Div:
                     ),
                 ],
                 id="snapshot-modal",
+                centered=True,
                 is_open=False,
             ),
             # OpenBis
@@ -368,6 +375,7 @@ def db_view_layout(config: dict) -> html.Div:
                     ),
                 ],
                 id="openbis-auto-modal",
+                centered=True,
                 is_open=False,
             ),
             dbc.Modal(
@@ -417,6 +425,7 @@ def db_view_layout(config: dict) -> html.Div:
                     ),
                 ],
                 id="openbis-custom-modal",
+                centered=True,
                 is_open=False,
             ),
             # Delete
@@ -442,6 +451,7 @@ def db_view_layout(config: dict) -> html.Div:
                     ),
                 ],
                 id="delete-modal",
+                centered=True,
                 is_open=False,
             ),
         ],
