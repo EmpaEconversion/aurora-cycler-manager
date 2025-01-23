@@ -19,12 +19,14 @@ dependencies = [
     "dash",
     "scipy",
     "dash_bootstrap_components",
+    "dash_mantine_components",
     "dash_resizable_panels",
     "dash_ag_grid",
     "python-calamine",
     "tables",
     "toml",
     "waitress",
+    "obvibe @ git+https://github.com/EmpaEconversion/obvibe.git@0.1.1"
 ]
 
 [project.scripts]
