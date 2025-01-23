@@ -562,7 +562,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     def enable_buttons(selected_rows, table):
         load, eject, ready, unready, submit, cancel, view, snapshot, openbis, delete = True,True,True,True,True,True,True,True,True,True
         if selected_rows:  # Must have something selected
-            if accessible_servers:  # Must have permissions to do anything except view
+            if accessible_servers:  # Must have permissions to do anything except view or upload
                 if table == "pipelines":
                     if all(s["Sample ID"] is not None for s in selected_rows):
                         submit, snapshot = False, False
@@ -582,8 +582,8 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
                     if all(s["Sample ID"] is not None for s in selected_rows):
                         snapshot = False
                         delete = False
-                        if not openbis_disabled:
-                            openbis = False
+            if table == "samples" and not openbis_disabled:
+                openbis = False
             if any(s["Sample ID"] is not None for s in selected_rows):
                 view = False
         return load, eject, ready, unready, submit, cancel, view, snapshot, openbis, delete
