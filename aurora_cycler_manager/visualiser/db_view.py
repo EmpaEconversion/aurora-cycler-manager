@@ -2,18 +2,25 @@
 
 Database view tab layout and callbacks for the visualiser app.
 """
+from __future__ import annotations
+
 import base64
 import json
 from datetime import datetime
+from pathlib import Path
 
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 import paramiko
 from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
 from dash import callback_context as ctx
+from dash_mantine_components import Notification
+from obvibe.vibing import push_exp
 
+from aurora_cycler_manager.analysis import _run_from_sample
 from aurora_cycler_manager.server_manager import ServerManager
 from aurora_cycler_manager.visualiser.funcs import delete_samples, get_batch_names, get_database, get_sample_names
+from aurora_cycler_manager.visualiser.notifications import active_time, idle_time, queue_notification
 
 # Server manager
 # If user cannot ssh connect then disable features that require it
@@ -29,9 +36,10 @@ except (paramiko.SSHException, FileNotFoundError, ValueError):
 #-------------------------------------- Database view layout --------------------------------------#
 def db_view_layout(config: dict) -> html.Div:
     """Create database Dash layout."""
+    openbis_disabled = config.get("OpenBIS PAT") is None
     # Layout
     return html.Div(
-        style={"height": "100%", "overflowY": "scroll", "overflowX": "scroll", "padding": "10px"},
+        style={"height": "100%", "padding": "10px"},
         children = [
             # invisible div just to make the loading spinner work when no outputs are changed
             html.Div(
@@ -39,22 +47,15 @@ def db_view_layout(config: dict) -> html.Div:
                 style={"display": "none"},
             ),
             html.Div(
-                style={"height": "100%"},
+                style={"height": "100%", "overflow": "scroll"},
                 children = [
-                    # Buttons to refresh or update the database
-                    html.P(children = f"Last refreshed: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}", id="last-refreshed",style={"display": "inline-block"}),
-                    html.P(children = "Click refresh to sync to database, click force update to updated statuses from cyclers.", id="last-updated",style={"display": "inline-block", "margin-left": "10px"}),
-                    html.Br(),
-                    dbc.Button("Refresh database", id="refresh-database", color="primary", outline=True, className="me-1"),
-                    dbc.Button("Force update database", id="update-database", color="warning", outline=True, className="me-1", disabled = not accessible_servers),
-                    html.Div(style={"margin-top": "10px"}),
                     # Buttons to select which table to display
                     dbc.Tabs(
                         [
-                            dbc.Tab(label = "Pipelines", tab_id = "pipelines", active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
-                            dbc.Tab(label = "Samples", tab_id = "samples", active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
-                            dbc.Tab(label = "Jobs", tab_id = "jobs", active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
-                            dbc.Tab(label = "Results", tab_id = "results", active_label_style={"background-color": "#F7F8F8"}, activeTabClassName="fw-bold"),
+                            dbc.Tab(label = "Pipelines", tab_id = "pipelines", activeTabClassName="fw-bold"),
+                            dbc.Tab(label = "Samples", tab_id = "samples", activeTabClassName="fw-bold"),
+                            dbc.Tab(label = "Jobs", tab_id = "jobs", activeTabClassName="fw-bold"),
+                            dbc.Tab(label = "Results", tab_id = "results", activeTabClassName="fw-bold"),
                         ],
                         id="table-select",
                         active_tab="pipelines",
@@ -64,27 +65,68 @@ def db_view_layout(config: dict) -> html.Div:
                         id="table",
                         dashGridOptions = {"enableCellTextSelection": False, "ensureDomOrder": True, "tooltipShowDelay": 1000, "rowSelection": "multiple"},
                         defaultColDef={"filter": True, "sortable": True, "floatingFilter": True},
-                        style={"height": "calc(90vh - 220px)", "width": "100%", "minHeight": "400px"},
+                        style={"height": "calc(100vh - 240px)", "width": "100%", "minHeight": "300px"},
                     ),
                     html.Div(
-                        [
+                        style={"display": "flex", "justify-content": "space-between", "flex-wrap": "wrap", "margin-top": "5px", "margin-bottom": "20px"},
+                        children = [
+                            # Left aligned buttons
                             html.Div(
-                                [
-                                    dbc.Button("Load", id="load-button", color="primary", outline=True, className="me-1"),
-                                    dbc.Button("Eject", id="eject-button", color="primary", outline=True, className="me-1"),
-                                    dbc.Button("Ready", id="ready-button", color="primary", outline=True, className="me-1"),
-                                    dbc.Button("Unready", id="unready-button", color="primary", outline=True, className="me-1"),
-                                    dbc.Button("Submit", id="submit-button", color="primary", outline=True, className="me-1"),
-                                    dbc.Button("Cancel", id="cancel-button", color="danger", outline=True, className="me-1"),
-                                    dbc.Button("View data", id="view-button", color="primary", outline=True, className="me-1"),
-                                    dbc.Button("Snapshot", id="snapshot-button", color="primary", outline=True, className="me-1"),
-                                    dbc.Button("Delete", id="delete-button", color="danger", outline=True, className="me-1"),
-                                ],
                                 style={"display": "flex", "flex-wrap": "wrap"},
+                                children = [
+                                    dbc.Button([html.I(className="bi bi-arrow-90deg-down me-2"),"Load"], id="load-button", color="primary", className="me-1"),
+                                    dbc.Button([html.I(className="bi bi-arrow-90deg-right me-2"),"Eject"], id="eject-button", color="primary", className="me-1"),
+                                    dbc.Button([html.I(className="bi bi-play me-2"),"Ready"], id="ready-button", color="primary", className="me-1"),
+                                    dbc.Button([html.I(className="bi bi-slash-circle me-2"),"Unready"], id="unready-button", color="primary", className="me-1"),
+                                    dbc.Button([html.I(className="bi bi-upload me-2"),"Submit"], id="submit-button", color="primary", className="me-1"),
+                                    dbc.Button([html.I(className="bi bi-x-circle me-2"),"Cancel"], id="cancel-button", color="danger", className="me-1"),
+                                    dbc.Button([html.I(className="bi bi-graph-down me-2"),"View data"], id="view-button", color="primary", className="me-1"),
+                                    dbc.Button([html.I(className="bi bi-camera me-2"),"Snapshot"], id="snapshot-button", color="primary", className="me-1"),
+                                    dbc.Tooltip(
+                                        "You do not have an OpenBIS personal access token in the config. Need key 'OpenBIS PAT' pointing to your PAT.txt file path.",
+                                        placement="top",
+                                        delay={"show": 1000},
+                                        target="openbis-button",
+                                        style={"whiteSpace": "pre-wrap"},
+                                    ) if openbis_disabled else None,
+                                    dbc.DropdownMenu(
+                                        [
+                                            dbc.DropdownMenuItem([html.I(className="bi bi-cloud-upload me-2"),"Automatic upload"], id="openbis-auto-button", disabled=openbis_disabled),
+                                            dbc.DropdownMenuItem([html.I(className="bi bi-cloud-upload me-2"),"Custom upload"], id="openbis-custom-button", disabled=openbis_disabled),
+                                        ],
+                                        label=html.Span([
+                                            html.Img(src="/assets/openbis.svg", style={"height": "20px", "width": "20px", "vertical-align": "middle"}),
+                                            " OpenBIS",
+                                        ]),
+                                        id="openbis-button", color="primary", className="bi me-1", direction="up", disabled=openbis_disabled,
+                                    ),
+                                    dbc.Button([html.I(className="bi bi-trash3 me-2"),"Delete"], id="delete-button", color="danger", className="me-1"),
+                                ],
                             ),
-                        html.Div("Loading...", id="table-info", style={"margin-left": "auto", "text-align": "right", "flex-grow": "1"}),
+                            # Right aligned buttons
+                            html.Div(
+                                style={"display": "flex", "flex-wrap": "wrap", "align-items": "center"},
+                                children=[
+                                    html.Div("Loading...", id="table-info", className="me-1", style={"display": "inline-block", "opacity": "0.5"}),
+                                    dbc.Button(className="bi bi-arrow-clockwise me-2 large-icon", id="refresh-database", color="primary"),
+                                    dbc.Button(className="bi bi-database-down me-2 large-icon", id="update-database", color="warning", disabled = not accessible_servers),
+                                    dbc.Tooltip(
+                                        children = "Refresh database",
+                                        id="last-refreshed",
+                                        target="refresh-database",
+                                        style={"whiteSpace": "pre-wrap"},
+                                        placement="top",
+                                    ),
+                                    dbc.Tooltip(
+                                        children = "Update database from cyclers",
+                                        id="last-updated",
+                                        target="update-database",
+                                        style={"whiteSpace": "pre-wrap"},
+                                        placement="top",
+                                    ),
+                                ],
+                            ),
                         ],
-                        style={"display": "flex", "flex-wrap": "wrap"},
                     ),
                 ],
             ),
@@ -106,6 +148,7 @@ def db_view_layout(config: dict) -> html.Div:
                     ),
                 ],
                 id="eject-modal",
+                centered=True,
                 is_open=False,
             ),
             # Load
@@ -145,6 +188,7 @@ def db_view_layout(config: dict) -> html.Div:
                     dcc.Store(id="load-modal-store", data={}),
                 ],
                 id="load-modal",
+                centered=True,
                 is_open=False,
             ),
             # Ready
@@ -170,6 +214,7 @@ def db_view_layout(config: dict) -> html.Div:
                     ),
                 ],
                 id="ready-modal",
+                centered=True,
                 is_open=False,
             ),
             # Unready
@@ -189,6 +234,7 @@ def db_view_layout(config: dict) -> html.Div:
                     ),
                 ],
                 id="unready-modal",
+                centered=True,
                 is_open=False,
             ),
             # Submit
@@ -256,6 +302,7 @@ def db_view_layout(config: dict) -> html.Div:
                     ),
                 ],
                 id="submit-modal",
+                centered=True,
                 is_open=False,
             ),
             # Cancel
@@ -275,6 +322,7 @@ def db_view_layout(config: dict) -> html.Div:
                     ),
                 ],
                 id="cancel-modal",
+                centered=True,
                 is_open=False,
             ),
             # Snapshot
@@ -300,6 +348,84 @@ def db_view_layout(config: dict) -> html.Div:
                     ),
                 ],
                 id="snapshot-modal",
+                centered=True,
+                is_open=False,
+            ),
+            # OpenBis
+            dbc.Modal(
+                [
+                    dbc.ModalHeader(dbc.ModalTitle("OpenBis upload")),
+                    dbc.ModalBody(
+                        id="openbis-auto-modal-body",
+                        children=[
+                            "Upload the selected samples to OpenBis?",
+                            html.Div(style={"margin-top": "10px"}),
+                            html.P("",id="openbis-auto-sample-list",style={"whiteSpace": "pre-wrap"}),
+                        ],
+                    ),
+                    dbc.ModalFooter(
+                        [
+                            dbc.Button(
+                                "Upload", id="openbis-auto-yes-close", className="ms-auto", n_clicks=0, color="primary",
+                            ),
+                            dbc.Button(
+                                "Go back", id="openbis-auto-no-close", className="ms-auto", n_clicks=0, color="secondary",
+                            ),
+                        ],
+                    ),
+                ],
+                id="openbis-auto-modal",
+                centered=True,
+                is_open=False,
+            ),
+            dbc.Modal(
+                [
+                    dbc.ModalHeader(dbc.ModalTitle("Custom OpenBis upload")),
+                    dbc.ModalBody(
+                        id="openbis-custom-modal-body",
+                        children=[
+                            "Select the BattINFO .xlsx.",
+                            html.Div(style={"margin-top": "10px"}),
+                            "Fields in the template will overwrite the fields found from the database",
+                            html.Div(style={"margin-top": "10px"}),
+                            dcc.Upload(
+                                id="openbis-template-upload",
+                                children=html.Div([
+                                    "Drag and Drop or ",
+                                    html.A("Select Files"),
+                                ]),
+                                style={
+                                    "width": "100%",
+                                    "height": "60px",
+                                    "lineHeight": "60px",
+                                    "borderWidth": "1px",
+                                    "borderStyle": "dashed",
+                                    "borderRadius": "8px",
+                                    "textAlign": "center",
+                                },
+                                accept=".xlsx",
+                                multiple=False,
+                            ),
+                            html.P(children="No file selected", id="openbis-validator"),
+                            html.Div(style={"margin-top": "10px"}),
+                            html.P("Samples to upload:"),
+                            html.Div(style={"margin-top": "10px"}),
+                            html.P("",id="openbis-custom-sample-list",style={"whiteSpace": "pre-wrap"}),
+                        ],
+                    ),
+                    dbc.ModalFooter(
+                        [
+                            dbc.Button(
+                                "Upload", id="openbis-custom-yes-close", className="ms-auto", n_clicks=0, color="primary", disabled=True,
+                            ),
+                            dbc.Button(
+                                "Go back", id="openbis-custom-no-close", className="ms-auto", n_clicks=0, color="secondary",
+                            ),
+                        ],
+                    ),
+                ],
+                id="openbis-custom-modal",
+                centered=True,
                 is_open=False,
             ),
             # Delete
@@ -325,6 +451,7 @@ def db_view_layout(config: dict) -> html.Div:
                     ),
                 ],
                 id="delete-modal",
+                centered=True,
                 is_open=False,
             ),
         ],
@@ -334,6 +461,8 @@ def db_view_layout(config: dict) -> html.Div:
 
 def register_db_view_callbacks(app: Dash, config: dict) -> None:
     """Register callbacks for the database view layout."""
+
+    openbis_disabled = config.get("OpenBIS PAT") is None
 
     # Update the buttons displayed depending on the table selected
     @app.callback(
@@ -347,6 +476,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output("cancel-button", "style"),
         Output("view-button", "style"),
         Output("snapshot-button", "style"),
+        Output("openbis-button", "style"),
         Output("delete-button", "style"),
         Input("table-select", "active_tab"),
         Input("table-data-store", "data"),
@@ -360,6 +490,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         submit = {"display": "none"}
         view = {"display": "none"}
         snapshot = {"display": "none"}
+        openbis = {"display": "none"}
         delete = {"display": "none"}
         if table == "pipelines":
             load = {"display": "inline-block"}
@@ -378,8 +509,9 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         elif table == "samples":
             view = {"display": "inline-block"}
             snapshot = {"display": "inline-block"}
+            openbis = {"display": "inline-block"}
             delete = {"display": "inline-block"}
-        return data["data"][table], data["column_defs"][table], load, eject, ready, unready, submit, cancel, view, snapshot, delete
+        return data["data"][table], data["column_defs"][table], load, eject, ready, unready, submit, cancel, view, snapshot, openbis, delete
 
     # Refresh the local data from the database
     @app.callback(
@@ -397,7 +529,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         last_checked = db_data["data"]["pipelines"][0]["Last checked"]
         samples = [s["Sample ID"] for s in db_data["data"]["samples"]]
         batches = get_batch_names(config)
-        return db_data, f"Last refreshed: {dt_string}", f"Last updated: {last_checked}", samples, batches
+        return db_data, f"Refresh database\nLast refreshed: {dt_string}", f"Update database\nLast updated: {last_checked}", samples, batches
 
     # Update the database i.e. connect to servers and grab new info, then refresh the local data
     @app.callback(
@@ -422,36 +554,39 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output("cancel-button", "disabled"),
         Output("view-button", "disabled"),
         Output("snapshot-button", "disabled"),
+        Output("openbis-button", "disabled"),
         Output("delete-button", "disabled"),
         Input("table", "selectedRows"),
         State("table-select", "active_tab"),
     )
     def enable_buttons(selected_rows, table):
-        load, eject, ready, unready, submit, cancel, view, snapshot, delete = True,True,True,True,True,True,True,True,True
+        load, eject, ready, unready, submit, cancel, view, snapshot, openbis, delete = True,True,True,True,True,True,True,True,True,True
         if selected_rows:  # Must have something selected
             if accessible_servers:  # Must have permissions to do anything except view
                 if table == "pipelines":
-                    if all([s["Sample ID"] is not None for s in selected_rows]):
+                    if all(s["Sample ID"] is not None for s in selected_rows):
                         submit, snapshot = False, False
-                        if all([s["Job ID"] is None for s in selected_rows]):
+                        if all(s["Job ID"] is None for s in selected_rows):
                             eject, ready, unready = False, False, False
-                        elif all([s["Job ID"] is not None for s in selected_rows]):
+                        elif all(s["Job ID"] is not None for s in selected_rows):
                             cancel = False
-                    elif all([s["Sample ID"] is None for s in selected_rows]):
+                    elif all(s["Sample ID"] is None for s in selected_rows):
                         load = False
                 elif table == "jobs":
-                    if all([s["Status"] in ["r","q","qw"] for s in selected_rows]):
+                    if all(s["Status"] in ["r","q","qw"] for s in selected_rows):
                         cancel = False
                 elif table == "results":
-                    if all([s["Sample ID"] is not None for s in selected_rows]):
+                    if all(s["Sample ID"] is not None for s in selected_rows):
                         snapshot = False
                 elif table == "samples":
-                    if all([s["Sample ID"] is not None for s in selected_rows]):
+                    if all(s["Sample ID"] is not None for s in selected_rows):
                         snapshot = False
                         delete = False
-            if any([s["Sample ID"] is not None for s in selected_rows]):
+                        if not openbis_disabled:
+                            openbis = False
+            if any(s["Sample ID"] is not None for s in selected_rows):
                 view = False
-        return load, eject, ready, unready, submit, cancel, view, snapshot, delete
+        return load, eject, ready, unready, submit, cancel, view, snapshot, openbis, delete
 
     @app.callback(
         Output("table-info", "children"),
@@ -461,10 +596,10 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     )
     def update_table_info(selected_rows, row_data, filtered_row_data):
         total_rows = len(row_data)
-        filtered_rows_count = len(filtered_row_data) if (filtered_row_data != None) else total_rows
+        filtered_rows_count = len(filtered_row_data) if (filtered_row_data is not None) else total_rows
         selected_rows_count = len(selected_rows) if selected_rows else 0
 
-        return f"Selected: {selected_rows_count}, Filtered: {filtered_rows_count}, Total: {total_rows}"
+        return f"Selected: {selected_rows_count}/{filtered_rows_count}"
 
     # Eject button pop up
     @app.callback(
@@ -480,7 +615,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "eject-button":
             return not is_open
-        if button_id == "eject-yes-close" and yes_clicks or button_id == "eject-no-close" and no_clicks:
+        if (button_id == "eject-yes-close" and yes_clicks) or (button_id == "eject-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # When eject button confirmed, eject samples and refresh the database
@@ -539,13 +674,10 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         ]
         children = ["Select the samples you want to load"] + dropdowns
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-        if len(selected_rows) > 1:
-            increment = {"display": "inline-block"}
-        else:
-            increment = {"display": "none"}
+        increment = {"display": "inline-block"} if len(selected_rows) > 1 else {"display": "none"}
         if button_id == "load-button":
             return not is_open, children, increment
-        if button_id == "load-yes-close" and yes_clicks or button_id == "load-no-close" and no_clicks:
+        if (button_id == "load-yes-close" and yes_clicks) or (button_id == "load-no-close" and no_clicks):
             return False, no_update, increment
         return is_open, no_update, increment
 
@@ -615,7 +747,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "ready-button":
             return not is_open
-        if button_id == "ready-yes-close" and yes_clicks or button_id == "ready-no-close" and no_clicks:
+        if (button_id == "ready-yes-close" and yes_clicks) or (button_id == "ready-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # When ready button confirmed, ready pipelines and refresh the database
@@ -648,7 +780,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "unready-button":
             return not is_open
-        if button_id == "unready-yes-close" and yes_clicks or button_id == "unready-no-close" and no_clicks:
+        if (button_id == "unready-yes-close" and yes_clicks) or (button_id == "unready-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # When unready button confirmed, unready pipelines and refresh the database
@@ -681,7 +813,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "submit-button":
             return not is_open
-        if button_id == "submit-yes-close" and yes_clicks or button_id == "submit-no-close" and no_clicks:
+        if (button_id == "submit-yes-close" and yes_clicks) or (button_id == "submit-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # Submit pop up - check that the json file is valid
@@ -707,7 +839,8 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         # TODO use proper tomato schemas to validate the json
         missing_keys = [key for key in ["version","method","tomato"] if key not in payload.keys()]
         if missing_keys:
-            return f"ERROR: {filename} is missing keys: {", ".join(["'"+key+"'" for key in missing_keys])}", {}
+            msg = f"ERROR: {filename} is missing keys: {', '.join(missing_keys)}"
+            return msg, {}
         return f"{filename} loaded", payload
     # Submit pop up - show custom capacity input if custom capacity is selected
     @app.callback(
@@ -730,9 +863,8 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     def enable_submit(payload, crate, capacity):
         if not payload or not crate:
             return True  # disabled
-        if crate == "custom":
-            if not capacity or capacity < 0 or capacity > 10:
-                return True  # disabled
+        if crate == "custom" and (not capacity or capacity < 0 or capacity > 10):
+            return True  # disabled
         return False  # enabled
     # When submit button confirmed, submit the payload with sample and capacity, refresh database
     @app.callback(
@@ -749,19 +881,144 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         if not yes_clicks:
             return no_update, 0
         # capacity_Ah: float | 'areal','mass','nominal'
-        if crate_calc == "custom":
-            capacity_Ah = capacity/1000
-        else:
-            capacity_Ah = crate_calc
-        if not isinstance(capacity_Ah, float):
-            if capacity_Ah not in ["areal","mass","nominal"]:
-                print(f"Invalid capacity calculation method: {capacity_Ah}")
-                return no_update, 0
+        capacity_Ah = capacity / 1000 if crate_calc == "custom" else crate_calc
+        if not isinstance(capacity_Ah, float) and capacity_Ah not in ["areal","mass","nominal"]:
+            print(f"Invalid capacity calculation method: {capacity_Ah}")
+            return no_update, 0
         for row in selected_rows:
             print(f"Submitting payload {payload} to sample {row['Sample ID']} with capacity_Ah {capacity_Ah}")
             # TODO gracefully handle errors here
             sm.submit(row["Sample ID"], payload, capacity_Ah)
         return no_update, 1
+
+    # OpenBIS auto
+    @app.callback(
+        Output("openbis-auto-modal", "is_open"),
+        Output("openbis-auto-sample-list", "children"),
+        Output("notify-interval", "interval", allow_duplicate=True),
+        Input("openbis-auto-button", "n_clicks"),
+        Input("openbis-auto-yes-close", "n_clicks"),
+        Input("openbis-auto-no-close", "n_clicks"),
+        State("openbis-auto-modal", "is_open"),
+        State("table", "selectedRows"),
+        prevent_initial_call=True,
+    )
+    def openbis_auto_button(n_clicks, yes_clicks, no_clicks, is_open, selected_rows):
+        if not ctx.triggered:
+            return is_open, "", idle_time
+        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        if button_id == "openbis-auto-button":
+            sample_list = "\n".join([f"{s['Sample ID']}" for s in selected_rows])
+            return not is_open, sample_list, idle_time
+        if (button_id == "openbis-auto-yes-close" and yes_clicks):
+            return False, "", active_time
+        if (button_id == "openbis-auto-no-close" and no_clicks):
+            return False, "", idle_time
+        return False, "", idle_time
+
+    # OpenBIS custom
+    @app.callback(
+        Output("openbis-custom-modal", "is_open"),
+        Output("openbis-custom-sample-list", "children"),
+        Output("notify-interval", "interval", allow_duplicate=True),
+        Input("openbis-custom-button", "n_clicks"),
+        Input("openbis-custom-yes-close", "n_clicks"),
+        Input("openbis-custom-no-close", "n_clicks"),
+        State("openbis-custom-modal", "is_open"),
+        State("table", "selectedRows"),
+        prevent_initial_call=True,
+    )
+    def openbis_custom_button(n_clicks, yes_clicks, no_clicks, is_open, selected_rows):
+        if not ctx.triggered:
+            return is_open, "", idle_time
+        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        if button_id == "openbis-custom-button":
+            sample_list = "\n".join([f"{s['Sample ID']}" for s in selected_rows])
+            return not is_open, sample_list, idle_time
+        if (button_id == "openbis-custom-yes-close" and yes_clicks):
+            return False, "", active_time
+        if (button_id == "openbis-custom-no-close" and no_clicks):
+            return False, "", idle_time
+        return False, "", idle_time
+    # When an xlsx file is uploaded, check if it is valid
+    @app.callback(
+        Output("openbis-validator", "children"),
+        Output("openbis-custom-yes-close", "disabled"),
+        Input("openbis-template-upload", "contents"),
+        Input("openbis-template-upload", "filename"),
+        prevent_initial_call=True,
+    )
+    def check_xlsx(contents, filename):
+        if not contents:
+            return "No file selected", True
+        if not filename.endswith(".xlsx"):
+            return f"ERROR: {filename} is not an .xlsx file", True
+        # Validation can go here
+        return f"{filename} loaded", False
+    # When openbis auto OR custom confirmed, upload the samples to OpenBis and refresh the database
+    @app.callback(
+        Output("loading-database", "children", allow_duplicate=True),
+        Output("notify-interval", "interval", allow_duplicate=True),
+        Input("openbis-custom-yes-close", "n_clicks"),
+        Input("openbis-auto-yes-close", "n_clicks"),
+        State("table", "selectedRows"),
+        State("openbis-template-upload", "contents"),
+        State("openbis-template-upload", "filename"),
+        prevent_initial_call=True,
+    )
+    def openbis_upload(custom_clicks, auto_clicks, selected_rows, contents, filename):
+        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        if button_id == "openbis-custom-yes-close" and custom_clicks:
+            custom = True
+        elif button_id == "openbis-auto-yes-close" and auto_clicks:
+            custom = False
+        else:
+            return no_update, idle_time
+        personal_access_token_path = config.get("OpenBIS PAT")
+        user_mapping = config.get("User mapping")
+        if not personal_access_token_path:
+            print("Error: missing OpenBIS personal access token")
+        for sample_id in [s["Sample ID"] for s in selected_rows]:
+            run_id = _run_from_sample(sample_id)
+            sample_folder = Path(config["Processed snapshots folder path"])/run_id/sample_id
+            if not sample_folder.exists():
+                print(f"Error: {sample_folder} does not exist")
+                queue_notification(Notification(
+                    title="Oh no!",
+                    message=f"{sample_id} doesn't exist in the processed snapshots folder",
+                    action="show",
+                    color="orange",
+                    icon=html.I(className="bi bi-exclamation-triangle"),
+                ))
+                continue
+            try:
+                if custom:  # Put the custom template the user uploaded into the sample folder
+                    print(f"Copying {filename} to {sample_folder}")
+                    with (sample_folder/f"{sample_id}_custom_metadata.xlsx").open("wb") as f:
+                        f.write(base64.b64decode(contents.split(",")[1]))
+                print(f"Uploading {sample_id} to OpenBis with template {filename}")
+                push_exp(
+                    str(personal_access_token_path),
+                    str(sample_folder),
+                    user_mapping,
+                )
+                queue_notification(Notification(
+                    title="Success!",
+                    message=f"{sample_id} uploaded to OpenBIS",
+                    action="show",
+                    color="green",
+                    icon=html.I(className="bi bi-check-circle"),
+                ))
+            except Exception as e:
+                print(f"Error: {sample_id} encountered an error: {e}")
+                queue_notification(Notification(
+                    title="Error",
+                    message=f"{sample_id} encountered an error: {e}",
+                    action="show",
+                    color="red",
+                    icon=html.I(className="bi bi-x-circle"),
+                ))
+        return no_update, idle_time
 
     # Cancel button pop up
     @app.callback(
@@ -777,7 +1034,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "cancel-button":
             return not is_open
-        if button_id == "cancel-yes-close" and yes_clicks or button_id == "cancel-no-close" and no_clicks:
+        if (button_id == "cancel-yes-close" and yes_clicks) or (button_id == "cancel-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # When cancel confirmed, cancel the jobs and refresh the database
@@ -824,7 +1081,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "snapshot-button":
             return not is_open
-        if button_id == "snapshot-yes-close" and yes_clicks or button_id == "snapshot-no-close" and no_clicks:
+        if (button_id == "snapshot-yes-close" and yes_clicks) or (button_id == "snapshot-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # When snapshot confirmed, snapshot the samples and refresh the database
@@ -856,7 +1113,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "delete-button":
             return not is_open
-        if button_id == "delete-yes-close" and yes_clicks or button_id == "delete-no-close" and no_clicks:
+        if (button_id == "delete-yes-close" and yes_clicks) or (button_id == "delete-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # When delete confirmed, delete the samples and refresh the database

@@ -6,6 +6,8 @@ Updates database regularly and snapshots all jobs then analyses and plots graphs
 at specified times each day. Change the update time and snapshot times in the
 main block to suit your needs.
 """
+from __future__ import annotations
+
 import logging
 import sys
 import traceback
@@ -42,9 +44,6 @@ def daemon_loop(
             default ['02:00']
 
     """
-    if snapshot_times is None:
-        snapshot_times = ["02:00"]
-
     # Set up logging
     logging.basicConfig(
         filename="aurora-daemon.log" if save_log else None,

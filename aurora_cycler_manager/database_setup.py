@@ -67,6 +67,12 @@ def default_config(base_dir: Path) -> dict:
             ],
         },
 
+        "OpenBIS PAT" : "Path/to/OpenBIS/personal/access/token",
+
+        "User mapping" : {
+            "short_name": "full_name used in OpenBIS",
+        },
+
         "Sample database" : [
             {"Name" : "Sample ID", "Alternative names" : ["sampleid"], "Type" : "VARCHAR(255) PRIMARY KEY"},
             {"Name" : "Run ID", "Alternative names" : [], "Type" : "VARCHAR(255)"},
@@ -360,7 +366,7 @@ def main() -> None:
         with (root_dir/"config.json").open("w") as f:
             json.dump(config, f, indent=4)
         print(f"Created shared config file at {config_path}")
-        print(f"Updated user config at {root_dir/"config.json"} to point to shared config file")
+        print(f"Updated user config at {root_dir/'config.json'} to point to shared config file")
 
         # Create the database
         create_database()

@@ -19,6 +19,8 @@ and saves them to the processed snapshot folder.
 
 Run the script to harvest and convert all neware files.
 """
+from __future__ import annotations
+
 import gzip
 import json
 import os
@@ -47,7 +49,7 @@ def get_snapshot_folder() -> Path:
     if not snapshot_parent:
         msg = (
             "No 'Snapshots folder path' in config file. "
-            f"Please fill in the config file at {config.get("User config path")}.",
+            f"Please fill in the config file at {config.get('User config path')}.",
         )
         raise ValueError(msg)
     return Path(snapshot_parent) / "neware_snapshots"
