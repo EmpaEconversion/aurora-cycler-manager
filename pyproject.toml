@@ -26,7 +26,7 @@ dependencies = [
     "tables",
     "toml",
     "waitress",
-    "obvibe @ git+https://github.com/EmpaEconversion/obvibe.git@0.1.1"
+    "obvibe @ git+https://github.com/EmpaEconversion/obvibe.git@0.1.2"
 ]
 
 [project.scripts]
