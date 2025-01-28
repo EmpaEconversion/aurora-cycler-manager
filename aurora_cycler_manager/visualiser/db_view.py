@@ -25,12 +25,12 @@ from aurora_cycler_manager.visualiser.notifications import active_time, idle_tim
 # Server manager
 # If user cannot ssh connect then disable features that require it
 accessible_servers = []
+sm: ServerManager | None = None
 try:
     sm = ServerManager()
     accessible_servers = [s.label for s in sm.servers]
 except (paramiko.SSHException, FileNotFoundError, ValueError):
     print("You do not have permission to write to the servers. Running in view-only mode.")
-    sm = None
 
 
 #-------------------------------------- Database view layout --------------------------------------#

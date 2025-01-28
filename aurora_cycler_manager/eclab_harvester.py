@@ -58,9 +58,9 @@ def get_mprs(
     server_shell_type: str,
     server_copy_folder: str,
     local_private_key: str,
-    local_folder: str,
+    local_folder: Path | str,
     force_copy: bool = False,
-) -> None:
+) -> list[str]:
     """Get .mpr files from subfolders of specified folder.
 
     Args:
@@ -70,7 +70,7 @@ def get_mprs(
         server_shell_type (str): Type of shell to use (powershell or cmd)
         server_copy_folder (str): Folder to search and copy .mpr and .mpl files
         local_private_key (str): Local private key for ssh
-        local_folder (str): Folder to copy files to
+        local_folder (Path | str): Folder to copy files to
         force_copy (bool): Copy all files regardless of modification date
 
     """
@@ -153,7 +153,7 @@ def get_mprs(
 
         return new_files
 
-def get_all_mprs(force_copy: bool = False) -> None:
+def get_all_mprs(force_copy: bool = False) -> list[str]:
     """Get all MPR files from the folders specified in the config.
 
     The config file needs a key "EC-lab harvester" with a key "Snapshots folder
@@ -177,8 +177,54 @@ def get_all_mprs(force_copy: bool = False) -> None:
         all_new_files.extend(new_files)
     return all_new_files
 
+def get_mpr_data(
+        mpr_file: str | Path,
+    ) -> tuple[pd.DataFrame, dict, dict]:
+    """Convert mpr to dataframe."""
+    mpr_file = Path(mpr_file)
+
+    data = yadg.extractors.extract("eclab.mpr", mpr_file)
+
+    df = pd.DataFrame()
+    df["uts"] = data.coords["uts"].to_numpy()
+
+    # Check if the time is incorrect and fix it
+    if df["uts"].to_numpy()[0] < 1000000000:  # The measurement started before 2001, assume wrong
+        # Grab the start time from mpl file
+        mpl_file = mpr_file.with_suffix(".mpl")
+        try:
+            with mpl_file.open(encoding="ANSI") as f:
+                lines = f.readlines()
+            for line in lines:
+                # Find the start datetime from the mpl
+                found_start_time = False
+                if line.startswith("Acquisition started on : "):
+                    datetime_str = line.split(":",1)[1].strip()
+                    datetime_object = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")
+                    timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
+                    uts_timestamp = timezone.localize(datetime_object).timestamp()
+                    df["uts"] = df["uts"] + uts_timestamp
+                    found_start_time = True
+                    break
+            if not found_start_time:
+                warnings.warn(f"Incorrect start time in {mpr_file} and no start time in found {mpl_file}", stacklevel=2)
+        except FileNotFoundError:
+            warnings.warn(f"Incorrect start time in {mpr_file} and no mpl file found.", stacklevel=2)
+
+    # Only keep certain columns in dataframe
+    df["V (V)"] = data.data_vars["Ewe"].to_numpy()
+    df["I (A)"] = (
+        (3600 / 1000) * data.data_vars["dq"].to_numpy() /
+        np.diff(data.coords["uts"].to_numpy(),prepend=[np.inf])
+    )
+    df["cycle_number"] = data.data_vars["half cycle"].to_numpy()//2
+    df["technique"] = data.data_vars["mode"].to_numpy()
+    mpr_metadata = json.loads(data.attrs["original_metadata"])
+    yadg_metadata = {k: v for k, v in data.attrs.items() if k.startswith("yadg")}
+    return df, mpr_metadata, yadg_metadata
+
 def convert_mpr(
-        mpr_file: str,
+        mpr_file: str|Path,
         output_jsongz_file: bool = False,
         output_hdf5_file: bool = True,
     ) -> tuple[pd.DataFrame, dict]:
@@ -335,7 +381,7 @@ def convert_mpr(
             cursor.close()
     return df, metadata
 
-def get_sampleid_from_mpr(mpr_rel_path: str) -> str:
+def get_sampleid_from_mpr(mpr_rel_path: str|Path) -> tuple[str,str]:
     """Try to get the sample ID based on the remote file path."""
     # split the relative path into parts
     parts = Path(mpr_rel_path).parts
@@ -363,12 +409,13 @@ def get_sampleid_from_mpr(mpr_rel_path: str) -> str:
             if result:
                 run_id = result[0]
         if run_id:
+            sample_number: int | None = None
             try:
                 sample_number = int(sample_folder)
             except ValueError:
                 match = re.search(r"cell(\d+)[_(]?", sample_folder)
                 sample_number = int(match.group(1)) if match else None
-            if sample_number:
+            if sample_number is not None:
                 break
 
     if not run_id:

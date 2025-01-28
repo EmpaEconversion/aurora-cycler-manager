@@ -297,9 +297,9 @@ def main() -> None:
 
     choice = input("Connect to an existing configuration and database? (yes/no):")
     if choice.lower() in ["yes","y"]:
-        shared_config_path = input("Please enter the path to the shared_config.json file or parent folder:")
+        shared_config_path_str = input("Please enter the path to the shared_config.json file or parent folder:")
         # Remove quotes, spaces etc.
-        shared_config_path = Path(shared_config_path.strip('\'" ')).resolve()
+        shared_config_path = Path(shared_config_path_str.strip('\'" ')).resolve()
         # Try to find the shared config file in a few different locations
         potential_paths = [
             shared_config_path,

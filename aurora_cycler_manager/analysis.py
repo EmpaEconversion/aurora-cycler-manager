@@ -36,7 +36,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning, message="All-NaN axis
 
 config = get_config()
 
-def _sort_times(start_times: list, end_times: list) -> list:
+def _sort_times(start_times: list|np.ndarray, end_times: list|np.ndarray) -> np.ndarray:
     """Sort by start time, if equal only keep the longest."""
     start_times = np.array(start_times)
     end_times = np.array(end_times)
@@ -219,9 +219,9 @@ def analyse_cycles(
     # Extract useful information from the metadata
     mass_mg = sample_data.get("Cathode active material mass (mg)",np.nan)
 
-    max_V = 0
-    formation_C = 0
-    cycle_C = 0
+    max_V = 0.
+    formation_C = 0.
+    cycle_C = 0.
 
     # TODO: separate formation and cycling C-rates and voltages, get C-rates for mpr and neware
 
@@ -421,7 +421,7 @@ def analyse_cycles(
         cycle_dict["Initial delta V (V)"] = cycle_dict["Delta V (V)"][initial_cycle-1] if formed else None
 
         # Calculate cycles to x% of initial discharge capacity
-        def _find_first_element(arr: np.ndarray, start_idx: int) -> int:
+        def _find_first_element(arr: np.ndarray, start_idx: int) -> int|None:
             """Find first element in array that is 1 where at least 1 of the next 2 elements are also 1.
 
             Since cycles are 1-indexed and arrays are 0-indexed, this gives the first cycle BEFORE a condition is met.
@@ -690,9 +690,9 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
     save_location = Path(config["Batches folder path"]) / plot_name
     if not save_location.exists():
         save_location.mkdir(parents=True, exist_ok=True)
-    samples = batch.get("samples")
+    samples = batch.get("samples",[])
     cycle_dicts = []
-    metadata = {"sample_metadata":{}}
+    metadata: dict[str,dict] = {"sample_metadata":{}}
     for sample in samples:
         # get the anaylsed data
         run_id = _run_from_sample(sample)
@@ -785,9 +785,9 @@ def _c_to_float(c_rate: str) -> float:
     if "/" in number:
         num, denom = number.split("/")
         if not num:
-            num = 1
+            num = "1"
         if not denom:
-            denom = 1
+            denom = "1"
         return sign * float(num) / float(denom)
     return sign * float(number)
 

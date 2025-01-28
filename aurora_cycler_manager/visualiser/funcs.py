@@ -3,7 +3,8 @@
 Useful functions for the visualiser app.
 """
 import sqlite3
-from typing import Union
+from contextlib import suppress
+from typing import Any, Union
 
 import numpy as np
 import pandas as pd
@@ -26,7 +27,7 @@ def get_batch_names(config: dict) -> list:
         graph_config = yaml.safe_load(f)
     return list(graph_config.keys())
 
-def get_database(config: dict) -> dict:
+def get_database(config: dict) -> dict[str, Any]:
     """Get all data from the database.
 
     Formatted for viewing in Dash AG Grid.
@@ -48,8 +49,8 @@ def get_database(config: dict) -> dict:
     }
 
     # Use custom comparator for pipeline column
-    pipeline_field = next((col for col in db_columns["pipelines"] if col["field"] == "Pipeline"), None)
-    if pipeline_field:
+    with suppress(StopIteration):
+        pipeline_field: dict[str, Any] = next(col for col in db_columns["pipelines"] if col["field"] == "Pipeline")
         pipeline_field["comparator"] = {"function": "pipelineComparatorCustom"}
         pipeline_field["sort"] = "asc"
 
@@ -77,19 +78,19 @@ def cramers_v(x: ArrayLike, y: ArrayLike) -> float:
 
 def anova_test(x: ArrayLike, y: ArrayLike) -> float:
     """ANOVA test between categorical and continuous variables."""
-    categories = x.unique()
+    categories = pd.Series(x).unique()
     groups = [y[x == category] for category in categories]
     f_stat, p_value = stats.f_oneway(*groups)
     return p_value
 
 def correlation_ratio(categories: ArrayLike, measurements: ArrayLike) -> float:
     """Measure of the relationship between a categorical and numerical variable."""
-    fcat, _ = pd.factorize(categories)
+    fcat, _ = pd.factorize(np.array(categories))
     cat_num = np.max(fcat)+1
     y_avg_array = np.zeros(cat_num)
     n_array = np.zeros(cat_num)
     for i in range(cat_num):
-        cat_measures = measurements[np.argwhere(fcat == i).flatten()]
+        cat_measures = measurements[fcat == i]
         n_array[i] = len(cat_measures)
         y_avg_array[i] = np.average(cat_measures)
     y_total_avg = np.sum(np.multiply(y_avg_array,n_array))/np.sum(n_array)
