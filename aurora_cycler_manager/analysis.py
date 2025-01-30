@@ -28,6 +28,7 @@ import numpy as np
 import pandas as pd
 import pytz
 import yaml
+from tsdownsample import MinMaxLTTBDownsampler
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.version import __url__, __version__
@@ -572,6 +573,8 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
         save_merged_hdf=True,
         save_merged_jsongz=False,
     )
+    # also save a shrunk version of the file
+    shrink_sample(sample)
     with sqlite3.connect(config["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -579,6 +582,58 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
             (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), sample),
         )
     return df, cycle_dict, metadata
+
+def shrink_sample(sample_id: str) -> None:
+    """Find the full.x.h5 file for the sample and save a lossy, compressed version."""
+    run_id = _run_from_sample(sample_id)
+    file_location = Path(config["Processed snapshots folder path"]) / run_id / sample_id / f"full.{sample_id}.h5"
+    if not file_location.exists():
+        msg = f"File {file_location} not found"
+        raise FileNotFoundError(msg)
+    df = pd.read_hdf(file_location)
+    # Only keep a few columns
+    df = df[["V (V)", "I (A)", "uts","dQ (mAh)", "Cycle"]]
+    # Reduce precision of some columns
+    for col in ["V (V)", "I (A)", "dQ (mAh)"]:
+        df[col] = df[col].astype(np.float16)
+    df["Cycle"] = df["Cycle"].astype(np.int16)
+
+    # Use the LTTB downsampler to reduce the number of data points
+    original_length = len(df)
+    new_length = min(100000, original_length//20)
+    new_length = max(new_length,min(1000,original_length))
+    if new_length < 3:
+        msg = f"Too few data points ({original_length}) to shrink {sample_id}"
+        raise ValueError(msg)
+    s_ds_V = MinMaxLTTBDownsampler().downsample(df["uts"], df["V (V)"], n_out = new_length)
+    s_ds_I = MinMaxLTTBDownsampler().downsample(df["uts"], df["I (A)"], n_out = new_length)
+    ind = np.sort(np.concatenate([s_ds_V, s_ds_I]))
+    df = df.iloc[ind]
+
+    # Save the new file
+    new_file_location = file_location.with_name(f"shrunk.{sample_id}.h5")
+    df.to_hdf(new_file_location, key="data", mode="w", complib="blosc", complevel=9)
+
+def shrink_all_samples(sampleid_contains: str = "") -> None:
+    """Shrink all samples in the processed snapshots folder.
+
+    Args:
+        sampleid_contains (str, optional): only shrink samples with this string in the sampleid
+
+    """
+    for batch_folder in Path(config["Processed snapshots folder path"]).iterdir():
+        if batch_folder.is_dir():
+            for sample in batch_folder.iterdir():
+                if sampleid_contains and sampleid_contains not in sample.name:
+                    continue
+                try:
+                    shrink_sample(sample.name)
+                    print(f"Shrunk {sample.name}")
+                except KeyError as e:
+                    print(f"No metadata found for {sample.name}: {e}")
+                except (ValueError, PermissionError, RuntimeError, FileNotFoundError) as e:
+                    tb = traceback.format_exc()
+                    print(f"Failed to analyse {sample.name} with error {e}\n{tb}")
 
 def analyse_all_samples(
         sampleid_contains: str = "",
