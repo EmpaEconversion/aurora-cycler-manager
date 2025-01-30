@@ -39,8 +39,8 @@ aurora-daemon = "aurora_cycler_manager.daemon:main"
 
 [tool.ruff]
 line-length = 120
-select = ["ALL"]
-ignore = [
+lint.select = ["ALL"]
+lint.ignore = [
     "N806",
     "T201",
     "FA102",
@@ -50,5 +50,11 @@ ignore = [
     "PLR2004",
     "TD002",
     "TD003",
+    "D203",
+    "D213",
+    "COM812",
 ]
 fix = true
+
+[tool.mypy]
+disable_error_code = ["import-untyped"]
