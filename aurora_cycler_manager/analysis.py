@@ -600,8 +600,7 @@ def shrink_sample(sample_id: str) -> None:
 
     # Use the LTTB downsampler to reduce the number of data points
     original_length = len(df)
-    new_length = min(100000, original_length//20)
-    new_length = max(new_length,min(1000,original_length))
+    new_length = min(original_length, original_length//20+1000, 50000)
     if new_length < 3:
         msg = f"Too few data points ({original_length}) to shrink {sample_id}"
         raise ValueError(msg)
