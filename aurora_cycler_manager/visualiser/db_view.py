@@ -503,12 +503,11 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
             snapshot = {"display": "inline-block"}
         elif table == "jobs":
             cancel = {"display": "inline-block"}
+            snapshot = {"display": "inline-block"}
         elif table == "results":
             view = {"display": "inline-block"}
-            snapshot = {"display": "inline-block"}
         elif table == "samples":
             view = {"display": "inline-block"}
-            snapshot = {"display": "inline-block"}
             openbis = {"display": "inline-block"}
             delete = {"display": "inline-block"}
         return data["data"][table], data["column_defs"][table], load, eject, ready, unready, submit, cancel, view, snapshot, openbis, delete
@@ -564,23 +563,22 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         if selected_rows:  # Must have something selected
             if accessible_servers:  # Must have permissions to do anything except view or upload
                 if table == "pipelines":
-                    if all(s["Sample ID"] is not None for s in selected_rows):
-                        submit, snapshot = False, False
-                        if all(s["Job ID"] is None for s in selected_rows):
-                            eject, ready, unready = False, False, False
-                        elif all(s["Job ID"] is not None for s in selected_rows):
-                            cancel = False
-                    elif all(s["Sample ID"] is None for s in selected_rows):
-                        load = False
+                    if all(s["Server label"] in accessible_servers for s in selected_rows):
+                        if all(s["Sample ID"] is not None for s in selected_rows):
+                            submit, snapshot = False, False
+                            if all(s["Job ID"] is None for s in selected_rows):
+                                eject, ready, unready = False, False, False
+                            elif all(s["Job ID"] is not None for s in selected_rows):
+                                cancel = False
+                        elif all(s["Sample ID"] is None for s in selected_rows):
+                            load = False
                 elif table == "jobs":
-                    if all(s["Status"] in ["r","q","qw"] for s in selected_rows):
-                        cancel = False
-                elif table == "results":
-                    if all(s["Sample ID"] is not None for s in selected_rows):
+                    if all(s["Server label"] in accessible_servers for s in selected_rows):
                         snapshot = False
+                        if all(s["Status"] in ["r","q","qw"] for s in selected_rows):
+                            cancel = False
                 elif table == "samples":
                     if all(s["Sample ID"] is not None for s in selected_rows):
-                        snapshot = False
                         delete = False
             if table == "samples" and not openbis_disabled:
                 openbis = False
@@ -863,7 +861,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     def enable_submit(payload, crate, capacity):
         if not payload or not crate:
             return True  # disabled
-        if crate == "custom" and (not capacity or capacity < 0 or capacity > 10):
+        if crate == "custom" and (not capacity or capacity < 0 or capacity > 10):  # noqa: SIM103
             return True  # disabled
         return False  # enabled
     # When submit button confirmed, submit the payload with sample and capacity, refresh database
@@ -1095,8 +1093,12 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         if not yes_clicks:
             return no_update
         for row in selected_rows:
-            print(f"Snapshotting {row['Sample ID']}")
-            sm.snapshot(row["Sample ID"])
+            if row.get("Job ID"):
+                print(f"Snapshotting {row['Job ID']}")
+                sm.snapshot(row["Job ID"])
+            else:
+                print(f"Snapshotting {row['Sample ID']}")
+                sm.snapshot(row["Sample ID"])
         return no_update
 
     # Delete button pop up
