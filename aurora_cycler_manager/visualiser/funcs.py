@@ -21,11 +21,17 @@ def get_sample_names(config: dict) -> list:
         samples = cursor.fetchall()
     return [sample[0] for sample in samples]
 
-def get_batch_names(config: dict) -> list:
+def get_batch_names(config: dict) -> dict[str, list]:
     """Get all batch names from the database."""
-    with open(config["Graph config path"]) as f:
-        graph_config = yaml.safe_load(f)
-    return list(graph_config.keys())
+    with sqlite3.connect(config["Database path"]) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT b.label, bs.sample_id FROM batch_samples bs JOIN batches b ON bs.batch_id = b.id",
+        )
+        batches: dict[str, list] = {}
+        for batch, sample in cur.fetchall():
+            batches.setdefault(batch, []).append(sample)
+    return batches
 
 def get_database(config: dict) -> dict[str, Any]:
     """Get all data from the database.

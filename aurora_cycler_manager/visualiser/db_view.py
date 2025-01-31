@@ -52,13 +52,13 @@ def db_view_layout(config: dict) -> html.Div:
                     # Buttons to select which table to display
                     dbc.Tabs(
                         [
-                            dbc.Tab(label = "Pipelines", tab_id = "pipelines", activeTabClassName="fw-bold"),
                             dbc.Tab(label = "Samples", tab_id = "samples", activeTabClassName="fw-bold"),
+                            dbc.Tab(label = "Pipelines", tab_id = "pipelines", activeTabClassName="fw-bold"),
                             dbc.Tab(label = "Jobs", tab_id = "jobs", activeTabClassName="fw-bold"),
                             dbc.Tab(label = "Results", tab_id = "results", activeTabClassName="fw-bold"),
                         ],
                         id="table-select",
-                        active_tab="pipelines",
+                        active_tab="samples",
                     ),
                     # Main table for displaying info from database
                     dag.AgGrid(
@@ -1055,6 +1055,8 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     @app.callback(
         Output("tabs", "value"),
         Output("samples-dropdown", "value"),
+        Output("batch-samples-dropdown", "value"),
+        Output("batch-yes-close", "n_clicks"),
         Input("view-button", "n_clicks"),
         State("table", "selectedRows"),
         prevent_initial_call=True,
@@ -1063,7 +1065,9 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         if not n_clicks or not selected_rows:
             return no_update, no_update
         sample_id = [s["Sample ID"] for s in selected_rows]
-        return "tab-1", sample_id
+        if len(sample_id) > 1:
+            return "tab-2", no_update, sample_id, 1
+        return "tab-1", sample_id, no_update, no_update
 
     # Snapshot button pop up
     @app.callback(

@@ -17,7 +17,7 @@ from aurora_cycler_manager.analysis import _run_from_sample, combine_jobs
 from aurora_cycler_manager.visualiser.funcs import smoothed_derivative
 
 graph_template = "seaborn"
-graph_margin = {"l": 50, "r": 10, "t": 50, "b": 50}
+graph_margin = {"l": 50, "r": 10, "t": 50, "b": 75}
 
 # Side menu for the samples tab
 samples_menu =  html.Div(
@@ -223,11 +223,13 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
     # Sample list has updated, update dropdowns
     @app.callback(
         Output("samples-dropdown", "options"),
+        Output("batch-samples-dropdown", "data"),
         Input("samples-store", "data"),
     )
     def update_samples_dropdown(samples: list) -> list:
         """Update available samples in the dropdown."""
-        return [{"label": name, "value": name} for name in samples]
+        options = [{"label": s, "value": s} for s in samples]
+        return options, options
 
     # Update the samples data store
     @app.callback(
