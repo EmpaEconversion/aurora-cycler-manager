@@ -233,6 +233,21 @@ def create_database() -> None:
             "UNIQUE(`Server label`, `Server hostname`, `Folder`)"
             ")",
         )
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS batches ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "label TEXT UNIQUE NOT NULL"
+            ")",
+        )
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS batch_samples ("
+            "batch_id INT, "
+            "sample_id TEXT, "
+            "FOREIGN KEY(batch_id) REFERENCES batches(id), "
+            "FOREIGN KEY(sample_id) REFERENCES samples(`Sample ID`), "
+            "UNIQUE(batch_id, sample_id)"
+            ")",
+        )
         conn.commit()
 
         # Check if there are new columns to add in samples table
