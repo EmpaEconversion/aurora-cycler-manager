@@ -497,7 +497,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
 
         # If style, add a different style for each in the category
         if style:
-            styles = [sample[style] for sample in data.values()]
+            styles = [sample.get(style) for sample in data.values()]
             styles = [s if s is not None else "None" for s in styles]
             unique_style_labels, unique_style_indices = np.unique(styles, return_index=True)
             symbols = [list(set(styles)).index(v) for v in styles]
