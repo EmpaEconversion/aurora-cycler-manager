@@ -1,6 +1,6 @@
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/bd006861-ad54-4a85-937c-3f9458ec717c#gh-light-mode-only" width="500" align="center" alt="Aurora cycler manager">
-  <img src="https://github.com/user-attachments/assets/a4bd3db5-5c16-4be8-9655-45e34b6d9e06#gh-dark-mode-only" width="500" align="center" alt="Aurora cycler manager">
+  <img src="https://github.com/user-attachments/assets/33a4416a-3fae-4bb3-acce-3862bc87a4a6#gh-light-mode-only" width="500" align="center" alt="Aurora cycler manager">
+  <img src="https://github.com/user-attachments/assets/95845ec0-e155-4e4f-95d2-ab1c992de940#gh-dark-mode-only" width="500" align="center" alt="Aurora cycler manager">
 </p>
 
 </br>
