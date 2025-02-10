@@ -25,6 +25,7 @@ dependencies = [
     "python-calamine",
     "tables",
     "toml",
+    "tsdownsample",
     "waitress",
     "obvibe @ git+https://github.com/EmpaEconversion/obvibe.git@0.1.3"
 ]
