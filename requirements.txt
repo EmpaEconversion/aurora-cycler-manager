@@ -40,7 +40,7 @@ nest-asyncio==1.6.0
 NewareNDA==2025.1.2
 numexpr==2.10.2
 numpy==2.2.2
-obvibe @ git+https://github.com/EmpaEconversion/obvibe.git@0.1.1
+obvibe @ git+https://github.com/EmpaEconversion/obvibe.git@0.1.2
 olefile==0.47
 openpyxl==3.1.5
 packaging==24.2

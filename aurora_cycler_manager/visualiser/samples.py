@@ -10,13 +10,14 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objs as go
 from dash import Dash, Input, Output, State, dcc, html
+from dash_bootstrap_components import Checklist, Tooltip
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
 from aurora_cycler_manager.analysis import _run_from_sample, combine_jobs
 from aurora_cycler_manager.visualiser.funcs import smoothed_derivative
 
 graph_template = "seaborn"
-graph_margin = {"l": 50, "r": 10, "t": 50, "b": 50}
+graph_margin = {"l": 50, "r": 10, "t": 50, "b": 75}
 
 # Side menu for the samples tab
 samples_menu =  html.Div(
@@ -28,6 +29,19 @@ samples_menu =  html.Div(
                 options=[], # updated by callback
                 value=[],
                 multi=True,
+            ),
+            Checklist(
+                options=[{
+                    "label": "Use compressed files",
+                    "value": 1,
+                }],
+                value = [1],
+                id="compressed-files",
+            ),
+            Tooltip(
+                "Use compressed time-series data where available - better performance, less accurate.",
+                target="compressed-files",
+                delay={"show": 1000},
             ),
             html.Div(style={"margin-top": "50px"}),
             html.H5("Time graph"),
@@ -209,11 +223,13 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
     # Sample list has updated, update dropdowns
     @app.callback(
         Output("samples-dropdown", "options"),
+        Output("batch-samples-dropdown", "data"),
         Input("samples-store", "data"),
     )
     def update_samples_dropdown(samples: list) -> list:
         """Update available samples in the dropdown."""
-        return [{"label": name, "value": name} for name in samples]
+        options = [{"label": s, "value": s} for s in samples]
+        return options, options
 
     # Update the samples data store
     @app.callback(
@@ -221,9 +237,10 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
         Output("samples-time-y", "options"),
         Output("samples-cycles-y", "options"),
         Input("samples-dropdown", "value"),
+        Input("compressed-files", "value"),
         State("samples-data-store", "data"),
     )
-    def update_sample_data(samples: list, data: dict) -> tuple[dict, list, list]:
+    def update_sample_data(samples: list, compressed: list, data: dict) -> tuple[dict, list, list]:
         """Load data for selected samples and put in data store."""
         # Get rid of samples that are no longer selected
         for sample in list(data["data_sample_time"].keys()):
@@ -235,7 +252,11 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
         for sample in samples:
             # Check if already in data store
             if sample in data["data_sample_time"]:
-                continue
+                # Check if it's already the correct format
+                if 1 not in compressed and not data["data_sample_time"][sample].get("Shrunk", False):
+                    continue
+                if 1 in compressed and data["data_sample_time"][sample].get("Shrunk", False):
+                    continue
 
             # Otherwise import the data
             run_id = _run_from_sample(sample)
@@ -247,7 +268,13 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
                 files = os.listdir(file_location)
             except FileNotFoundError:
                 continue
-            if any(f.startswith("full") and f.endswith(".h5") for f in files):
+            if 1 in compressed and any(f.startswith("shrunk") and f.endswith(".h5") for f in files):
+                filepath = next(f for f in files if f.startswith("shrunk") and f.endswith(".h5"))
+                df = pd.read_hdf(f"{file_location}/{filepath}")
+                data_dict = df.to_dict(orient="list")
+                data_dict["Shrunk"] = True
+                data["data_sample_time"][sample] = data_dict
+            elif any(f.startswith("full") and f.endswith(".h5") for f in files):
                 filepath = next(f for f in files if f.startswith("full") and f.endswith(".h5"))
                 df = pd.read_hdf(f"{file_location}/{filepath}")
                 data["data_sample_time"][sample] = df.to_dict(orient="list")

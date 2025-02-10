@@ -5,19 +5,24 @@ Batches tab layout and callbacks for the visualiser app.
 import json
 import os
 import textwrap
+from pathlib import Path
 
+import dash_bootstrap_components as dbc
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objs as go
 from dash import Dash, Input, Output, State, dcc, html, no_update
+from dash import callback_context as ctx
+import dash_mantine_components as dmc
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 from plotly.colors import sample_colorscale
 
+from aurora_cycler_manager.analysis import _run_from_sample
 from aurora_cycler_manager.visualiser.funcs import correlation_matrix
 
 graph_template = "seaborn"
-graph_margin = {"l": 50, "r": 10, "t": 50, "b": 50}
+graph_margin = {"l": 50, "r": 10, "t": 50, "b": 75}
 
 # Define available color scales
 all_color_scales = {}
@@ -30,14 +35,13 @@ colorscales = [{"label": k, "value": k} for k in all_color_scales]
 batches_menu = html.Div(
     style = {"overflow": "scroll", "height": "100%"},
     children = [
-        html.H5("Select batches to plot:"),
-        dcc.Dropdown(
-            id="batches-dropdown",
-            options=[], # Updated by callback
-            value=[],
-            multi=True,
+        html.Div(style={"margin-top": "10px"}),
+        dbc.Button(
+            [html.I(className="bi bi-plus-circle-fill me-2"),"Select samples to plot"],
+            id="batch-samples-button",
+            color="primary",
+            style={"width": "100%", "margin-top": "50 px", "margin-bottom": "50px"},
         ),
-        html.Div(style={"margin-top": "50px"}),
         html.H5("Cycles graph"),
         html.P("X-axis: Cycle"),
         html.Label("Y-axis:", htmlFor="batch-cycle-y"),
@@ -87,6 +91,48 @@ batches_menu = html.Div(
             value=[True],
         ),
     ],
+)
+
+samples_modal = dmc.Modal(
+    children=[
+        dmc.MultiSelect(
+            id="batch-batch-dropdown",
+            label="Select batches",
+            data=[], # Updated by callback
+            value=[],
+            clearable=True,
+            searchable=True,
+            checkIconPosition="right",
+        ),
+        html.Div(style={"margin-top": "10px"}),
+        dmc.MultiSelect(
+            id="batch-samples-dropdown",
+            label="Select individual samples",
+            data=[], # Updated by callback
+            value=[],
+            clearable=True,
+            searchable=True,
+            checkIconPosition="right",
+        ),
+        html.Div(style={"margin-top": "10px"}),
+        dbc.Alert([html.I(className="bi bi-info-circle me-2"),"You can also load samples from Database > Samples > View data"], color="light", dismissable=True),
+        html.Div(
+            children=[
+                dbc.Button(
+                    "Load", id="batch-yes-close", className="ms-auto", n_clicks=0, color="primary",
+                ),
+                dbc.Button(
+                    "Go back", id="batch-no-close", className="ms-auto", n_clicks=0, color="secondary",
+                ),
+            ],
+            style={"flex": "1 1 auto", "display": "flex", "justify-content": "space-between"},
+        ),
+    ],
+    id="batch-modal",
+    title="Select samples to plot",
+    centered=True,
+    opened=False,
+    size="xl",
 )
 
 batch_cycle_graph = dcc.Graph(
@@ -151,8 +197,9 @@ batch_correlation_graph = dcc.Graph(
 batches_layout =  html.Div(
     style = {"height": "100%"},
     children = [
-        dcc.Store(id="batches-data-store", data={"data_batch_cycle": {}}),
+        dcc.Store(id="batches-data-store", data={}),
         dcc.Store(id="trace-style-store", data={}),
+        samples_modal,
         PanelGroup(
             id="batches-panel-group",
             direction="horizontal",
@@ -212,10 +259,10 @@ batches_layout =  html.Div(
 )
 
 #------------------------------ USEFUL FUNCTIONS ------------------------------#
-def add_legend_colorbar(fig: dict, sdata: dict) -> go.Figure:
+def add_legend_colorbar(fig_dict: dict, sdata: dict) -> go.Figure:
     """Add legend and/or colorbar to figure based on color/style data dict."""
     # Convert figure dict to graph object
-    fig = go.Figure(fig)
+    fig = go.Figure(fig_dict)
 
     # If there is a numerical color scale, add a colorbar
     if sdata["color_mode"] == "numerical":
@@ -307,54 +354,77 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
 
     # Batch list has updated, update dropdowns
     @app.callback(
-        Output("batches-dropdown", "options"),
+        Output("batch-batch-dropdown", "data"),
         Input("batches-store", "data"),
     )
-    def update_batches_dropdown(batches: list) -> list[dict]:
-        return [{"label": name, "value": name} for name in batches]
+    def update_batches_dropdown(batches: dict[str, list]) -> list[dict]:
+        return [{"label": b, "value": b} for b in batches]
 
-    # Update the batches data store
+    # When the user clicks the "Select samples to plot" button, open the modal
+    @app.callback(
+        Output("batch-modal", "opened", allow_duplicate=True),
+        Input("batch-samples-button", "n_clicks"),
+        Input("batch-yes-close", "n_clicks"),
+        Input("batch-no-close", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def open_samples_modal(select_clicks: int, yes: int, no: int) -> bool:
+        if not ctx.triggered:
+            return False
+        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        return button_id == "batch-samples-button"
+
+    # When the user hits yes close, load the selected samples
     @app.callback(
         Output("batches-data-store", "data"),
         Output("batch-cycle-y", "options"),
         Output("batch-cycle-y", "value"),
         Output("batch-cycle-color", "options"),
         Output("batch-cycle-style", "options"),
-        Input("batches-dropdown", "value"),
-        State("batch-cycle-y", "value"),
+        Output("batch-modal", "opened", allow_duplicate=True),
+        Input("batch-yes-close", "n_clicks"),
+        State("batch-samples-dropdown", "value"),
+        State("batch-batch-dropdown", "value"),
         State("batches-data-store", "data"),
+        State("batches-store", "data"),
+        State("batch-cycle-y", "value"),
+        prevent_initial_call=True,
     )
-    def update_batch_data(batches: list, y_val: str, data: dict) -> tuple[dict, list[str], str, list[str], list[str]]:
-        """Update the data store when the user selects new batches."""
-        # TODO: add faster way to add/subtract data instead of re-reading all files
-        data_folder = config["Batches folder path"]
-        data["data_batch_cycle"] = []
-        for batch in batches:
-            file_location = os.path.join(data_folder, batch)
-            files = os.listdir(file_location)
-            try:
-                analysed_file = next(f for f in files if (f.startswith("batch") and f.endswith(".json")))
-            except StopIteration:
-                continue
-            with open(f"{file_location}/{analysed_file}", encoding="utf-8") as f:
-                json_data = json.load(f)
-            # add batch to every sample in json_data["data"]
-            [sample.update({"Batch": batch}) for sample in json_data["data"]]
-            data["data_batch_cycle"] += json_data["data"]
+    def load_selected_samples(n_clicks: int, samples: list, batches: list, data: dict, batch_defs: dict[str, list], y_val: str):
+        """Load the selected samples into the data store."""
+        if not ctx.triggered:
+            return no_update, no_update, no_update, no_update, no_update, no_update
 
-        # Remove duplicate samples
-        sample_id = [d["Sample ID"] for d in data["data_batch_cycle"]]
-        data["data_batch_cycle"] = [d for d in data["data_batch_cycle"] if sample_id.count(d["Sample ID"]) == 1]
+        # Add the samples from batches to samples
+        sample_set = set(samples)
+        for batch in batches:
+            sample_set.update(batch_defs[batch])
+
+        # Go through the keys in the data store, if they're not in the samples, remove them
+        del_keys = [key for key in data if key not in sample_set]
+        for key in del_keys:
+            del data[key]
+
+        # Go through samples and add to data
+        for s in sample_set:
+            if s in data:
+                continue
+            run_id = _run_from_sample(s)
+            file_location = Path(config["Processed snapshots folder path"])/run_id/s/f"cycles.{s}.json"
+            if not file_location.exists():
+                continue
+            with file_location.open(encoding="utf-8") as f:
+                data[s] = json.load(f)["data"]
 
         # y-axis options are lists in data
         # color options are non-lists
-        y_vars = set()
-        color_vars = set()
-        for data_dict in data["data_batch_cycle"]:
-            y_vars.update([k for k,v in data_dict.items() if isinstance(v,list)])
-            color_vars.update([k for k,v in data_dict.items() if not isinstance(v,list)])
-        y_vars = list(y_vars)
-        color_vars = list(color_vars)
+        y_vars_set = set()
+        color_vars_set = set()
+        for sample in data.values():
+            y_vars_set.update([k for k,v in sample.items() if isinstance(v,list)])
+            color_vars_set.update([k for k,v in sample.items() if not isinstance(v,list)])
+        y_vars = list(y_vars_set)
+        color_vars = list(color_vars_set)
 
         # Set a default y choice if none is picked
         if y_vars and (not y_val or y_val not in y_vars):
@@ -364,8 +434,8 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
                 y_val = "Discharge capacity (mAh)"
             else:
                 y_val = y_vars[0]
-
-        return data, y_vars, y_val, color_vars, color_vars
+        # return the new data
+        return data, y_vars, y_val, color_vars, color_vars, False
 
     # Create a list of styles and colors corresponding to the traces
     @app.callback(
@@ -380,7 +450,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         # get the color for each trace
         if color:
             colormap = all_color_scales.get(colormap, all_color_scales.get("Viridis"))
-            color_values = [sample.get(color, None) for sample in data["data_batch_cycle"]]
+            color_values = [sample.get(color, None) for sample in data.values()]
             cmin, cmax = 0, 1
 
             # Try to figure out the coloring mode
@@ -396,7 +466,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
                 color_mode = "numerical"
 
             if color_mode == "none":
-                    color_values_norm = [None] * len(color_values)
+                    color_values_norm: list[float|None] = [None] * len(color_values)
                     unique_color_labels = [None]
                     unique_color_indices = [0]
             elif color_mode == "categorical":
@@ -427,7 +497,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
 
         # If style, add a different style for each in the category
         if style:
-            styles = [sample[style] for sample in data["data_batch_cycle"]]
+            styles = [sample.get(style) for sample in data.values()]
             styles = [s if s is not None else "None" for s in styles]
             unique_style_labels, unique_style_indices = np.unique(styles, return_index=True)
             symbols = [list(set(styles)).index(v) for v in styles]
@@ -461,18 +531,14 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
     def update_batch_cycle_graph(fig: dict, data: dict, sdata: dict, yvar: str) -> go.Figure:
         # remove old data
         fig["data"] = []
-        if not data or not data["data_batch_cycle"]:
+        if not data:
             fig["layout"]["title"] = "No data..."
             return fig
 
-        # data["data_batch_cycle"] is a list of dicts of samples
-        if not data["data_batch_cycle"]:
-            fig["layout"]["title"] = "No data..."
-            return fig
         # Add 1/Formation C if Formation C is in the data
         [
             d.update({"1/Formation C": 1 / d["Formation C"] if d["Formation C"] != 0 else 0})
-            for d in data["data_batch_cycle"] if "Formation C" in d
+            for d in data.values() if "Formation C" in d
         ]
 
         fig["layout"]["yaxis"]["title"] = yvar
@@ -481,7 +547,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         # add trace for each sample
         always_show_legend = False
         show_legend = not sdata["color_mode"] or always_show_legend
-        for i,sample in enumerate(data["data_batch_cycle"]):
+        for i,sample in enumerate(data.values()):
             color_label = sample.get(sdata["color_by"],"") if sdata["color_by"] else ""
             if isinstance(color_label, float):
                 color_label = f"{color_label:.6g}"
@@ -529,11 +595,11 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         """Update correlation map when new data is loaded."""
         # data is a list of dicts
         fig["data"] = []
-        if not data["data_batch_cycle"]:
+        if not data or len(data) < 3:
             return fig, [], []
         data_correlations = [
             {k:v for k,v in s.items() if v and not isinstance(v, list)}
-            for s in data["data_batch_cycle"]
+            for s in data.values()
         ]
         dfs = [pd.DataFrame(d, index=[0]) for d in data_correlations]
         if not dfs:
@@ -626,7 +692,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
             "Rack position",
             "Run ID",
         ]
-        customdata = [[s.get(col,"") for col in hover_info] for s in data["data_batch_cycle"]]
+        customdata = [[s.get(col,"") for col in hover_info] for s in data.values()]
         hovertemplate="<br>".join(
             [
                 "Sample ID: %{customdata[0]}",
@@ -637,8 +703,8 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
             ["<extra></extra>"],
         )
         trace = go.Scatter(
-            x=[s[xvar] for s in data["data_batch_cycle"]],
-            y=[s[yvar] for s in data["data_batch_cycle"]],
+            x=[s.get(xvar) for s in data.values()],
+            y=[s.get(yvar) for s in data.values()],
             mode="markers",
             marker={
                 "size": 10,
