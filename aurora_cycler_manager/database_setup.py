@@ -236,7 +236,8 @@ def create_database() -> None:
         cursor.execute(
             "CREATE TABLE IF NOT EXISTS batches ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-            "label TEXT UNIQUE NOT NULL"
+            "label TEXT UNIQUE NOT NULL, "
+            "description TEXT"
             ")",
         )
         cursor.execute(
