@@ -443,6 +443,5 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
                 hovertemplate=f"{sample}<br>{xvar}: %{{x}}<br>{yvar}: %{{y}}<extra></extra>",
             )
             fig["data"].append(trace)
-        fig["layout"]["xaxis"]["title"] = xvar
-        fig["layout"]["yaxis"]["title"] = yvar
+        fig["layout"]["title"] = f"{yvar} vs {xvar} for cycle {cycle}"
         return fig
