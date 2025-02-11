@@ -218,7 +218,7 @@ class TomatoServer(CyclerServer):
             encoded_json_string = base64.b64encode(json_string.encode()).decode()
             output = self.command(f"{self.tomato_scripts_path}ketchup submit -J {encoded_json_string}")
         if "jobid: " in output:
-            jobid = output.split("jobid: ")[1].splitlines[0]
+            jobid = output.split("jobid: ")[1].splitlines()[0]
             print(f"Sample {sample} submitted on server {self.label} with jobid {jobid}")
             full_jobid = f"{self.label}-{jobid}"
             print(f"Full jobid: {full_jobid}")

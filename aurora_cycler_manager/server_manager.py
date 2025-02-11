@@ -284,6 +284,11 @@ class ServerManager:
                     for jobid_on_server, jobname, status, pipeline in zip(
                         jobs["jobid"], jobs["jobname"], jobs["status"], jobs["pipeline"],
                         ):
+                        # Insert the job if it does not exist
+                        cursor.execute(
+                            "INSERT OR IGNORE INTO jobs (`Job ID`,`Job ID on server`) VALUES (?,?)",
+                            (f"{label}-{jobid_on_server}",jobid_on_server),
+                        )
                         # If pipeline is none, do not update (keep old value)
                         if pipeline is None:
                             cursor.execute(
