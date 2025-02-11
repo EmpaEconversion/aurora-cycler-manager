@@ -470,9 +470,12 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
                     unique_color_labels = [None]
                     unique_color_indices = [0]
             elif color_mode == "categorical":
+                    unique_valid_values = sorted({v for v in color_values if v is not None})
+                    assigned_values = {}
+                    for i, v in enumerate(unique_valid_values):
+                        assigned_values[v] = i / (len(unique_valid_values) - 1) if len(unique_valid_values) > 1 else 0
+                    color_values_norm = [assigned_values.get(v) if v is not None else None for v in color_values]
                     color_values = [v if v is not None else "None" for v in color_values]
-                    len_unique_colors = len(set(color_values))
-                    color_values_norm = [list(set(color_values)).index(v)/(len_unique_colors-1) for v in color_values]
                     unique_color_labels, unique_color_indices = np.unique(color_values, return_index=True)
             elif color_mode == "numerical_categorical":
                     cmin = min([v for v in color_values if v is not None])
