@@ -58,6 +58,14 @@ To _create a new set up_:
 - Use `aurora-setup` to create a configuration and database - it is currently designed with network storage in mind, so other users can access data.
 - Fill in the configuration file with details about e.g. tomato, Neware and EC-lab servers. Examples are left in the default config file.
 
+## Updating
+
+Uninstall and reinstall with `pip`. From versions `0.5.x` you do not have to re-do any of the setup steps, otherwise follow instructions in Installation.
+```
+pip uninstall aurora-cycler-manager
+pip install git+https://github.com/EmpaEconversion/aurora-cycler-manager.git
+```
+
 ## Usage
 
 A web app allows users to view analysed data and see the status of samples, jobs, and cyclers, and submit jobs to cyclers if they have access. Run with:
