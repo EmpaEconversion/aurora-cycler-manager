@@ -422,7 +422,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         color_vars_set = set()
         for sample in data.values():
             y_vars_set.update([k for k,v in sample.items() if isinstance(v,list)])
-            color_vars_set.update([k for k,v in sample.items() if not isinstance(v,list)])
+            color_vars_set.update([k for k,v in sample.items() if v is not None and not isinstance(v,list)])
         y_vars = list(y_vars_set)
         color_vars = list(color_vars_set)
 
