@@ -577,7 +577,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
                     "size": 8,
                     "color": sdata["colors"][i] if sdata["colors"] else None,
                     "symbol": sdata["symbols"][i] if sdata["symbols"] else None,
-                    "line": {"width": 0.5, "color": "white"},
+                    "line": {"width": 0.5, "color": "black"},
                 },
                 showlegend=show_legend,
                 hovertemplate=hovertemplate,
