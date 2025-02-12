@@ -688,6 +688,10 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         fig["layout"]["title"] = f"{xvar} vs {yvar}"
         fig["layout"]["xaxis"]["title"] = xvar
         fig["layout"]["yaxis"]["title"] = yvar
+        x = [s.get(xvar) for s in data.values()]
+        y = [s.get(yvar) for s in data.values()]
+        is_categorical = any(isinstance(val, str) for val in x)
+        fig["layout"]["xaxis"]["type"] = "category" if is_categorical else "linear"
         hover_info = [
             "Sample ID",
             "Actual N:P ratio",
@@ -706,8 +710,8 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
             ["<extra></extra>"],
         )
         trace = go.Scatter(
-            x=[s.get(xvar) for s in data.values()],
-            y=[s.get(yvar) for s in data.values()],
+            x=x,
+            y=y,
             mode="markers",
             marker={
                 "size": 10,
@@ -719,9 +723,9 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
             customdata=customdata,
             hovertemplate=hovertemplate,
         )
+        gofig = go.Figure(fig)
+        gofig.add_trace(trace)
 
-        fig = go.Figure(fig)
-        fig.add_trace(trace)
         if show_legend:
-            fig = add_legend_colorbar(fig, sdata)
-        return fig
+            gofig = add_legend_colorbar(gofig, sdata)
+        return gofig
