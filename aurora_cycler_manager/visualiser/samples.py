@@ -5,6 +5,7 @@ Samples tab layout and callbacks for the visualiser app.
 import gzip
 import json
 import os
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -296,7 +297,7 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
                     if not cycling_files:
                         print(f"No cycling files found in {file_location}")
                         continue
-                df, metadata = combine_jobs(cycling_files)
+                df, metadata = combine_jobs([Path(f) for f in cycling_files])
                 data["data_sample_time"][sample] = df.to_dict(orient="list")
 
             # Get the analysed file
