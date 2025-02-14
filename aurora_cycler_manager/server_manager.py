@@ -702,10 +702,6 @@ class ServerManager:
             "`Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (full_jobid, sample, server.label, int(jobid), dt, json_string, comment),
         )
-        self.execute_sql(
-            "UPDATE pipelines SET `Job ID on server` = ?, `Job ID` = ?, `Server Label` = ?, `Server Hostname` = ? WHERE `Sample ID` = ?",
-            (int(jobid), full_jobid, server.label, server.hostname, sample),
-        )
 
     def cancel(self, jobid: str) -> str:
         """Cancel a job on a server.
