@@ -8,7 +8,6 @@ from typing import Any, Union
 
 import numpy as np
 import pandas as pd
-import yaml
 from scipy import stats
 
 ArrayLike = Union[list, np.ndarray, pd.Series]
