@@ -94,6 +94,16 @@ samples_menu =  html.Div(
                 options=["Q (mAh)", "V (V)", "dQdV (mAh/V)"],
                 value="V (V)",
             ),
+            html.Div(style={"margin-top": "10px"}),
+            html.Label("Cycle number:", htmlFor="cycle-number"),
+            dcc.Input(
+                id="cycle-number",
+                type="number",
+                placeholder="Cycle number",
+                min=1,
+                value=1,
+                style={"width": "100%"},
+            ),
             html.Div(style={"margin-top": "100px"}),
         ],
     )
@@ -399,16 +409,28 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
             fig["data"].append(trace)
         return fig
 
+    # When the user clicks on a point, update the cycle number
+    @app.callback(
+        Output("cycle-number", "value"),
+        Input("cycles-graph", "clickData"),
+    )
+    def update_cycle_number(click_data: dict) -> int:
+        """When the user clicks on a point, update the cycle number input."""
+        if not click_data:
+            return 1
+        point = click_data["points"][0]
+        return point["x"]
+
     # Update the one cycle graph
     @app.callback(
         Output("cycle-graph", "figure"),
         State("cycle-graph", "figure"),
-        Input("cycles-graph", "clickData"),
+        Input("cycle-number", "value"),
         Input("samples-data-store", "data"),
         Input("samples-cycle-x", "value"),
         Input("samples-cycle-y", "value"),
     )
-    def update_cycle_graph(fig: dict, click_data: dict, data: dict, xvar: str, yvar: str) -> dict:
+    def update_cycle_graph(fig: dict, cycle: int, data: dict, xvar: str, yvar: str) -> dict:
         """When data or x/y variables change, update the one cycle graph."""
         fig["data"] = []
         fig["layout"]["xaxis"]["title"] = xvar if xvar else "Select x variable"
@@ -418,13 +440,6 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
             return fig
         if not xvar or not yvar:
             return fig
-        if not click_data:
-            cycle = 1
-        else:
-            # click_data is a dict with keys 'points' and 'event'
-            # 'points' is a list of dicts with keys 'curveNumber', 'pointNumber', 'pointIndex', 'x', 'y', 'text'
-            point = click_data["points"][0]
-            cycle = point["x"]
         for sample, data_dict in data["data_sample_time"].items():
             # find where the cycle = cycle
             mask = np.array(data_dict["Cycle"]) == cycle
