@@ -30,7 +30,7 @@ from typing import Literal
 import pandas as pd
 import paramiko
 
-from aurora_cycler_manager.analysis import _run_from_sample
+from aurora_cycler_manager.analysis import _run_from_sample, analyse_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.cycler_servers import CyclerServer, TomatoServer
 from aurora_cycler_manager.tomato_converter import convert_tomato_json
@@ -837,6 +837,8 @@ class ServerManager:
                 output_hdf_file = True,
                 output_jsongz_file = False,
             )
+            # Analyse the new data
+            analyse_sample(sample_id)
 
     def snapshot_all(
             self,
