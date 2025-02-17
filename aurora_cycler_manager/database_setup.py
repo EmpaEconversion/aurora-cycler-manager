@@ -258,15 +258,14 @@ def create_database() -> None:
             cursor.execute("PRAGMA table_info(samples)")
             existing_columns = cursor.fetchall()
             existing_columns = [col[1] for col in existing_columns]
-            new_columns = [
-                col["Name"]
-                for col in config["Sample database"]
-                if col["Name"] not in existing_columns
+            new_columns = [col["Name"] for col in config["Sample database"]]
+            added_columns = [
+                col for col in new_columns
+                if col not in existing_columns
             ]
             removed_columns = [
-                col
-                for col in existing_columns
-                if col not in [col["Name"] for col in config["Sample database"]]+["Pipeline", "Job ID"]
+                col for col in existing_columns
+                if col not in [*new_columns, "Pipeline", "Job ID"]
             ]
             if removed_columns:
                 # Ask user to double confirm
@@ -278,14 +277,14 @@ def create_database() -> None:
                         cursor.execute(f'ALTER TABLE samples DROP COLUMN "{col}"')
                     conn.commit()
                     print(f"Columns {', '.join(removed_columns)} removed")
-            if new_columns:
+            if added_columns:
                 # Add new columns
                 for col in config["Sample database"]:
-                    if col["Name"] in new_columns:
+                    if col["Name"] in added_columns:
                         cursor.execute(f'ALTER TABLE samples ADD COLUMN "{col["Name"]}" {col["Type"]}')
                 conn.commit()
-                print(f"Adding new columns to database: {', '.join(new_columns)}")
-            else:
+                print(f"Adding new columns to database: {', '.join(added_columns)}")
+            if not added_columns and not removed_columns:
                 print("No changes to database configuration")
         else:
             print(f"Created database at {database_path}")
