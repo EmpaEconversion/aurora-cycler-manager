@@ -60,10 +60,10 @@ def harvest_neware_files(
     server_username: str,
     server_shell_type: str,
     server_copy_folder: str,
-    local_folder: str,
+    local_folder: str | Path,
     local_private_key_path: str | None = None,
     force_copy: bool = False,
-) -> None:
+) -> list[str]:
     """Get Neware files from subfolders of specified folder.
 
     Args:
@@ -75,6 +75,9 @@ def harvest_neware_files(
         local_folder (str): Folder to copy files to
         local_private_key_path (str, optional): Local private key path for ssh
         force_copy (bool): Copy all files regardless of modification date
+
+    Returns:
+        list of new files copied
 
     """
     cutoff_datetime = datetime.fromtimestamp(0)  # Set default cutoff date
@@ -156,7 +159,7 @@ def harvest_neware_files(
 
     return new_files
 
-def harvest_all_neware_files(force_copy: bool = False) -> None:
+def harvest_all_neware_files(force_copy: bool = False) -> list[str]:
     """Get neware files from all servers specified in the config."""
     all_new_files = []
     snapshots_folder = get_snapshot_folder()
@@ -308,7 +311,7 @@ def _clean_ndax_step(d: dict) -> dict:
     for k,v in step_info.items():
         if k == "Num":
             continue
-        new_step = {}
+        new_step: dict[str, int | float | str] = {}
         new_step["Step Index"] = int(v.get("Step_ID"))
         new_step["Step Name"] = state_dict.get(v.get("Step_Type"),"Unknown")
         record = v.get("Record")
@@ -334,7 +337,7 @@ def _clean_ndax_step(d: dict) -> dict:
         step_list.append(new_step)
     d["Payload"] = step_list
     # Change some keys for consistency with xlsx
-    d["Remarks"] = d.pop("Remark")
+    d["Remarks"] = d.pop("Remark","")
     d["Start step ID"] = int(d.pop("Start_Step",1))
     # Get rid of keys that are not useful
     unwanted_keys = ["SMBUS","Whole_Prt","Guid","Operate","type","version","SCQ","SCQ_F","RateType","Scale"]
@@ -354,14 +357,14 @@ def get_neware_ndax_metadata(file_path: Path) -> dict:
     """
     # Get step.xml and testinfo.xml from the .ndax file
     # get the step info from step.xml
-    zf = zipfile.PyZipFile(file_path)
+    zf = zipfile.PyZipFile(str(file_path))
     step = zf.read("Step.xml")
     step_parsed = xmltodict.parse(step.decode(),attr_prefix="")
     metadata = _clean_ndax_step(step_parsed)
 
     # add test info
-    testinfo = zf.read("TestInfo.xml")
-    testinfo = xmltodict.parse(testinfo.decode(),attr_prefix="").get("root",{}).get("config",{}).get("TestInfo",{})
+    testinfo = xmltodict.parse(zf.read("TestInfo.xml").decode(),attr_prefix="")
+    testinfo = testinfo.get("root",{}).get("config",{}).get("TestInfo",{})
     metadata["Barcode"] = testinfo.get("Barcode")
     metadata["Start time"] = testinfo.get("StartTime")
     metadata["Step name"] = testinfo.get("StepName")
@@ -369,11 +372,11 @@ def get_neware_ndax_metadata(file_path: Path) -> dict:
     metadata["Current range (mA)"] = float(testinfo.get("CurrRange",0))
     return metadata
 
-def get_sampleid_from_metadata(metadata: dict) -> str:
+def get_sampleid_from_metadata(metadata: dict) -> str | None:
     """Get sample ID from Remarks or Barcode in the Neware metadata."""
     # Get sampleid from test_info
-    barcode_sampleid = metadata.get("Barcode")
-    remark_sampleid = metadata.get("Remarks")
+    barcode_sampleid = metadata.get("Barcode","")
+    remark_sampleid = metadata.get("Remarks","")
     sampleid = None
 
     # Check against known samples
@@ -421,11 +424,15 @@ def get_neware_xlsx_data(file_path: Path) -> pd.DataFrame:
     ).cumsum()
     # convert date string from df["Date"] in format YYYY-MM-DD HH:MM:SS to uts timestamp in seconds
     output_df["uts"] = df["Date"].apply(lambda x: datetime.strptime(x, "%Y-%m-%d %H:%M:%S").timestamp())
+    # add 1e-6 to Timestamp where Time is 0 - negligible and avoids errors when sorting
+    output_df["uts"] = output_df["uts"] + (df["Time"] == 0) * 1e-6
     return output_df
 
 def get_neware_ndax_data(file_path: Path) -> pd.DataFrame:
     """Convert Neware ndax file to dictionary."""
     df = NewareNDA.read(file_path)
+    # where Time is 0, add 1e-6 to Timestamp - negligible and avoids errors when sorting
+    df["Timestamp"] = df["Timestamp"] + pd.to_timedelta((df["Time"] == 0) * 1e-6, unit="s")
     output_df = pd.DataFrame()
     output_df["V (V)"] = df["Voltage"]
     output_df["I (A)"] = (df["Current(mA)"] / 1000)
@@ -464,6 +471,9 @@ def convert_neware_data(
         job_data = get_neware_ndax_metadata(file_path)
         job_data["job_type"] = "neware_ndax"
         data = get_neware_ndax_data(file_path)
+    else:
+        msg = f"File type {file_path.suffix} not supported"
+        raise ValueError(msg)
     sampleid = get_sampleid_from_metadata(job_data)
 
     # If there is a valid Sample ID, get sample metadata from database
@@ -561,7 +571,7 @@ def convert_all_neware_data() -> None:
             print(f"Error converting {file}: {e}")
 
 def main() -> None:
-    """Run the main function."""
+    """Harvest and convert files that have changed."""
     new_files = harvest_all_neware_files()
     for file in new_files:
         try:

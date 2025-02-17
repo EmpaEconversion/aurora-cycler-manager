@@ -29,9 +29,9 @@ sm: ServerManager | None = None
 try:
     sm = ServerManager()
     accessible_servers = [s.label for s in sm.servers]
-except (paramiko.SSHException, FileNotFoundError, ValueError):
-    print("You do not have permission to write to the servers. Running in view-only mode.")
-
+except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
+    print(e)
+    print("You cannot access any servers. Running in view-only mode.")
 
 #-------------------------------------- Database view layout --------------------------------------#
 def db_view_layout(config: dict) -> html.Div:

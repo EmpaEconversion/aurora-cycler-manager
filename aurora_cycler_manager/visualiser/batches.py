@@ -29,7 +29,7 @@ all_color_scales = {}
 all_color_scales.update(px.colors.sequential.__dict__)
 all_color_scales.update(px.colors.diverging.__dict__)
 all_color_scales.update(px.colors.cyclical.__dict__)
-all_color_scales = {k: v for k, v in all_color_scales.items() if isinstance(v, list)}
+all_color_scales = {k: v for k, v in all_color_scales.items() if isinstance(v, list) and not k.startswith("__")}
 colorscales = [{"label": k, "value": k} for k in all_color_scales]
 
 batches_menu = html.Div(
@@ -422,7 +422,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         color_vars_set = set()
         for sample in data.values():
             y_vars_set.update([k for k,v in sample.items() if isinstance(v,list)])
-            color_vars_set.update([k for k,v in sample.items() if not isinstance(v,list)])
+            color_vars_set.update([k for k,v in sample.items() if v is not None and not isinstance(v,list)])
         y_vars = list(y_vars_set)
         color_vars = list(color_vars_set)
 
@@ -470,9 +470,12 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
                     unique_color_labels = [None]
                     unique_color_indices = [0]
             elif color_mode == "categorical":
+                    unique_valid_values = sorted({v for v in color_values if v is not None})
+                    assigned_values = {}
+                    for i, v in enumerate(unique_valid_values):
+                        assigned_values[v] = i / (len(unique_valid_values) - 1) if len(unique_valid_values) > 1 else 0
+                    color_values_norm = [assigned_values.get(v) if v is not None else None for v in color_values]
                     color_values = [v if v is not None else "None" for v in color_values]
-                    len_unique_colors = len(set(color_values))
-                    color_values_norm = [list(set(color_values)).index(v)/(len_unique_colors-1) for v in color_values]
                     unique_color_labels, unique_color_indices = np.unique(color_values, return_index=True)
             elif color_mode == "numerical_categorical":
                     cmin = min([v for v in color_values if v is not None])
@@ -574,7 +577,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
                     "size": 8,
                     "color": sdata["colors"][i] if sdata["colors"] else None,
                     "symbol": sdata["symbols"][i] if sdata["symbols"] else None,
-                    "line": {"width": 0.5, "color": "white"},
+                    "line": {"width": 0.5, "color": "black"},
                 },
                 showlegend=show_legend,
                 hovertemplate=hovertemplate,
@@ -685,6 +688,10 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         fig["layout"]["title"] = f"{xvar} vs {yvar}"
         fig["layout"]["xaxis"]["title"] = xvar
         fig["layout"]["yaxis"]["title"] = yvar
+        x = [s.get(xvar) for s in data.values()]
+        y = [s.get(yvar) for s in data.values()]
+        is_categorical = any(isinstance(val, str) for val in x)
+        fig["layout"]["xaxis"]["type"] = "category" if is_categorical else "linear"
         hover_info = [
             "Sample ID",
             "Actual N:P ratio",
@@ -703,8 +710,8 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
             ["<extra></extra>"],
         )
         trace = go.Scatter(
-            x=[s.get(xvar) for s in data.values()],
-            y=[s.get(yvar) for s in data.values()],
+            x=x,
+            y=y,
             mode="markers",
             marker={
                 "size": 10,
@@ -716,9 +723,9 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
             customdata=customdata,
             hovertemplate=hovertemplate,
         )
+        gofig = go.Figure(fig)
+        gofig.add_trace(trace)
 
-        fig = go.Figure(fig)
-        fig.add_trace(trace)
         if show_legend:
-            fig = add_legend_colorbar(fig, sdata)
-        return fig
+            gofig = add_legend_colorbar(gofig, sdata)
+        return gofig

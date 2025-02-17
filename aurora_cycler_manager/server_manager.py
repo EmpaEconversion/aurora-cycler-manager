@@ -30,7 +30,7 @@ from typing import Literal
 import pandas as pd
 import paramiko
 
-from aurora_cycler_manager.analysis import _run_from_sample
+from aurora_cycler_manager.analysis import _run_from_sample, analyse_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.cycler_servers import CyclerServer, TomatoServer
 from aurora_cycler_manager.tomato_converter import convert_tomato_json
@@ -702,10 +702,6 @@ class ServerManager:
             "`Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (full_jobid, sample, server.label, int(jobid), dt, json_string, comment),
         )
-        self.execute_sql(
-            "UPDATE pipelines SET `Job ID on server` = ?, `Job ID` = ?, `Server Label` = ?, `Server Hostname` = ? WHERE `Sample ID` = ?",
-            (int(jobid), full_jobid, server.label, server.hostname, sample),
-        )
 
     def cancel(self, jobid: str) -> str:
         """Cancel a job on a server.
@@ -841,6 +837,8 @@ class ServerManager:
                 output_hdf_file = True,
                 output_jsongz_file = False,
             )
+            # Analyse the new data
+            analyse_sample(sample_id)
 
     def snapshot_all(
             self,

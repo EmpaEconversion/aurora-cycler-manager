@@ -607,7 +607,13 @@ def shrink_sample(sample_id: str) -> None:
     s_ds_V = MinMaxLTTBDownsampler().downsample(df["uts"], df["V (V)"], n_out = new_length)
     s_ds_I = MinMaxLTTBDownsampler().downsample(df["uts"], df["I (A)"], n_out = new_length)
     ind = np.sort(np.concatenate([s_ds_V, s_ds_I]))
+
+    df["Q (mAh)"] = df["dQ (mAh)"].cumsum()
+
     df = df.iloc[ind]
+
+    df["dQ (mAh)"] = df["Q (mAh)"].diff().fillna(0)
+    df=df.drop(columns=["Q (mAh)"])
 
     # Save the new file
     new_file_location = file_location.with_name(f"shrunk.{sample_id}.h5")
