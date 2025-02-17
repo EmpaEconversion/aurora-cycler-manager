@@ -29,7 +29,7 @@ all_color_scales = {}
 all_color_scales.update(px.colors.sequential.__dict__)
 all_color_scales.update(px.colors.diverging.__dict__)
 all_color_scales.update(px.colors.cyclical.__dict__)
-all_color_scales = {k: v for k, v in all_color_scales.items() if isinstance(v, list)}
+all_color_scales = {k: v for k, v in all_color_scales.items() if isinstance(v, list) and not k.startswith("__")}
 colorscales = [{"label": k, "value": k} for k in all_color_scales]
 
 batches_menu = html.Div(
