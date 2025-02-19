@@ -690,8 +690,10 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         fig["layout"]["yaxis"]["title"] = yvar
         x = [s.get(xvar) for s in data.values()]
         y = [s.get(yvar) for s in data.values()]
-        is_categorical = any(isinstance(val, str) for val in x)
-        fig["layout"]["xaxis"]["type"] = "category" if is_categorical else "linear"
+        x_categorical = any(isinstance(val, str) for val in x)
+        y_categorical = any(isinstance(val, str) for val in y)
+        fig["layout"]["xaxis"]["type"] = "category" if x_categorical else "linear"
+        fig["layout"]["yaxis"]["type"] = "category" if y_categorical else "linear"
         hover_info = [
             "Sample ID",
             "Actual N:P ratio",
