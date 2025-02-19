@@ -690,10 +690,37 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         fig["layout"]["yaxis"]["title"] = yvar
         x = [s.get(xvar) for s in data.values()]
         y = [s.get(yvar) for s in data.values()]
+
+        # Check if axes are categorical or numerical
         x_categorical = any(isinstance(val, str) for val in x)
         y_categorical = any(isinstance(val, str) for val in y)
-        fig["layout"]["xaxis"]["type"] = "category" if x_categorical else "linear"
-        fig["layout"]["yaxis"]["type"] = "category" if y_categorical else "linear"
+
+        if x_categorical:
+            fig["layout"]["xaxis"]["type"] = "category"
+            x = [s.get(xvar, "None") for s in data.values()]
+            x_categories = sorted(set(x))
+            fig["layout"]["xaxis"]["categoryorder"] = "array"
+            fig["layout"]["xaxis"]["categoryarray"] = x_categories
+            # put None at the end
+            if "None" in x_categories:
+                x_categories.remove("None")
+                x_categories.append("None")
+        else:
+            fig["layout"]["xaxis"]["type"] = "linear"
+
+        if y_categorical:
+            fig["layout"]["yaxis"]["type"] = "category"
+            y = [s.get(yvar, "None") for s in data.values()]
+            y_categories = sorted(set(y))
+            fig["layout"]["yaxis"]["categoryorder"] = "array"
+            fig["layout"]["yaxis"]["categoryarray"] = y_categories
+            # put None at the end
+            if "None" in y_categories:
+                y_categories.remove("None")
+                y_categories.append("None")
+        else:
+            fig["layout"]["yaxis"]["type"] = "linear"
+
         hover_info = [
             "Sample ID",
             "Actual N:P ratio",
