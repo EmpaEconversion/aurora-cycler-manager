@@ -14,12 +14,12 @@ import dash_bootstrap_components as dbc
 import paramiko
 from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
 from dash import callback_context as ctx
-from dash_mantine_components import Notification
+from dash_mantine_components import Notification, Select, MultiSelect
 from obvibe.vibing import push_exp
 
 from aurora_cycler_manager.analysis import _run_from_sample
 from aurora_cycler_manager.server_manager import ServerManager
-from aurora_cycler_manager.visualiser.funcs import delete_samples, get_batch_names, get_database, get_sample_names
+from aurora_cycler_manager.visualiser.funcs import delete_samples, get_batch_names, get_database, get_sample_names, create_batch
 from aurora_cycler_manager.visualiser.notifications import active_time, idle_time, queue_notification
 
 # Server manager
@@ -34,6 +34,97 @@ except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
     print("You cannot access any servers. Running in view-only mode.")
 
 #-------------------------------------- Database view layout --------------------------------------#
+
+# Define visibility settings for buttons and divs when switching between tabs
+hide = {"display": "none"}
+show = {}
+default_visibility = {
+    "table_container": hide,
+    "batch_container": hide,
+    "load": hide,
+    "eject": hide,
+    "ready": hide,
+    "unready": hide,
+    "submit": hide,
+    "cancel": hide,
+    "view": hide,
+    "snapshot": hide,
+    "openbis": hide,
+    "batch": hide,
+    "delete": hide,
+}
+visibility_settings = {
+    "batches": {
+        **default_visibility,
+        "batch_container": show,
+    },
+    "pipelines": {
+        **default_visibility,
+        "table_container": show,
+        "load": show,
+        "eject": show,
+        "ready": show,
+        "unready": show,
+        "submit": show,
+        "cancel": show,
+        "view": show,
+        "snapshot": show,
+    },
+    "jobs": {
+        **default_visibility,
+        "table_container": show,
+        "cancel": show,
+        "snapshot": show,
+    },
+    "results": {
+        **default_visibility,
+        "table_container": show,
+        "view": show,
+    },
+    "samples": {
+        **default_visibility,
+        "table_container": show,
+        "view": show,
+        "openbis": show,
+        "batch": show,
+        "delete": show,
+    },
+}
+
+# Batches editing
+batch_edit = html.Div(
+    id="batch-container",
+    children = [
+        "Select batch to view:",
+        Select(
+            id="batch-edit-dropdown",
+            data=[], # Filled in by callback
+        ),
+        "Batch ID:",
+        html.Div(id="batch-edit-id"),
+        "Batch name: ",
+        dcc.Input(
+            id="batch-edit-name",
+            style={"width": "100%"},
+            value="",
+        ),
+        "Batch description:",
+        dcc.Textarea(
+            id="batch-edit-description",
+            style={"width": "100%"},
+            value="",
+        ),
+        "Samples:",
+        MultiSelect(
+            id="batch-edit-samples",
+            data=[], # Filled in by callback
+        ),
+        # save button
+        dbc.Button([html.I(className="bi-save me-2"),"Save"], id="batch-edit-save-button", color="primary", className="me-1"),
+        dbc.Button([html.I(className="bi-trash3 me-2"),"Delete"], id="batch-edit-delete-button", color="danger", className="me-1"),
+    ],
+)
+
 def db_view_layout(config: dict) -> html.Div:
     """Create database Dash layout."""
     openbis_disabled = config.get("OpenBIS PAT") is None
@@ -56,78 +147,88 @@ def db_view_layout(config: dict) -> html.Div:
                             dbc.Tab(label = "Pipelines", tab_id = "pipelines", activeTabClassName="fw-bold"),
                             dbc.Tab(label = "Jobs", tab_id = "jobs", activeTabClassName="fw-bold"),
                             dbc.Tab(label = "Results", tab_id = "results", activeTabClassName="fw-bold"),
+                            dbc.Tab(label = "Batches", tab_id = "batches", activeTabClassName="fw-bold"),
                         ],
                         id="table-select",
                         active_tab="samples",
                     ),
                     # Main table for displaying info from database
-                    dag.AgGrid(
-                        id="table",
-                        dashGridOptions = {"enableCellTextSelection": False, "ensureDomOrder": True, "tooltipShowDelay": 1000, "rowSelection": "multiple"},
-                        defaultColDef={"filter": True, "sortable": True, "floatingFilter": True},
-                        style={"height": "calc(100vh - 240px)", "width": "100%", "minHeight": "300px"},
-                    ),
                     html.Div(
-                        style={"display": "flex", "justify-content": "space-between", "flex-wrap": "wrap", "margin-top": "5px", "margin-bottom": "20px"},
+                        id="table-container",
                         children = [
-                            # Left aligned buttons
-                            html.Div(
-                                style={"display": "flex", "flex-wrap": "wrap"},
-                                children = [
-                                    dbc.Button([html.I(className="bi bi-arrow-90deg-down me-2"),"Load"], id="load-button", color="primary", className="me-1"),
-                                    dbc.Button([html.I(className="bi bi-arrow-90deg-right me-2"),"Eject"], id="eject-button", color="primary", className="me-1"),
-                                    dbc.Button([html.I(className="bi bi-play me-2"),"Ready"], id="ready-button", color="primary", className="me-1"),
-                                    dbc.Button([html.I(className="bi bi-slash-circle me-2"),"Unready"], id="unready-button", color="primary", className="me-1"),
-                                    dbc.Button([html.I(className="bi bi-upload me-2"),"Submit"], id="submit-button", color="primary", className="me-1"),
-                                    dbc.Button([html.I(className="bi bi-x-circle me-2"),"Cancel"], id="cancel-button", color="danger", className="me-1"),
-                                    dbc.Button([html.I(className="bi bi-graph-down me-2"),"View data"], id="view-button", color="primary", className="me-1"),
-                                    dbc.Button([html.I(className="bi bi-camera me-2"),"Snapshot"], id="snapshot-button", color="primary", className="me-1"),
-                                    dbc.Tooltip(
-                                        "You do not have an OpenBIS personal access token in the config. Need key 'OpenBIS PAT' pointing to your PAT.txt file path.",
-                                        placement="top",
-                                        delay={"show": 1000},
-                                        target="openbis-button",
-                                        style={"whiteSpace": "pre-wrap"},
-                                    ) if openbis_disabled else None,
-                                    dbc.DropdownMenu(
-                                        [
-                                            dbc.DropdownMenuItem([html.I(className="bi bi-cloud-upload me-2"),"Automatic upload"], id="openbis-auto-button", disabled=openbis_disabled),
-                                            dbc.DropdownMenuItem([html.I(className="bi bi-cloud-upload me-2"),"Custom upload"], id="openbis-custom-button", disabled=openbis_disabled),
-                                        ],
-                                        label=html.Span([
-                                            html.Img(src="/assets/openbis.svg", style={"height": "20px", "width": "20px", "vertical-align": "middle"}),
-                                            " OpenBIS",
-                                        ]),
-                                        id="openbis-button", color="primary", className="bi me-1", direction="up", disabled=openbis_disabled,
-                                    ),
-                                    dbc.Button([html.I(className="bi bi-trash3 me-2"),"Delete"], id="delete-button", color="danger", className="me-1"),
-                                ],
+                            dcc.Clipboard(id="clipboard", style={"display": "none"}),
+                            dag.AgGrid(
+                                id="table",
+                                dashGridOptions = {"enableCellTextSelection": False, "ensureDomOrder": True, "tooltipShowDelay": 1000, "rowSelection": "multiple"},
+                                defaultColDef={"filter": True, "sortable": True, "floatingFilter": True},
+                                style={"height": "calc(100vh - 240px)", "width": "100%", "minHeight": "300px"},
                             ),
-                            # Right aligned buttons
                             html.Div(
-                                style={"display": "flex", "flex-wrap": "wrap", "align-items": "center"},
-                                children=[
-                                    html.Div("Loading...", id="table-info", className="me-1", style={"display": "inline-block", "opacity": "0.5"}),
-                                    dbc.Button(className="bi bi-arrow-clockwise me-2 large-icon", id="refresh-database", color="primary"),
-                                    dbc.Button(className="bi bi-database-down me-2 large-icon", id="update-database", color="warning", disabled = not accessible_servers),
-                                    dbc.Tooltip(
-                                        children = "Refresh database",
-                                        id="last-refreshed",
-                                        target="refresh-database",
-                                        style={"whiteSpace": "pre-wrap"},
-                                        placement="top",
+                                style={"display": "flex", "justify-content": "space-between", "flex-wrap": "wrap", "margin-top": "5px", "margin-bottom": "20px"},
+                                children = [
+                                    # Left aligned buttons
+                                    html.Div(
+                                        style={"display": "flex", "flex-wrap": "wrap"},
+                                        children = [
+                                            dbc.Button([html.I(className="bi bi-clipboard me-2"), "Copy"], id="copy-button", color="primary", className="me-1"),
+                                            dbc.Button([html.I(className="bi bi-arrow-90deg-down me-2"),"Load"], id="load-button", color="primary", className="me-1"),
+                                            dbc.Button([html.I(className="bi bi-arrow-90deg-right me-2"),"Eject"], id="eject-button", color="primary", className="me-1"),
+                                            dbc.Button([html.I(className="bi bi-play me-2"),"Ready"], id="ready-button", color="primary", className="me-1"),
+                                            dbc.Button([html.I(className="bi bi-slash-circle me-2"),"Unready"], id="unready-button", color="primary", className="me-1"),
+                                            dbc.Button([html.I(className="bi bi-upload me-2"),"Submit"], id="submit-button", color="primary", className="me-1"),
+                                            dbc.Button([html.I(className="bi bi-x-circle me-2"),"Cancel"], id="cancel-button", color="danger", className="me-1"),
+                                            dbc.Button([html.I(className="bi bi-graph-down me-2"),"View data"], id="view-button", color="primary", className="me-1"),
+                                            dbc.Button([html.I(className="bi bi-camera me-2"),"Snapshot"], id="snapshot-button", color="primary", className="me-1"),
+                                            dbc.Tooltip(
+                                                "You do not have an OpenBIS personal access token in the config. Need key 'OpenBIS PAT' pointing to your PAT.txt file path.",
+                                                placement="top",
+                                                delay={"show": 1000},
+                                                target="openbis-button",
+                                                style={"whiteSpace": "pre-wrap"},
+                                            ) if openbis_disabled else None,
+                                            dbc.DropdownMenu(
+                                                [
+                                                    dbc.DropdownMenuItem([html.I(className="bi bi-cloud-upload me-2"),"Automatic upload"], id="openbis-auto-button", disabled=openbis_disabled),
+                                                    dbc.DropdownMenuItem([html.I(className="bi bi-cloud-upload me-2"),"Custom upload"], id="openbis-custom-button", disabled=openbis_disabled),
+                                                ],
+                                                label=html.Span([
+                                                    html.Img(src="/assets/openbis.svg", style={"height": "20px", "width": "20px", "vertical-align": "middle"}),
+                                                    " OpenBIS",
+                                                ]),
+                                                id="openbis-button", color="primary", className="bi me-1", direction="up", disabled=openbis_disabled,
+                                            ),
+                                            dbc.Button([html.I(className="bi bi-grid-3x2-gap-fill me-2"),"Create batch"], id="batch-save-button", color="primary", className="me-1"),
+                                            dbc.Button([html.I(className="bi bi-trash3 me-2"),"Delete"], id="delete-button", color="danger", className="me-1"),
+                                        ],
                                     ),
-                                    dbc.Tooltip(
-                                        children = "Update database from cyclers",
-                                        id="last-updated",
-                                        target="update-database",
-                                        style={"whiteSpace": "pre-wrap"},
-                                        placement="top",
+                                    # Right aligned buttons
+                                    html.Div(
+                                        style={"display": "flex", "flex-wrap": "wrap", "align-items": "center"},
+                                        children=[
+                                            html.Div("Loading...", id="table-info", className="me-1", style={"display": "inline-block", "opacity": "0.5"}),
+                                            dbc.Button(className="bi bi-arrow-clockwise me-2 large-icon", id="refresh-database", color="primary"),
+                                            dbc.Button(className="bi bi-database-down me-2 large-icon", id="update-database", color="warning", disabled = not accessible_servers),
+                                            dbc.Tooltip(
+                                                children = "Refresh database",
+                                                id="last-refreshed",
+                                                target="refresh-database",
+                                                style={"whiteSpace": "pre-wrap"},
+                                                placement="top",
+                                            ),
+                                            dbc.Tooltip(
+                                                children = "Update database from cyclers",
+                                                id="last-updated",
+                                                target="update-database",
+                                                style={"whiteSpace": "pre-wrap"},
+                                                placement="top",
+                                            ),
+                                        ],
                                     ),
                                 ],
                             ),
                         ],
                     ),
+                    batch_edit,
                 ],
             ),
             # Pop up modals for interacting with the database after clicking buttons
@@ -428,6 +529,35 @@ def db_view_layout(config: dict) -> html.Div:
                 centered=True,
                 is_open=False,
             ),
+            # Batch
+            dbc.Modal(
+                [
+                    dbc.ModalHeader(dbc.ModalTitle("Create batch")),
+                    dbc.ModalBody(
+                        id="batch-save-modal-body",
+                        children=[
+                            "Create a batch from the selected samples?",
+                            html.Div(style={"margin-top": "10px"}),
+                            dcc.Input(id="batch-name", type="text", placeholder="Batch name"),
+                            html.Div(style={"margin-top": "10px"}),
+                            dcc.Textarea(id="batch-description", placeholder="Batch description", style={"width": "100%", "height": "200px"}),
+                        ],
+                    ),
+                    dbc.ModalFooter(
+                        [
+                            dbc.Button(
+                                "Create", id="batch-save-yes-close", className="ms-auto", n_clicks=0, disabled=True, color="primary",
+                            ),
+                            dbc.Button(
+                                "Go back", id="batch-save-no-close", className="ms-auto", n_clicks=0, color="secondary",
+                            ),
+                        ],
+                    ),
+                ],
+                id="batch-save-modal",
+                centered=True,
+                is_open=False,
+            ),
             # Delete
             dbc.Modal(
                 [
@@ -468,6 +598,8 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     @app.callback(
         Output("table", "rowData"),
         Output("table", "columnDefs"),
+        Output("table-container", "style"),
+        Output("batch-container", "style"),
         Output("load-button", "style"),
         Output("eject-button", "style"),
         Output("ready-button", "style"),
@@ -477,41 +609,30 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output("view-button", "style"),
         Output("snapshot-button", "style"),
         Output("openbis-button", "style"),
+        Output("batch-save-button", "style"),
         Output("delete-button", "style"),
         Input("table-select", "active_tab"),
         Input("table-data-store", "data"),
     )
     def update_table(table, data):
-        load = {"display": "none"}
-        eject = {"display": "none"}
-        ready = {"display": "none"}
-        unready = {"display": "none"}
-        cancel = {"display": "none"}
-        submit = {"display": "none"}
-        view = {"display": "none"}
-        snapshot = {"display": "none"}
-        openbis = {"display": "none"}
-        delete = {"display": "none"}
-        if table == "pipelines":
-            load = {"display": "inline-block"}
-            eject = {"display": "inline-block"}
-            ready = {"display": "inline-block"}
-            unready = {"display": "inline-block"}
-            cancel = {"display": "inline-block"}
-            submit = {"display": "inline-block"}
-            view = {"display": "inline-block"}
-            snapshot = {"display": "inline-block"}
-        elif table == "jobs":
-            cancel = {"display": "inline-block"}
-            snapshot = {"display": "inline-block"}
-        elif table == "results":
-            view = {"display": "inline-block"}
-        elif table == "samples":
-            view = {"display": "inline-block"}
-            openbis = {"display": "inline-block"}
-            delete = {"display": "inline-block"}
-        return data["data"][table], data["column_defs"][table], load, eject, ready, unready, submit, cancel, view, snapshot, openbis, delete
-
+        settings = visibility_settings.get(table, {})
+        return (
+            data["data"].get(table, no_update),
+            data["column_defs"].get(table, no_update),
+            settings.get("table_container", hide),
+            settings.get("batch_container", hide),
+            settings.get("load", hide),
+            settings.get("eject", hide),
+            settings.get("ready", hide),
+            settings.get("unready", hide),
+            settings.get("submit", hide),
+            settings.get("cancel", hide),
+            settings.get("view", hide),
+            settings.get("snapshot", hide),
+            settings.get("openbis", hide),
+            settings.get("batch", hide),
+            settings.get("delete", hide),
+        )
     # Refresh the local data from the database
     @app.callback(
         Output("table-data-store", "data"),
@@ -554,12 +675,13 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output("view-button", "disabled"),
         Output("snapshot-button", "disabled"),
         Output("openbis-button", "disabled"),
+        Output("batch-save-button", "disabled"),
         Output("delete-button", "disabled"),
         Input("table", "selectedRows"),
         State("table-select", "active_tab"),
     )
     def enable_buttons(selected_rows, table):
-        load, eject, ready, unready, submit, cancel, view, snapshot, openbis, delete = True,True,True,True,True,True,True,True,True,True
+        load, eject, ready, unready, submit, cancel, view, snapshot, openbis, batch, delete = True,True,True,True,True,True,True,True,True,True,True
         if selected_rows:  # Must have something selected
             if accessible_servers:  # Must have permissions to do anything except view or upload
                 if table == "pipelines":
@@ -580,11 +702,13 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
                 elif table == "samples":
                     if all(s["Sample ID"] is not None for s in selected_rows):
                         delete = False
+                        if len(selected_rows) > 1:
+                            batch = False
             if table == "samples" and not openbis_disabled:
                 openbis = False
             if any(s["Sample ID"] is not None for s in selected_rows):
                 view = False
-        return load, eject, ready, unready, submit, cancel, view, snapshot, openbis, delete
+        return load, eject, ready, unready, submit, cancel, view, snapshot, openbis, batch, delete
 
     @app.callback(
         Output("table-info", "children"),
@@ -598,6 +722,22 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         selected_rows_count = len(selected_rows) if selected_rows else 0
 
         return f"Selected: {selected_rows_count}/{filtered_rows_count}"
+
+    # Copy button copies current selected rows to clipboard
+    @app.callback(
+        Output("clipboard", "content"),
+        Output("clipboard", "n_clicks"),
+        Input("copy-button", "n_clicks"),
+        State("table", "selectedRows"),
+        State("clipboard", "n_clicks"),
+    )
+    def copy_button(n, selected_rows, nclip):
+        if selected_rows:
+            tsv_header = "\t".join(selected_rows[0].keys())
+            tsv_data = "\n".join(["\t".join(str(value) for value in row.values()) for row in selected_rows])
+            nclip = 1 if nclip is None else nclip + 1
+            return f"{tsv_header}\n{tsv_data}", nclip
+        return no_update, no_update
 
     # Eject button pop up
     @app.callback(
@@ -1017,6 +1157,52 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
                     icon=html.I(className="bi bi-x-circle"),
                 ))
         return no_update, idle_time
+
+    # Batch button pop up
+    @app.callback(
+        Output("batch-save-modal", "is_open"),
+        Input("batch-save-button", "n_clicks"),
+        Input("batch-save-yes-close", "n_clicks"),
+        Input("batch-save-no-close", "n_clicks"),
+        State("batch-save-modal", "is_open"),
+    )
+    def batch_sample_button(batch_clicks, yes_clicks, no_clicks, is_open):
+        if not ctx.triggered:
+            return is_open
+        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        if button_id == "batch-save-button":
+            return not is_open
+        if (button_id == "batch-save-yes-close" and yes_clicks) or (button_id == "batch-save-no-close" and no_clicks):
+            return False
+        return is_open, no_update, no_update, no_update
+    # batch name validation
+    @app.callback(
+        Output("batch-save-yes-close", "disabled"),
+        Input("batch-name", "value"),
+        State("batches-store", "data"),
+        prevent_initial_call=True,
+    )
+    def validate_batch_name(name, batches):
+        """Check the batch name is valid."""
+        return bool(not name or name in batches or len(name) < 3 or '"' in name or "'" in name)
+
+    # When batch confirmed, create the batch and refresh the database
+    @app.callback(
+        Output("loading-database", "children", allow_duplicate=True),
+        Output("refresh-database", "n_clicks", allow_duplicate=True),
+        Input("batch-save-yes-close", "n_clicks"),
+        State("table", "selectedRows"),
+        State("batch-name", "value"),
+        State("batch-description", "value"),
+        prevent_initial_call=True,
+    )
+    def batch_sample(yes_clicks, selected_rows, name, description):
+        if not yes_clicks:
+            return no_update, 0
+        sample_ids = [s["Sample ID"] for s in selected_rows]
+        print(f"Creating batch {name} with samples {sample_ids}")
+        create_batch(config, name, description, sample_ids)
+        return no_update, 1
 
     # Cancel button pop up
     @app.callback(
