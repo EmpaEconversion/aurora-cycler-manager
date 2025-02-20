@@ -127,7 +127,7 @@ class ServerManager:
         # Create a dictionary for lookup of alternative and case insensitive names
         col_names = [col["Name"] for col in column_config]
         alt_name_dict = {
-            alt_name.lower(): item["Name"] for item in column_config for alt_name in item["Alternative names"]
+            alt_name.lower(): item["Name"] for item in column_config for alt_name in item.get("Alternative names", [])
         }
         # Add on the main names in lower case
         alt_name_dict.update({col.lower(): col for col in col_names})

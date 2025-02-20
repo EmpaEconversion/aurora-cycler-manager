@@ -25,12 +25,17 @@ graph_template = "seaborn"
 graph_margin = {"l": 50, "r": 10, "t": 50, "b": 75}
 
 # Define available color scales
-all_color_scales = {}
-all_color_scales.update(px.colors.sequential.__dict__)
-all_color_scales.update(px.colors.diverging.__dict__)
-all_color_scales.update(px.colors.cyclical.__dict__)
-all_color_scales = {k: v for k, v in all_color_scales.items() if isinstance(v, list) and not k.startswith("__")}
-colorscales = [{"label": k, "value": k} for k in all_color_scales]
+cont_color_dict = {}
+cont_color_dict.update(px.colors.sequential.__dict__)
+cont_color_dict.update(px.colors.diverging.__dict__)
+cont_color_dict.update(px.colors.cyclical.__dict__)
+cont_color_dict = {k: v for k, v in cont_color_dict.items() if isinstance(v, list) and not k.startswith("__")}
+cont_color_options = [{"label": k, "value": k} for k in cont_color_dict]
+
+discrete_color_dict = {}
+discrete_color_dict.update(px.colors.qualitative.__dict__)
+discrete_color_dict = {k: v for k, v in discrete_color_dict.items() if isinstance(v, list) and not k.startswith("__")}
+discrete_color_options = [{"label": k, "value": k} for k in discrete_color_dict]
 
 batches_menu = html.Div(
     style = {"overflow": "scroll", "height": "100%"},
@@ -52,7 +57,7 @@ batches_menu = html.Div(
             multi=False,
         ),
         html.Div(style={"margin-top": "10px"}),
-        html.Label("Colormap", htmlFor="batch-cycle-colormap"),
+        html.Label("Color by:", htmlFor="batch-cycle-colormap"),
         dcc.Dropdown(
             id="batch-cycle-color",
             options=[
@@ -61,13 +66,20 @@ batches_menu = html.Div(
             value="Run ID",
             multi=False,
         ),
+        html.Label("Continuous colorscale:", htmlFor="batch-cycle-colormap"),
         dcc.Dropdown(
             id="batch-cycle-colormap",
-            options=colorscales,
+            options=cont_color_options,
             value="Viridis",
         ),
+        html.Label("Discrete colors:", htmlFor="batch-cycle-discrete-colormap"),
+        dcc.Dropdown(
+            id="batch-cycle-discrete-colormap",
+            options=discrete_color_options,
+            value="Plotly",
+        ),
         html.Div(style={"margin-top": "10px"}),
-        html.Label("Style", htmlFor="batch-cycle-style"),
+        html.Label("Style by:", htmlFor="batch-cycle-style"),
         dcc.Dropdown(
             id="batch-cycle-style",
             options=[
@@ -443,13 +455,13 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         Input("batches-data-store", "data"),
         Input("batch-cycle-color", "value"),
         Input("batch-cycle-colormap", "value"),
+        Input("batch-cycle-discrete-colormap", "value"),
         Input("batch-cycle-style", "value"),
     )
-    def update_color_style_store(data: dict, color: str, colormap: str, style: str) -> dict:
+    def update_color_style_store(data: dict, color: str, colormap: list[str], discrete_colormap: list[str], style: str) -> dict:
         """Update the color and style data store based on the selected color and style."""
         # get the color for each trace
         if color:
-            colormap = all_color_scales.get(colormap, all_color_scales.get("Viridis"))
             color_values = [sample.get(color, None) for sample in data.values()]
             cmin, cmax = 0, 1
 
@@ -477,6 +489,9 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
                     color_values_norm = [assigned_values.get(v) if v is not None else None for v in color_values]
                     color_values = [v if v is not None else "None" for v in color_values]
                     unique_color_labels, unique_color_indices = np.unique(color_values, return_index=True)
+                    colormap_list = discrete_color_dict.get(discrete_colormap, discrete_color_dict.get("Plotly"))
+                    color_map: dict[str,str] = {label: colormap_list[i % len(colormap_list)] for i, label in enumerate(unique_color_labels)}
+                    colors = [color_map[str(v)] if v is not None else "rgb(150, 150, 150)" for v in color_values]
             elif color_mode == "numerical_categorical":
                     cmin = min([v for v in color_values if v is not None])
                     cmax = max([v for v in color_values if v is not None])
@@ -493,10 +508,12 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
                     unique_color_labels = [color_values[0]]
                     unique_color_indices = [0]
 
-            colors = [
-                sample_colorscale(colormap, [v])[0] if v is not None else "rgb(150, 150, 150)"
-                for v in color_values_norm
-            ]
+            if color_mode != "categorical":
+                colormap_list = cont_color_dict.get(colormap, cont_color_dict.get("Viridis"))
+                colors = [
+                    sample_colorscale(colormap_list, [v])[0] if v is not None else "rgb(150, 150, 150)"
+                    for v in color_values_norm
+                ]
 
         # If style, add a different style for each in the category
         if style:
@@ -690,8 +707,37 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         fig["layout"]["yaxis"]["title"] = yvar
         x = [s.get(xvar) for s in data.values()]
         y = [s.get(yvar) for s in data.values()]
-        is_categorical = any(isinstance(val, str) for val in x)
-        fig["layout"]["xaxis"]["type"] = "category" if is_categorical else "linear"
+
+        # Check if axes are categorical or numerical
+        x_categorical = any(isinstance(val, str) for val in x)
+        y_categorical = any(isinstance(val, str) for val in y)
+
+        if x_categorical:
+            fig["layout"]["xaxis"]["type"] = "category"
+            x = [s.get(xvar, "None") for s in data.values()]
+            x_categories = sorted(set(x))
+            fig["layout"]["xaxis"]["categoryorder"] = "array"
+            fig["layout"]["xaxis"]["categoryarray"] = x_categories
+            # put None at the end
+            if "None" in x_categories:
+                x_categories.remove("None")
+                x_categories.append("None")
+        else:
+            fig["layout"]["xaxis"]["type"] = "linear"
+
+        if y_categorical:
+            fig["layout"]["yaxis"]["type"] = "category"
+            y = [s.get(yvar, "None") for s in data.values()]
+            y_categories = sorted(set(y))
+            fig["layout"]["yaxis"]["categoryorder"] = "array"
+            fig["layout"]["yaxis"]["categoryarray"] = y_categories
+            # put None at the end
+            if "None" in y_categories:
+                y_categories.remove("None")
+                y_categories.append("None")
+        else:
+            fig["layout"]["yaxis"]["type"] = "linear"
+
         hover_info = [
             "Sample ID",
             "Actual N:P ratio",
