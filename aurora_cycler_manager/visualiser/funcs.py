@@ -112,6 +112,37 @@ def delete_samples(config: dict, sample_ids: list) -> None:
             cursor.execute("DELETE FROM samples WHERE `Sample ID` = ?", (sample_id,))
         conn.commit()
 
+def make_pipelines_comparable(pipelines: list[str | None]) -> list[str | None]:
+    """Convert pipelines string to a comparable format.
+
+    Important! This should always be consistent with the JavaScript function pipelineComparatorCustom.
+    The JavaScript function is used in the AG Grid to display the pipelines in the correct order.
+    This function is used when loading multiple samples to pipelines.
+    """
+
+    def convert_pipeline(pipeline: str | None) -> str | None:
+        """Make single pipeline string comparable."""
+        if pipeline is None:
+            return None
+
+        # Split the pipeline string by '-'
+        parts = pipeline.split("-")
+        # Iterate over the parts and pad numbers with zeros
+        for i in range(len(parts)):
+            if parts[i].isdigit():
+                parts[i] = parts[i].zfill(3)
+
+        # Join the parts back together with '-'
+        pipeline = "-".join(parts)
+
+        # Now split by "_" and put the first part at the end
+        parts = pipeline.split("_")
+        if len(parts) < 2:
+            return parts[0]
+        return "_".join(parts[1:]) + "_" + parts[0]
+
+    return [convert_pipeline(p) for p in pipelines]
+
 def cramers_v(x: ArrayLike, y: ArrayLike) -> float:
     """Calculate Cramer's V for two categorical variables."""
     confusion_matrix = pd.crosstab(x, y)

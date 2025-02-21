@@ -19,7 +19,7 @@ from obvibe.vibing import push_exp
 
 from aurora_cycler_manager.analysis import _run_from_sample
 from aurora_cycler_manager.server_manager import ServerManager
-from aurora_cycler_manager.visualiser.funcs import delete_samples, get_batch_names, get_database, get_sample_names, create_batch
+from aurora_cycler_manager.visualiser.funcs import delete_samples, get_batch_names, get_database, get_sample_names, create_batch, make_pipelines_comparable
 from aurora_cycler_manager.visualiser.notifications import active_time, idle_time, queue_notification
 
 # Server manager
@@ -790,6 +790,9 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
             return is_open, no_update, no_update
         possible_samples = [s.get("Sample ID", None) for s in db_data["data"]["samples"]]
         options = [{"label": s, "value": s} for s in possible_samples if s]
+        # sort the selected rows by their pipeline with the same sorting as the AG grid
+        pipelines = [s["Pipeline"] for s in selected_rows]
+        selected_rows = [s for _,s in sorted(zip(make_pipelines_comparable(pipelines),selected_rows))]
         dropdowns = [
             html.Div(
                 children=[
@@ -863,8 +866,9 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     def load_sample(yes_clicks, selected_rows, selected_samples):
         if not yes_clicks:
             return no_update,0
-        selected_pipelines = [s["Pipeline"] for s in selected_rows]
-        for sample, pipeline in zip(selected_samples, selected_pipelines):
+        pipelines = [s["Pipeline"] for s in selected_rows]
+        pipelines = [s for _,s in sorted(zip(make_pipelines_comparable(pipelines),pipelines))]
+        for sample, pipeline in zip(selected_samples, pipelines):
             if not sample:
                 continue
             print(f"Loading {sample} to {pipeline}")
