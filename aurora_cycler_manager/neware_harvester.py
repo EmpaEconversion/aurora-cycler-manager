@@ -37,9 +37,9 @@ import paramiko
 import pytz
 import xmltodict
 
-from aurora_cycler_manager.analysis import _run_from_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_sample_data
+from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
@@ -507,7 +507,7 @@ def convert_neware_data(
         if not sampleid:
             print(f"Not saving {file_path}, no valid Sample ID found")
             return data, metadata
-        run_id = _run_from_sample(sampleid)
+        run_id = run_from_sample(sampleid)
         folder = Path(config["Processed snapshots folder path"]) / run_id / sampleid
         if not folder.exists():
             folder.mkdir(parents=True)

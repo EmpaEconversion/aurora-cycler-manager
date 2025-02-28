@@ -22,9 +22,9 @@ import h5py
 import pandas as pd
 import pytz
 
-from aurora_cycler_manager.analysis import _run_from_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_job_data, get_sample_data
+from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.version import __url__, __version__
 
 config = get_config()
@@ -131,7 +131,7 @@ def convert_tomato_json(
     }
 
     if output_hdf_file or output_jsongz_file:  # Save and update database
-        run_id = _run_from_sample(sampleid)
+        run_id = run_from_sample(sampleid)
         folder = Path(config["Processed snapshots folder path"]) / run_id / sampleid
         if not folder.exists():
             folder.mkdir(parents=True)

@@ -31,6 +31,7 @@ import yaml
 from tsdownsample import MinMaxLTTBDownsampler
 
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.utils import run_from_sample, c_to_float
 from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.version import __url__, __version__
 
@@ -264,7 +265,7 @@ def analyse_cycles(
                             for m in payload.get("method",[]):
                                 if "current" in m and "C" in m["current"]:
                                     try:
-                                        formation_C = _c_to_float(m["current"])
+                                        formation_C = c_to_float(m["current"])
                                     except ValueError:
                                         print(f"Not a valid C-rate: {m['current']}")
                                         formation_C = 0
@@ -273,7 +274,7 @@ def analyse_cycles(
                             for m in payload.get("method",[]):
                                 if "current" in m and "C" in m["current"]:
                                     try:
-                                        cycle_C = _c_to_float(m["current"])
+                                        cycle_C = c_to_float(m["current"])
                                     except ValueError:
                                         print(f"Not a valid C-rate: {m['current']}")
                                         cycle_C = 0
@@ -451,7 +452,7 @@ def analyse_cycles(
                 initial_cycle-1,
             ) if formed else None
 
-        cycle_dict["Run ID"] = _run_from_sample(sampleid)
+        cycle_dict["Run ID"] = run_from_sample(sampleid)
 
         # If assembly history is available, calculate times between steps
         assembly_history = sample_data.get("Assembly history",[])
@@ -556,7 +557,7 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
     Will search for the sample in the processed snapshots folder and analyse the cycling data.
 
     """
-    run_id = _run_from_sample(sample)
+    run_id = run_from_sample(sample)
     file_location = Path(config["Processed snapshots folder path"]) / run_id / sample
     # Prioritise .h5 files
     job_files = list(file_location.glob("snapshot.*.h5"))
@@ -580,7 +581,7 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
 
 def shrink_sample(sample_id: str) -> None:
     """Find the full.x.h5 file for the sample and save a lossy, compressed version."""
-    run_id = _run_from_sample(sample_id)
+    run_id = run_from_sample(sample_id)
     file_location = Path(config["Processed snapshots folder path"]) / run_id / sample_id / f"full.{sample_id}.h5"
     if not file_location.exists():
         msg = f"File {file_location} not found"
@@ -707,7 +708,7 @@ def parse_sample_plotting_file(
             split_name = sample.split(" ",1)
             if len(split_name) == 1:  # the batch is a single sample
                 sample_id = sample
-                run_id = _run_from_sample(sample_id)
+                run_id = run_from_sample(sample_id)
                 transformed_samples.append(sample_id)
             else:
                 run_id, sample_range = split_name
@@ -728,7 +729,7 @@ def parse_sample_plotting_file(
 
         # Check if individual sample folders exist
         for sample in transformed_samples:
-            run_id = _run_from_sample(sample)
+            run_id = run_from_sample(sample)
             sample_folder = Path(data_folder) / run_id / sample
             if not sample_folder.exists():
                 print(f"{sample} has no data folder, removing from list")
@@ -750,7 +751,7 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
     metadata: dict[str,dict] = {"sample_metadata":{}}
     for sample in samples:
         # get the anaylsed data
-        run_id = _run_from_sample(sample)
+        run_id = run_from_sample(sample)
         sample_folder = Path(config["Processed snapshots folder path"]) / run_id / sample
         try:
             analysed_file = next(
@@ -815,39 +816,3 @@ def analyse_all_batches() -> None:
             analyse_batch(plot_name,batch)
         except (ValueError, KeyError, PermissionError, RuntimeError, FileNotFoundError) as e:
             print(f"Failed to analyse {plot_name} with error {e}")
-
-def _c_to_float(c_rate: str) -> float:
-    """Convert a C-rate string to a float.
-
-    Args:
-        c_rate (str): C-rate string, e.g. 'C/2', '0.5C', '3D/5', '1/2 D'
-    Returns:
-        float: C-rate as a float
-
-    """
-    if "C" in c_rate:
-        sign = 1
-    elif "D" in c_rate:
-        c_rate = c_rate.replace("D", "C")
-        sign = -1
-    else:
-        msg = f"Invalid C-rate: {c_rate}"
-        raise ValueError(msg)
-
-    num, _, denom = c_rate.partition("C")
-    number = f"{num}{denom}".strip()
-
-    if "/" in number:
-        num, denom = number.split("/")
-        if not num:
-            num = "1"
-        if not denom:
-            denom = "1"
-        return sign * float(num) / float(denom)
-    return sign * float(number)
-
-def _run_from_sample(sampleid: str) -> str:
-    """Get the run_id from a sample_id."""
-    if not isinstance(sampleid, str) or len(sampleid.split("_")) < 2 or not sampleid.split("_")[-1].isdigit():
-        return "misc"
-    return sampleid.rsplit("_", 1)[0]

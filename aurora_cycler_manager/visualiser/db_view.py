@@ -17,7 +17,7 @@ from dash import callback_context as ctx
 from dash_mantine_components import Notification, Select, MultiSelect
 from obvibe.vibing import push_exp
 
-from aurora_cycler_manager.analysis import _run_from_sample
+from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.server_manager import ServerManager
 from aurora_cycler_manager.visualiser.funcs import delete_samples, get_batch_names, get_database, get_sample_names, create_batch, make_pipelines_comparable
 from aurora_cycler_manager.visualiser.notifications import active_time, idle_time, queue_notification
@@ -1121,7 +1121,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         if not personal_access_token_path:
             print("Error: missing OpenBIS personal access token")
         for sample_id in [s["Sample ID"] for s in selected_rows]:
-            run_id = _run_from_sample(sample_id)
+            run_id = run_from_sample(sample_id)
             sample_folder = Path(config["Processed snapshots folder path"])/run_id/sample_id
             if not sample_folder.exists():
                 print(f"Error: {sample_folder} does not exist")
