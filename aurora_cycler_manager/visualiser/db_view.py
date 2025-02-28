@@ -14,12 +14,20 @@ import dash_bootstrap_components as dbc
 import paramiko
 from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
 from dash import callback_context as ctx
-from dash_mantine_components import Notification, Select, MultiSelect
+from dash_mantine_components import MultiSelect, Notification, Select
 from obvibe.vibing import push_exp
 
-from aurora_cycler_manager.utils import run_from_sample
+from aurora_cycler_manager.database_funcs import add_samples_from_object
 from aurora_cycler_manager.server_manager import ServerManager
-from aurora_cycler_manager.visualiser.funcs import delete_samples, get_batch_names, get_database, get_sample_names, create_batch, make_pipelines_comparable
+from aurora_cycler_manager.utils import run_from_sample
+from aurora_cycler_manager.visualiser.funcs import (
+    create_batch,
+    delete_samples,
+    get_batch_names,
+    get_database,
+    get_sample_names,
+    make_pipelines_comparable,
+)
 from aurora_cycler_manager.visualiser.notifications import active_time, idle_time, queue_notification
 
 # Server manager
@@ -36,58 +44,37 @@ except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
 #-------------------------------------- Database view layout --------------------------------------#
 
 # Define visibility settings for buttons and divs when switching between tabs
-hide = {"display": "none"}
-show = {}
-default_visibility = {
-    "table_container": hide,
-    "batch_container": hide,
-    "load": hide,
-    "eject": hide,
-    "ready": hide,
-    "unready": hide,
-    "submit": hide,
-    "cancel": hide,
-    "view": hide,
-    "snapshot": hide,
-    "openbis": hide,
-    "batch": hide,
-    "delete": hide,
-}
 visibility_settings = {
     "batches": {
-        **default_visibility,
-        "batch_container": show,
+        "batch_container",
     },
     "pipelines": {
-        **default_visibility,
-        "table_container": show,
-        "load": show,
-        "eject": show,
-        "ready": show,
-        "unready": show,
-        "submit": show,
-        "cancel": show,
-        "view": show,
-        "snapshot": show,
+        "table_container",
+        "load",
+        "eject",
+        "ready",
+        "unready",
+        "submit",
+        "cancel",
+        "view",
+        "snapshot",
     },
     "jobs": {
-        **default_visibility,
-        "table_container": show,
-        "cancel": show,
-        "snapshot": show,
+        "table_container",
+        "cancel",
+        "snapshot",
     },
     "results": {
-        **default_visibility,
-        "table_container": show,
-        "view": show,
+        "table_container",
+        "view",
     },
     "samples": {
-        **default_visibility,
-        "table_container": show,
-        "view": show,
-        "openbis": show,
-        "batch": show,
-        "delete": show,
+        "table_container",
+        "view",
+        "openbis",
+        "batch",
+        "delete",
+        "add-samples",
     },
 }
 
@@ -179,6 +166,13 @@ def db_view_layout(config: dict) -> html.Div:
                                             dbc.Button([html.I(className="bi bi-x-circle me-2"),"Cancel"], id="cancel-button", color="danger", className="me-1"),
                                             dbc.Button([html.I(className="bi bi-graph-down me-2"),"View data"], id="view-button", color="primary", className="me-1"),
                                             dbc.Button([html.I(className="bi bi-camera me-2"),"Snapshot"], id="snapshot-button", color="primary", className="me-1"),
+                                            dcc.Upload(
+                                                children=dbc.Button(
+                                                    [html.I(className="bi bi-database-add me-2"), "Add samples"],
+                                                    id="add-samples-button", color="primary", className="me-1",
+                                                ),
+                                                id="sample-upload", accept=".json", max_size= 2*1024*1024, multiple=False,
+                                            ),
                                             dbc.Tooltip(
                                                 "You do not have an OpenBIS personal access token in the config. Need key 'OpenBIS PAT' pointing to your PAT.txt file path.",
                                                 placement="top",
@@ -584,6 +578,11 @@ def db_view_layout(config: dict) -> html.Div:
                 centered=True,
                 is_open=False,
             ),
+            # Add sample confirmation
+            dcc.ConfirmDialog(
+                id="add-samples-confirm",
+                message="This will overwrite samples. Are you sure you want to continue?",
+            ),
         ],
     )
 
@@ -611,27 +610,23 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output("openbis-button", "style"),
         Output("batch-save-button", "style"),
         Output("delete-button", "style"),
+        Output("add-samples-button", "style"),
         Input("table-select", "active_tab"),
         Input("table-data-store", "data"),
     )
     def update_table(table, data):
         settings = visibility_settings.get(table, {})
+        show = {}
+        hide = {"display": "none"}
+        visibilities = [
+            show if element in settings else hide for element in
+            ["table_container", "batch_container", "load", "eject", "ready", "unready", "submit",
+             "cancel", "view", "snapshot", "openbis", "batch", "delete", "add-samples"]
+        ]
         return (
             data["data"].get(table, no_update),
             data["column_defs"].get(table, no_update),
-            settings.get("table_container", hide),
-            settings.get("batch_container", hide),
-            settings.get("load", hide),
-            settings.get("eject", hide),
-            settings.get("ready", hide),
-            settings.get("unready", hide),
-            settings.get("submit", hide),
-            settings.get("cancel", hide),
-            settings.get("view", hide),
-            settings.get("snapshot", hide),
-            settings.get("openbis", hide),
-            settings.get("batch", hide),
-            settings.get("delete", hide),
+            *visibilities,
         )
     # Refresh the local data from the database
     @app.callback(
@@ -717,6 +712,8 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Input("table", "virtualRowData"),
     )
     def update_table_info(selected_rows, row_data, filtered_row_data):
+        if not row_data:
+            return "..."
         total_rows = len(row_data)
         filtered_rows_count = len(filtered_row_data) if (filtered_row_data is not None) else total_rows
         selected_rows_count = len(selected_rows) if selected_rows else 0
@@ -1327,3 +1324,42 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         print(f"Deleting {sample_ids}")
         delete_samples(config, sample_ids)
         return no_update, 1
+
+    # Add samples button pop up
+    @app.callback(
+        Output("refresh-database", "n_clicks", allow_duplicate=True),
+        Output("add-samples-confirm", "displayed"),
+        Input("sample-upload", "contents"),
+        State("sample-upload", "filename"),
+        prevent_initial_call=True,
+    )
+    def upload_samples(contents, filename):
+        if contents:
+            _content_type, content_string = contents.split(",")
+            decoded = base64.b64decode(content_string).decode("utf-8")
+            samples = json.loads(decoded)
+            print(f"Adding samples {filename}")
+            try:
+                add_samples_from_object(samples)
+            except ValueError as e:
+                if "already exist" in str(e):
+                    return no_update, True # Open confirm dialog
+            return 1, no_update  # Refresh the database
+        return no_update, no_update
+
+    @app.callback(
+        Output("refresh-database", "n_clicks", allow_duplicate=True),
+        Input("add-samples-confirm", "submit_n_clicks"),
+        State("sample-upload", "contents"),
+        State("sample-upload", "filename"),
+        prevent_initial_call=True,
+    )
+    def upload_overwrite_samples(submit_n_clicks,contents,filename):
+        if submit_n_clicks and contents:
+            _content_type, content_string = contents.split(",")
+            decoded = base64.b64decode(content_string).decode("utf-8")
+            samples = json.loads(decoded)
+            print(f"Adding samples {filename}")
+            add_samples_from_object(samples, overwrite=True)
+            return 1
+        return no_update
