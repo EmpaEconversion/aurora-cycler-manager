@@ -155,12 +155,6 @@ def create_database() -> None:
     # Get the list of columns from the configuration
     columns = config["Sample database"]
     column_definitions = [f'`{col["Name"]}` {col["Type"]}' for col in columns]
-    column_definitions += [
-        "`Pipeline` VARCHAR(50)",
-        "`Job ID` VARCHAR(255)",
-        "FOREIGN KEY(`Pipeline`) REFERENCES pipelines(`Pipeline`)",
-        "FOREIGN KEY(`Job ID`) REFERENCES jobs(`Job ID`)",
-    ]
 
     # Connect to database, create tables
     with sqlite3.connect(config["Database path"]) as conn:
@@ -265,7 +259,7 @@ def create_database() -> None:
             ]
             removed_columns = [
                 col for col in existing_columns
-                if col not in [*new_columns, "Pipeline", "Job ID"]
+                if col not in new_columns
             ]
             if removed_columns:
                 # Ask user to double confirm
