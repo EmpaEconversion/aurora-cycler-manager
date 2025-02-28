@@ -30,10 +30,11 @@ from typing import Literal
 import pandas as pd
 import paramiko
 
-from aurora_cycler_manager.analysis import _run_from_sample, analyse_sample
+from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.cycler_servers import CyclerServer, TomatoServer
 from aurora_cycler_manager.tomato_converter import convert_tomato_json
+from aurora_cycler_manager.utils import run_from_sample
 
 
 class ServerManager:
@@ -205,9 +206,9 @@ class ServerManager:
             )
         # Run ID - if column is missing or where it is empty, find from the sample ID
         if "Run ID" not in df.columns:
-            df["Run ID"] = df["Sample ID"].apply(lambda x: _run_from_sample(x))
+            df["Run ID"] = df["Sample ID"].apply(lambda x: run_from_sample(x))
         else:
-            df["Run ID"] = df["Run ID"].fillna(df["Sample ID"].apply(lambda x: _run_from_sample(x)))
+            df["Run ID"] = df["Run ID"].fillna(df["Sample ID"].apply(lambda x: run_from_sample(x)))
 
         # Insert the new data into the database
         with sqlite3.connect(self.config["Database path"]) as conn:
@@ -764,7 +765,7 @@ class ServerManager:
             if sample_id == "Unknown":
                 print(f"Job {server_label}-{jobid_on_server} has no sample name or payload, skipping.")
                 continue
-            run_id = _run_from_sample(sample_id)
+            run_id = run_from_sample(sample_id)
 
             local_save_location_processed = Path(self.config["Processed snapshots folder path"])/run_id/sample_id
 
