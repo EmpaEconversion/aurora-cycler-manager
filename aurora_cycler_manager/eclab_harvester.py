@@ -35,6 +35,7 @@ import pytz
 import yadg
 
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
@@ -299,15 +300,9 @@ def convert_mpr(
 
     # get sample data from database
     try:
-        with sqlite3.connect(config["Database path"]) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM samples WHERE `Sample ID`=?", (sample_id,))
-            row = cursor.fetchone()
-            columns = [column[0] for column in cursor.description]
-            sample_data = dict(zip(columns, row))
-    except Exception as e:
-        print(f"Error getting job and sample data from database: {e}")
-        sample_data = None
+        sample_data = get_sample_data(sample_id)
+    except ValueError:
+        sample_data = {}
 
     # Get job data from the snapshot file
     mpr_metadata = json.loads(data.attrs["original_metadata"])
@@ -330,7 +325,7 @@ def convert_mpr(
             },
         },
         "job_data": mpr_metadata,
-        "sample_data": sample_data if sample_data is not None else {},
+        "sample_data": sample_data,
     }
 
     if output_hdf5_file or output_jsongz_file:  # Save and update database

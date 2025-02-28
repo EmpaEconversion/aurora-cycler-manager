@@ -34,14 +34,17 @@ import h5py
 import NewareNDA
 import pandas as pd
 import paramiko
+import pytz
 import xmltodict
 
 from aurora_cycler_manager.analysis import _run_from_sample
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
 config = get_config()
+tz = pytz.timezone(config.get("Time zone","Europe/Zurich"))
 
 def get_snapshot_folder() -> Path:
     """Get the path to the snapshot folder for neware files."""
@@ -479,17 +482,11 @@ def convert_neware_data(
     # If there is a valid Sample ID, get sample metadata from database
     sample_data = None
     if sampleid:
-        with sqlite3.connect(config["Database path"]) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM samples WHERE `Sample ID`=?", (sampleid,))
-            row = cursor.fetchone()
-            if row:
-                columns = [column[0] for column in cursor.description]
-                sample_data = dict(zip(columns, row))
+        sample_data = get_sample_data(sampleid)
 
     # Metadata to add
     job_data["Technique codes"] = state_dict
-    current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    current_datetime = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
     metadata = {
         "provenance": {
             "snapshot_file": str(file_path),

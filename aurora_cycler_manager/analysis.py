@@ -31,6 +31,7 @@ import yaml
 from tsdownsample import MinMaxLTTBDownsampler
 
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.version import __url__, __version__
 
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="All-NaN axis encountered")
@@ -144,6 +145,12 @@ def combine_jobs(
 
     # Add provenance to the metadatas
     timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
+    # Replace sample data with latest from database
+    sample_data = get_sample_data(sampleids[0])
+    # Merge glossary dicts
+    glossary = {}
+    for g in [m.get("glossary",{}) for m in metadatas]:
+        glossary.update(g)
     metadata = {
         "provenance": {
             "aurora_metadata": {
@@ -157,15 +164,9 @@ def combine_jobs(
             },
             "original_file_provenance": {str(f): m["provenance"] for f, m in zip(job_files, metadatas)},
         },
-        "sample_data": metadatas[-1].get("sample_data",{}),
+        "sample_data": sample_data,
         "job_data": [m.get("job_data",{}) for m in metadatas],
-        "glossary": {
-            "uts": "Unix time stamp in seconds",
-            "V (V)": "Cell voltage in volts",
-            "I (A)": "Current across cell in amps",
-            "dQ (mAh)": "Change in charge between adjacent datapoints in mAh",
-            "Cycle": "A cycle is a step which is considered a full, valid charge/discharge cycle, see the function specified in provenance for the criteria",
-        },
+        "glossary": glossary,
     }
 
     return df, metadata
