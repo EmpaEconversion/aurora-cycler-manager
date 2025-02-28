@@ -421,7 +421,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         for s in sample_set:
             if s in data:
                 continue
-            run_id = _run_from_sample(s)
+            run_id = run_from_sample(s)
             file_location = Path(config["Processed snapshots folder path"])/run_id/s/f"cycles.{s}.json"
             if not file_location.exists():
                 continue
