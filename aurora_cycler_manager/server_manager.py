@@ -101,25 +101,29 @@ class ServerManager:
                 print(f"Server type {server_config['server_type']} not recognized, skipping")
         return servers
 
-    def insert_sample_file(self, csv_file: Path | str) -> None:
-        """Add a sample csv file to the database.
+    def insert_sample_file(self, json_file: Path | str) -> None:
+        """Add a sample JSON file to the database.
 
-        The csv file must have a header row with the column names. The columns should match the
-        columns defined in the config.json file. At least a 'Sample ID' column is required.
+        The JSON file is a list of dictionaries with the sample information.
+        Each dictionary contains the sample information as key-value pairs.
+        The keys should be the same as the column names in the database
+        (or recognized as alternative names in the config).
 
         Args:
-            csv_file : Path or str
-                The path to the csv file to insert
+            json_file : Path or str
+                The path to the json file to insert
 
         """
-        csv_file = Path(csv_file)
-        # If csv is over 1 MB, do not insert
-        if csv_file.stat().st_size > 1e6:
-            warnings.warn(f"File {csv_file} is over 1 MB, skipping", RuntimeWarning, stacklevel=2)
-        df = pd.read_csv(csv_file,delimiter=";")
+        json_file = Path(json_file)
+        # If csv is over 2 MB, do not insert
+        if json_file.stat().st_size > 2e6:
+            warnings.warn(f"File {json_file} is over 2 MB, skipping", RuntimeWarning, stacklevel=2)
+        df = pd.read_json(json_file, orient="records")
         # If csv contains more than 1000 rows or 100 columns, do not insert
         if len(df) > 1000:
-            warnings.warn(f"File {csv_file} contains more than 1000 rows, skipping", RuntimeWarning, stacklevel=2)
+            warnings.warn(f"File {json_file} contains more than 1000 rows, skipping", RuntimeWarning, stacklevel=2)
+        if len(df.columns) > 100:
+            warnings.warn(f"File {json_file} contains more than 100 columns, skipping", RuntimeWarning, stacklevel=2)
 
         # Load the config file
         column_config = self.config["Sample database"]
@@ -150,27 +154,14 @@ class ServerManager:
         for key in essential_keys:
             if key not in df.columns:
                 msg = (
-                    f"Essential column '{key}' was not found in the sample file {csv_file}. "
+                    f"Essential column '{key}' was not found in the sample file {json_file}. "
                     "Please double check the file."
                 )
                 raise ValueError(msg)
 
-        # Check that timestamps are in the correct format
-        for col in df.columns:
-            if "Timestamp" in col:
-                try:
-                    pd.to_datetime(df[col], errors="raise", format="%Y-%m-%d %H:%M:%S")
-                except ValueError:
-                    try:
-                        # Attempt conversion with a different format if the first fails
-                        df[col] = pd.to_datetime(df[col], errors="raise", format="%d.%m.%Y %H:%M")
-                        df[col] = df[col].dt.strftime("%Y-%m-%d %H:%M:%S")
-                    except ValueError as exc:
-                        msg = (
-                            f"Timestamp column '{col}' in the sample file is not in the correct format. "
-                            "Please use the format 'YYYY-MM-DD HH:MM:SS'."
-                        )
-                        raise ValueError(msg) from exc
+        # Change sample history to a JSON string
+        if "Assembly history" in df.columns:
+            df["Assembly history"] = df["Assembly history"].apply(json.dumps)
 
         # Calculate/overwrite certain columns
         # Active material masses
@@ -257,16 +248,16 @@ class ServerManager:
             conn.commit()
 
     def update_samples(self) -> None:
-        """Add all csv files in samples folder to the db."""
+        """Add all json files in samples folder to the db."""
         samples_folder = Path(self.config["Samples folder path"])
         if not samples_folder.exists():
             samples_folder.mkdir(parents=True, exist_ok=True)
         for file in samples_folder.iterdir():
-            if file.suffix == ".csv":
+            if file.suffix == ".json":
                 self.insert_sample_file(file)
             else:
                 warnings.warn(
-                    f"File {file} in samples folder is not a csv file, skipping",
+                    f"File {file} in samples folder is not a json file, skipping",
                     RuntimeWarning,
                     stacklevel=2,
                 )
