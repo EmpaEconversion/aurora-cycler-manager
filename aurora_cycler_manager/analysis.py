@@ -390,7 +390,7 @@ def analyse_cycles(
 
     # Add other columns from sample table to cycle_dict
     sample_cols_to_add = [
-        "Actual N:P ratio",
+        "N:P ratio",
         "Anode type",
         "Cathode type",
         "Anode active material mass (mg)",
@@ -453,28 +453,22 @@ def analyse_cycles(
 
         cycle_dict["Run ID"] = _run_from_sample(sampleid)
 
-        # Add times to cycle_dict
-        uts_steps = {}
-        for step in [3,5,6,10]:
-            datetime_str = sample_data.get(f"Timestamp step {step}", None)
-            if not datetime_str:
-                uts_steps[step] = np.nan
-                continue
-            datetime_object = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
-            datetime_object = timezone.localize(datetime_object)
-            uts_steps[step] = datetime_object.timestamp()
-        job_start = df["uts"].iloc[0]
-
-        def _time_diff(uts_start: float, uts_end: float) -> float:
-            if np.isnan(uts_start) or np.isnan(uts_end):
-                return np.nan
-            return round(uts_end - uts_start)
-
-        first_electrolyte = np.nanmin([uts_steps[3],uts_steps[5]])
-        cycle_dict["Electrolyte to press (s)"] = _time_diff(first_electrolyte, uts_steps[10])
-        cycle_dict["Electrolyte to electrode (s)"] = _time_diff(first_electrolyte, uts_steps[6])
-        cycle_dict["Electrode to protection (s)"] = _time_diff(uts_steps[6], job_start)
-        cycle_dict["Press to protection (s)"] = _time_diff(uts_steps[10], job_start)
+        # If assembly history is available, calculate times between steps
+        assembly_history = sample_data.get("Assembly history",[])
+        if isinstance(assembly_history,str):
+            assembly_history = json.loads(assembly_history)
+        if assembly_history and isinstance(assembly_history,list):
+            job_start = df["uts"].iloc[0]
+            press = next((step.get("uts",None) for step in assembly_history if step["Step"] == "Press"), None)
+            electrolyte_ind = [i for i, step in enumerate(assembly_history) if step["Step"] == "Electrolyte"]
+            if electrolyte_ind:
+                first_electrolyte = next((step.get("uts",None) for step in assembly_history if step["Step"] == "Electrolyte"), None)
+                history_after_electrolyte = assembly_history[max(electrolyte_ind):]
+                cover_electrolyte = next((step.get("uts",None) for step in history_after_electrolyte if step["Step"] in ["Anode","Cathode"]), None)
+                cycle_dict["Electrolyte to press (s)"] = press - first_electrolyte if first_electrolyte and press else None
+                cycle_dict["Electrolyte to electrode (s)"] = cover_electrolyte - first_electrolyte if first_electrolyte and cover_electrolyte else None
+                cycle_dict["Electrode to protection (s)"] = job_start - cover_electrolyte if cover_electrolyte else None
+            cycle_dict["Press to protection (s)"] = job_start - press if press else None
 
         # Update the database with some of the results
         flag = None

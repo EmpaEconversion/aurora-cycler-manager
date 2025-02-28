@@ -740,7 +740,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
 
         hover_info = [
             "Sample ID",
-            "Actual N:P ratio",
+            "N:P ratio",
             "Formation C",
             "Rack position",
             "Run ID",

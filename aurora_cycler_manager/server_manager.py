@@ -205,10 +205,10 @@ class ServerManager:
         required_columns = ["Anode diameter (mm)", "Cathode diameter (mm)"]
         if all(col in df.columns for col in required_columns):
             df["N:P ratio overlap factor"] = (df["Cathode diameter (mm)"]**2 / df["Anode diameter (mm)"]**2).fillna(0)
-        # Actual N:P ratio
+        # N:P ratio
         required_columns = ["Anode balancing capacity (mAh)", "Cathode balancing capacity (mAh)", "N:P ratio overlap factor"]
         if all(col in df.columns for col in required_columns):
-            df["Actual N:P ratio"] = (
+            df["N:P ratio"] = (
                 df["Anode balancing capacity (mAh)"] * df["N:P ratio overlap factor"]
                 / df["Cathode balancing capacity (mAh)"]
             )
@@ -226,7 +226,7 @@ class ServerManager:
                 row = raw_row.dropna()
                 if row.empty:
                     continue
-                # Check if the row has sample ID and cathode capacity
+                # Check if the row has sample ID
                 if "Sample ID" not in row:
                     continue
                 placeholders = ", ".join("?" * len(row))
