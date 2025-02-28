@@ -14,8 +14,8 @@ from dash import Dash, Input, Output, State, dcc, html
 from dash_bootstrap_components import Checklist, Tooltip
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
-from aurora_cycler_manager.utils import run_from_sample,
 from aurora_cycler_manager.analysis import combine_jobs
+from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.visualiser.funcs import smoothed_derivative
 
 graph_template = "seaborn"
