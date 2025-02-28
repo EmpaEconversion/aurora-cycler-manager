@@ -17,12 +17,11 @@ from dash import callback_context as ctx
 from dash_mantine_components import MultiSelect, Notification, Select
 from obvibe.vibing import push_exp
 
-from aurora_cycler_manager.database_funcs import add_samples_from_object
+from aurora_cycler_manager.database_funcs import add_samples_from_object, delete_samples
 from aurora_cycler_manager.server_manager import ServerManager
 from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.visualiser.funcs import (
     create_batch,
-    delete_samples,
     get_batch_names,
     get_database,
     get_sample_names,
@@ -1322,7 +1321,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
             return no_update, 0
         sample_ids = [s["Sample ID"] for s in selected_rows]
         print(f"Deleting {sample_ids}")
-        delete_samples(config, sample_ids)
+        delete_samples(sample_ids)
         return no_update, 1
 
     # Add samples button pop up

@@ -63,39 +63,6 @@ def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
             cursor.execute(sql, (*tuple(row), row["Sample ID"]))
         conn.commit()
 
-def add_samples(json_file: str | Path, overwrite: bool = False) -> None:
-    """Add a sample file to the database."""
-    if isinstance(json_file, Path):
-        _pre_check_sample_file(json_file)
-        df = pd.read_json(json_file, orient="records")
-    elif isinstance(json_file, str):
-        # it is a binary string
-        json_string = json_file.decode("utf-8")
-        df = pd.read_json(json_string, orient="records")
-    else:
-        msg = "json_file must be a Path or a json string"
-        raise TypeError(msg)
-    sample_ids = df["Sample ID"].tolist()
-    if len(sample_ids) != len(set(sample_ids)):
-        msg = "File contains duplicate 'Sample ID' keys"
-        raise ValueError(msg)
-    if any(not isinstance(sample_id, str) for sample_id in sample_ids):
-        msg = "File contains non-string 'Sample ID' keys"
-        raise TypeError(msg)
-
-    # Check if any sample already exists
-    existing_sample_ids = get_all_sampleids()
-    if not overwrite and any(sample_id in existing_sample_ids for sample_id in sample_ids):
-        msg = "Sample IDs already exist in the database"
-        raise ValueError(msg)
-
-    # Recalculate some values
-    df = _recalculate_sample_data(df)
-
-    # Insert into database
-    with sqlite3.connect(config["Database path"]) as conn:
-        df.to_sql("samples", conn, if_exists="append", index=False)
-
 def _pre_check_sample_file(json_file: Path):
     """Raise error if file is not a sensible JSON file."""
     json_file = Path(json_file)
@@ -110,18 +77,17 @@ def _pre_check_sample_file(json_file: Path):
         msg = f"File {json_file} is over 2 MB, skipping"
         raise ValueError(msg)
 
-    df = pd.read_json(json_string, orient="records")
 def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
     """Calculate some values for sample data before inserting into database."""
     # Pre-checks
     if "Sample ID" not in df.columns:
-        msg = f"File '{json_file}' does not contain a 'Sample ID' column"
+        msg = f"Samples dataframe does not contain a 'Sample ID' column"
         raise ValueError(msg)
     if any(df["Sample ID"].duplicated()):
-        msg = f"File '{json_file}' contains duplicate 'Sample ID' keys"
+        msg = f"Samples dataframe contains duplicate 'Sample ID' keys"
         raise ValueError(msg)
     if any(df["Sample ID"].isna()):
-        msg = f"File '{json_file}' contains NaN 'Sample ID' keys"
+        msg = f"Samples dataframe contains NaN 'Sample ID' keys"
         raise ValueError(msg)
 
     # Load the config file
@@ -198,6 +164,23 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df["Run ID"] = df["Run ID"].fillna(df["Sample ID"].apply(lambda x: run_from_sample(x)))
     return df
+
+def delete_samples(sample_ids: str | list) -> None:
+    """Remove a sample(s) from the database.
+
+    Args:
+        sample_ids : str or list
+            The sample ID or list of sample IDs to remove from the database
+
+    """
+    """Delete samples from the database."""
+    if not isinstance(sample_ids, list):
+        sample_ids = [sample_ids]
+    with sqlite3.connect(config["Database path"]) as conn:
+        cursor = conn.cursor()
+        for sample_id in sample_ids:
+            cursor.execute("DELETE FROM samples WHERE `Sample ID` = ?", (sample_id,))
+        conn.commit()
 
 def get_all_sampleids() -> list[str]:
     """Get a list of all sample IDs in the database."""

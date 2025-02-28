@@ -104,14 +104,6 @@ def get_database(config: dict) -> dict[str, Any]:
 
     return {"data":db_data, "column_defs": db_columns}
 
-def delete_samples(config: dict, sample_ids: list) -> None:
-    """Delete samples from the database."""
-    with sqlite3.connect(config["Database path"]) as conn:
-        cursor = conn.cursor()
-        for sample_id in sample_ids:
-            cursor.execute("DELETE FROM samples WHERE `Sample ID` = ?", (sample_id,))
-        conn.commit()
-
 def make_pipelines_comparable(pipelines: list[str | None]) -> list[str | None]:
     """Convert pipelines string to a comparable format.
 
