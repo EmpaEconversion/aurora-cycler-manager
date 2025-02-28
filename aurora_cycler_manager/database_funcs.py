@@ -10,16 +10,77 @@ from aurora_cycler_manager.utils import run_from_sample
 
 config = get_config()
 
-def add_sample_file(file_path: str | Path, overwrite: bool = False) -> None:
-    """Add a sample file to the database."""
-    file_path = _pre_check_sample_file(file_path)
-    df = _load_sample_data(file_path)
+def add_samples_from_object(samples: list[dict], overwrite: bool = False) -> None:
+    """Add a samples to database from a list of dicts."""
+    df = pd.DataFrame(samples)
+    sample_df_to_db(df, overwrite)
+
+def add_samples_from_file(json_file: str | Path, overwrite: bool = False) -> None:
+    """Add a samples to database from a JSON file."""
+    json_file = Path(json_file)
+    _pre_check_sample_file(json_file)
+    df = pd.read_json(json_file, orient="records")
+    sample_df_to_db(df, overwrite)
+
+def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
+    """Upload the sample dataframe to the database."""
     sample_ids = df["Sample ID"].tolist()
     if len(sample_ids) != len(set(sample_ids)):
-        msg = f"File '{file_path}' contains duplicate 'Sample ID' keys"
+        msg = "File contains duplicate 'Sample ID' keys"
         raise ValueError(msg)
     if any(not isinstance(sample_id, str) for sample_id in sample_ids):
-        msg = f"File '{file_path}' contains non-string 'Sample ID' keys"
+        msg = "File contains non-string 'Sample ID' keys"
+        raise TypeError(msg)
+
+    # Check if any sample already exists
+    existing_sample_ids = get_all_sampleids()
+    if not overwrite and any(sample_id in existing_sample_ids for sample_id in sample_ids):
+        msg = "Sample IDs already exist in the database"
+        raise ValueError(msg)
+
+    # Recalculate some values
+    df = _recalculate_sample_data(df)
+
+    # Insert into database
+    with sqlite3.connect(config["Database path"]) as conn:
+        cursor = conn.cursor()
+        for _, raw_row in df.iterrows():
+            # Remove empty columns from the row
+            row = raw_row.dropna()
+            if row.empty:
+                continue
+            # Check if the row has sample ID
+            if "Sample ID" not in row:
+                continue
+            placeholders = ", ".join("?" * len(row))
+            columns = ", ".join(f"`{key}`" for key in row.keys())
+            # Insert or ignore the row
+            sql = f"INSERT OR IGNORE INTO samples ({columns}) VALUES ({placeholders})"
+            cursor.execute(sql, tuple(row))
+            # Update the row
+            updates = ", ".join(f"`{column}` = ?" for column in row.keys())
+            sql = f"UPDATE samples SET {updates} WHERE `Sample ID` = ?"
+            cursor.execute(sql, (*tuple(row), row["Sample ID"]))
+        conn.commit()
+
+def add_samples(json_file: str | Path, overwrite: bool = False) -> None:
+    """Add a sample file to the database."""
+    if isinstance(json_file, Path):
+        _pre_check_sample_file(json_file)
+        df = pd.read_json(json_file, orient="records")
+    elif isinstance(json_file, str):
+        # it is a binary string
+        json_string = json_file.decode("utf-8")
+        df = pd.read_json(json_string, orient="records")
+    else:
+        msg = "json_file must be a Path or a json string"
+        raise TypeError(msg)
+    sample_ids = df["Sample ID"].tolist()
+    if len(sample_ids) != len(set(sample_ids)):
+        msg = "File contains duplicate 'Sample ID' keys"
+        raise ValueError(msg)
+    if any(not isinstance(sample_id, str) for sample_id in sample_ids):
+        msg = "File contains non-string 'Sample ID' keys"
         raise TypeError(msg)
 
     # Check if any sample already exists
@@ -35,7 +96,7 @@ def add_sample_file(file_path: str | Path, overwrite: bool = False) -> None:
     with sqlite3.connect(config["Database path"]) as conn:
         df.to_sql("samples", conn, if_exists="append", index=False)
 
-def _pre_check_sample_file(json_file: Path | str) -> Path:
+def _pre_check_sample_file(json_file: Path):
     """Raise error if file is not a sensible JSON file."""
     json_file = Path(json_file)
     # If csv is over 2 MB, do not insert
@@ -48,11 +109,11 @@ def _pre_check_sample_file(json_file: Path | str) -> Path:
     if json_file.stat().st_size > 2e6:
         msg = f"File {json_file} is over 2 MB, skipping"
         raise ValueError(msg)
-    return json_file
 
-def _load_sample_data(json_file: Path) -> pd.DataFrame:
-    """Load sample data from a JSON file and run some checks."""
-    df = pd.read_json(json_file, orient="records")
+    df = pd.read_json(json_string, orient="records")
+def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate some values for sample data before inserting into database."""
+    # Pre-checks
     if "Sample ID" not in df.columns:
         msg = f"File '{json_file}' does not contain a 'Sample ID' column"
         raise ValueError(msg)
@@ -62,10 +123,7 @@ def _load_sample_data(json_file: Path) -> pd.DataFrame:
     if any(df["Sample ID"].isna()):
         msg = f"File '{json_file}' contains NaN 'Sample ID' keys"
         raise ValueError(msg)
-    return df
 
-def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate some values for sample data before inserting into database."""
     # Load the config file
     column_config = config["Sample database"]
 
