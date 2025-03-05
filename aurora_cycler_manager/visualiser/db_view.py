@@ -14,14 +14,14 @@ import dash_bootstrap_components as dbc
 import paramiko
 from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
 from dash import callback_context as ctx
-from dash_mantine_components import MultiSelect, Notification, Select
+from dash_mantine_components import Notification
 from obvibe.vibing import push_exp
 
+from aurora_cycler_manager.config import CONFIG
 from aurora_cycler_manager.database_funcs import (
     add_samples_from_object,
     delete_samples,
     get_batch_details,
-    save_or_overwrite_batch,
 )
 from aurora_cycler_manager.server_manager import ServerManager
 from aurora_cycler_manager.utils import run_from_sample
@@ -85,9 +85,9 @@ visibility_settings = {
     },
 }
 
-def db_view_layout(config: dict) -> html.Div:
+def db_view_layout() -> html.Div:
     """Create database Dash layout."""
-    openbis_disabled = config.get("OpenBIS PAT") is None
+    openbis_disabled = CONFIG.get("OpenBIS PAT") is None
     # Layout
     return html.Div(
         style={"height": "100%", "padding": "10px"},
@@ -547,10 +547,10 @@ def db_view_layout(config: dict) -> html.Div:
 
 #------------------------------------- Database view callbacks ------------------------------------#
 
-def register_db_view_callbacks(app: Dash, config: dict) -> None:
+def register_db_view_callbacks(app: Dash) -> None:
     """Register callbacks for the database view layout."""
 
-    openbis_disabled = config.get("OpenBIS PAT") is None
+    openbis_disabled = CONFIG.get("OpenBIS PAT") is None
 
     register_batch_edit_callbacks(app, database_access)
 
@@ -1078,13 +1078,13 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
             custom = False
         else:
             return no_update, idle_time
-        personal_access_token_path = config.get("OpenBIS PAT")
-        user_mapping = config.get("User mapping")
+        personal_access_token_path = CONFIG.get("OpenBIS PAT")
+        user_mapping = CONFIG.get("User mapping")
         if not personal_access_token_path:
             print("Error: missing OpenBIS personal access token")
         for sample_id in [s["Sample ID"] for s in selected_rows]:
             run_id = run_from_sample(sample_id)
-            sample_folder = Path(config["Processed snapshots folder path"])/run_id/sample_id
+            sample_folder = Path(CONFIG["Processed snapshots folder path"])/run_id/sample_id
             if not sample_folder.exists():
                 print(f"Error: {sample_folder} does not exist")
                 queue_notification(Notification(

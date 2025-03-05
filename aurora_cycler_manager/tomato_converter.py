@@ -22,21 +22,20 @@ import h5py
 import pandas as pd
 import pytz
 
-from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.config import CONFIG
 from aurora_cycler_manager.database_funcs import get_job_data, get_sample_data
 from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.version import __url__, __version__
 
-config = get_config()
-tz = pytz.timezone(config.get("Time zone","Europe/Zurich"))
+tz = pytz.timezone(CONFIG.get("Time zone","Europe/Zurich"))
 
 def get_snapshot_folder() -> Path:
     """Get the path to the snapshot folder for tomato files."""
-    snapshot_parent = config.get("Snapshots folder path")
+    snapshot_parent = CONFIG.get("Snapshots folder path")
     if not snapshot_parent:
         msg = (
             "No 'Snapshots folder path' in config file. "
-            f"Please fill in the config file at {config.get('User config path')}.",
+            f"Please fill in the config file at {CONFIG.get('User config path')}.",
         )
         raise ValueError(msg)
     return Path(snapshot_parent) / "tomato_snapshots"
@@ -132,7 +131,7 @@ def convert_tomato_json(
 
     if output_hdf_file or output_jsongz_file:  # Save and update database
         run_id = run_from_sample(sampleid)
-        folder = Path(config["Processed snapshots folder path"]) / run_id / sampleid
+        folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sampleid
         if not folder.exists():
             folder.mkdir(parents=True)
 

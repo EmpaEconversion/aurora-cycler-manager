@@ -30,14 +30,12 @@ import pytz
 import yaml
 from tsdownsample import MinMaxLTTBDownsampler
 
-from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.utils import run_from_sample, c_to_float
+from aurora_cycler_manager.config import CONFIG
 from aurora_cycler_manager.database_funcs import get_sample_data
+from aurora_cycler_manager.utils import c_to_float, run_from_sample
 from aurora_cycler_manager.version import __url__, __version__
 
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="All-NaN axis encountered")
-
-config = get_config()
 
 def _sort_times(start_times: list|np.ndarray, end_times: list|np.ndarray) -> np.ndarray:
     """Sort by start time, if equal only keep the longest."""
@@ -145,7 +143,7 @@ def combine_jobs(
             cycle += 1
 
     # Add provenance to the metadatas
-    timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
+    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     # Replace sample data with latest from database
     sample_data = get_sample_data(sampleids[0])
     # Merge glossary dicts
@@ -201,7 +199,7 @@ def analyse_cycles(
     df, metadata = combine_jobs(job_files)
 
     # update metadata
-    timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
+    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     metadata.setdefault("provenance", {}).setdefault("aurora_metadata", {})
     metadata["provenance"]["aurora_metadata"].update({
         "analysis": {
@@ -242,7 +240,7 @@ def analyse_cycles(
         # tomato 0.2.3 using biologic driver
         if job_type == "tomato_0_2_biologic":
             payloads = [j.get("Payload",[]) for j in job_data]
-            with sqlite3.connect(config["Database path"]) as conn:
+            with sqlite3.connect(CONFIG["Database path"]) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
                 row = cursor.fetchone()
@@ -512,7 +510,7 @@ def analyse_cycles(
             if isinstance(v, float):
                 update_row[k] = round(v,3)
 
-        with sqlite3.connect(config["Database path"]) as conn:
+        with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             # insert a row with sampleid if it doesn't exist
             cursor.execute("INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)", (sampleid,))
@@ -558,7 +556,7 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
 
     """
     run_id = run_from_sample(sample)
-    file_location = Path(config["Processed snapshots folder path"]) / run_id / sample
+    file_location = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample
     # Prioritise .h5 files
     job_files = list(file_location.glob("snapshot.*.h5"))
     if not job_files:  # check if there are .json.gz files
@@ -571,7 +569,7 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
     )
     # also save a shrunk version of the file
     shrink_sample(sample)
-    with sqlite3.connect(config["Database path"]) as conn:
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "UPDATE results SET `Last analysis` = ? WHERE `Sample ID` = ?",
@@ -582,7 +580,7 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
 def shrink_sample(sample_id: str) -> None:
     """Find the full.x.h5 file for the sample and save a lossy, compressed version."""
     run_id = run_from_sample(sample_id)
-    file_location = Path(config["Processed snapshots folder path"]) / run_id / sample_id / f"full.{sample_id}.h5"
+    file_location = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample_id / f"full.{sample_id}.h5"
     if not file_location.exists():
         msg = f"File {file_location} not found"
         raise FileNotFoundError(msg)
@@ -622,7 +620,7 @@ def shrink_all_samples(sampleid_contains: str = "") -> None:
         sampleid_contains (str, optional): only shrink samples with this string in the sampleid
 
     """
-    for batch_folder in Path(config["Processed snapshots folder path"]).iterdir():
+    for batch_folder in Path(CONFIG["Processed snapshots folder path"]).iterdir():
         if batch_folder.is_dir():
             for sample in batch_folder.iterdir():
                 if sampleid_contains and sampleid_contains not in sample.name:
@@ -647,7 +645,7 @@ def analyse_all_samples(
 
     """
     if mode == "new_data":
-        with sqlite3.connect(config["Database path"]) as conn:
+        with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT `Sample ID`, `Last snapshot`, `Last analysis` FROM results")
             results = cursor.fetchall()
@@ -661,13 +659,13 @@ def analyse_all_samples(
             )
         ]
     elif mode == "if_not_exists":
-        with sqlite3.connect(config["Database path"]) as conn:
+        with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT `Sample ID` FROM results WHERE `Last analysis` IS NULL")
             results = cursor.fetchall()
         samples_to_analyse = [r[0] for r in results]
 
-    for batch_folder in Path(config["Processed snapshots folder path"]).iterdir():
+    for batch_folder in Path(CONFIG["Processed snapshots folder path"]).iterdir():
         if batch_folder.is_dir():
             for sample in batch_folder.iterdir():
                 if sampleid_contains and sampleid_contains not in sample.name:
@@ -696,7 +694,7 @@ def parse_sample_plotting_file(
     TODO: Put the graph config location in the config file.
 
     """
-    data_folder = Path(config["Processed snapshots folder path"])
+    data_folder = Path(CONFIG["Processed snapshots folder path"])
 
     with file_path.open(encoding="utf-8") as file:
         batches = yaml.safe_load(file)
@@ -743,7 +741,7 @@ def parse_sample_plotting_file(
 
 def analyse_batch(plot_name: str, batch: dict) -> None:
     """Combine data for a batch of samples."""
-    save_location = Path(config["Batches folder path"]) / plot_name
+    save_location = Path(CONFIG["Batches folder path"]) / plot_name
     if not save_location.exists():
         save_location.mkdir(parents=True, exist_ok=True)
     samples = batch.get("samples",[])
@@ -752,7 +750,7 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
     for sample in samples:
         # get the anaylsed data
         run_id = run_from_sample(sample)
-        sample_folder = Path(config["Processed snapshots folder path"]) / run_id / sample
+        sample_folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample
         try:
             analysed_file = next(
                 f for f in sample_folder.iterdir()
@@ -777,7 +775,7 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
         raise ValueError(msg)
 
     # update the metadata
-    timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
+    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     metadata["provenance"] = {
         "aurora_metadata": {
             "batch_analysis": {
@@ -810,7 +808,7 @@ def analyse_all_batches() -> None:
     save the capacity and efficiency vs cycle for each batch of samples.
 
     """
-    batches = parse_sample_plotting_file(Path(config["Graph config path"]))
+    batches = parse_sample_plotting_file(Path(CONFIG["Graph config path"]))
     for plot_name, batch in batches.items():
         try:
             analyse_batch(plot_name,batch)

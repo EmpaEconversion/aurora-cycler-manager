@@ -15,6 +15,7 @@ from dash_bootstrap_components import Checklist, Tooltip
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
 from aurora_cycler_manager.analysis import combine_jobs
+from aurora_cycler_manager.config import CONFIG
 from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.visualiser.funcs import smoothed_derivative
 
@@ -229,7 +230,7 @@ samples_layout =  html.Div(
 )
 
 #--------------------------------- CALLBACKS ----------------------------------#
-def register_samples_callbacks(app: Dash, config: dict) -> None:
+def register_samples_callbacks(app: Dash) -> None:
     """Register all callbacks for the samples tab."""
 
     # Sample list has updated, update dropdowns
@@ -273,7 +274,7 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
 
             # Otherwise import the data
             run_id = run_from_sample(sample)
-            data_folder = config["Processed snapshots folder path"]
+            data_folder = CONFIG["Processed snapshots folder path"]
             file_location = os.path.join(data_folder,run_id,sample)
 
             # Get raw data

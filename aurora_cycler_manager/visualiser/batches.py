@@ -18,6 +18,7 @@ from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 from plotly.colors import sample_colorscale
 
 from aurora_cycler_manager.utils import run_from_sample
+from aurora_cycler_manager.config import CONFIG
 from aurora_cycler_manager.visualiser.funcs import correlation_matrix
 
 graph_template = "seaborn"
@@ -360,7 +361,7 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict) -> go.Figure:
 
 #----------------------------- BATCHES CALLBACKS ------------------------------#
 
-def register_batches_callbacks(app: Dash, config: dict) -> None:
+def register_batches_callbacks(app: Dash) -> None:
     """Register all callbacks for the batches tab."""
 
     # Batch list has updated, update dropdowns
@@ -423,7 +424,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
             if s in data:
                 continue
             run_id = run_from_sample(s)
-            file_location = Path(config["Processed snapshots folder path"])/run_id/s/f"cycles.{s}.json"
+            file_location = Path(CONFIG["Processed snapshots folder path"])/run_id/s/f"cycles.{s}.json"
             if not file_location.exists():
                 continue
             with file_location.open(encoding="utf-8") as f:

@@ -37,22 +37,21 @@ import paramiko
 import pytz
 import xmltodict
 
-from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.config import CONFIG
 from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
-config = get_config()
-tz = pytz.timezone(config.get("Time zone","Europe/Zurich"))
+tz = pytz.timezone(CONFIG.get("Time zone","Europe/Zurich"))
 
 def get_snapshot_folder() -> Path:
     """Get the path to the snapshot folder for neware files."""
-    snapshot_parent = config.get("Snapshots folder path")
+    snapshot_parent = CONFIG.get("Snapshots folder path")
     if not snapshot_parent:
         msg = (
             "No 'Snapshots folder path' in config file. "
-            f"Please fill in the config file at {config.get('User config path')}.",
+            f"Please fill in the config file at {CONFIG.get('User config path')}.",
         )
         raise ValueError(msg)
     return Path(snapshot_parent) / "neware_snapshots"
@@ -85,7 +84,7 @@ def harvest_neware_files(
     """
     cutoff_datetime = datetime.fromtimestamp(0)  # Set default cutoff date
     if not force_copy:  # Set cutoff date to last snapshot from database
-        with sqlite3.connect(config["Database path"]) as conn:
+        with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT `Last snapshot` FROM harvester WHERE `Server label`=? AND `Server hostname`=? AND `Folder`=?",
@@ -145,7 +144,7 @@ def harvest_neware_files(
                 new_files.append(local_path)
 
     # Update the database
-    with sqlite3.connect(config["Database path"]) as conn:
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "INSERT OR IGNORE INTO harvester (`Server label`, `Server hostname`, `Folder`) "
@@ -166,7 +165,7 @@ def harvest_all_neware_files(force_copy: bool = False) -> list[str]:
     """Get neware files from all servers specified in the config."""
     all_new_files = []
     snapshots_folder = get_snapshot_folder()
-    for server in config["Neware harvester"]["Servers"]:
+    for server in CONFIG.get("Neware harvester",{}).get("Servers",[]):
         new_files = harvest_neware_files(
             server_label = server["label"],
             server_hostname = server["hostname"],
@@ -174,7 +173,7 @@ def harvest_all_neware_files(force_copy: bool = False) -> list[str]:
             server_shell_type = server["shell_type"],
             server_copy_folder = server["Neware folder location"],
             local_folder = snapshots_folder,
-            local_private_key_path = config["SSH private key path"],
+            local_private_key_path = CONFIG["SSH private key path"],
             force_copy = force_copy,
         )
         all_new_files.extend(new_files)
@@ -383,7 +382,7 @@ def get_sampleid_from_metadata(metadata: dict) -> str | None:
     sampleid = None
 
     # Check against known samples
-    with sqlite3.connect(config["Database path"]) as conn:
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT `Sample ID` FROM samples")
         rows = cursor.fetchall()
@@ -508,7 +507,7 @@ def convert_neware_data(
             print(f"Not saving {file_path}, no valid Sample ID found")
             return data, metadata
         run_id = run_from_sample(sampleid)
-        folder = Path(config["Processed snapshots folder path"]) / run_id / sampleid
+        folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sampleid
         if not folder.exists():
             folder.mkdir(parents=True)
 
@@ -537,7 +536,7 @@ def convert_neware_data(
         creation_date = datetime.fromtimestamp(
             file_path.stat().st_mtime,
         ).strftime("%Y-%m-%d %H:%M:%S")
-        with sqlite3.connect(config["Database path"]) as conn:
+        with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",

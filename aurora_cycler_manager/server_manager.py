@@ -31,7 +31,7 @@ import pandas as pd
 import paramiko
 
 from aurora_cycler_manager.analysis import analyse_sample
-from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.config import CONFIG
 from aurora_cycler_manager.cycler_servers import CyclerServer, TomatoServer
 from aurora_cycler_manager.tomato_converter import convert_tomato_json
 from aurora_cycler_manager.utils import run_from_sample
@@ -66,7 +66,7 @@ class ServerManager:
     def __init__(self) -> None:
         """Initialize the server manager object."""
         print("Creating cycler server objects")
-        self.config = get_config()
+        self.config = CONFIG
         if not self.config.get("SSH private key path"):
             msg = "'SSH private key path' not found in config file. Cannot connect to servers."
             raise ValueError(msg)
