@@ -1127,13 +1127,13 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     # When selecting create batch, switch to batch sub-tab with samples selected
     @app.callback(
         Output("table-select", "active_tab"),
-        Output("batch-edit-samples", "value", allow_duplicate=True),
+        Output("create-batch-store", "data", allow_duplicate=True),
         Input("create-batch-button", "n_clicks"),
         State("table", "selectedRows"),
         prevent_initial_call=True,
     )
     def create_batch(n_clicks, selected_rows):
-        return "batches", [s["Sample ID"] for s in selected_rows]
+        return "batches", [s.get("Sample ID") for s in selected_rows]
 
     # Cancel button pop up
     @app.callback(
