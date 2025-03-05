@@ -60,3 +60,5 @@ def get_config() -> dict:
     config["User config path"] = str(user_config_path)
 
     return config
+
+CONFIG = get_config()

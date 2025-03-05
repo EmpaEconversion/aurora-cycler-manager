@@ -30,12 +30,12 @@ import pytz
 import yaml
 from tsdownsample import MinMaxLTTBDownsampler
 
-from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.config import CONFIG
+from aurora_cycler_manager.database_funcs import get_sample_data
+from aurora_cycler_manager.utils import c_to_float, run_from_sample
 from aurora_cycler_manager.version import __url__, __version__
 
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="All-NaN axis encountered")
-
-config = get_config()
 
 def _sort_times(start_times: list|np.ndarray, end_times: list|np.ndarray) -> np.ndarray:
     """Sort by start time, if equal only keep the longest."""
@@ -143,7 +143,13 @@ def combine_jobs(
             cycle += 1
 
     # Add provenance to the metadatas
-    timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
+    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
+    # Replace sample data with latest from database
+    sample_data = get_sample_data(sampleids[0])
+    # Merge glossary dicts
+    glossary = {}
+    for g in [m.get("glossary",{}) for m in metadatas]:
+        glossary.update(g)
     metadata = {
         "provenance": {
             "aurora_metadata": {
@@ -157,15 +163,9 @@ def combine_jobs(
             },
             "original_file_provenance": {str(f): m["provenance"] for f, m in zip(job_files, metadatas)},
         },
-        "sample_data": metadatas[-1].get("sample_data",{}),
+        "sample_data": sample_data,
         "job_data": [m.get("job_data",{}) for m in metadatas],
-        "glossary": {
-            "uts": "Unix time stamp in seconds",
-            "V (V)": "Cell voltage in volts",
-            "I (A)": "Current across cell in amps",
-            "dQ (mAh)": "Change in charge between adjacent datapoints in mAh",
-            "Cycle": "A cycle is a step which is considered a full, valid charge/discharge cycle, see the function specified in provenance for the criteria",
-        },
+        "glossary": glossary,
     }
 
     return df, metadata
@@ -199,7 +199,7 @@ def analyse_cycles(
     df, metadata = combine_jobs(job_files)
 
     # update metadata
-    timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
+    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     metadata.setdefault("provenance", {}).setdefault("aurora_metadata", {})
     metadata["provenance"]["aurora_metadata"].update({
         "analysis": {
@@ -240,7 +240,7 @@ def analyse_cycles(
         # tomato 0.2.3 using biologic driver
         if job_type == "tomato_0_2_biologic":
             payloads = [j.get("Payload",[]) for j in job_data]
-            with sqlite3.connect(config["Database path"]) as conn:
+            with sqlite3.connect(CONFIG["Database path"]) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
                 row = cursor.fetchone()
@@ -263,7 +263,7 @@ def analyse_cycles(
                             for m in payload.get("method",[]):
                                 if "current" in m and "C" in m["current"]:
                                     try:
-                                        formation_C = _c_to_float(m["current"])
+                                        formation_C = c_to_float(m["current"])
                                     except ValueError:
                                         print(f"Not a valid C-rate: {m['current']}")
                                         formation_C = 0
@@ -272,7 +272,7 @@ def analyse_cycles(
                             for m in payload.get("method",[]):
                                 if "current" in m and "C" in m["current"]:
                                     try:
-                                        cycle_C = _c_to_float(m["current"])
+                                        cycle_C = c_to_float(m["current"])
                                     except ValueError:
                                         print(f"Not a valid C-rate: {m['current']}")
                                         cycle_C = 0
@@ -389,7 +389,7 @@ def analyse_cycles(
 
     # Add other columns from sample table to cycle_dict
     sample_cols_to_add = [
-        "Actual N:P ratio",
+        "N:P ratio",
         "Anode type",
         "Cathode type",
         "Anode active material mass (mg)",
@@ -450,30 +450,24 @@ def analyse_cycles(
                 initial_cycle-1,
             ) if formed else None
 
-        cycle_dict["Run ID"] = _run_from_sample(sampleid)
+        cycle_dict["Run ID"] = run_from_sample(sampleid)
 
-        # Add times to cycle_dict
-        uts_steps = {}
-        for step in [3,5,6,10]:
-            datetime_str = sample_data.get(f"Timestamp step {step}", None)
-            if not datetime_str:
-                uts_steps[step] = np.nan
-                continue
-            datetime_object = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
-            datetime_object = timezone.localize(datetime_object)
-            uts_steps[step] = datetime_object.timestamp()
-        job_start = df["uts"].iloc[0]
-
-        def _time_diff(uts_start: float, uts_end: float) -> float:
-            if np.isnan(uts_start) or np.isnan(uts_end):
-                return np.nan
-            return round(uts_end - uts_start)
-
-        first_electrolyte = np.nanmin([uts_steps[3],uts_steps[5]])
-        cycle_dict["Electrolyte to press (s)"] = _time_diff(first_electrolyte, uts_steps[10])
-        cycle_dict["Electrolyte to electrode (s)"] = _time_diff(first_electrolyte, uts_steps[6])
-        cycle_dict["Electrode to protection (s)"] = _time_diff(uts_steps[6], job_start)
-        cycle_dict["Press to protection (s)"] = _time_diff(uts_steps[10], job_start)
+        # If assembly history is available, calculate times between steps
+        assembly_history = sample_data.get("Assembly history",[])
+        if isinstance(assembly_history,str):
+            assembly_history = json.loads(assembly_history)
+        if assembly_history and isinstance(assembly_history,list):
+            job_start = df["uts"].iloc[0]
+            press = next((step.get("uts",None) for step in assembly_history if step["Step"] == "Press"), None)
+            electrolyte_ind = [i for i, step in enumerate(assembly_history) if step["Step"] == "Electrolyte"]
+            if electrolyte_ind:
+                first_electrolyte = next((step.get("uts",None) for step in assembly_history if step["Step"] == "Electrolyte"), None)
+                history_after_electrolyte = assembly_history[max(electrolyte_ind):]
+                cover_electrolyte = next((step.get("uts",None) for step in history_after_electrolyte if step["Step"] in ["Anode","Cathode"]), None)
+                cycle_dict["Electrolyte to press (s)"] = press - first_electrolyte if first_electrolyte and press else None
+                cycle_dict["Electrolyte to electrode (s)"] = cover_electrolyte - first_electrolyte if first_electrolyte and cover_electrolyte else None
+                cycle_dict["Electrode to protection (s)"] = job_start - cover_electrolyte if cover_electrolyte else None
+            cycle_dict["Press to protection (s)"] = job_start - press if press else None
 
         # Update the database with some of the results
         flag = None
@@ -516,7 +510,7 @@ def analyse_cycles(
             if isinstance(v, float):
                 update_row[k] = round(v,3)
 
-        with sqlite3.connect(config["Database path"]) as conn:
+        with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             # insert a row with sampleid if it doesn't exist
             cursor.execute("INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)", (sampleid,))
@@ -561,8 +555,8 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
     Will search for the sample in the processed snapshots folder and analyse the cycling data.
 
     """
-    run_id = _run_from_sample(sample)
-    file_location = Path(config["Processed snapshots folder path"]) / run_id / sample
+    run_id = run_from_sample(sample)
+    file_location = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample
     # Prioritise .h5 files
     job_files = list(file_location.glob("snapshot.*.h5"))
     if not job_files:  # check if there are .json.gz files
@@ -575,7 +569,7 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
     )
     # also save a shrunk version of the file
     shrink_sample(sample)
-    with sqlite3.connect(config["Database path"]) as conn:
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "UPDATE results SET `Last analysis` = ? WHERE `Sample ID` = ?",
@@ -585,8 +579,8 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
 
 def shrink_sample(sample_id: str) -> None:
     """Find the full.x.h5 file for the sample and save a lossy, compressed version."""
-    run_id = _run_from_sample(sample_id)
-    file_location = Path(config["Processed snapshots folder path"]) / run_id / sample_id / f"full.{sample_id}.h5"
+    run_id = run_from_sample(sample_id)
+    file_location = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample_id / f"full.{sample_id}.h5"
     if not file_location.exists():
         msg = f"File {file_location} not found"
         raise FileNotFoundError(msg)
@@ -626,7 +620,7 @@ def shrink_all_samples(sampleid_contains: str = "") -> None:
         sampleid_contains (str, optional): only shrink samples with this string in the sampleid
 
     """
-    for batch_folder in Path(config["Processed snapshots folder path"]).iterdir():
+    for batch_folder in Path(CONFIG["Processed snapshots folder path"]).iterdir():
         if batch_folder.is_dir():
             for sample in batch_folder.iterdir():
                 if sampleid_contains and sampleid_contains not in sample.name:
@@ -651,7 +645,7 @@ def analyse_all_samples(
 
     """
     if mode == "new_data":
-        with sqlite3.connect(config["Database path"]) as conn:
+        with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT `Sample ID`, `Last snapshot`, `Last analysis` FROM results")
             results = cursor.fetchall()
@@ -665,13 +659,13 @@ def analyse_all_samples(
             )
         ]
     elif mode == "if_not_exists":
-        with sqlite3.connect(config["Database path"]) as conn:
+        with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT `Sample ID` FROM results WHERE `Last analysis` IS NULL")
             results = cursor.fetchall()
         samples_to_analyse = [r[0] for r in results]
 
-    for batch_folder in Path(config["Processed snapshots folder path"]).iterdir():
+    for batch_folder in Path(CONFIG["Processed snapshots folder path"]).iterdir():
         if batch_folder.is_dir():
             for sample in batch_folder.iterdir():
                 if sampleid_contains and sampleid_contains not in sample.name:
@@ -700,7 +694,7 @@ def parse_sample_plotting_file(
     TODO: Put the graph config location in the config file.
 
     """
-    data_folder = Path(config["Processed snapshots folder path"])
+    data_folder = Path(CONFIG["Processed snapshots folder path"])
 
     with file_path.open(encoding="utf-8") as file:
         batches = yaml.safe_load(file)
@@ -712,7 +706,7 @@ def parse_sample_plotting_file(
             split_name = sample.split(" ",1)
             if len(split_name) == 1:  # the batch is a single sample
                 sample_id = sample
-                run_id = _run_from_sample(sample_id)
+                run_id = run_from_sample(sample_id)
                 transformed_samples.append(sample_id)
             else:
                 run_id, sample_range = split_name
@@ -733,7 +727,7 @@ def parse_sample_plotting_file(
 
         # Check if individual sample folders exist
         for sample in transformed_samples:
-            run_id = _run_from_sample(sample)
+            run_id = run_from_sample(sample)
             sample_folder = Path(data_folder) / run_id / sample
             if not sample_folder.exists():
                 print(f"{sample} has no data folder, removing from list")
@@ -747,7 +741,7 @@ def parse_sample_plotting_file(
 
 def analyse_batch(plot_name: str, batch: dict) -> None:
     """Combine data for a batch of samples."""
-    save_location = Path(config["Batches folder path"]) / plot_name
+    save_location = Path(CONFIG["Batches folder path"]) / plot_name
     if not save_location.exists():
         save_location.mkdir(parents=True, exist_ok=True)
     samples = batch.get("samples",[])
@@ -755,8 +749,8 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
     metadata: dict[str,dict] = {"sample_metadata":{}}
     for sample in samples:
         # get the anaylsed data
-        run_id = _run_from_sample(sample)
-        sample_folder = Path(config["Processed snapshots folder path"]) / run_id / sample
+        run_id = run_from_sample(sample)
+        sample_folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample
         try:
             analysed_file = next(
                 f for f in sample_folder.iterdir()
@@ -781,7 +775,7 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
         raise ValueError(msg)
 
     # update the metadata
-    timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
+    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     metadata["provenance"] = {
         "aurora_metadata": {
             "batch_analysis": {
@@ -814,45 +808,9 @@ def analyse_all_batches() -> None:
     save the capacity and efficiency vs cycle for each batch of samples.
 
     """
-    batches = parse_sample_plotting_file(Path(config["Graph config path"]))
+    batches = parse_sample_plotting_file(Path(CONFIG["Graph config path"]))
     for plot_name, batch in batches.items():
         try:
             analyse_batch(plot_name,batch)
         except (ValueError, KeyError, PermissionError, RuntimeError, FileNotFoundError) as e:
             print(f"Failed to analyse {plot_name} with error {e}")
-
-def _c_to_float(c_rate: str) -> float:
-    """Convert a C-rate string to a float.
-
-    Args:
-        c_rate (str): C-rate string, e.g. 'C/2', '0.5C', '3D/5', '1/2 D'
-    Returns:
-        float: C-rate as a float
-
-    """
-    if "C" in c_rate:
-        sign = 1
-    elif "D" in c_rate:
-        c_rate = c_rate.replace("D", "C")
-        sign = -1
-    else:
-        msg = f"Invalid C-rate: {c_rate}"
-        raise ValueError(msg)
-
-    num, _, denom = c_rate.partition("C")
-    number = f"{num}{denom}".strip()
-
-    if "/" in number:
-        num, denom = number.split("/")
-        if not num:
-            num = "1"
-        if not denom:
-            denom = "1"
-        return sign * float(num) / float(denom)
-    return sign * float(number)
-
-def _run_from_sample(sampleid: str) -> str:
-    """Get the run_id from a sample_id."""
-    if not isinstance(sampleid, str) or len(sampleid.split("_")) < 2 or not sampleid.split("_")[-1].isdigit():
-        return "misc"
-    return sampleid.rsplit("_", 1)[0]

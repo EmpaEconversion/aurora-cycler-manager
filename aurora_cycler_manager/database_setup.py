@@ -77,9 +77,9 @@ def default_config(base_dir: Path) -> dict:
             {"Name" : "Sample ID", "Alternative names" : ["sampleid"], "Type" : "VARCHAR(255) PRIMARY KEY"},
             {"Name" : "Run ID", "Type" : "VARCHAR(255)"},
             {"Name" : "Cell number", "Alternative names" : ["Battery_Number"], "Type" : "INT"},
-            {"Name" : "Actual N:P ratio", "Type" : "FLOAT"},
+            {"Name" : "N:P ratio", "Alternative names" : ["Actual N:P Ratio"], "Type" : "FLOAT"},
             {"Name" : "Rack position", "Alternative names" : ["Rack_Position"], "Type" : "INT"},
-            {"Name" : "Separator", "Type" : "VARCHAR(255)"},
+            {"Name" : "Separator type", "Type" : "VARCHAR(255)"},
             {"Name" : "Electrolyte name", "Alternative names" : ["Electrolyte"], "Type" : "VARCHAR(255)"},
             {"Name" : "Electrolyte description", "Type" : "TEXT"},
             {"Name" : "Electrolyte position", "Type" : "INT"},
@@ -155,12 +155,6 @@ def create_database() -> None:
     # Get the list of columns from the configuration
     columns = config["Sample database"]
     column_definitions = [f'`{col["Name"]}` {col["Type"]}' for col in columns]
-    column_definitions += [
-        "`Pipeline` VARCHAR(50)",
-        "`Job ID` VARCHAR(255)",
-        "FOREIGN KEY(`Pipeline`) REFERENCES pipelines(`Pipeline`)",
-        "FOREIGN KEY(`Job ID`) REFERENCES jobs(`Job ID`)",
-    ]
 
     # Connect to database, create tables
     with sqlite3.connect(config["Database path"]) as conn:
@@ -265,7 +259,7 @@ def create_database() -> None:
             ]
             removed_columns = [
                 col for col in existing_columns
-                if col not in [*new_columns, "Pipeline", "Job ID"]
+                if col not in new_columns
             ]
             if removed_columns:
                 # Ask user to double confirm

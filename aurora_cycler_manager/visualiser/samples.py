@@ -14,7 +14,9 @@ from dash import Dash, Input, Output, State, dcc, html
 from dash_bootstrap_components import Checklist, Tooltip
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
-from aurora_cycler_manager.analysis import _run_from_sample, combine_jobs
+from aurora_cycler_manager.analysis import combine_jobs
+from aurora_cycler_manager.config import CONFIG
+from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.visualiser.funcs import smoothed_derivative
 
 graph_template = "seaborn"
@@ -228,19 +230,20 @@ samples_layout =  html.Div(
 )
 
 #--------------------------------- CALLBACKS ----------------------------------#
-def register_samples_callbacks(app: Dash, config: dict) -> None:
+def register_samples_callbacks(app: Dash) -> None:
     """Register all callbacks for the samples tab."""
 
     # Sample list has updated, update dropdowns
     @app.callback(
         Output("samples-dropdown", "options"),
         Output("batch-samples-dropdown", "data"),
+        Output("batch-edit-samples", "data"),
         Input("samples-store", "data"),
     )
-    def update_samples_dropdown(samples: list) -> list:
+    def update_samples_dropdown(samples: list):
         """Update available samples in the dropdown."""
         options = [{"label": s, "value": s} for s in samples]
-        return options, options
+        return options, options, options
 
     # Update the samples data store
     @app.callback(
@@ -270,8 +273,8 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
                     continue
 
             # Otherwise import the data
-            run_id = _run_from_sample(sample)
-            data_folder = config["Processed snapshots folder path"]
+            run_id = run_from_sample(sample)
+            data_folder = CONFIG["Processed snapshots folder path"]
             file_location = os.path.join(data_folder,run_id,sample)
 
             # Get raw data

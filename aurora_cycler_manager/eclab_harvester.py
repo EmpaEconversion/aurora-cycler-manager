@@ -34,19 +34,18 @@ import paramiko
 import pytz
 import yadg
 
-from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.config import CONFIG
+from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.version import __url__, __version__
 
-# Load configuration
-config = get_config()
 
 def get_snapshot_folder() -> Path:
     """Get the path to the snapshot folder for neware files."""
-    snapshot_parent = config.get("Snapshots folder path")
+    snapshot_parent = CONFIG.get("Snapshots folder path")
     if not snapshot_parent:
         msg = (
             "No 'Snapshots folder path' in config file. "
-            f"Please fill in the config file at {config.get('User config path')}.",
+            f"Please fill in the config file at {CONFIG.get('User config path')}.",
         )
         raise ValueError(msg)
     return Path(snapshot_parent) / "eclab_snapshots"
@@ -77,7 +76,7 @@ def get_mprs(
     if force_copy:  # Set cutoff date to 1970
         cutoff_datetime = datetime.fromtimestamp(0)
     else:  # Set cutoff date to last snapshot from database
-        with sqlite3.connect(config["Database path"]) as conn:
+        with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT `Last snapshot` FROM harvester WHERE `Server label`=? AND `Server hostname`=? AND `Folder`=?",
@@ -136,7 +135,7 @@ def get_mprs(
                 new_files.append(local_path)
 
     # Update the database
-    with sqlite3.connect(config["Database path"]) as conn:
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "INSERT OR IGNORE INTO harvester (`Server label`, `Server hostname`, `Folder`) "
@@ -163,14 +162,14 @@ def get_all_mprs(force_copy: bool = False) -> list[str]:
     """
     all_new_files = []
     snapshot_folder = get_snapshot_folder()
-    for server in config["EC-lab harvester"]["Servers"]:
+    for server in CONFIG.get("EC-lab harvester",{}).get("Servers",[]):
         new_files = get_mprs(
             server["label"],
             server["hostname"],
             server["username"],
             server["shell_type"],
             server["EC-lab folder location"],
-            paramiko.RSAKey.from_private_key_file(config["SSH private key path"]),
+            paramiko.RSAKey.from_private_key_file(CONFIG["SSH private key path"]),
             snapshot_folder,
             force_copy,
         )
@@ -201,7 +200,7 @@ def get_mpr_data(
                 if line.startswith("Acquisition started on : "):
                     datetime_str = line.split(":",1)[1].strip()
                     datetime_object = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")
-                    timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
+                    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
                     uts_timestamp = timezone.localize(datetime_object).timestamp()
                     df["uts"] = df["uts"] + uts_timestamp
                     found_start_time = True
@@ -278,7 +277,7 @@ def convert_mpr(
                 if line.startswith("Acquisition started on : "):
                     datetime_str = line.split(":",1)[1].strip()
                     datetime_object = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")
-                    timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
+                    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
                     uts_timestamp = timezone.localize(datetime_object).timestamp()
                     df["uts"] = df["uts"] + uts_timestamp
                     found_start_time = True
@@ -299,15 +298,9 @@ def convert_mpr(
 
     # get sample data from database
     try:
-        with sqlite3.connect(config["Database path"]) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM samples WHERE `Sample ID`=?", (sample_id,))
-            row = cursor.fetchone()
-            columns = [column[0] for column in cursor.description]
-            sample_data = dict(zip(columns, row))
-    except Exception as e:
-        print(f"Error getting job and sample data from database: {e}")
-        sample_data = None
+        sample_data = get_sample_data(sample_id)
+    except ValueError:
+        sample_data = {}
 
     # Get job data from the snapshot file
     mpr_metadata = json.loads(data.attrs["original_metadata"])
@@ -315,7 +308,7 @@ def convert_mpr(
     yadg_metadata = {k: v for k, v in data.attrs.items() if k.startswith("yadg")}
 
     # Metadata to add
-    timezone = pytz.timezone(config.get("Time zone", "Europe/Zurich"))
+    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     metadata = {
         "provenance": {
             "snapshot_file": mpr_file,
@@ -330,14 +323,14 @@ def convert_mpr(
             },
         },
         "job_data": mpr_metadata,
-        "sample_data": sample_data if sample_data is not None else {},
+        "sample_data": sample_data,
     }
 
     if output_hdf5_file or output_jsongz_file:  # Save and update database
         if not sample_id:
             print(f"Not saving {mpr_file}, no valid Sample ID found")
             return df, metadata
-        folder = Path(config["Processed snapshots folder path"]) / run_id / sample_id
+        folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample_id
         if not folder.exists():
             folder.mkdir(parents=True)
 
@@ -366,7 +359,7 @@ def convert_mpr(
             print(f"Saved {hdf5_filepath}")
 
         # Update the database
-        with sqlite3.connect(config["Database path"]) as conn:
+        with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
@@ -386,7 +379,7 @@ def get_sampleid_from_mpr(mpr_rel_path: str|Path) -> tuple[str,str]:
     # split the relative path into parts
     parts = Path(mpr_rel_path).parts
 
-    run_id_lookup = config["EC-lab harvester"].get("Run ID lookup", {})
+    run_id_lookup = CONFIG.get("EC-lab harvester",{}).get("Run ID lookup", {})
 
     # Usually the run_ID is the 2nd parent folder and the sample number is the level above
     # If this is not the case, try the 3rd parent folder and 1st parent folder
@@ -401,7 +394,7 @@ def get_sampleid_from_mpr(mpr_rel_path: str|Path) -> tuple[str,str]:
             continue
         run_id = run_id_lookup.get(run_folder, None)
         if not run_id:
-            with sqlite3.connect(config["Database path"]) as conn:
+            with sqlite3.connect(CONFIG["Database path"]) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT `Run ID` FROM samples WHERE `Sample ID` LIKE ?", (f"%{run_folder}%",))
                 result = cursor.fetchone()

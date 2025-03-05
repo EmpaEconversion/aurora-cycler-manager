@@ -15,26 +15,27 @@ from __future__ import annotations
 
 import gzip
 import json
-import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 import h5py
 import pandas as pd
+import pytz
 
-from aurora_cycler_manager.analysis import _run_from_sample
-from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.config import CONFIG
+from aurora_cycler_manager.database_funcs import get_job_data, get_sample_data
+from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.version import __url__, __version__
 
-config = get_config()
+tz = pytz.timezone(CONFIG.get("Time zone","Europe/Zurich"))
 
 def get_snapshot_folder() -> Path:
     """Get the path to the snapshot folder for tomato files."""
-    snapshot_parent = config.get("Snapshots folder path")
+    snapshot_parent = CONFIG.get("Snapshots folder path")
     if not snapshot_parent:
         msg = (
             "No 'Snapshots folder path' in config file. "
-            f"Please fill in the config file at {config.get('User config path')}.",
+            f"Please fill in the config file at {CONFIG.get('User config path')}.",
         )
         raise ValueError(msg)
     return Path(snapshot_parent) / "tomato_snapshots"
@@ -76,7 +77,7 @@ def convert_tomato_json(
     with snapshot_file_path.open("r") as f:
         input_dict = json.load(f)
     n_steps = len(input_dict["steps"])
-    data = []
+    dfs = []
     technique_code = {"NONE":0,"OCV":100,"CA":101,"CP":102,"CV":103,"CPLIMIT":155,"CALIMIT":157}
     for i in range(n_steps):
         step_data = input_dict["steps"][i]["data"]
@@ -89,29 +90,17 @@ def convert_tomato_json(
             "index" : [row["raw"].get("index", -1) for row in step_data],
             "technique": [technique_code.get(row.get("raw", {}).get("technique"), -1) for row in step_data],
         }
-        data.append(pd.DataFrame(step_dict))
-    data = pd.concat(data, ignore_index=True)
+        dfs.append(pd.DataFrame(step_dict))
+    data = pd.concat(dfs, ignore_index=True)
 
     # Get metadata
     # Try to get the job number from the snapshot file and add to metadata
     json_filename = snapshot_file_path.name
     jobid = "".join(json_filename.split(".")[1:-1])
     # look up jobid in the database
-    try:
-        with sqlite3.connect(config["Database path"]) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            # Get all data about this job
-            cursor.execute("SELECT * FROM jobs WHERE `Job ID`=?", (jobid,))
-            job_data = dict(cursor.fetchone())
-            job_data["Payload"] = json.loads(job_data["Payload"])
-            sampleid = job_data["Sample ID"]
-            # Get all data about this sample
-            cursor.execute("SELECT * FROM samples WHERE `Sample ID`=?", (sampleid,))
-            sample_data = dict(cursor.fetchone())
-    except Exception as e:
-        print(f"Error getting job and sample data from database: {e}")
-        return data, None
+    job_data = get_job_data(jobid)
+    sampleid = job_data["Sample ID"]
+    sample_data = get_sample_data(sampleid)
     job_data["job_type"] = "tomato_0_2_biologic"
     metadata = {
         "provenance": {
@@ -122,7 +111,7 @@ def convert_tomato_json(
                     "repo_url": __url__,
                     "repo_version": __version__,
                     "method": "tomato_converter.py convert_tomato_json",
-                    "datetime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "datetime": datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S %z"),
                 },
             },
         },
@@ -135,13 +124,14 @@ def convert_tomato_json(
             "loop_number": "Number of loops completed from EC-lab loop technique",
             "cycle_number": "Number of cycles within one technique from EC-lab",
             "index": "index of the method in the payload, i.e. 0 for the first method, 1 for the second etc.",
-            "technique": "code of technique using definitions from MPG2 developer package",
+            "technique": "code of technique using definitions from MPG2 developer package, see technique codes",
+            "technique codes": {v:k for k,v in technique_code.items()},
         },
     }
 
     if output_hdf_file or output_jsongz_file:  # Save and update database
-        run_id = _run_from_sample(sampleid)
-        folder = Path(config["Processed snapshots folder path"]) / run_id / sampleid
+        run_id = run_from_sample(sampleid)
+        folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sampleid
         if not folder.exists():
             folder.mkdir(parents=True)
 

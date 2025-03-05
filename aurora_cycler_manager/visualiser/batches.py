@@ -3,22 +3,22 @@
 Batches tab layout and callbacks for the visualiser app.
 """
 import json
-import os
 import textwrap
 from pathlib import Path
 
 import dash_bootstrap_components as dbc
+import dash_mantine_components as dmc
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objs as go
 from dash import Dash, Input, Output, State, dcc, html, no_update
 from dash import callback_context as ctx
-import dash_mantine_components as dmc
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 from plotly.colors import sample_colorscale
 
-from aurora_cycler_manager.analysis import _run_from_sample
+from aurora_cycler_manager.utils import run_from_sample
+from aurora_cycler_manager.config import CONFIG
 from aurora_cycler_manager.visualiser.funcs import correlation_matrix
 
 graph_template = "seaborn"
@@ -361,16 +361,18 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict) -> go.Figure:
 
 #----------------------------- BATCHES CALLBACKS ------------------------------#
 
-def register_batches_callbacks(app: Dash, config: dict) -> None:
+def register_batches_callbacks(app: Dash) -> None:
     """Register all callbacks for the batches tab."""
 
     # Batch list has updated, update dropdowns
     @app.callback(
         Output("batch-batch-dropdown", "data"),
+        Output("batch-edit-batch", "data"),
         Input("batches-store", "data"),
     )
-    def update_batches_dropdown(batches: dict[str, list]) -> list[dict]:
-        return [{"label": b, "value": b} for b in batches]
+    def update_batches_dropdown(batches: dict[str, dict]) -> tuple[list[dict],list[dict]]:
+        data = [{"label": b, "value": b} for b in batches]
+        return data, data
 
     # When the user clicks the "Select samples to plot" button, open the modal
     @app.callback(
@@ -402,7 +404,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         State("batch-cycle-y", "value"),
         prevent_initial_call=True,
     )
-    def load_selected_samples(n_clicks: int, samples: list, batches: list, data: dict, batch_defs: dict[str, list], y_val: str):
+    def load_selected_samples(n_clicks: int, samples: list, batches: list, data: dict, batch_defs: dict[str, dict], y_val: str):
         """Load the selected samples into the data store."""
         if not ctx.triggered:
             return no_update, no_update, no_update, no_update, no_update, no_update
@@ -410,7 +412,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         # Add the samples from batches to samples
         sample_set = set(samples)
         for batch in batches:
-            sample_set.update(batch_defs[batch])
+            sample_set.update(batch_defs.get(batch,{}).get("samples",[]))
 
         # Go through the keys in the data store, if they're not in the samples, remove them
         del_keys = [key for key in data if key not in sample_set]
@@ -421,8 +423,8 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
         for s in sample_set:
             if s in data:
                 continue
-            run_id = _run_from_sample(s)
-            file_location = Path(config["Processed snapshots folder path"])/run_id/s/f"cycles.{s}.json"
+            run_id = run_from_sample(s)
+            file_location = Path(CONFIG["Processed snapshots folder path"])/run_id/s/f"cycles.{s}.json"
             if not file_location.exists():
                 continue
             with file_location.open(encoding="utf-8") as f:
@@ -740,7 +742,7 @@ def register_batches_callbacks(app: Dash, config: dict) -> None:
 
         hover_info = [
             "Sample ID",
-            "Actual N:P ratio",
+            "N:P ratio",
             "Formation C",
             "Rack position",
             "Run ID",

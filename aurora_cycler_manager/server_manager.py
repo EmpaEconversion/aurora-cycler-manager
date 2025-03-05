@@ -30,10 +30,11 @@ from typing import Literal
 import pandas as pd
 import paramiko
 
-from aurora_cycler_manager.analysis import _run_from_sample, analyse_sample
-from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.analysis import analyse_sample
+from aurora_cycler_manager.config import CONFIG
 from aurora_cycler_manager.cycler_servers import CyclerServer, TomatoServer
 from aurora_cycler_manager.tomato_converter import convert_tomato_json
+from aurora_cycler_manager.utils import run_from_sample
 
 
 class ServerManager:
@@ -65,7 +66,7 @@ class ServerManager:
     def __init__(self) -> None:
         """Initialize the server manager object."""
         print("Creating cycler server objects")
-        self.config = get_config()
+        self.config = CONFIG
         if not self.config.get("SSH private key path"):
             msg = "'SSH private key path' not found in config file. Cannot connect to servers."
             raise ValueError(msg)
@@ -100,176 +101,6 @@ class ServerManager:
             else:
                 print(f"Server type {server_config['server_type']} not recognized, skipping")
         return servers
-
-    def insert_sample_file(self, csv_file: Path | str) -> None:
-        """Add a sample csv file to the database.
-
-        The csv file must have a header row with the column names. The columns should match the
-        columns defined in the config.json file. At least a 'Sample ID' column is required.
-
-        Args:
-            csv_file : Path or str
-                The path to the csv file to insert
-
-        """
-        csv_file = Path(csv_file)
-        # If csv is over 1 MB, do not insert
-        if csv_file.stat().st_size > 1e6:
-            warnings.warn(f"File {csv_file} is over 1 MB, skipping", RuntimeWarning, stacklevel=2)
-        df = pd.read_csv(csv_file,delimiter=";")
-        # If csv contains more than 1000 rows or 100 columns, do not insert
-        if len(df) > 1000:
-            warnings.warn(f"File {csv_file} contains more than 1000 rows, skipping", RuntimeWarning, stacklevel=2)
-
-        # Load the config file
-        column_config = self.config["Sample database"]
-
-        # Create a dictionary for lookup of alternative and case insensitive names
-        col_names = [col["Name"] for col in column_config]
-        alt_name_dict = {
-            alt_name.lower(): item["Name"] for item in column_config for alt_name in item.get("Alternative names", [])
-        }
-        # Add on the main names in lower case
-        alt_name_dict.update({col.lower(): col for col in col_names})
-
-        # Rename columns to match the database
-        rename = {}
-        drop = []
-        for column in df.columns:
-            new_col_name = alt_name_dict.get(column.lower(), None)
-            if new_col_name:
-                rename[column] = new_col_name
-            else:
-                drop.append(column)
-        df = df.rename(columns=rename)
-        if drop:
-            df = df.drop(columns=drop)
-
-        # Check that all essential columns exist
-        essential_keys = ["Sample ID"]
-        for key in essential_keys:
-            if key not in df.columns:
-                msg = (
-                    f"Essential column '{key}' was not found in the sample file {csv_file}. "
-                    "Please double check the file."
-                )
-                raise ValueError(msg)
-
-        # Check that timestamps are in the correct format
-        for col in df.columns:
-            if "Timestamp" in col:
-                try:
-                    pd.to_datetime(df[col], errors="raise", format="%Y-%m-%d %H:%M:%S")
-                except ValueError:
-                    try:
-                        # Attempt conversion with a different format if the first fails
-                        df[col] = pd.to_datetime(df[col], errors="raise", format="%d.%m.%Y %H:%M")
-                        df[col] = df[col].dt.strftime("%Y-%m-%d %H:%M:%S")
-                    except ValueError as exc:
-                        msg = (
-                            f"Timestamp column '{col}' in the sample file is not in the correct format. "
-                            "Please use the format 'YYYY-MM-DD HH:MM:SS'."
-                        )
-                        raise ValueError(msg) from exc
-
-        # Calculate/overwrite certain columns
-        # Active material masses
-        required_columns = [
-            "Anode mass (mg)",
-            "Anode current collector mass (mg)",
-            "Anode active material mass fraction",
-        ]
-        if all(col in df.columns for col in required_columns):
-            df["Anode active material mass (mg)"] = (
-                (df["Anode mass (mg)"] - df["Anode current collector mass (mg)"])
-                * df["Anode active material mass fraction"]
-            )
-        required_columns = ["Cathode mass (mg)", "Cathode current collector mass (mg)", "Cathode active material mass fraction"]
-        if all(col in df.columns for col in required_columns):
-            df["Cathode active material mass (mg)"] = (
-                (df["Cathode mass (mg)"] - df["Cathode current collector mass (mg)"])
-                * df["Cathode active material mass fraction"]
-            )
-        # Capacities
-        required_columns = ["Anode active material mass (mg)", "Anode balancing specific capacity (mAh/g)"]
-        if all(col in df.columns for col in required_columns):
-            df["Anode balancing capacity (mAh)"] = (
-                1e-3 * df["Anode active material mass (mg)"] * df["Anode balancing specific capacity (mAh/g)"]
-            )
-        required_columns = ["Cathode active material mass (mg)", "Cathode balancing specific capacity (mAh/g)"]
-        if all(col in df.columns for col in required_columns):
-            df["Cathode balancing capacity (mAh)"] = (
-                1e-3 * df["Cathode active material mass (mg)"] * df["Cathode balancing specific capacity (mAh/g)"]
-            )
-        # N:P ratio overlap factor
-        required_columns = ["Anode diameter (mm)", "Cathode diameter (mm)"]
-        if all(col in df.columns for col in required_columns):
-            df["N:P ratio overlap factor"] = (df["Cathode diameter (mm)"]**2 / df["Anode diameter (mm)"]**2).fillna(0)
-        # Actual N:P ratio
-        required_columns = ["Anode balancing capacity (mAh)", "Cathode balancing capacity (mAh)", "N:P ratio overlap factor"]
-        if all(col in df.columns for col in required_columns):
-            df["Actual N:P ratio"] = (
-                df["Anode balancing capacity (mAh)"] * df["N:P ratio overlap factor"]
-                / df["Cathode balancing capacity (mAh)"]
-            )
-        # Run ID - if column is missing or where it is empty, find from the sample ID
-        if "Run ID" not in df.columns:
-            df["Run ID"] = df["Sample ID"].apply(lambda x: _run_from_sample(x))
-        else:
-            df["Run ID"] = df["Run ID"].fillna(df["Sample ID"].apply(lambda x: _run_from_sample(x)))
-
-        # Insert the new data into the database
-        with sqlite3.connect(self.config["Database path"]) as conn:
-            cursor = conn.cursor()
-            for _, raw_row in df.iterrows():
-                # Remove empty columns from the row
-                row = raw_row.dropna()
-                if row.empty:
-                    continue
-                # Check if the row has sample ID and cathode capacity
-                if "Sample ID" not in row:
-                    continue
-                placeholders = ", ".join("?" * len(row))
-                columns = ", ".join(f"`{key}`" for key in row.keys())
-                # Insert or ignore the row
-                sql = f"INSERT OR IGNORE INTO samples ({columns}) VALUES ({placeholders})"
-                cursor.execute(sql, tuple(row))
-                # Update the row
-                updates = ", ".join(f"`{column}` = ?" for column in row.keys())
-                sql = f"UPDATE samples SET {updates} WHERE `Sample ID` = ?"
-                cursor.execute(sql, (*tuple(row), row["Sample ID"]))
-            conn.commit()
-
-    def delete_sample(self, samples: str | list) -> None:
-        """Remove a sample from the database.
-
-        Args:
-            samples : str or list
-                The sample ID or list of sample IDs to remove from the database
-
-        """
-        if not isinstance(samples, list):
-            samples = [samples]
-        with sqlite3.connect(self.config["Database path"]) as conn:
-            cursor = conn.cursor()
-            for sample in samples:
-                cursor.execute("DELETE FROM samples WHERE `Sample ID` = ?", (sample,))
-            conn.commit()
-
-    def update_samples(self) -> None:
-        """Add all csv files in samples folder to the db."""
-        samples_folder = Path(self.config["Samples folder path"])
-        if not samples_folder.exists():
-            samples_folder.mkdir(parents=True, exist_ok=True)
-        for file in samples_folder.iterdir():
-            if file.suffix == ".csv":
-                self.insert_sample_file(file)
-            else:
-                warnings.warn(
-                    f"File {file} in samples folder is not a csv file, skipping",
-                    RuntimeWarning,
-                    stacklevel=2,
-                )
 
     def update_jobs(self) -> None:
         """Update the jobs table in the database with the current job status."""
@@ -346,7 +177,6 @@ class ServerManager:
 
     def update_db(self) -> None:
         """Update all tables in the database."""
-        self.update_samples()
         self.update_pipelines()
         self.update_jobs()
         self.update_flags()
@@ -773,7 +603,7 @@ class ServerManager:
             if sample_id == "Unknown":
                 print(f"Job {server_label}-{jobid_on_server} has no sample name or payload, skipping.")
                 continue
-            run_id = _run_from_sample(sample_id)
+            run_id = run_from_sample(sample_id)
 
             local_save_location_processed = Path(self.config["Processed snapshots folder path"])/run_id/sample_id
 
