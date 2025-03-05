@@ -90,7 +90,7 @@ class CyclerServer:
         """Ready a pipeline for use."""
         raise NotImplementedError
 
-    def submit(self, sample: str, capacity_Ah: float, payload: str | dict) -> str:
+    def submit(self, sample: str, capacity_Ah: float, payload: str | dict) -> tuple[str, str, str]:
         """Submit a job to the server."""
         raise NotImplementedError
 
@@ -157,7 +157,7 @@ class TomatoServer(CyclerServer):
             capacity_Ah: float,
             payload: str | dict,
             send_file: bool = False,
-        ) -> str:
+        ) -> tuple[str, str, str]:
         """Submit a job to the server.
 
         Args:
@@ -179,13 +179,14 @@ class TomatoServer(CyclerServer):
                 # Attempt to load json_file as JSON string
                 payload = json.loads(payload)
             except json.JSONDecodeError:
-                with Path(payload).open(encoding="utf-8") as f:
+                with Path(payload).open(encoding="utf-8") as f:  # type: ignore[arg-type]
                     payload = json.load(f)
         # If json_file is already a dictionary, use it directly
         elif not isinstance(payload, dict):
             msg = "json_file must be a file path, a JSON string, or a dictionary"
             raise TypeError(msg)
 
+        assert isinstance(payload, dict)  # noqa: S101 for mypy type checking
         # Add the sample name and capacity to the payload
         payload["sample"]["name"] = sample
         payload["sample"]["capacity"] = capacity_Ah
