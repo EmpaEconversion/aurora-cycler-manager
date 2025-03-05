@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.config import CONFIG
 from aurora_cycler_manager.utils import run_from_sample
 
-config = get_config()
+### SAMPLES ###
 
 def add_samples_from_object(samples: list[dict], overwrite: bool = False) -> None:
     """Add a samples to database from a list of dicts."""
@@ -42,7 +42,7 @@ def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
     df = _recalculate_sample_data(df)
 
     # Insert into database
-    with sqlite3.connect(config["Database path"]) as conn:
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
         cursor = conn.cursor()
         for _, raw_row in df.iterrows():
             # Remove empty columns from the row
@@ -91,7 +91,7 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(msg)
 
     # Load the config file
-    column_config = config["Sample database"]
+    column_config = CONFIG["Sample database"]
 
     # Create a dictionary for lookup of alternative and case insensitive names
     col_names = [col["Name"] for col in column_config]
@@ -176,7 +176,7 @@ def delete_samples(sample_ids: str | list) -> None:
     """Delete samples from the database."""
     if not isinstance(sample_ids, list):
         sample_ids = [sample_ids]
-    with sqlite3.connect(config["Database path"]) as conn:
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
         cursor = conn.cursor()
         for sample_id in sample_ids:
             cursor.execute("DELETE FROM samples WHERE `Sample ID` = ?", (sample_id,))
@@ -184,14 +184,14 @@ def delete_samples(sample_ids: str | list) -> None:
 
 def get_all_sampleids() -> list[str]:
     """Get a list of all sample IDs in the database."""
-    with sqlite3.connect(config["Database path"]) as conn:
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT `Sample ID` FROM samples")
         return [row[0] for row in cursor.fetchall()]
 
 def get_job_data(job_id: str) -> dict:
     """Get all data about a job from the database."""
-    with sqlite3.connect(config["Database path"]) as conn:
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM jobs WHERE `Job ID`=?", (job_id,))
@@ -208,7 +208,7 @@ def get_job_data(job_id: str) -> dict:
 
 def get_sample_data(sample_id: str) -> dict:
     """Get all data about a sample from the database."""
-    with sqlite3.connect(config["Database path"]) as conn:
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM samples WHERE `Sample ID`=?", (sample_id,))
@@ -222,3 +222,103 @@ def get_sample_data(sample_id: str) -> dict:
         if history:
             sample_data["Assembly history"] = json.loads(history)
     return sample_data
+
+### BATCHES ###
+
+def get_batch_details() -> dict[str, dict]:
+    """Get all batch names, descriptions and samples from the database."""
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT b.label, b.description, bs.sample_id "
+            "FROM batch_samples bs JOIN batches b "
+            "ON bs.batch_id = b.id "
+            "ORDER BY b.label",
+        )
+        batches: dict[str, dict] = {}
+        for batch, description, sample in cur.fetchall():
+            if batch not in batches:
+                batches[batch] = {"description": description, "samples": []}
+            batches[batch]["samples"].append(sample)
+        # sort the keys alphabetically
+        batches = dict(sorted(batches.items()))
+    return batches
+
+def save_or_overwrite_batch(batch_name: str, batch_description: str, sample_ids: list) -> None:
+    """Save a batch to the database, overwriting it if the name already exists."""
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM batches WHERE label = ?", (batch_name,))
+        result = cur.fetchone()
+        if result:
+            batch_id = result[0]
+            cur.execute(
+                "UPDATE batches SET description = ? WHERE id = ?",
+                (batch_description, batch_id),
+            )
+            cur.execute(
+                "DELETE FROM batch_samples WHERE batch_id = ?",
+                (batch_id,),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO batches (label, description) VALUES (?,?)",
+                (batch_name,batch_description),
+            )
+            batch_id = cur.lastrowid
+        for sample_id in sample_ids:
+            cur.execute(
+                "INSERT INTO batch_samples (batch_id, sample_id) VALUES (?, ?)",
+                (batch_id, sample_id),
+            )
+        conn.commit()
+
+def create_batch(batch_name: str, batch_description: str, sample_ids: list) -> None:
+    """Create a new batch in the database.
+
+    Raises error if batch name already exists.
+    """
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT label FROM batches WHERE label = ?", (batch_name,))
+        if cur.fetchone():
+            msg = f"Batch {batch_name} already exists."
+            raise ValueError(msg)
+        cur.execute("INSERT INTO batches (label, description) VALUES (?,?)", (batch_name,batch_description))
+        batch_id = cur.lastrowid
+        for sample_id in sample_ids:
+            cur.execute("INSERT INTO batch_samples (batch_id, sample_id) VALUES (?, ?)", (batch_id, sample_id))
+        conn.commit()
+
+def modify_batch(old_label: str, new_label: str, batch_description: str, sample_ids: list) -> None:
+    """Change name, description or samples in a batch.
+
+    Keeps ID the same, but changes label and description.
+    Raises error if batch does not exist.
+    """
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM batches WHERE label = ?", (old_label,))
+        result = cur.fetchone()
+        if not result:
+            msg = f"Batch {old_label} does not exist."
+            raise ValueError(msg)
+        batch_id = result[0]
+        cur.execute(
+            "UPDATE batches SET label = ?, description = ? WHERE id = ?",
+            (new_label, batch_description, batch_id),
+        )
+        cur.execute("DELETE FROM batch_samples WHERE batch_id = ?", (batch_id,))
+        for sample_id in sample_ids:
+            cur.execute("INSERT INTO batch_samples (batch_id, sample_id) VALUES (?, ?)", (batch_id, sample_id))
+        conn.commit()
+
+def remove_batch(batch_name: str) -> None:
+    """Remove a batch from the database."""
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM batches WHERE label = ?", (batch_name,))
+        batch_id = cur.fetchone()[0]
+        cur.execute("DELETE FROM batches WHERE label = ?", (batch_name,))
+        cur.execute("DELETE FROM batch_samples WHERE batch_id = ?", (batch_id,))
+        conn.commit()

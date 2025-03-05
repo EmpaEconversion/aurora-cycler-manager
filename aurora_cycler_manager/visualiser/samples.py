@@ -236,12 +236,13 @@ def register_samples_callbacks(app: Dash, config: dict) -> None:
     @app.callback(
         Output("samples-dropdown", "options"),
         Output("batch-samples-dropdown", "data"),
+        Output("batch-edit-samples", "data"),
         Input("samples-store", "data"),
     )
-    def update_samples_dropdown(samples: list) -> list:
+    def update_samples_dropdown(samples: list):
         """Update available samples in the dropdown."""
         options = [{"label": s, "value": s} for s in samples]
-        return options, options
+        return options, options, options
 
     # Update the samples data store
     @app.callback(

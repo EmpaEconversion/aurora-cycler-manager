@@ -17,14 +17,20 @@ from dash import callback_context as ctx
 from dash_mantine_components import MultiSelect, Notification, Select
 from obvibe.vibing import push_exp
 
-from aurora_cycler_manager.database_funcs import add_samples_from_object, delete_samples
+from aurora_cycler_manager.database_funcs import (
+    add_samples_from_object,
+    delete_samples,
+    get_batch_details,
+    save_or_overwrite_batch,
+)
 from aurora_cycler_manager.server_manager import ServerManager
 from aurora_cycler_manager.utils import run_from_sample
+from aurora_cycler_manager.visualiser.db_batch_edit import (
+    batch_edit_layout,
+    register_batch_edit_callbacks,
+)
 from aurora_cycler_manager.visualiser.funcs import (
-    create_batch,
-    get_batch_names,
     get_database,
-    get_sample_names,
     make_pipelines_comparable,
 )
 from aurora_cycler_manager.visualiser.notifications import active_time, idle_time, queue_notification
@@ -32,10 +38,12 @@ from aurora_cycler_manager.visualiser.notifications import active_time, idle_tim
 # Server manager
 # If user cannot ssh connect then disable features that require it
 accessible_servers = []
+database_access = False
 sm: ServerManager | None = None
 try:
     sm = ServerManager()
     accessible_servers = [s.label for s in sm.servers]
+    database_access = bool(accessible_servers)
 except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
     print(e)
     print("You cannot access any servers. Running in view-only mode.")
@@ -76,40 +84,6 @@ visibility_settings = {
         "add-samples",
     },
 }
-
-# Batches editing
-batch_edit = html.Div(
-    id="batch-container",
-    children = [
-        "Select batch to view:",
-        Select(
-            id="batch-edit-dropdown",
-            data=[], # Filled in by callback
-        ),
-        "Batch ID:",
-        html.Div(id="batch-edit-id"),
-        "Batch name: ",
-        dcc.Input(
-            id="batch-edit-name",
-            style={"width": "100%"},
-            value="",
-        ),
-        "Batch description:",
-        dcc.Textarea(
-            id="batch-edit-description",
-            style={"width": "100%"},
-            value="",
-        ),
-        "Samples:",
-        MultiSelect(
-            id="batch-edit-samples",
-            data=[], # Filled in by callback
-        ),
-        # save button
-        dbc.Button([html.I(className="bi-save me-2"),"Save"], id="batch-edit-save-button", color="primary", className="me-1"),
-        dbc.Button([html.I(className="bi-trash3 me-2"),"Delete"], id="batch-edit-delete-button", color="danger", className="me-1"),
-    ],
-)
 
 def db_view_layout(config: dict) -> html.Div:
     """Create database Dash layout."""
@@ -190,7 +164,7 @@ def db_view_layout(config: dict) -> html.Div:
                                                 ]),
                                                 id="openbis-button", color="primary", className="bi me-1", direction="up", disabled=openbis_disabled,
                                             ),
-                                            dbc.Button([html.I(className="bi bi-grid-3x2-gap-fill me-2"),"Create batch"], id="batch-save-button", color="primary", className="me-1"),
+                                            dbc.Button([html.I(className="bi bi-grid-3x2-gap-fill me-2"),"Create batch"], id="create-batch-button", color="primary", className="me-1"),
                                             dbc.Button([html.I(className="bi bi-trash3 me-2"),"Delete"], id="delete-button", color="danger", className="me-1"),
                                         ],
                                     ),
@@ -221,7 +195,7 @@ def db_view_layout(config: dict) -> html.Div:
                             ),
                         ],
                     ),
-                    batch_edit,
+                    batch_edit_layout,
                 ],
             ),
             # Pop up modals for interacting with the database after clicking buttons
@@ -251,17 +225,7 @@ def db_view_layout(config: dict) -> html.Div:
                     dbc.ModalHeader(dbc.ModalTitle("Load")),
                     dbc.ModalBody(
                         id="load-modal-body",
-                        children=[
-                            "Select the samples you want to load",
-                            dcc.Dropdown(
-                                id="load-dropdown",
-                                options=[
-                                    {"label": name, "value": name} for name in get_sample_names(config)
-                                ],
-                                value=[],
-                                multi=True,
-                            ),
-                        ],
+                        children=[],
                     ),
                     dbc.ModalFooter(
                         [
@@ -577,11 +541,7 @@ def db_view_layout(config: dict) -> html.Div:
                 centered=True,
                 is_open=False,
             ),
-            # Add sample confirmation
-            dcc.ConfirmDialog(
-                id="add-samples-confirm",
-                message="This will overwrite samples. Are you sure you want to continue?",
-            ),
+
         ],
     )
 
@@ -591,6 +551,8 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
     """Register callbacks for the database view layout."""
 
     openbis_disabled = config.get("OpenBIS PAT") is None
+
+    register_batch_edit_callbacks(app, database_access)
 
     # Update the buttons displayed depending on the table selected
     @app.callback(
@@ -607,7 +569,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output("view-button", "style"),
         Output("snapshot-button", "style"),
         Output("openbis-button", "style"),
-        Output("batch-save-button", "style"),
+        Output("create-batch-button", "style"),
         Output("delete-button", "style"),
         Output("add-samples-button", "style"),
         Input("table-select", "active_tab"),
@@ -638,12 +600,18 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Input("db-update-interval", "n_intervals"),
     )
     def refresh_database(n_clicks, n_intervals):
-        db_data = get_database(config)
+        db_data = get_database()
         dt_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         last_checked = db_data["data"]["pipelines"][0]["Last checked"]
         samples = [s["Sample ID"] for s in db_data["data"]["samples"]]
-        batches = get_batch_names(config)
-        return db_data, f"Refresh database\nLast refreshed: {dt_string}", f"Update database\nLast updated: {last_checked}", samples, batches
+        batches = get_batch_details()
+        return (
+            db_data,
+            f"Refresh database\nLast refreshed: {dt_string}",
+            f"Update database\nLast updated: {last_checked}",
+            samples,
+            batches,
+        )
 
     # Update the database i.e. connect to servers and grab new info, then refresh the local data
     @app.callback(
@@ -669,7 +637,7 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Output("view-button", "disabled"),
         Output("snapshot-button", "disabled"),
         Output("openbis-button", "disabled"),
-        Output("batch-save-button", "disabled"),
+        Output("create-batch-button", "disabled"),
         Output("delete-button", "disabled"),
         Input("table", "selectedRows"),
         State("table-select", "active_tab"),
@@ -779,12 +747,11 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Input("load-no-close", "n_clicks"),
         State("load-modal", "is_open"),
         State("table", "selectedRows"),
-        State("table-data-store", "data"),
+        State("samples-store", "data"),
     )
-    def load_sample_button(load_clicks, yes_clicks, no_clicks, is_open, selected_rows, db_data):
+    def load_sample_button(load_clicks, yes_clicks, no_clicks, is_open, selected_rows, possible_samples):
         if not selected_rows or not ctx.triggered:
             return is_open, no_update, no_update
-        possible_samples = [s.get("Sample ID", None) for s in db_data["data"]["samples"]]
         options = [{"label": s, "value": s} for s in possible_samples if s]
         # sort the selected rows by their pipeline with the same sorting as the AG grid
         pipelines = [s["Pipeline"] for s in selected_rows]
@@ -824,9 +791,9 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
         Input("load-incrememt", "n_clicks"),
         Input("load-clear", "n_clicks"),
         State({"type":"load-dropdown","index":ALL}, "value"),
-        State("table-data-store", "data"),
+        State("samples-store", "data"),
     )
-    def update_load_selection(inc_clicks, clear_clicks, selected_samples, db_data):
+    def update_load_selection(inc_clicks, clear_clicks, selected_samples, possible_samples):
         if not ctx.triggered:
             return selected_samples
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
@@ -837,7 +804,6 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
 
         # If auto-increment, go through the list, if the sample is empty increment the previous sample
         if button_id == "load-incrememt":
-            possible_samples = [s.get("Sample ID", None) for s in db_data["data"]["samples"]]
             for i in range(1,len(selected_samples)):
                 if not selected_samples[i]:
                     prev_sample = selected_samples[i-1]
@@ -1158,51 +1124,16 @@ def register_db_view_callbacks(app: Dash, config: dict) -> None:
                 ))
         return no_update, idle_time
 
-    # Batch button pop up
+    # When selecting create batch, switch to batch sub-tab with samples selected
     @app.callback(
-        Output("batch-save-modal", "is_open"),
-        Input("batch-save-button", "n_clicks"),
-        Input("batch-save-yes-close", "n_clicks"),
-        Input("batch-save-no-close", "n_clicks"),
-        State("batch-save-modal", "is_open"),
-    )
-    def batch_sample_button(batch_clicks, yes_clicks, no_clicks, is_open):
-        if not ctx.triggered:
-            return is_open
-        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-        if button_id == "batch-save-button":
-            return not is_open
-        if (button_id == "batch-save-yes-close" and yes_clicks) or (button_id == "batch-save-no-close" and no_clicks):
-            return False
-        return is_open, no_update, no_update, no_update
-    # batch name validation
-    @app.callback(
-        Output("batch-save-yes-close", "disabled"),
-        Input("batch-name", "value"),
-        State("batches-store", "data"),
-        prevent_initial_call=True,
-    )
-    def validate_batch_name(name, batches):
-        """Check the batch name is valid."""
-        return bool(not name or name in batches or len(name) < 3 or '"' in name or "'" in name)
-
-    # When batch confirmed, create the batch and refresh the database
-    @app.callback(
-        Output("loading-database", "children", allow_duplicate=True),
-        Output("refresh-database", "n_clicks", allow_duplicate=True),
-        Input("batch-save-yes-close", "n_clicks"),
+        Output("table-select", "active_tab"),
+        Output("batch-edit-samples", "value", allow_duplicate=True),
+        Input("create-batch-button", "n_clicks"),
         State("table", "selectedRows"),
-        State("batch-name", "value"),
-        State("batch-description", "value"),
         prevent_initial_call=True,
     )
-    def batch_sample(yes_clicks, selected_rows, name, description):
-        if not yes_clicks:
-            return no_update, 0
-        sample_ids = [s["Sample ID"] for s in selected_rows]
-        print(f"Creating batch {name} with samples {sample_ids}")
-        create_batch(config, name, description, sample_ids)
-        return no_update, 1
+    def create_batch(n_clicks, selected_rows):
+        return "batches", [s["Sample ID"] for s in selected_rows]
 
     # Cancel button pop up
     @app.callback(

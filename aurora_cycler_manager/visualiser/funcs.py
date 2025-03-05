@@ -10,78 +10,17 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from aurora_cycler_manager.config import CONFIG
+
 ArrayLike = Union[list, np.ndarray, pd.Series]
 
-def get_sample_names(config: dict) -> list:
-    """Get all sample IDs from the database."""
-    with sqlite3.connect(config["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT `Sample ID` FROM samples")
-        samples = cursor.fetchall()
-    return [sample[0] for sample in samples]
-
-def get_batch_names(config: dict) -> dict[str, list]:
-    """Get all batch names from the database."""
-    with sqlite3.connect(config["Database path"]) as conn:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT b.label, bs.sample_id FROM batch_samples bs JOIN batches b ON bs.batch_id = b.id",
-        )
-        batches: dict[str, list] = {}
-        for batch, sample in cur.fetchall():
-            batches.setdefault(batch, []).append(sample)
-    return batches
-
-def create_batch(config: dict, batch_name: str, batch_description: str, sample_ids: list) -> None:
-    """Create a new batch in the database."""
-    with sqlite3.connect(config["Database path"]) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT label FROM batches WHERE label = ?", (batch_name,))
-        if cur.fetchone():
-            msg = f"Batch {batch_name} already exists."
-            raise ValueError(msg)
-        cur.execute("INSERT INTO batches (label, description) VALUES (?,?)", (batch_name,batch_description))
-        batch_id = cur.lastrowid
-        for sample_id in sample_ids:
-            cur.execute("INSERT INTO batch_samples (batch_id, sample_id) VALUES (?, ?)", (batch_id, sample_id))
-        conn.commit()
-
-def remove_batch(config: dict, batch_name: str) -> None:
-    """Remove a batch from the database."""
-    with sqlite3.connect(config["Database path"]) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT id FROM batches WHERE label = ?", (batch_name,))
-        batch_id = cur.fetchone()[0]
-        cur.execute("DELETE FROM batches WHERE label = ?", (batch_name,))
-        cur.execute("DELETE FROM batch_samples WHERE batch_id = ?", (batch_id,))
-        conn.commit()
-
-def modify_batch(config: dict, old_label: str, new_label: str, batch_description: str, sample_ids: list) -> None:
-    """Change name, description or samples in a batch."""
-    with sqlite3.connect(config["Database path"]) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT id FROM batches WHERE label = ?", (old_label,))
-        result = cur.fetchone()
-        if not result:
-            msg = f"Batch {old_label} does not exist."
-            raise ValueError(msg)
-        batch_id = result[0]
-        cur.execute(
-            "UPDATE batches SET label = ?, description = ? WHERE id = ?",
-            (new_label, batch_description, batch_id),
-        )
-        cur.execute("DELETE FROM batch_samples WHERE batch_id = ?", (batch_id,))
-        for sample_id in sample_ids:
-            cur.execute("INSERT INTO batch_samples (batch_id, sample_id) VALUES (?, ?)", (batch_id, sample_id))
-        conn.commit()
-
-def get_database(config: dict) -> dict[str, Any]:
+def get_database() -> dict[str, Any]:
     """Get all data from the database.
 
     Formatted for viewing in Dash AG Grid.
     """
-    db_path = config["Database path"]
-    unused_pipelines = config.get("Unused pipelines", [])
+    db_path = CONFIG["Database path"]
+    unused_pipelines = CONFIG.get("Unused pipelines", [])
     pipeline_query = "SELECT * FROM pipelines WHERE " + " AND ".join([f"Pipeline NOT LIKE '{pattern}'" for pattern in unused_pipelines])
     db_data = {
         "samples": pd.read_sql_query("SELECT * FROM samples", sqlite3.connect(db_path)).to_dict("records"),

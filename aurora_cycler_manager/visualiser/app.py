@@ -101,7 +101,7 @@ app.layout = dmc.MantineProvider(html.Div(
                 dcc.Store(id="config-store", data = config),
                 dcc.Store(id="table-data-store", data = {"data": [], "column_defs": []}),
                 dcc.Store(id="samples-store", data = []),
-                dcc.Store(id="batches-store", data = []),
+                dcc.Store(id="batches-store", data = {}),
             ],
         ),
         notifications_layout,
