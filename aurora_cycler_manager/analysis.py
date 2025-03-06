@@ -577,6 +577,47 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
         )
     return df, cycle_dict, metadata
 
+def update_sample_metadata(sample_ids: str | list[str]) -> None:
+    """Update "sample_data" in metadata of full.x.hdf5 and cycles.x.json files.
+
+    Args:
+        sample_ids: sample id or list of sample ids to update
+
+    """
+    if isinstance(sample_ids, str):
+        sample_ids = [sample_ids]
+    for sample_id in sample_ids:
+        run_id = run_from_sample(sample_id)
+        sample_folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample_id
+        # HDF5 full file
+        hdf5_file = sample_folder / f"full.{sample_id}.h5"
+        if not hdf5_file.exists():
+            print(f"File {hdf5_file} not found")
+            continue
+        with h5py.File(hdf5_file, "a") as f:
+            # check the keys data and metadata exist
+            if "data" not in f or "metadata" not in f:
+                print(f"File {hdf5_file} has incorrect format")
+                continue
+            metadata = json.loads(f["metadata"][()])
+            sample_data = get_sample_data(sample_id)
+            metadata["sample_data"] = sample_data
+            f["metadata"][()] = json.dumps(metadata)
+        # JSON cycles file
+        json_file = sample_folder / f"cycles.{sample_id}.json"
+        if not json_file.exists():
+            print(f"File {json_file} not found")
+            continue
+        with json_file.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+            # check it has keys data and metadata
+            if "data" not in data or "metadata" not in data:
+                print(f"File {json_file} has incorrect format")
+                continue
+            data["metadata"]["sample_data"] = sample_data
+        with json_file.open("w", encoding="utf-8") as f:
+            json.dump(data, f)
+
 def shrink_sample(sample_id: str) -> None:
     """Find the full.x.h5 file for the sample and save a lossy, compressed version."""
     run_id = run_from_sample(sample_id)
