@@ -14,14 +14,16 @@ import dash_bootstrap_components as dbc
 import paramiko
 from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
 from dash import callback_context as ctx
-from dash_mantine_components import Notification
+from dash_mantine_components import Notification, TextInput
 from obvibe.vibing import push_exp
 
+from aurora_cycler_manager.analysis import update_sample_metadata
 from aurora_cycler_manager.config import CONFIG
 from aurora_cycler_manager.database_funcs import (
     add_samples_from_object,
     delete_samples,
     get_batch_details,
+    update_sample_label,
 )
 from aurora_cycler_manager.server_manager import ServerManager
 from aurora_cycler_manager.utils import run_from_sample
@@ -549,6 +551,33 @@ def db_view_layout() -> html.Div:
                     ),
                 ],
                 id="delete-modal",
+                centered=True,
+                is_open=False,
+            ),
+            # Label
+            dbc.Modal(
+                [
+                    dbc.ModalHeader(dbc.ModalTitle("Label samples:")),
+                    dbc.ModalBody(
+                        id="label-modal-body",
+                        children=TextInput(
+                            id="label-input",
+                            placeholder="This overwrites any existing label",
+                            label="Label",
+                        ),
+                    ),
+                    dbc.ModalFooter(
+                        [
+                            dbc.Button(
+                                "Add label", id="label-yes-close", className="ms-auto", n_clicks=0, color="primary",
+                            ),
+                            dbc.Button(
+                                "Go back", id="label-no-close", className="ms-auto", n_clicks=0, color="secondary",
+                            ),
+                        ],
+                    ),
+                ],
+                id="label-modal",
                 centered=True,
                 is_open=False,
             ),
@@ -1283,3 +1312,39 @@ def register_db_view_callbacks(app: Dash) -> None:
             add_samples_from_object(samples, overwrite=True)
             return 1
         return no_update
+
+    # Label button pop up
+    @app.callback(
+        Output("label-modal", "is_open"),
+        Input("label-button", "n_clicks"),
+        Input("label-yes-close", "n_clicks"),
+        Input("label-no-close", "n_clicks"),
+        State("label-modal", "is_open"),
+    )
+    def label_sample_button(label_clicks, yes_clicks, no_clicks, is_open):
+        if not ctx.triggered:
+            return is_open
+        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        if button_id == "label-button":
+            return not is_open
+        if (button_id == "label-yes-close" and yes_clicks) or (button_id == "label-no-close" and no_clicks):
+            return False
+        return is_open, no_update, no_update, no_update
+    # When label confirmed, label the samples and refresh the database
+    @app.callback(
+        Output("loading-database", "children", allow_duplicate=True),
+        Output("refresh-database", "n_clicks", allow_duplicate=True),
+        Input("label-yes-close", "n_clicks"),
+        State("table", "selectedRows"),
+        State("label-input", "value"),
+        prevent_initial_call=True,
+    )
+    def label_sample(yes_clicks, selected_rows, label):
+        if not yes_clicks:
+            return no_update, 0
+        sample_ids = [s["Sample ID"] for s in selected_rows]
+        print(f"Labelling {sample_ids} with '{label}'")
+        update_sample_label(sample_ids, label)
+        print("Updating metadata in cycles.*.json and full.*.h5 files")
+        update_sample_metadata(sample_ids)
+        return no_update, 1
