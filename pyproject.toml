@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aurora-cycler-manager"
 requires-python = ">=3.9"
-version = "0.5.6"
+version = "0.5.7"
 dependencies = [
     "yadg",
     "pytz",
