@@ -165,6 +165,16 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
         df["Run ID"] = df["Run ID"].fillna(df["Sample ID"].apply(lambda x: run_from_sample(x)))
     return df
 
+def update_sample_label(sample_ids: str | list[str], label: str | None) -> None:
+    """Update the label of a sample in the database."""
+    if isinstance(sample_ids, str):
+        sample_ids = [sample_ids]
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cursor = conn.cursor()
+        for sample_id in sample_ids:
+            cursor.execute("UPDATE samples SET `Label` = ? WHERE `Sample ID` = ?", (label, sample_id))
+        conn.commit()
+
 def delete_samples(sample_ids: str | list) -> None:
     """Remove a sample(s) from the database.
 

@@ -14,14 +14,16 @@ import dash_bootstrap_components as dbc
 import paramiko
 from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
 from dash import callback_context as ctx
-from dash_mantine_components import Notification
+from dash_mantine_components import Notification, TextInput
 from obvibe.vibing import push_exp
 
+from aurora_cycler_manager.analysis import update_sample_metadata
 from aurora_cycler_manager.config import CONFIG
 from aurora_cycler_manager.database_funcs import (
     add_samples_from_object,
     delete_samples,
     get_batch_details,
+    update_sample_label,
 )
 from aurora_cycler_manager.server_manager import ServerManager
 from aurora_cycler_manager.utils import run_from_sample
@@ -51,37 +53,47 @@ except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
 #-------------------------------------- Database view layout --------------------------------------#
 
 # Define visibility settings for buttons and divs when switching between tabs
+CONTAINERS = [
+    "table-container", "batch-container",
+]
+BUTTONS = [
+    "load-button", "eject-button", "ready-button", "unready-button",
+    "submit-button", "cancel-button", "view-button", "snapshot-button",
+    "openbis-button", "create-batch-button", "delete-button",
+    "add-samples-button", "label-button",
+]
 visibility_settings = {
     "batches": {
-        "batch_container",
+        "batch-container",
     },
     "pipelines": {
-        "table_container",
-        "load",
-        "eject",
-        "ready",
-        "unready",
-        "submit",
-        "cancel",
-        "view",
-        "snapshot",
+        "table-container",
+        "load-button",
+        "eject-button",
+        "ready-button",
+        "unready-button",
+        "submit-button",
+        "cancel-button",
+        "view-button",
+        "snapshot-button",
     },
     "jobs": {
-        "table_container",
-        "cancel",
-        "snapshot",
+        "table-container",
+        "cancel-button",
+        "snapshot-button",
     },
     "results": {
-        "table_container",
-        "view",
+        "table-container",
+        "view-button",
     },
     "samples": {
-        "table_container",
-        "view",
-        "openbis",
-        "batch",
-        "delete",
-        "add-samples",
+        "table-container",
+        "view-button",
+        "openbis-button",
+        "batch-button",
+        "delete-button",
+        "add-samples-button",
+        "label-button",
     },
 }
 
@@ -164,6 +176,7 @@ def db_view_layout() -> html.Div:
                                                 ]),
                                                 id="openbis-button", color="primary", className="bi me-1", direction="up", disabled=openbis_disabled,
                                             ),
+                                            dbc.Button([html.I(className="bi bi-tag me-2"),"Add label"], id="label-button", color="primary", className="me-1"),
                                             dbc.Button([html.I(className="bi bi-grid-3x2-gap-fill me-2"),"Create batch"], id="create-batch-button", color="primary", className="me-1"),
                                             dbc.Button([html.I(className="bi bi-trash3 me-2"),"Delete"], id="delete-button", color="danger", className="me-1"),
                                         ],
@@ -541,6 +554,33 @@ def db_view_layout() -> html.Div:
                 centered=True,
                 is_open=False,
             ),
+            # Label
+            dbc.Modal(
+                [
+                    dbc.ModalHeader(dbc.ModalTitle("Label samples:")),
+                    dbc.ModalBody(
+                        id="label-modal-body",
+                        children=TextInput(
+                            id="label-input",
+                            placeholder="This overwrites any existing label",
+                            label="Label",
+                        ),
+                    ),
+                    dbc.ModalFooter(
+                        [
+                            dbc.Button(
+                                "Add label", id="label-yes-close", className="ms-auto", n_clicks=0, color="primary",
+                            ),
+                            dbc.Button(
+                                "Go back", id="label-no-close", className="ms-auto", n_clicks=0, color="secondary",
+                            ),
+                        ],
+                    ),
+                ],
+                id="label-modal",
+                centered=True,
+                is_open=False,
+            ),
 
         ],
     )
@@ -558,20 +598,7 @@ def register_db_view_callbacks(app: Dash) -> None:
     @app.callback(
         Output("table", "rowData"),
         Output("table", "columnDefs"),
-        Output("table-container", "style"),
-        Output("batch-container", "style"),
-        Output("load-button", "style"),
-        Output("eject-button", "style"),
-        Output("ready-button", "style"),
-        Output("unready-button", "style"),
-        Output("submit-button", "style"),
-        Output("cancel-button", "style"),
-        Output("view-button", "style"),
-        Output("snapshot-button", "style"),
-        Output("openbis-button", "style"),
-        Output("create-batch-button", "style"),
-        Output("delete-button", "style"),
-        Output("add-samples-button", "style"),
+        [Output(element, "style") for element in CONTAINERS+BUTTONS],
         Input("table-select", "active_tab"),
         Input("table-data-store", "data"),
     )
@@ -580,15 +607,14 @@ def register_db_view_callbacks(app: Dash) -> None:
         show = {}
         hide = {"display": "none"}
         visibilities = [
-            show if element in settings else hide for element in
-            ["table_container", "batch_container", "load", "eject", "ready", "unready", "submit",
-             "cancel", "view", "snapshot", "openbis", "batch", "delete", "add-samples"]
+            show if element in settings else hide for element in CONTAINERS+BUTTONS
         ]
         return (
             data["data"].get(table, no_update),
             data["column_defs"].get(table, no_update),
             *visibilities,
         )
+
     # Refresh the local data from the database
     @app.callback(
         Output("table-data-store", "data"),
@@ -628,49 +654,42 @@ def register_db_view_callbacks(app: Dash) -> None:
 
     # Enable or disable buttons (load, eject, etc.) depending on what is selected in the table
     @app.callback(
-        Output("load-button", "disabled"),
-        Output("eject-button", "disabled"),
-        Output("ready-button", "disabled"),
-        Output("unready-button", "disabled"),
-        Output("submit-button", "disabled"),
-        Output("cancel-button", "disabled"),
-        Output("view-button", "disabled"),
-        Output("snapshot-button", "disabled"),
-        Output("openbis-button", "disabled"),
-        Output("create-batch-button", "disabled"),
-        Output("delete-button", "disabled"),
+        [Output(b, "disabled") for b in BUTTONS],
         Input("table", "selectedRows"),
         State("table-select", "active_tab"),
     )
     def enable_buttons(selected_rows, table):
-        load, eject, ready, unready, submit, cancel, view, snapshot, openbis, batch, delete = True,True,True,True,True,True,True,True,True,True,True
-        if selected_rows:  # Must have something selected
-            if accessible_servers:  # Must have permissions to do anything except view or upload
+        enabled = {"add-samples-button"}  # These buttons are always enabled
+        # Add more buttons to enabled set with union operator |=
+        if selected_rows:
+            enabled |= {"copy-button"}
+            if accessible_servers:  # Need cycler permissions to do anything except copy, view or upload
                 if table == "pipelines":
                     if all(s["Server label"] in accessible_servers for s in selected_rows):
                         if all(s["Sample ID"] is not None for s in selected_rows):
-                            submit, snapshot = False, False
+                            enabled |= {"submit-button","snapshot-button"}
                             if all(s["Job ID"] is None for s in selected_rows):
-                                eject, ready, unready = False, False, False
+                                enabled |= {"eject-button","ready-button","unready-button"}
                             elif all(s["Job ID"] is not None for s in selected_rows):
-                                cancel = False
+                                enabled |= {"cancel-button"}
                         elif all(s["Sample ID"] is None for s in selected_rows):
-                            load = False
+                            enabled |= {"load-button"}
                 elif table == "jobs":
                     if all(s["Server label"] in accessible_servers for s in selected_rows):
-                        snapshot = False
+                        enabled |= {"snapshot-button"}
                         if all(s["Status"] in ["r","q","qw"] for s in selected_rows):
-                            cancel = False
-                elif table == "samples":
+                            enabled |= {"cancel-button"}
+                elif table == "samples":  # noqa: SIM102
                     if all(s["Sample ID"] is not None for s in selected_rows):
-                        delete = False
+                        enabled |= {"delete-button","label-button"}
                         if len(selected_rows) > 1:
-                            batch = False
+                            enabled |= {"create-batch-button"}
             if table == "samples" and not openbis_disabled:
-                openbis = False
+                enabled |= {"openbis-button"}
             if any(s["Sample ID"] is not None for s in selected_rows):
-                view = False
-        return load, eject, ready, unready, submit, cancel, view, snapshot, openbis, batch, delete
+                enabled |= {"view-button"}
+        # False = enabled (not my choice), so this returns True if button is NOT in enabled set
+        return tuple(b not in enabled for b in BUTTONS)
 
     @app.callback(
         Output("table-info", "children"),
@@ -1293,3 +1312,39 @@ def register_db_view_callbacks(app: Dash) -> None:
             add_samples_from_object(samples, overwrite=True)
             return 1
         return no_update
+
+    # Label button pop up
+    @app.callback(
+        Output("label-modal", "is_open"),
+        Input("label-button", "n_clicks"),
+        Input("label-yes-close", "n_clicks"),
+        Input("label-no-close", "n_clicks"),
+        State("label-modal", "is_open"),
+    )
+    def label_sample_button(label_clicks, yes_clicks, no_clicks, is_open):
+        if not ctx.triggered:
+            return is_open
+        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        if button_id == "label-button":
+            return not is_open
+        if (button_id == "label-yes-close" and yes_clicks) or (button_id == "label-no-close" and no_clicks):
+            return False
+        return is_open, no_update, no_update, no_update
+    # When label confirmed, label the samples and refresh the database
+    @app.callback(
+        Output("loading-database", "children", allow_duplicate=True),
+        Output("refresh-database", "n_clicks", allow_duplicate=True),
+        Input("label-yes-close", "n_clicks"),
+        State("table", "selectedRows"),
+        State("label-input", "value"),
+        prevent_initial_call=True,
+    )
+    def label_sample(yes_clicks, selected_rows, label):
+        if not yes_clicks:
+            return no_update, 0
+        sample_ids = [s["Sample ID"] for s in selected_rows]
+        print(f"Labelling {sample_ids} with '{label}'")
+        update_sample_label(sample_ids, label)
+        print("Updating metadata in cycles.*.json and full.*.h5 files")
+        update_sample_metadata(sample_ids)
+        return no_update, 1

@@ -37,6 +37,20 @@ from aurora_cycler_manager.version import __url__, __version__
 
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="All-NaN axis encountered")
 
+# Metadata that gets copied in the json data file for more convenient access
+SAMPLE_METADATA_TO_DATA = [
+    "N:P ratio",
+    "Anode type",
+    "Cathode type",
+    "Anode active material mass (mg)",
+    "Cathode active material mass (mg)",
+    "Electrolyte name",
+    "Electrolyte description",
+    "Electrolyte amount (uL)",
+    "Rack position",
+    "Label",
+]
+
 def _sort_times(start_times: list|np.ndarray, end_times: list|np.ndarray) -> np.ndarray:
     """Sort by start time, if equal only keep the longest."""
     start_times = np.array(start_times)
@@ -388,18 +402,7 @@ def analyse_cycles(
     }
 
     # Add other columns from sample table to cycle_dict
-    sample_cols_to_add = [
-        "N:P ratio",
-        "Anode type",
-        "Cathode type",
-        "Anode active material mass (mg)",
-        "Cathode active material mass (mg)",
-        "Electrolyte name",
-        "Electrolyte description",
-        "Electrolyte amount (uL)",
-        "Rack position",
-    ]
-    for col in sample_cols_to_add:
+    for col in SAMPLE_METADATA_TO_DATA:
         cycle_dict[col] = sample_data.get(col, None)
 
     # Calculate additional quantities from cycling data and add to cycle_dict
@@ -576,6 +579,49 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
             (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), sample),
         )
     return df, cycle_dict, metadata
+
+def update_sample_metadata(sample_ids: str | list[str]) -> None:
+    """Update "sample_data" in metadata of full.x.hdf5 and cycles.x.json files.
+
+    Args:
+        sample_ids: sample id or list of sample ids to update
+
+    """
+    if isinstance(sample_ids, str):
+        sample_ids = [sample_ids]
+    for sample_id in sample_ids:
+        run_id = run_from_sample(sample_id)
+        sample_folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample_id
+        # HDF5 full file
+        hdf5_file = sample_folder / f"full.{sample_id}.h5"
+        if not hdf5_file.exists():
+            print(f"File {hdf5_file} not found")
+            continue
+        with h5py.File(hdf5_file, "a") as f:
+            # check the keys data and metadata exist
+            if "data" not in f or "metadata" not in f:
+                print(f"File {hdf5_file} has incorrect format")
+                continue
+            metadata = json.loads(f["metadata"][()])
+            sample_data = get_sample_data(sample_id)
+            metadata["sample_data"] = sample_data
+            f["metadata"][()] = json.dumps(metadata)
+        # JSON cycles file
+        json_file = sample_folder / f"cycles.{sample_id}.json"
+        if not json_file.exists():
+            print(f"File {json_file} not found")
+            continue
+        with json_file.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+            # check it has keys data and metadata
+            if "data" not in data or "metadata" not in data:
+                print(f"File {json_file} has incorrect format")
+                continue
+            data["metadata"]["sample_data"] = sample_data
+            for col in SAMPLE_METADATA_TO_DATA:
+                data["data"][col] = sample_data.get(col, None)
+        with json_file.open("w", encoding="utf-8") as f:
+            json.dump(data, f)
 
 def shrink_sample(sample_id: str) -> None:
     """Find the full.x.h5 file for the sample and save a lossy, compressed version."""
