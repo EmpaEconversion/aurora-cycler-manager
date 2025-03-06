@@ -37,6 +37,20 @@ from aurora_cycler_manager.version import __url__, __version__
 
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="All-NaN axis encountered")
 
+# Metadata that gets copied in the json data file for more convenient access
+SAMPLE_METADATA_TO_DATA = [
+    "N:P ratio",
+    "Anode type",
+    "Cathode type",
+    "Anode active material mass (mg)",
+    "Cathode active material mass (mg)",
+    "Electrolyte name",
+    "Electrolyte description",
+    "Electrolyte amount (uL)",
+    "Rack position",
+    "Label",
+]
+
 def _sort_times(start_times: list|np.ndarray, end_times: list|np.ndarray) -> np.ndarray:
     """Sort by start time, if equal only keep the longest."""
     start_times = np.array(start_times)
@@ -388,18 +402,7 @@ def analyse_cycles(
     }
 
     # Add other columns from sample table to cycle_dict
-    sample_cols_to_add = [
-        "N:P ratio",
-        "Anode type",
-        "Cathode type",
-        "Anode active material mass (mg)",
-        "Cathode active material mass (mg)",
-        "Electrolyte name",
-        "Electrolyte description",
-        "Electrolyte amount (uL)",
-        "Rack position",
-    ]
-    for col in sample_cols_to_add:
+    for col in SAMPLE_METADATA_TO_DATA:
         cycle_dict[col] = sample_data.get(col, None)
 
     # Calculate additional quantities from cycling data and add to cycle_dict
@@ -615,6 +618,8 @@ def update_sample_metadata(sample_ids: str | list[str]) -> None:
                 print(f"File {json_file} has incorrect format")
                 continue
             data["metadata"]["sample_data"] = sample_data
+            for col in SAMPLE_METADATA_TO_DATA:
+                data["data"][col] = sample_data.get(col, None)
         with json_file.open("w", encoding="utf-8") as f:
             json.dump(data, f)
 
