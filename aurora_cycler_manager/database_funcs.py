@@ -53,13 +53,14 @@ def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
             if "Sample ID" not in row:
                 continue
             placeholders = ", ".join("?" * len(row))
-            columns = ", ".join(f"`{key}`" for key in row.keys())
+            columns = ", ".join(f"`{key}`" for key in row.index)
+            # SQL injection safe as column names are checked in _recalculate_sample_data
             # Insert or ignore the row
-            sql = f"INSERT OR IGNORE INTO samples ({columns}) VALUES ({placeholders})"
+            sql = f"INSERT OR IGNORE INTO samples ({columns}) VALUES ({placeholders})"  # noqa: S608
             cursor.execute(sql, tuple(row))
             # Update the row
-            updates = ", ".join(f"`{column}` = ?" for column in row.keys())
-            sql = f"UPDATE samples SET {updates} WHERE `Sample ID` = ?"
+            updates = ", ".join(f"`{column}` = ?" for column in row.index)
+            sql = f"UPDATE samples SET {updates} WHERE `Sample ID` = ?"  # noqa: S608
             cursor.execute(sql, (*tuple(row), row["Sample ID"]))
         conn.commit()
 
@@ -88,6 +89,9 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(msg)
     if any(df["Sample ID"].isna()):
         msg = "Samples dataframe contains NaN 'Sample ID' keys"
+        raise ValueError(msg)
+    if any("`" in col for col in df.columns):
+        msg = "Column names cannot contain backticks - are you being naughty and trying to SQL inject?"
         raise ValueError(msg)
 
     # Load the config file
