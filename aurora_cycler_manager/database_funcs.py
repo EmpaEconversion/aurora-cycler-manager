@@ -81,13 +81,13 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
     """Calculate some values for sample data before inserting into database."""
     # Pre-checks
     if "Sample ID" not in df.columns:
-        msg = f"Samples dataframe does not contain a 'Sample ID' column"
+        msg = "Samples dataframe does not contain a 'Sample ID' column"
         raise ValueError(msg)
     if any(df["Sample ID"].duplicated()):
-        msg = f"Samples dataframe contains duplicate 'Sample ID' keys"
+        msg = "Samples dataframe contains duplicate 'Sample ID' keys"
         raise ValueError(msg)
     if any(df["Sample ID"].isna()):
-        msg = f"Samples dataframe contains NaN 'Sample ID' keys"
+        msg = "Samples dataframe contains NaN 'Sample ID' keys"
         raise ValueError(msg)
 
     # Load the config file

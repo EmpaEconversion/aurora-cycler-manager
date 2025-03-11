@@ -49,7 +49,7 @@ try:
 except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
     print(e)
     print("You cannot access any servers. Running in view-only mode.")
-
+OPENBIS_DISABLED = CONFIG.get("OpenBIS PAT") is None
 #-------------------------------------- Database view layout --------------------------------------#
 
 # Define visibility settings for buttons and divs when switching between tabs
@@ -85,6 +85,7 @@ visibility_settings = {
     "results": {
         "table-container",
         "view-button",
+        "label-button",
     },
     "samples": {
         "table-container",
@@ -97,501 +98,591 @@ visibility_settings = {
     },
 }
 
-def db_view_layout() -> html.Div:
-    """Create database Dash layout."""
-    openbis_disabled = CONFIG.get("OpenBIS PAT") is None
-    # Layout
-    return html.Div(
-        style={"height": "100%", "padding": "10px"},
-        children = [
-            # invisible div just to make the loading spinner work when no outputs are changed
-            html.Div(
-                id="loading-database",
-                style={"display": "none"},
-            ),
-            html.Div(
-                style={"height": "100%", "overflow": "scroll"},
-                children = [
-                    # Buttons to select which table to display
-                    dbc.Tabs(
-                        [
-                            dbc.Tab(label = "Samples", tab_id = "samples", activeTabClassName="fw-bold"),
-                            dbc.Tab(label = "Pipelines", tab_id = "pipelines", activeTabClassName="fw-bold"),
-                            dbc.Tab(label = "Jobs", tab_id = "jobs", activeTabClassName="fw-bold"),
-                            dbc.Tab(label = "Results", tab_id = "results", activeTabClassName="fw-bold"),
-                            dbc.Tab(label = "Batches", tab_id = "batches", activeTabClassName="fw-bold"),
-                        ],
-                        id="table-select",
-                        active_tab="samples",
+button_layout = html.Div(
+    style={
+        "display": "flex",
+        "justify-content": "space-between",
+        "flex-wrap": "wrap",
+        "margin-top": "5px",
+        "margin-bottom": "20px",
+    },
+    children = [
+        # Left aligned buttons
+        html.Div(
+            style={"display": "flex", "flex-wrap": "wrap"},
+            children = [
+                dbc.Button(
+                    [html.I(className="bi bi-clipboard me-2"), "Copy"],
+                    id="copy-button", color="primary", className="me-1",
+                ),
+                dbc.Button(
+                    [html.I(className="bi bi-arrow-90deg-down me-2"),"Load"],
+                    id="load-button", color="primary", className="me-1",
+                ),
+                dbc.Button(
+                    [html.I(className="bi bi-arrow-90deg-right me-2"),"Eject"],
+                    id="eject-button", color="primary", className="me-1",
+                ),
+                dbc.Button(
+                    [html.I(className="bi bi-play me-2"),"Ready"],
+                    id="ready-button", color="primary", className="me-1",
+                ),
+                dbc.Button(
+                    [html.I(className="bi bi-slash-circle me-2"),"Unready"],
+                    id="unready-button", color="primary", className="me-1",
+                ),
+                dbc.Button(
+                    [html.I(className="bi bi-upload me-2"),"Submit"],
+                    id="submit-button", color="primary", className="me-1",
+                ),
+                dbc.Button(
+                    [html.I(className="bi bi-x-circle me-2"),"Cancel"],
+                    id="cancel-button", color="danger", className="me-1",
+                ),
+                dbc.Button(
+                    [html.I(className="bi bi-graph-down me-2"),"View data"],
+                    id="view-button", color="primary", className="me-1",
+                ),
+                dbc.Button(
+                    [html.I(className="bi bi-camera me-2"),"Snapshot"],
+                    id="snapshot-button", color="primary", className="me-1",
+                ),
+                dcc.Upload(
+                    children=dbc.Button(
+                        [html.I(className="bi bi-database-add me-2"), "Add samples"],
+                        id="add-samples-button", color="primary", className="me-1",
                     ),
-                    # Main table for displaying info from database
-                    html.Div(
-                        id="table-container",
-                        children = [
-                            dcc.Clipboard(id="clipboard", style={"display": "none"}),
-                            dag.AgGrid(
-                                id="table",
-                                dashGridOptions = {"enableCellTextSelection": False, "ensureDomOrder": True, "tooltipShowDelay": 1000, "rowSelection": "multiple"},
-                                defaultColDef={"filter": True, "sortable": True, "floatingFilter": True},
-                                style={"height": "calc(100vh - 240px)", "width": "100%", "minHeight": "300px"},
-                            ),
-                            html.Div(
-                                style={"display": "flex", "justify-content": "space-between", "flex-wrap": "wrap", "margin-top": "5px", "margin-bottom": "20px"},
-                                children = [
-                                    # Left aligned buttons
-                                    html.Div(
-                                        style={"display": "flex", "flex-wrap": "wrap"},
-                                        children = [
-                                            dbc.Button([html.I(className="bi bi-clipboard me-2"), "Copy"], id="copy-button", color="primary", className="me-1"),
-                                            dbc.Button([html.I(className="bi bi-arrow-90deg-down me-2"),"Load"], id="load-button", color="primary", className="me-1"),
-                                            dbc.Button([html.I(className="bi bi-arrow-90deg-right me-2"),"Eject"], id="eject-button", color="primary", className="me-1"),
-                                            dbc.Button([html.I(className="bi bi-play me-2"),"Ready"], id="ready-button", color="primary", className="me-1"),
-                                            dbc.Button([html.I(className="bi bi-slash-circle me-2"),"Unready"], id="unready-button", color="primary", className="me-1"),
-                                            dbc.Button([html.I(className="bi bi-upload me-2"),"Submit"], id="submit-button", color="primary", className="me-1"),
-                                            dbc.Button([html.I(className="bi bi-x-circle me-2"),"Cancel"], id="cancel-button", color="danger", className="me-1"),
-                                            dbc.Button([html.I(className="bi bi-graph-down me-2"),"View data"], id="view-button", color="primary", className="me-1"),
-                                            dbc.Button([html.I(className="bi bi-camera me-2"),"Snapshot"], id="snapshot-button", color="primary", className="me-1"),
-                                            dcc.Upload(
-                                                children=dbc.Button(
-                                                    [html.I(className="bi bi-database-add me-2"), "Add samples"],
-                                                    id="add-samples-button", color="primary", className="me-1",
-                                                ),
-                                                id="sample-upload", accept=".json", max_size= 2*1024*1024, multiple=False,
-                                            ),
-                                            dbc.Tooltip(
-                                                "You do not have an OpenBIS personal access token in the config. Need key 'OpenBIS PAT' pointing to your PAT.txt file path.",
-                                                placement="top",
-                                                delay={"show": 1000},
-                                                target="openbis-button",
-                                                style={"whiteSpace": "pre-wrap"},
-                                            ) if openbis_disabled else None,
-                                            dbc.DropdownMenu(
-                                                [
-                                                    dbc.DropdownMenuItem([html.I(className="bi bi-cloud-upload me-2"),"Automatic upload"], id="openbis-auto-button", disabled=openbis_disabled),
-                                                    dbc.DropdownMenuItem([html.I(className="bi bi-cloud-upload me-2"),"Custom upload"], id="openbis-custom-button", disabled=openbis_disabled),
-                                                ],
-                                                label=html.Span([
-                                                    html.Img(src="/assets/openbis.svg", style={"height": "20px", "width": "20px", "vertical-align": "middle"}),
-                                                    " OpenBIS",
-                                                ]),
-                                                id="openbis-button", color="primary", className="bi me-1", direction="up", disabled=openbis_disabled,
-                                            ),
-                                            dbc.Button([html.I(className="bi bi-tag me-2"),"Add label"], id="label-button", color="primary", className="me-1"),
-                                            dbc.Button([html.I(className="bi bi-grid-3x2-gap-fill me-2"),"Create batch"], id="create-batch-button", color="primary", className="me-1"),
-                                            dbc.Button([html.I(className="bi bi-trash3 me-2"),"Delete"], id="delete-button", color="danger", className="me-1"),
-                                        ],
-                                    ),
-                                    # Right aligned buttons
-                                    html.Div(
-                                        style={"display": "flex", "flex-wrap": "wrap", "align-items": "center"},
-                                        children=[
-                                            html.Div("Loading...", id="table-info", className="me-1", style={"display": "inline-block", "opacity": "0.5"}),
-                                            dbc.Button(className="bi bi-arrow-clockwise me-2 large-icon", id="refresh-database", color="primary"),
-                                            dbc.Button(className="bi bi-database-down me-2 large-icon", id="update-database", color="warning", disabled = not accessible_servers),
-                                            dbc.Tooltip(
-                                                children = "Refresh database",
-                                                id="last-refreshed",
-                                                target="refresh-database",
-                                                style={"whiteSpace": "pre-wrap"},
-                                                placement="top",
-                                            ),
-                                            dbc.Tooltip(
-                                                children = "Update database from cyclers",
-                                                id="last-updated",
-                                                target="update-database",
-                                                style={"whiteSpace": "pre-wrap"},
-                                                placement="top",
-                                            ),
-                                        ],
-                                    ),
-                                ],
-                            ),
-                        ],
+                    id="sample-upload", accept=".json", max_size= 2*1024*1024, multiple=False,
+                ),
+                dbc.Tooltip(
+                    children = (
+                        "You do not have an OpenBIS personal access token in the config. "
+                        "Need key 'OpenBIS PAT' pointing to your PAT.txt file path.",
                     ),
-                    batch_edit_layout,
-                ],
-            ),
-            # Pop up modals for interacting with the database after clicking buttons
-            # Eject
-            dbc.Modal(
-                [
-                    dbc.ModalHeader(dbc.ModalTitle("Eject")),
-                    dbc.ModalBody(id="eject-modal-body",children="Are you sure you want eject the selected samples?"),
-                    dbc.ModalFooter(
-                        [
-                            dbc.Button(
-                                "Eject", id="eject-yes-close", className="ms-auto", n_clicks=0, color="primary",
-                            ),
-                            dbc.Button(
-                                "Go back", id="eject-no-close", className="ms-auto", n_clicks=0, color="secondary",
-                            ),
-                        ],
-                    ),
-                ],
-                id="eject-modal",
-                centered=True,
-                is_open=False,
-            ),
-            # Load
-            dbc.Modal(
-                [
-                    dbc.ModalHeader(dbc.ModalTitle("Load")),
-                    dbc.ModalBody(
-                        id="load-modal-body",
-                        children=[],
-                    ),
-                    dbc.ModalFooter(
-                        [
-                            dbc.Button(
-                                "Load", id="load-yes-close", className="ms-auto", color="primary", n_clicks=0,
-                            ),
-                            dbc.Button(
-                                "Auto-increment", id="load-incrememt", className="ms-auto", color="light", n_clicks=0,
-                            ),
-                            dbc.Button(
-                                "Clear all", id="load-clear", className="ms-auto", color="light", n_clicks=0,
-                            ),
-                            dbc.Button(
-                                "Go back", id="load-no-close", className="ms-auto", color="secondary", n_clicks=0,
-                            ),
-                        ],
-                    ),
-                    dcc.Store(id="load-modal-store", data={}),
-                ],
-                id="load-modal",
-                centered=True,
-                is_open=False,
-            ),
-            # Ready
-            dbc.Modal(
-                [
-                    dbc.ModalHeader(dbc.ModalTitle("Ready")),
-                    dbc.ModalBody(
-                        id="ready-modal-body",
-                        children="""
-                            Are you sure you want ready the selected pipelines?
-                            You must force update the database afterwards to check if tomato has started the job(s).
-                        """,
-                    ),
-                    dbc.ModalFooter(
-                        [
-                            dbc.Button(
-                                "Ready", id="ready-yes-close", className="ms-auto", n_clicks=0, color="primary",
-                            ),
-                            dbc.Button(
-                                "Go back", id="ready-no-close", className="ms-auto", n_clicks=0, color="secondary",
-                            ),
-                        ],
-                    ),
-                ],
-                id="ready-modal",
-                centered=True,
-                is_open=False,
-            ),
-            # Unready
-            dbc.Modal(
-                [
-                    dbc.ModalHeader(dbc.ModalTitle("Unready")),
-                    dbc.ModalBody(id="unready-modal-body",children="Are you sure you want un-ready the selected pipelines?"),
-                    dbc.ModalFooter(
-                        [
-                            dbc.Button(
-                                "Unready", id="unready-yes-close", className="ms-auto", n_clicks=0, color="primary",
-                            ),
-                            dbc.Button(
-                                "Go back", id="unready-no-close", className="ms-auto", n_clicks=0, color="secondary",
-                            ),
-                        ],
-                    ),
-                ],
-                id="unready-modal",
-                centered=True,
-                is_open=False,
-            ),
-            # Submit
-            dbc.Modal(
-                [
-                    dcc.Store(id="payload", data={}),
-                    dbc.ModalHeader(dbc.ModalTitle("Submit")),
-                    dbc.ModalBody(
-                        id="submit-modal-body",
-                        style={"width": "100%"},
-                        children=[
-                            "Select a tomato .json payload to submit",
-                            dcc.Upload(
-                                id="submit-upload",
-                                children=html.Div([
-                                    "Drag and Drop or ",
-                                    html.A("Select Files"),
-                                ]),
-                                style={
-                                    "width": "100%",
-                                    "height": "60px",
-                                    "lineHeight": "60px",
-                                    "borderWidth": "1px",
-                                    "borderStyle": "dashed",
-                                    "borderRadius": "8px",
-                                    "textAlign": "center",
-                                },
-                                accept=".json",
-                                multiple=False,
-                            ),
-                            html.P(children="No file selected", id="validator"),
-                            html.Div(style={"margin-top": "10px"}),
-                            html.Div([
-                                html.Label("Calculate C-rate by:", htmlFor="submit-crate"),
-                                dcc.Dropdown(
-                                    id="submit-crate",
-                                    options=[
-                                        {"value": "areal", "label": "areal capacity x area from db"},
-                                        {"value": "mass", "label": "specific capacity x mass  from db"},
-                                        {"value": "nominal", "label": "nominal capacity from db"},
-                                        {"value": "custom", "label": "custom capacity value"},
-                                    ],
-                                ),
-                            ]),
-                            html.Div(
-                                id="submit-capacity-div",
-                                children=[
-                                    "Capacity = ",
-                                    dcc.Input(id="submit-capacity", type="number", min=0, max=10),
-                                    " mAh",
-                                ],
-                                style={"display": "none"},
-                            ),
-                        ],
-                    ),
-                    dbc.ModalFooter(
-                        [
-                            dbc.Button(
-                                "Submit", id="submit-yes-close", className="ms-auto", n_clicks=0, color="primary", disabled=True,
-                            ),
-                            dbc.Button(
-                                "Go back", id="submit-no-close", className="ms-auto", n_clicks=0, color="secondary",
-                            ),
-                        ],
-                    ),
-                ],
-                id="submit-modal",
-                centered=True,
-                is_open=False,
-            ),
-            # Cancel
-            dbc.Modal(
-                [
-                    dbc.ModalHeader(dbc.ModalTitle("Cancel")),
-                    dbc.ModalBody(id="cancel-modal-body",children="Are you sure you want to cancel the selected jobs?"),
-                    dbc.ModalFooter(
-                        [
-                            dbc.Button(
-                                "Cancel", id="cancel-yes-close", className="ms-auto", n_clicks=0, color="danger",
-                            ),
-                            dbc.Button(
-                                "Go back", id="cancel-no-close", className="ms-auto", n_clicks=0, color="secondary",
-                            ),
-                        ],
-                    ),
-                ],
-                id="cancel-modal",
-                centered=True,
-                is_open=False,
-            ),
-            # Snapshot
-            dbc.Modal(
-                [
-                    dbc.ModalHeader(dbc.ModalTitle("Snapshot")),
-                    dbc.ModalBody(
-                        id="snapshot-modal-body",
-                        children="""
-                            Do you want to snapshot the selected samples?
-                            This could take minutes per sample depending on data size.
-                        """,
-                    ),
-                    dbc.ModalFooter(
-                        [
-                            dbc.Button(
-                                "Snapshot", id="snapshot-yes-close", className="ms-auto", n_clicks=0, color="warning",
-                            ),
-                            dbc.Button(
-                                "Go back", id="snapshot-no-close", className="ms-auto", n_clicks=0, color="secondary",
-                            ),
-                        ],
-                    ),
-                ],
-                id="snapshot-modal",
-                centered=True,
-                is_open=False,
-            ),
-            # OpenBis
-            dbc.Modal(
-                [
-                    dbc.ModalHeader(dbc.ModalTitle("OpenBis upload")),
-                    dbc.ModalBody(
-                        id="openbis-auto-modal-body",
-                        children=[
-                            "Upload the selected samples to OpenBis?",
-                            html.Div(style={"margin-top": "10px"}),
-                            html.P("",id="openbis-auto-sample-list",style={"whiteSpace": "pre-wrap"}),
-                        ],
-                    ),
-                    dbc.ModalFooter(
-                        [
-                            dbc.Button(
-                                "Upload", id="openbis-auto-yes-close", className="ms-auto", n_clicks=0, color="primary",
-                            ),
-                            dbc.Button(
-                                "Go back", id="openbis-auto-no-close", className="ms-auto", n_clicks=0, color="secondary",
-                            ),
-                        ],
-                    ),
-                ],
-                id="openbis-auto-modal",
-                centered=True,
-                is_open=False,
-            ),
-            dbc.Modal(
-                [
-                    dbc.ModalHeader(dbc.ModalTitle("Custom OpenBis upload")),
-                    dbc.ModalBody(
-                        id="openbis-custom-modal-body",
-                        children=[
-                            "Select the BattINFO .xlsx.",
-                            html.Div(style={"margin-top": "10px"}),
-                            "Fields in the template will overwrite the fields found from the database",
-                            html.Div(style={"margin-top": "10px"}),
-                            dcc.Upload(
-                                id="openbis-template-upload",
-                                children=html.Div([
-                                    "Drag and Drop or ",
-                                    html.A("Select Files"),
-                                ]),
-                                style={
-                                    "width": "100%",
-                                    "height": "60px",
-                                    "lineHeight": "60px",
-                                    "borderWidth": "1px",
-                                    "borderStyle": "dashed",
-                                    "borderRadius": "8px",
-                                    "textAlign": "center",
-                                },
-                                accept=".xlsx",
-                                multiple=False,
-                            ),
-                            html.P(children="No file selected", id="openbis-validator"),
-                            html.Div(style={"margin-top": "10px"}),
-                            html.P("Samples to upload:"),
-                            html.Div(style={"margin-top": "10px"}),
-                            html.P("",id="openbis-custom-sample-list",style={"whiteSpace": "pre-wrap"}),
-                        ],
-                    ),
-                    dbc.ModalFooter(
-                        [
-                            dbc.Button(
-                                "Upload", id="openbis-custom-yes-close", className="ms-auto", n_clicks=0, color="primary", disabled=True,
-                            ),
-                            dbc.Button(
-                                "Go back", id="openbis-custom-no-close", className="ms-auto", n_clicks=0, color="secondary",
-                            ),
-                        ],
-                    ),
-                ],
-                id="openbis-custom-modal",
-                centered=True,
-                is_open=False,
-            ),
-            # Batch
-            dbc.Modal(
-                [
-                    dbc.ModalHeader(dbc.ModalTitle("Create batch")),
-                    dbc.ModalBody(
-                        id="batch-save-modal-body",
-                        children=[
-                            "Create a batch from the selected samples?",
-                            html.Div(style={"margin-top": "10px"}),
-                            dcc.Input(id="batch-name", type="text", placeholder="Batch name"),
-                            html.Div(style={"margin-top": "10px"}),
-                            dcc.Textarea(id="batch-description", placeholder="Batch description", style={"width": "100%", "height": "200px"}),
-                        ],
-                    ),
-                    dbc.ModalFooter(
-                        [
-                            dbc.Button(
-                                "Create", id="batch-save-yes-close", className="ms-auto", n_clicks=0, disabled=True, color="primary",
-                            ),
-                            dbc.Button(
-                                "Go back", id="batch-save-no-close", className="ms-auto", n_clicks=0, color="secondary",
-                            ),
-                        ],
-                    ),
-                ],
-                id="batch-save-modal",
-                centered=True,
-                is_open=False,
-            ),
-            # Delete
-            dbc.Modal(
-                [
-                    dbc.ModalHeader(dbc.ModalTitle("Delete")),
-                    dbc.ModalBody(
-                        id="delete-modal-body",
-                        children="""
-                            Are you sure you want to delete the selected samples?
-                            Samples will only stay deleted if the .csv files in the data folder are also deleted.
-                        """,
+                    placement="top",
+                    delay={"show": 1000},
+                    target="openbis-button",
+                    style={"whiteSpace": "pre-wrap"},
+                ) if OPENBIS_DISABLED else None,
+                dbc.DropdownMenu(
+                    [
+                        dbc.DropdownMenuItem(
+                            [html.I(className="bi bi-cloud-upload me-2"),"Automatic upload"],
+                            id="openbis-auto-button", disabled=OPENBIS_DISABLED,
                         ),
-                    dbc.ModalFooter(
-                        [
-                            dbc.Button(
-                                "Delete", id="delete-yes-close", className="ms-auto", n_clicks=0, color="danger",
-                            ),
-                            dbc.Button(
-                                "Go back", id="delete-no-close", className="ms-auto", n_clicks=0, color="secondary",
-                            ),
-                        ],
-                    ),
-                ],
-                id="delete-modal",
-                centered=True,
-                is_open=False,
-            ),
-            # Label
-            dbc.Modal(
-                [
-                    dbc.ModalHeader(dbc.ModalTitle("Label samples:")),
-                    dbc.ModalBody(
-                        id="label-modal-body",
-                        children=TextInput(
-                            id="label-input",
-                            placeholder="This overwrites any existing label",
-                            label="Label",
+                        dbc.DropdownMenuItem(
+                            [html.I(className="bi bi-cloud-upload me-2"),"Custom upload"],
+                            id="openbis-custom-button", disabled=OPENBIS_DISABLED,
                         ),
-                    ),
-                    dbc.ModalFooter(
-                        [
-                            dbc.Button(
-                                "Add label", id="label-yes-close", className="ms-auto", n_clicks=0, color="primary",
-                            ),
-                            dbc.Button(
-                                "Go back", id="label-no-close", className="ms-auto", n_clicks=0, color="secondary",
-                            ),
-                        ],
-                    ),
-                ],
-                id="label-modal",
-                centered=True,
-                is_open=False,
-            ),
+                    ],
+                    label=html.Span([
+                        html.Img(
+                            src="/assets/openbis.svg",
+                            style={"height": "20px", "width": "20px", "vertical-align": "middle"},
+                        ),
+                        " OpenBIS",
+                    ]),
+                    id="openbis-button", color="primary", className="bi me-1",
+                    direction="up", disabled=OPENBIS_DISABLED,
+                ),
+                dbc.Button(
+                    [html.I(className="bi bi-tag me-2"),"Add label"],
+                    id="label-button", color="primary", className="me-1",
+                ),
+                dbc.Button(
+                    [html.I(className="bi bi-grid-3x2-gap-fill me-2"),"Create batch"],
+                    id="create-batch-button", color="primary", className="me-1",
+                ),
+                dbc.Button(
+                    [html.I(className="bi bi-trash3 me-2"),"Delete"],
+                    id="delete-button", color="danger", className="me-1",
+                ),
+            ],
+        ),
+        # Right aligned buttons
+        html.Div(
+            style={"display": "flex", "flex-wrap": "wrap", "align-items": "center"},
+            children=[
+                html.Div(
+                    "Loading...", id="table-info", className="me-1",
+                    style={"display": "inline-block", "opacity": "0.5"},
+                ),
+                dbc.Button(
+                    className="bi bi-arrow-clockwise me-2 large-icon",
+                    id="refresh-database", color="primary",
+                ),
+                dbc.Button(
+                    className="bi bi-database-down me-2 large-icon",
+                    id="update-database", color="warning", disabled = not accessible_servers,
+                ),
+                dbc.Tooltip(
+                    children = "Refresh database",
+                    id="last-refreshed",
+                    target="refresh-database",
+                    style={"whiteSpace": "pre-wrap"},
+                    placement="top",
+                ),
+                dbc.Tooltip(
+                    children = "Update database from cyclers",
+                    id="last-updated",
+                    target="update-database",
+                    style={"whiteSpace": "pre-wrap"},
+                    placement="top",
+                ),
+            ],
+        ),
+    ],
+)
 
-        ],
-    )
+db_view_layout = html.Div(
+    style={"height": "100%", "padding": "10px"},
+    children = [
+        # invisible div just to make the loading spinner work when no outputs are changed
+        html.Div(
+            id="loading-database",
+            style={"display": "none"},
+        ),
+        html.Div(
+            style={"height": "100%", "overflow": "scroll"},
+            children = [
+                # Buttons to select which table to display
+                dbc.Tabs(
+                    [
+                        dbc.Tab(label = "Samples", tab_id = "samples", activeTabClassName="fw-bold"),
+                        dbc.Tab(label = "Pipelines", tab_id = "pipelines", activeTabClassName="fw-bold"),
+                        dbc.Tab(label = "Jobs", tab_id = "jobs", activeTabClassName="fw-bold"),
+                        dbc.Tab(label = "Results", tab_id = "results", activeTabClassName="fw-bold"),
+                        dbc.Tab(label = "Batches", tab_id = "batches", activeTabClassName="fw-bold"),
+                    ],
+                    id="table-select",
+                    active_tab="samples",
+                ),
+                # Main table for displaying info from database
+                html.Div(
+                    id="table-container",
+                    children = [
+                        dcc.Clipboard(id="clipboard", style={"display": "none"}),
+                        dag.AgGrid(
+                            id="table",
+                            dashGridOptions = {
+                                "enableCellTextSelection": False,
+                                "ensureDomOrder": True,
+                                "tooltipShowDelay": 1000,
+                                "rowSelection": "multiple",
+                            },
+                            defaultColDef={"filter": True, "sortable": True, "floatingFilter": True},
+                            style={"height": "calc(100vh - 240px)", "width": "100%", "minHeight": "300px"},
+                        ),
+                        button_layout,
+                    ],
+                ),
+                batch_edit_layout,
+            ],
+        ),
+        # Pop up modals for interacting with the database after clicking buttons
+        # Eject
+        dbc.Modal(
+            [
+                dbc.ModalHeader(dbc.ModalTitle("Eject")),
+                dbc.ModalBody(id="eject-modal-body",children="Are you sure you want eject the selected samples?"),
+                dbc.ModalFooter(
+                    [
+                        dbc.Button(
+                            "Eject", id="eject-yes-close", className="ms-auto", n_clicks=0, color="primary",
+                        ),
+                        dbc.Button(
+                            "Go back", id="eject-no-close", className="ms-auto", n_clicks=0, color="secondary",
+                        ),
+                    ],
+                ),
+            ],
+            id="eject-modal",
+            centered=True,
+            is_open=False,
+        ),
+        # Load
+        dbc.Modal(
+            [
+                dbc.ModalHeader(dbc.ModalTitle("Load")),
+                dbc.ModalBody(
+                    id="load-modal-body",
+                    children=[],
+                ),
+                dbc.ModalFooter(
+                    [
+                        dbc.Button(
+                            "Load", id="load-yes-close", className="ms-auto", color="primary", n_clicks=0,
+                        ),
+                        dbc.Button(
+                            "Auto-increment", id="load-incrememt", className="ms-auto", color="light", n_clicks=0,
+                        ),
+                        dbc.Button(
+                            "Clear all", id="load-clear", className="ms-auto", color="light", n_clicks=0,
+                        ),
+                        dbc.Button(
+                            "Go back", id="load-no-close", className="ms-auto", color="secondary", n_clicks=0,
+                        ),
+                    ],
+                ),
+                dcc.Store(id="load-modal-store", data={}),
+            ],
+            id="load-modal",
+            centered=True,
+            is_open=False,
+        ),
+        # Ready
+        dbc.Modal(
+            [
+                dbc.ModalHeader(dbc.ModalTitle("Ready")),
+                dbc.ModalBody(
+                    id="ready-modal-body",
+                    children="""
+                        Are you sure you want ready the selected pipelines?
+                        You must force update the database afterwards to check if tomato has started the job(s).
+                    """,
+                ),
+                dbc.ModalFooter(
+                    [
+                        dbc.Button(
+                            "Ready", id="ready-yes-close", className="ms-auto", n_clicks=0, color="primary",
+                        ),
+                        dbc.Button(
+                            "Go back", id="ready-no-close", className="ms-auto", n_clicks=0, color="secondary",
+                        ),
+                    ],
+                ),
+            ],
+            id="ready-modal",
+            centered=True,
+            is_open=False,
+        ),
+        # Unready
+        dbc.Modal(
+            [
+                dbc.ModalHeader(dbc.ModalTitle("Unready")),
+                dbc.ModalBody(
+                    id="unready-modal-body",
+                    children="Are you sure you want un-ready the selected pipelines?",
+                ),
+                dbc.ModalFooter(
+                    [
+                        dbc.Button(
+                            "Unready", id="unready-yes-close", className="ms-auto", n_clicks=0, color="primary",
+                        ),
+                        dbc.Button(
+                            "Go back", id="unready-no-close", className="ms-auto", n_clicks=0, color="secondary",
+                        ),
+                    ],
+                ),
+            ],
+            id="unready-modal",
+            centered=True,
+            is_open=False,
+        ),
+        # Submit
+        dbc.Modal(
+            [
+                dcc.Store(id="payload", data={}),
+                dbc.ModalHeader(dbc.ModalTitle("Submit")),
+                dbc.ModalBody(
+                    id="submit-modal-body",
+                    style={"width": "100%"},
+                    children=[
+                        "Select a tomato .json payload to submit",
+                        dcc.Upload(
+                            id="submit-upload",
+                            children=html.Div([
+                                "Drag and Drop or ",
+                                html.A("Select Files"),
+                            ]),
+                            style={
+                                "width": "100%",
+                                "height": "60px",
+                                "lineHeight": "60px",
+                                "borderWidth": "1px",
+                                "borderStyle": "dashed",
+                                "borderRadius": "8px",
+                                "textAlign": "center",
+                            },
+                            accept=".json",
+                            multiple=False,
+                        ),
+                        html.P(children="No file selected", id="validator"),
+                        html.Div(style={"margin-top": "10px"}),
+                        html.Div([
+                            html.Label("Calculate C-rate by:", htmlFor="submit-crate"),
+                            dcc.Dropdown(
+                                id="submit-crate",
+                                options=[
+                                    {"value": "areal", "label": "areal capacity x area from db"},
+                                    {"value": "mass", "label": "specific capacity x mass  from db"},
+                                    {"value": "nominal", "label": "nominal capacity from db"},
+                                    {"value": "custom", "label": "custom capacity value"},
+                                ],
+                            ),
+                        ]),
+                        html.Div(
+                            id="submit-capacity-div",
+                            children=[
+                                "Capacity = ",
+                                dcc.Input(id="submit-capacity", type="number", min=0, max=10),
+                                " mAh",
+                            ],
+                            style={"display": "none"},
+                        ),
+                    ],
+                ),
+                dbc.ModalFooter(
+                    [
+                        dbc.Button(
+                            "Submit", id="submit-yes-close", className="ms-auto",
+                            n_clicks=0, color="primary", disabled=True,
+                        ),
+                        dbc.Button(
+                            "Go back", id="submit-no-close", className="ms-auto",
+                            n_clicks=0, color="secondary",
+                        ),
+                    ],
+                ),
+            ],
+            id="submit-modal",
+            centered=True,
+            is_open=False,
+        ),
+        # Cancel
+        dbc.Modal(
+            [
+                dbc.ModalHeader(dbc.ModalTitle("Cancel")),
+                dbc.ModalBody(
+                    id="cancel-modal-body",
+                    children="Are you sure you want to cancel the selected jobs?",
+                ),
+                dbc.ModalFooter(
+                    [
+                        dbc.Button(
+                            "Cancel", id="cancel-yes-close", className="ms-auto",
+                            n_clicks=0, color="danger",
+                        ),
+                        dbc.Button(
+                            "Go back", id="cancel-no-close", className="ms-auto",
+                            n_clicks=0, color="secondary",
+                        ),
+                    ],
+                ),
+            ],
+            id="cancel-modal",
+            centered=True,
+            is_open=False,
+        ),
+        # Snapshot
+        dbc.Modal(
+            [
+                dbc.ModalHeader(dbc.ModalTitle("Snapshot")),
+                dbc.ModalBody(
+                    id="snapshot-modal-body",
+                    children="""
+                        Do you want to snapshot the selected samples?
+                        This could take minutes per sample depending on data size.
+                    """,
+                ),
+                dbc.ModalFooter(
+                    [
+                        dbc.Button(
+                            "Snapshot", id="snapshot-yes-close", className="ms-auto",
+                            n_clicks=0, color="warning",
+                        ),
+                        dbc.Button(
+                            "Go back", id="snapshot-no-close", className="ms-auto",
+                            n_clicks=0, color="secondary",
+                        ),
+                    ],
+                ),
+            ],
+            id="snapshot-modal",
+            centered=True,
+            is_open=False,
+        ),
+        # OpenBis
+        dbc.Modal(
+            [
+                dbc.ModalHeader(dbc.ModalTitle("OpenBis upload")),
+                dbc.ModalBody(
+                    id="openbis-auto-modal-body",
+                    children=[
+                        "Upload the selected samples to OpenBis?",
+                        html.Div(style={"margin-top": "10px"}),
+                        html.P("",id="openbis-auto-sample-list",style={"whiteSpace": "pre-wrap"}),
+                    ],
+                ),
+                dbc.ModalFooter(
+                    [
+                        dbc.Button(
+                            "Upload", id="openbis-auto-yes-close", className="ms-auto",
+                            n_clicks=0, color="primary",
+                        ),
+                        dbc.Button(
+                            "Go back", id="openbis-auto-no-close", className="ms-auto",
+                            n_clicks=0, color="secondary",
+                        ),
+                    ],
+                ),
+            ],
+            id="openbis-auto-modal",
+            centered=True,
+            is_open=False,
+        ),
+        dbc.Modal(
+            [
+                dbc.ModalHeader(dbc.ModalTitle("Custom OpenBis upload")),
+                dbc.ModalBody(
+                    id="openbis-custom-modal-body",
+                    children=[
+                        "Select the BattINFO .xlsx.",
+                        html.Div(style={"margin-top": "10px"}),
+                        "Fields in the template will overwrite the fields found from the database",
+                        html.Div(style={"margin-top": "10px"}),
+                        dcc.Upload(
+                            id="openbis-template-upload",
+                            children=html.Div([
+                                "Drag and Drop or ",
+                                html.A("Select Files"),
+                            ]),
+                            style={
+                                "width": "100%",
+                                "height": "60px",
+                                "lineHeight": "60px",
+                                "borderWidth": "1px",
+                                "borderStyle": "dashed",
+                                "borderRadius": "8px",
+                                "textAlign": "center",
+                            },
+                            accept=".xlsx",
+                            multiple=False,
+                        ),
+                        html.P(children="No file selected", id="openbis-validator"),
+                        html.Div(style={"margin-top": "10px"}),
+                        html.P("Samples to upload:"),
+                        html.Div(style={"margin-top": "10px"}),
+                        html.P("",id="openbis-custom-sample-list",style={"whiteSpace": "pre-wrap"}),
+                    ],
+                ),
+                dbc.ModalFooter(
+                    [
+                        dbc.Button(
+                            "Upload", id="openbis-custom-yes-close", className="ms-auto",
+                            n_clicks=0, color="primary", disabled=True,
+                        ),
+                        dbc.Button(
+                            "Go back", id="openbis-custom-no-close", className="ms-auto",
+                            n_clicks=0, color="secondary",
+                        ),
+                    ],
+                ),
+            ],
+            id="openbis-custom-modal",
+            centered=True,
+            is_open=False,
+        ),
+        # Batch
+        dbc.Modal(
+            [
+                dbc.ModalHeader(dbc.ModalTitle("Create batch")),
+                dbc.ModalBody(
+                    id="batch-save-modal-body",
+                    children=[
+                        "Create a batch from the selected samples?",
+                        html.Div(style={"margin-top": "10px"}),
+                        dcc.Input(id="batch-name", type="text", placeholder="Batch name"),
+                        html.Div(style={"margin-top": "10px"}),
+                        dcc.Textarea(
+                            id="batch-description",
+                            placeholder="Batch description",
+                            style={"width": "100%", "height": "200px"},
+                        ),
+                    ],
+                ),
+                dbc.ModalFooter(
+                    [
+                        dbc.Button(
+                            "Create", id="batch-save-yes-close", className="ms-auto",
+                            n_clicks=0, disabled=True, color="primary",
+                        ),
+                        dbc.Button(
+                            "Go back", id="batch-save-no-close", className="ms-auto",
+                            n_clicks=0, color="secondary",
+                        ),
+                    ],
+                ),
+            ],
+            id="batch-save-modal",
+            centered=True,
+            is_open=False,
+        ),
+        # Delete
+        dbc.Modal(
+            [
+                dbc.ModalHeader(dbc.ModalTitle("Delete")),
+                dbc.ModalBody(
+                    id="delete-modal-body",
+                    children="""
+                        Are you sure you want to delete the selected samples?
+                        Samples will only stay deleted if the .csv files in
+                        the data folder are also deleted.
+                    """,
+                    ),
+                dbc.ModalFooter(
+                    [
+                        dbc.Button(
+                            "Delete", id="delete-yes-close", className="ms-auto",
+                            n_clicks=0, color="danger",
+                        ),
+                        dbc.Button(
+                            "Go back", id="delete-no-close", className="ms-auto",
+                            n_clicks=0, color="secondary",
+                        ),
+                    ],
+                ),
+            ],
+            id="delete-modal",
+            centered=True,
+            is_open=False,
+        ),
+        # Label
+        dbc.Modal(
+            [
+                dbc.ModalHeader(dbc.ModalTitle("Label samples:")),
+                dbc.ModalBody(
+                    id="label-modal-body",
+                    children=TextInput(
+                        id="label-input",
+                        placeholder="This overwrites any existing label",
+                        label="Label",
+                    ),
+                ),
+                dbc.ModalFooter(
+                    [
+                        dbc.Button(
+                            "Add label", id="label-yes-close", className="ms-auto",
+                            n_clicks=0, color="primary",
+                        ),
+                        dbc.Button(
+                            "Go back", id="label-no-close", className="ms-auto",
+                            n_clicks=0, color="secondary",
+                        ),
+                    ],
+                ),
+            ],
+            id="label-modal",
+            centered=True,
+            is_open=False,
+        ),
+    ],
+)
 
 #------------------------------------- Database view callbacks ------------------------------------#
 
 def register_db_view_callbacks(app: Dash) -> None:
     """Register callbacks for the database view layout."""
-
-    openbis_disabled = CONFIG.get("OpenBIS PAT") is None
-
     register_batch_edit_callbacks(app, database_access)
 
     # Update the buttons displayed depending on the table selected
@@ -684,7 +775,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                         enabled |= {"delete-button","label-button"}
                         if len(selected_rows) > 1:
                             enabled |= {"create-batch-button"}
-            if table == "samples" and not openbis_disabled:
+            if table == "samples" and not OPENBIS_DISABLED:
                 enabled |= {"openbis-button"}
             if any(s["Sample ID"] is not None for s in selected_rows):
                 enabled |= {"view-button"}
@@ -1168,7 +1259,9 @@ def register_db_view_callbacks(app: Dash) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "cancel-button":
             return not is_open
-        if (button_id == "cancel-yes-close" and yes_clicks) or (button_id == "cancel-no-close" and no_clicks):
+        if (button_id == "cancel-yes-close" and yes_clicks):
+            return False
+        if (button_id == "cancel-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # When cancel confirmed, cancel the jobs and refresh the database
@@ -1219,7 +1312,9 @@ def register_db_view_callbacks(app: Dash) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "snapshot-button":
             return not is_open
-        if (button_id == "snapshot-yes-close" and yes_clicks) or (button_id == "snapshot-no-close" and no_clicks):
+        if (button_id == "snapshot-yes-close" and yes_clicks):
+            return False
+        if (button_id == "snapshot-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # When snapshot confirmed, snapshot the samples and refresh the database
@@ -1255,7 +1350,9 @@ def register_db_view_callbacks(app: Dash) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "delete-button":
             return not is_open
-        if (button_id == "delete-yes-close" and yes_clicks) or (button_id == "delete-no-close" and no_clicks):
+        if (button_id == "delete-yes-close" and yes_clicks):
+            return False
+        if (button_id == "delete-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # When delete confirmed, delete the samples and refresh the database
@@ -1327,7 +1424,9 @@ def register_db_view_callbacks(app: Dash) -> None:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "label-button":
             return not is_open
-        if (button_id == "label-yes-close" and yes_clicks) or (button_id == "label-no-close" and no_clicks):
+        if (button_id == "label-yes-close" and yes_clicks):
+            return False
+        if (button_id == "label-no-close" and no_clicks):
             return False
         return is_open, no_update, no_update, no_update
     # When label confirmed, label the samples and refresh the database
