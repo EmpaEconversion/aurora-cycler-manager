@@ -18,7 +18,6 @@ import dash_mantine_components as dmc
 from dash import Dash, _dash_renderer, dcc, html
 from waitress import serve
 
-from aurora_cycler_manager.config import CONFIG
 from aurora_cycler_manager.visualiser.batches import batches_layout, register_batches_callbacks
 from aurora_cycler_manager.visualiser.db_view import db_view_layout, register_db_view_callbacks
 from aurora_cycler_manager.visualiser.notifications import notifications_layout, register_notifications_callbacks
@@ -29,7 +28,7 @@ from aurora_cycler_manager.visualiser.samples import register_samples_callbacks,
 #======================================================================================================================#
 
 # Need to set this for Mantine notifications to work
-_dash_renderer._set_react_version("18.2.0")
+_dash_renderer._set_react_version("18.2.0")  # noqa: SLF001
 
 # Spinner
 custom_spinner=html.Div(
@@ -90,12 +89,12 @@ app.layout = dmc.MantineProvider(html.Div(
                         dcc.Tab(
                             label="Database",
                             value="tab-3",
-                            children = db_view_layout(),
+                            children = db_view_layout,
                         ),
                     ],
                 ),
                 dcc.Interval(id="db-update-interval", interval=1000*60*60), # Auto-refresh database every hour
-                dcc.Store(id="table-data-store", data = {"data": [], "column_defs": []}),
+                dcc.Store(id="table-data-store", data = {"data": {}, "column_defs": {}}),
                 dcc.Store(id="samples-store", data = []),
                 dcc.Store(id="batches-store", data = {}),
             ],

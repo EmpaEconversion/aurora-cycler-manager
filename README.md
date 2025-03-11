@@ -60,11 +60,11 @@ To _create a new set up_:
 
 ## Updating
 
-Uninstall and reinstall with `pip`. From versions `0.5.x` you do not have to re-do any of the setup steps, otherwise follow instructions in Installation.
+From versions `0.5.x` you do not have to re-do any of the setup steps, just upgrade with pip:
 ```
-pip uninstall aurora-cycler-manager
-pip install git+https://github.com/EmpaEconversion/aurora-cycler-manager.git
+pip install git+https://github.com/EmpaEconversion/aurora-cycler-manager.git --upgrade
 ```
+If upgrading from ealier versions, first `pip uninstall aurora-cycler-manager` then follow the installation steps.
 
 ## Usage
 
