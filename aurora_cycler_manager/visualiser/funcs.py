@@ -21,12 +21,26 @@ def get_database() -> dict[str, Any]:
     """
     db_path = CONFIG["Database path"]
     unused_pipelines = CONFIG.get("Unused pipelines", [])
-    pipeline_query = "SELECT * FROM pipelines WHERE " + " AND ".join([f"Pipeline NOT LIKE '{pattern}'" for pattern in unused_pipelines])
+
+    with sqlite3.connect(db_path) as conn:
+        if unused_pipelines:
+            not_like_conditions = " OR ".join(["Pipeline LIKE ?"] * len(unused_pipelines))
+            pipelines_df = pd.read_sql_query(
+                "SELECT * FROM pipelines WHERE NOT (" + not_like_conditions + ")",  # noqa: S608 - injection safe
+                conn,
+                params=unused_pipelines,
+            )
+        else:
+            pipelines_df = pd.read_sql_query("SELECT * FROM pipelines", conn)
+        samples_df = pd.read_sql_query("SELECT * FROM samples", conn)
+        results_df = pd.read_sql_query("SELECT * FROM results", conn)
+        jobs_df = pd.read_sql_query("SELECT * FROM jobs", conn)
+
     db_data = {
-        "samples": pd.read_sql_query("SELECT * FROM samples", sqlite3.connect(db_path)).to_dict("records"),
-        "results": pd.read_sql_query("SELECT * FROM results", sqlite3.connect(db_path)).to_dict("records"),
-        "jobs": pd.read_sql_query("SELECT * FROM jobs", sqlite3.connect(db_path)).to_dict("records"),
-        "pipelines": pd.read_sql_query(pipeline_query, sqlite3.connect(db_path)).to_dict("records"),
+        "samples": samples_df.to_dict("records"),
+        "results": results_df.to_dict("records"),
+        "jobs": jobs_df.to_dict("records"),
+        "pipelines": pipelines_df.to_dict("records"),
     }
     db_columns = {
         "samples": [{"field" : col, "filter": True, "tooltipField": col} for col in db_data["samples"][0]],
