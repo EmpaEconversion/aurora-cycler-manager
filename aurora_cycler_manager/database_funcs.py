@@ -64,7 +64,7 @@ def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
             cursor.execute(sql, (*tuple(row), row["Sample ID"]))
         conn.commit()
 
-def _pre_check_sample_file(json_file: Path):
+def _pre_check_sample_file(json_file: Path) -> None:
     """Raise error if file is not a sensible JSON file."""
     json_file = Path(json_file)
     # If csv is over 2 MB, do not insert
@@ -134,7 +134,11 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
             (df["Anode mass (mg)"] - df["Anode current collector mass (mg)"])
             * df["Anode active material mass fraction"]
         )
-    required_columns = ["Cathode mass (mg)", "Cathode current collector mass (mg)", "Cathode active material mass fraction"]
+    required_columns = [
+        "Cathode mass (mg)",
+        "Cathode current collector mass (mg)",
+        "Cathode active material mass fraction",
+    ]
     if all(col in df.columns for col in required_columns):
         df["Cathode active material mass (mg)"] = (
             (df["Cathode mass (mg)"] - df["Cathode current collector mass (mg)"])
@@ -156,7 +160,11 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
     if all(col in df.columns for col in required_columns):
         df["N:P ratio overlap factor"] = (df["Cathode diameter (mm)"]**2 / df["Anode diameter (mm)"]**2).fillna(0)
     # N:P ratio
-    required_columns = ["Anode balancing capacity (mAh)", "Cathode balancing capacity (mAh)", "N:P ratio overlap factor"]
+    required_columns = [
+        "Anode balancing capacity (mAh)",
+        "Cathode balancing capacity (mAh)",
+        "N:P ratio overlap factor",
+    ]
     if all(col in df.columns for col in required_columns):
         df["N:P ratio"] = (
             df["Anode balancing capacity (mAh)"] * df["N:P ratio overlap factor"]
@@ -255,8 +263,7 @@ def get_batch_details() -> dict[str, dict]:
                 batches[batch] = {"description": description, "samples": []}
             batches[batch]["samples"].append(sample)
         # sort the keys alphabetically
-        batches = dict(sorted(batches.items()))
-    return batches
+        return dict(sorted(batches.items()))
 
 def save_or_overwrite_batch(batch_name: str, batch_description: str, sample_ids: list) -> None:
     """Save a batch to the database, overwriting it if the name already exists."""
