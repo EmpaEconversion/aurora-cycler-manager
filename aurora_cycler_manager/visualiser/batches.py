@@ -641,7 +641,7 @@ def register_batches_callbacks(app: Dash) -> None:
             "Last specific discharge capacity (mAh/g)",
             "Capacity loss (%)",
         ]
-        df = df.drop(columns=columns_not_needed)
+        df = df.drop(columns=columns_not_needed, errors="ignore")
 
         # sort columns reverse alphabetically
         df = df.reindex(sorted(df.columns), axis=1)
