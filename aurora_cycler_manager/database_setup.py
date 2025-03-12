@@ -13,8 +13,6 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from aurora_cycler_manager.config import get_config
-
 
 def default_config(base_dir: Path) -> dict:
     """Create default shared config file."""
@@ -141,7 +139,8 @@ def default_config(base_dir: Path) -> dict:
 def create_database() -> None:
     """Create/update a database file."""
     # Load the configuration
-    config = get_config()
+    from aurora_cycler_manager.config import CONFIG
+    config = CONFIG
     database_path = Path(config["Database path"])
 
     # Check if database file already exists
@@ -289,12 +288,12 @@ def main() -> None:
     config_path = root_dir / "config.json"
 
     try:
-        config = get_config()
-        if config.get("Shared config path") and config.get("Database path"):
+        from aurora_cycler_manager.config import CONFIG
+        if CONFIG.get("Shared config path") and CONFIG.get("Database path"):
             print("Set up already exists:")
             print(f"User config file: {config_path}")
-            print(f"Shared config file: {config['Shared config path']}")
-            print(f"Database: {config['Database path']}")
+            print(f"Shared config file: {CONFIG['Shared config path']}")
+            print(f"Database: {CONFIG['Database path']}")
             choice = input("Update existing database entries? (yes/no): ")
             if choice.lower() in ["yes", "y"]:
                 create_database()
@@ -333,7 +332,7 @@ def main() -> None:
         with (config_path).open("w") as f:
             json.dump(config, f, indent=4)
         # If this runs successfully, the user can now run the app
-        get_config()
+        from aurora_cycler_manager.config import CONFIG
         print("Successfully connected to existing configuration. Run the app with 'aurora-app'")
     elif choice.lower() in ["no", "n"]:
         choice = input("Create a new config, database and file structure? (yes/no):")
@@ -368,14 +367,14 @@ def main() -> None:
             json.dump(default_config(base_dir), f, indent=4)
         # Read the user config file and update with the shared config file
         try:
-            config = get_config()
+            from aurora_cycler_manager.config import CONFIG
         except (FileNotFoundError, ValueError):
             # If it didn't exist before, get_config will have created a blank file
             with (root_dir/"config.json").open("r") as f:
-                config = json.load(f)
-        config["Shared config path"] = str(config_path)
+                CONFIG = json.load(f)
+        CONFIG["Shared config path"] = str(config_path)
         with (root_dir/"config.json").open("w") as f:
-            json.dump(config, f, indent=4)
+            json.dump(CONFIG, f, indent=4)
         print(f"Created shared config file at {config_path}")
         print(f"Updated user config at {root_dir/'config.json'} to point to shared config file")
 
