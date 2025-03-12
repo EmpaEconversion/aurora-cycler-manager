@@ -50,7 +50,8 @@ try:
 except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
     print(e)
     print("You cannot access any servers. Running in view-only mode.")
-OPENBIS_DISABLED = CONFIG.get("OpenBIS PAT") is None
+openbis_path = CONFIG.get("OpenBIS PAT")
+OPENBIS_DISABLED = Path(openbis_path).exists() if openbis_path else True
 #-------------------------------------- Database view layout --------------------------------------#
 
 # Define visibility settings for buttons and divs when switching between tabs
