@@ -4,10 +4,13 @@ Useful functions for the visualiser app.
 """
 import sqlite3
 from contextlib import suppress
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Union
 
 import numpy as np
 import pandas as pd
+from pytz import timezone
 from scipy import stats
 
 from aurora_cycler_manager.config import CONFIG
@@ -43,10 +46,10 @@ def get_database() -> dict[str, Any]:
         "pipelines": pipelines_df.to_dict("records"),
     }
     db_columns = {
-        "samples": [{"field" : col, "filter": True, "tooltipField": col} for col in db_data["samples"][0]],
-        "results": [{"field" : col, "filter": True, "tooltipField": col} for col in db_data["results"][0]],
-        "jobs": [{"field" : col, "filter": True, "tooltipField": col} for col in db_data["jobs"][0]],
-        "pipelines": [{"field" : col, "filter": True, "tooltipField": col} for col in db_data["pipelines"][0]],
+        "samples": [{"field" : col, "filter": True, "tooltipField": col} for col in samples_df.columns],
+        "results": [{"field" : col, "filter": True, "tooltipField": col} for col in results_df.columns],
+        "jobs": [{"field" : col, "filter": True, "tooltipField": col} for col in jobs_df.columns],
+        "pipelines": [{"field" : col, "filter": True, "tooltipField": col} for col in pipelines_df.columns],
     }
 
     # Use custom comparator for pipeline column
@@ -56,6 +59,14 @@ def get_database() -> dict[str, Any]:
         pipeline_field["sort"] = "asc"
 
     return {"data":db_data, "column_defs": db_columns}
+
+def get_db_last_update() -> str:
+    """Get the last update time of the database."""
+    db_path = Path(CONFIG["Database path"])
+    modified_uts = db_path.stat().st_mtime
+    tz = timezone(CONFIG.get("Time zone","Europe/Zurich"))
+    modified_datetime = datetime.fromtimestamp(int(modified_uts), tz=tz)
+    return modified_datetime.strftime("%Y-%m-%d %H:%M:%S %z")
 
 def make_pipelines_comparable(pipelines: list[str | None]) -> list[str | None]:
     """Convert pipelines string to a comparable format.

@@ -33,6 +33,7 @@ from aurora_cycler_manager.visualiser.db_batch_edit import (
 )
 from aurora_cycler_manager.visualiser.funcs import (
     get_database,
+    get_db_last_update,
     make_pipelines_comparable,
 )
 from aurora_cycler_manager.visualiser.notifications import active_time, idle_time, queue_notification
@@ -719,7 +720,7 @@ def register_db_view_callbacks(app: Dash) -> None:
     def refresh_database(n_clicks, n_intervals):
         db_data = get_database()
         dt_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        last_checked = db_data["data"]["pipelines"][0]["Last checked"]
+        last_checked = get_db_last_update()
         samples = [s["Sample ID"] for s in db_data["data"]["samples"]]
         batches = get_batch_details()
         return (
