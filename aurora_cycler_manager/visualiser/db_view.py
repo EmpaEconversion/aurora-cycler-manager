@@ -752,8 +752,8 @@ def register_db_view_callbacks(app: Dash) -> None:
         State("table-select", "active_tab"),
     )
     def enable_buttons(selected_rows, table):
-        enabled = {"add-samples-button"}  # These buttons are always enabled
-        # Add more buttons to enabled set with union operator |=
+        enabled = set()
+        # Add buttons to enabled set with union operator |=
         if selected_rows:
             enabled |= {"copy-button"}
             if accessible_servers:  # Need cycler permissions to do anything except copy, view or upload
@@ -773,6 +773,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                         if all(s["Status"] in ["r","q","qw"] for s in selected_rows):
                             enabled |= {"cancel-button"}
                 elif table == "samples":  # noqa: SIM102
+                    enabled |= {"add-samples-button"}
                     if all(s["Sample ID"] is not None for s in selected_rows):
                         enabled |= {"delete-button","label-button"}
                         if len(selected_rows) > 1:
