@@ -759,7 +759,10 @@ def register_db_view_callbacks(app: Dash) -> None:
             enabled |= {"copy-button"}
             if accessible_servers:  # Need cycler permissions to do anything except copy, view or upload
                 if table == "pipelines":
-                    if all(s["Server label"] in accessible_servers for s in selected_rows):
+                    if (
+                        all(s["Server label"] in accessible_servers for s in selected_rows)
+                        and len({s.get("Server type") for s in selected_rows}) == 1
+                    ):
                         if all(s["Sample ID"] is not None for s in selected_rows):
                             enabled |= {"submit-button","snapshot-button"}
                             if all(s["Job ID"] is None for s in selected_rows):
