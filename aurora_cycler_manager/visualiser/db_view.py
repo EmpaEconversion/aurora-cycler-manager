@@ -33,6 +33,7 @@ from aurora_cycler_manager.visualiser.db_batch_edit import (
 )
 from aurora_cycler_manager.visualiser.funcs import (
     get_database,
+    get_db_last_update,
     make_pipelines_comparable,
 )
 from aurora_cycler_manager.visualiser.notifications import active_time, idle_time, queue_notification
@@ -49,7 +50,8 @@ try:
 except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
     print(e)
     print("You cannot access any servers. Running in view-only mode.")
-OPENBIS_DISABLED = CONFIG.get("OpenBIS PAT") is None
+openbis_path = CONFIG.get("OpenBIS PAT")
+OPENBIS_DISABLED = Path(openbis_path).exists() if openbis_path else True
 #-------------------------------------- Database view layout --------------------------------------#
 
 # Define visibility settings for buttons and divs when switching between tabs
@@ -148,11 +150,12 @@ button_layout = html.Div(
                     id="snapshot-button", color="primary", className="me-1",
                 ),
                 dcc.Upload(
-                    children=dbc.Button(
-                        [html.I(className="bi bi-database-add me-2"), "Add samples"],
-                        id="add-samples-button", color="primary", className="me-1",
+                    dbc.Button(
+                        [html.I(className="bi bi-database-add me-2"),"Add samples"],
+                        id="add-samples-button-element", color="primary", className="me-1",
                     ),
-                    id="sample-upload", accept=".json", max_size= 2*1024*1024, multiple=False,
+                    id="add-samples-button", accept=".json", max_size= 2*1024*1024, multiple=False,
+                    style_disabled={"opacity": "1"},
                 ),
                 dbc.Tooltip(
                     children = (
@@ -719,7 +722,7 @@ def register_db_view_callbacks(app: Dash) -> None:
     def refresh_database(n_clicks, n_intervals):
         db_data = get_database()
         dt_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        last_checked = db_data["data"]["pipelines"][0]["Last checked"]
+        last_checked = get_db_last_update()
         samples = [s["Sample ID"] for s in db_data["data"]["samples"]]
         batches = get_batch_details()
         return (
@@ -750,8 +753,8 @@ def register_db_view_callbacks(app: Dash) -> None:
         State("table-select", "active_tab"),
     )
     def enable_buttons(selected_rows, table):
-        enabled = {"add-samples-button"}  # These buttons are always enabled
-        # Add more buttons to enabled set with union operator |=
+        enabled = set()
+        # Add buttons to enabled set with union operator |=
         if selected_rows:
             enabled |= {"copy-button"}
             if accessible_servers:  # Need cycler permissions to do anything except copy, view or upload
@@ -771,6 +774,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                         if all(s["Status"] in ["r","q","qw"] for s in selected_rows):
                             enabled |= {"cancel-button"}
                 elif table == "samples":  # noqa: SIM102
+                    enabled |= {"add-samples-button"}
                     if all(s["Sample ID"] is not None for s in selected_rows):
                         enabled |= {"delete-button","label-button"}
                         if len(selected_rows) > 1:
@@ -1375,8 +1379,8 @@ def register_db_view_callbacks(app: Dash) -> None:
     @app.callback(
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Output("add-samples-confirm", "displayed"),
-        Input("sample-upload", "contents"),
-        State("sample-upload", "filename"),
+        Input("add-samples-button", "contents"),
+        State("add-samples-button", "filename"),
         prevent_initial_call=True,
     )
     def upload_samples(contents, filename):
@@ -1396,8 +1400,8 @@ def register_db_view_callbacks(app: Dash) -> None:
     @app.callback(
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("add-samples-confirm", "submit_n_clicks"),
-        State("sample-upload", "contents"),
-        State("sample-upload", "filename"),
+        State("add-samples-button", "contents"),
+        State("add-samples-button", "filename"),
         prevent_initial_call=True,
     )
     def upload_overwrite_samples(submit_n_clicks,contents,filename):
@@ -1447,3 +1451,11 @@ def register_db_view_callbacks(app: Dash) -> None:
         print("Updating metadata in cycles.*.json and full.*.h5 files")
         update_sample_metadata(sample_ids)
         return no_update, 1
+
+    # Synchronise add-samples button disabled state
+    @app.callback(
+        Output("add-samples-button-element", "disabled"),
+        Input("add-samples-button", "disabled"),
+    )
+    def disabled_sync(disabled):
+        return disabled
