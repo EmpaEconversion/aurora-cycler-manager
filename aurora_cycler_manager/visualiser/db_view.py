@@ -150,11 +150,12 @@ button_layout = html.Div(
                     id="snapshot-button", color="primary", className="me-1",
                 ),
                 dcc.Upload(
-                    children=dbc.Button(
-                        [html.I(className="bi bi-database-add me-2"), "Add samples"],
-                        id="add-samples-button", color="primary", className="me-1",
+                    dbc.Button(
+                        [html.I(className="bi bi-database-add me-2"),"Add samples"],
+                        id="add-samples-button-element", color="primary", className="me-1",
                     ),
-                    id="sample-upload", accept=".json", max_size= 2*1024*1024, multiple=False,
+                    id="add-samples-button", accept=".json", max_size= 2*1024*1024, multiple=False,
+                    style_disabled={"opacity": "1"},
                 ),
                 dbc.Tooltip(
                     children = (
@@ -1378,8 +1379,8 @@ def register_db_view_callbacks(app: Dash) -> None:
     @app.callback(
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Output("add-samples-confirm", "displayed"),
-        Input("sample-upload", "contents"),
-        State("sample-upload", "filename"),
+        Input("add-samples-button", "contents"),
+        State("add-samples-button", "filename"),
         prevent_initial_call=True,
     )
     def upload_samples(contents, filename):
@@ -1399,8 +1400,8 @@ def register_db_view_callbacks(app: Dash) -> None:
     @app.callback(
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("add-samples-confirm", "submit_n_clicks"),
-        State("sample-upload", "contents"),
-        State("sample-upload", "filename"),
+        State("add-samples-button", "contents"),
+        State("add-samples-button", "filename"),
         prevent_initial_call=True,
     )
     def upload_overwrite_samples(submit_n_clicks,contents,filename):
@@ -1450,3 +1451,11 @@ def register_db_view_callbacks(app: Dash) -> None:
         print("Updating metadata in cycles.*.json and full.*.h5 files")
         update_sample_metadata(sample_ids)
         return no_update, 1
+
+    # Synchronise add-samples button disabled state
+    @app.callback(
+        Output("add-samples-button-element", "disabled"),
+        Input("add-samples-button", "disabled"),
+    )
+    def disabled_sync(disabled):
+        return disabled
