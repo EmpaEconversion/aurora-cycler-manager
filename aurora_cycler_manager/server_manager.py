@@ -147,6 +147,7 @@ class ServerManager:
             dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             label = server.label
             hostname = server.hostname
+            server_type = server.server_type
             if status:
                 with sqlite3.connect(self.config["Database path"]) as conn:
                     cursor = conn.cursor()
@@ -154,10 +155,10 @@ class ServerManager:
                         jobid = f"{label}-{jobid_on_server}" if jobid_on_server else None
                         cursor.execute(
                             "INSERT OR REPLACE INTO pipelines "
-                            "(`Pipeline`, `Sample ID`, `Job ID`, `Ready`, `Last Checked`, "
-                            "`Server label`, `Server Hostname`, `Job ID on server`) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                            (pipeline, sampleid, jobid, ready, dt, label, hostname, jobid_on_server),
+                            "(`Pipeline`, `Sample ID`, `Job ID`, `Ready`, `Last checked`, "
+                            "`Server label`, `Server hostname`, `Job ID on server`, `Server type`) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            (pipeline, sampleid, jobid, ready, dt, label, hostname, jobid_on_server, server_type),
                         )
                     conn.commit()
 

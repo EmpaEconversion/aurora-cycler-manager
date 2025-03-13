@@ -188,6 +188,7 @@ def create_database() -> None:
             "`Flag` VARCHAR(10), "
             "`Last checked` DATETIME, "
             "`Server label` VARCHAR(255), "
+            "`Server type` VARCHAR(50), "
             "`Server hostname` VARCHAR(255), "
             "`Job ID on server` VARCHAR(255), "
             "FOREIGN KEY(`Sample ID`) REFERENCES samples(`Sample ID`), "
