@@ -32,7 +32,7 @@ import paramiko
 
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import CONFIG
-from aurora_cycler_manager.cycler_servers import CyclerServer, TomatoServer
+from aurora_cycler_manager.cycler_servers import CyclerServer, TomatoServer, NewareServer
 from aurora_cycler_manager.tomato_converter import convert_tomato_json
 from aurora_cycler_manager.utils import run_from_sample
 
@@ -81,7 +81,7 @@ class ServerManager:
 
     def get_servers(self) -> list[CyclerServer]:
         """Create the cycler server objects from the config file."""
-        servers = []
+        servers: list[CyclerServer] = []
         pkey_path = self.config.get("SSH private key path")
         if not pkey_path:
             msg = "'SSH private key path' not found in config file. Cannot connect to servers."
@@ -94,6 +94,17 @@ class ServerManager:
                             server_config,
                             pkey_path,
                        ),
+                    )
+                except (OSError, ValueError, TimeoutError, paramiko.SSHException) as exc:
+                    print(f"CRITICAL: Server {server_config['label']} could not be created, skipping")
+                    print(f"Error: {exc}")
+            elif server_config["server_type"] == "neware":
+                try:
+                    servers.append(
+                        NewareServer(
+                            server_config,
+                            pkey_path,
+                        ),
                     )
                 except (OSError, ValueError, TimeoutError, paramiko.SSHException) as exc:
                     print(f"CRITICAL: Server {server_config['label']} could not be created, skipping")
@@ -476,7 +487,7 @@ class ServerManager:
     def submit(
             self,
             sample: str,
-            json_file: str | dict,
+            payload: str | dict,
             capacity_Ah: float | Literal["areal","mass","nominal"],
             comment: str = "",
         ) -> None:
@@ -485,8 +496,9 @@ class ServerManager:
         Args:
             sample : str
                 The sample ID to submit the job for, must exist in samples table of database
-            json_file : str or dict
-                A json file, json string, or dictionary with payload to submit to the server
+            payload : str or dict
+                (tomato) A .json path, json string, or dictionary with payload to submit to the server
+                (Neware) A .xml path with payload to submit to the server
             capacity_Ah : float or str
                 The capacity of the sample in Ah, if 'areal', 'mass', or 'nominal', the capacity is
                 calculated from the sample information
@@ -495,7 +507,7 @@ class ServerManager:
 
         """
         # Get the sample capacity
-        if capacity_Ah in ["areal", "mass", "nominal"]:
+        if isinstance(capacity_Ah, str) and capacity_Ah in ["areal", "mass", "nominal"]:
             capacity_Ah = self.get_sample_capacity(sample, capacity_Ah)
         elif not isinstance(capacity_Ah, float):
             msg = f"Capacity {capacity_Ah} must be 'areal', 'mass', or a float in Ah."
@@ -505,34 +517,24 @@ class ServerManager:
             raise ValueError(msg)
 
         # Find the server with the sample loaded, if there is more than one throw an error
-        result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Sample ID` = ?", (sample,))
+        result = self.execute_sql("SELECT `Server label`, `Pipeline` FROM pipelines WHERE `Sample ID` = ?", (sample,))
+        if len(result) > 1:
+            msg = f"Sample {sample} is loaded on more than one server, cannot submit job."
+            raise ValueError(msg)
         server = self.find_server(result[0][0])
-
-        # Check if json_file is a string that could be a file path or a JSON string
-        if isinstance(json_file, str):
-            try:
-                # Attempt to load json_file as JSON string
-                payload = json.loads(json_file)
-            except json.JSONDecodeError:
-                # If it fails, assume json_file is a file path
-                with Path(json_file).open("r") as f:
-                    payload = json.load(f)
-        elif not isinstance(json_file, dict):
-            msg = "json_file must be a file path, a JSON string, or a dictionary"
-            raise TypeError(msg)
-        else: # If json_file is already a dictionary, use it directly
-            payload = json_file
+        pipeline = result[0][1]
 
         print(f"Submitting job to {sample} with capacity {capacity_Ah:.5f} Ah")
-        full_jobid, jobid, json_string = server.submit(sample, capacity_Ah, payload)
+        full_jobid, jobid, json_string = server.submit(sample, capacity_Ah, payload, pipeline)
         dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         # Update the job table in the database
-        self.execute_sql(
-            "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Job ID on server`, "
-            "`Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (full_jobid, sample, server.label, int(jobid), dt, json_string, comment),
-        )
+        if full_jobid and jobid:
+            self.execute_sql(
+                "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Job ID on server`, "
+                "`Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (full_jobid, sample, server.label, int(jobid), dt, json_string, comment),
+            )
 
     def cancel(self, jobid: str) -> str:
         """Cancel a job on a server.

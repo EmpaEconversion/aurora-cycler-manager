@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import json
 import warnings
+from datetime import datetime
 from pathlib import Path
 
 import paramiko
@@ -90,7 +91,11 @@ class CyclerServer:
         """Ready a pipeline for use."""
         raise NotImplementedError
 
-    def submit(self, sample: str, capacity_Ah: float, payload: str | dict) -> tuple[str, str, str]:
+    def unready(self, pipeline: str) -> str:
+        """Mark a pipeline not ready for use."""
+        raise NotImplementedError
+
+    def submit(self, sample: str, capacity_Ah: float, payload: str | dict, pipeline: str) -> tuple[str, str, str]:
         """Submit a job to the server."""
         raise NotImplementedError
 
@@ -156,6 +161,7 @@ class TomatoServer(CyclerServer):
             sample: str,
             capacity_Ah: float,
             payload: str | dict,
+            pipeline: str = "",
             send_file: bool = False,
         ) -> tuple[str, str, str]:
         """Submit a job to the server.
@@ -165,7 +171,8 @@ class TomatoServer(CyclerServer):
             capacity_Ah (float): The capacity of the sample in Ah
             payload (str | dict): The JSON payload to be submitted, can include '$NAME' which is
                 replaced with the actual sample ID
-            send_file (bool): If True, the payload is written to a file and sent to the server
+            pipeline (str, optional): The pipeline to submit the job to (not necessary for Tomato servers)
+            send_file (bool, default = False): If True, the payload is written to a file and sent to the server
 
         Returns:
             str: The jobid of the submitted job with the server prefix
@@ -201,13 +208,12 @@ class TomatoServer(CyclerServer):
                 f.write(json_string)
 
             # Send file to server
-            ssh = paramiko.SSHClient()
-            ssh.load_system_host_keys()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
-            with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
-                scp.put("temp.json", f"{self.save_location}/temp.json")
-            ssh.close()
+            with paramiko.SSHClient() as ssh:
+                ssh.load_system_host_keys()
+                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+                with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
+                    scp.put("temp.json", f"{self.save_location}/temp.json")
 
             # Submit the file on the server
             output = self.command(f"{self.tomato_scripts_path}ketchup submit {self.save_location}/temp.json")
@@ -424,3 +430,130 @@ class TomatoServer(CyclerServer):
             msg = f"jobdata.json not found for job {jobid_on_server}"
             raise FileNotFoundError(msg)
         return json.loads(stdout)
+
+class NewareServer(CyclerServer):
+    """Server class for Neware servers, implements all the methods in CyclerServer.
+
+    Used by server_manager to interact with Neware servers, should not be instantiated directly.
+
+    Attributes:
+        save_location (str): The location on the server where snapshots are saved.
+
+    """
+
+    def eject(self, pipeline: str) -> str:
+        """Remove a sample from a pipeline.
+
+        Do not need to actually change anything on Neware client, just update the database.
+        """
+        return f"Ejecting {pipeline}"
+
+    def load(self, sample: str, pipeline: str) -> str:
+        """Load a sample onto a pipeline.
+
+        Do not need to actually change anything on Neware client, just update the database.
+        """
+        return f"Loading {sample} onto {pipeline}"
+
+    def ready(self, pipeline: str) -> str:
+        """Readying and unreadying does not exist on Neware."""
+        raise NotImplementedError
+
+    def submit(self, sample: str, capacity_Ah: float, payload: str|dict, pipeline: str) -> tuple[str, str, str]:
+        """Submit a job to the server.
+
+        Use the START command on the Neware-api.
+        """
+        if not isinstance(payload, str|Path):
+            msg = "For Neware, payload must be a path to an xml file"
+            raise TypeError(msg)
+        xml_path = Path(payload)
+        if not xml_path.exists():
+            raise FileNotFoundError
+        if xml_path.suffix != ".xml":
+            msg = "Payload must be an xml file"
+            raise ValueError(msg)
+
+        # Convert capacity in Ah to capacity in mA s
+        capacity_mA_s = round(capacity_Ah * 3600 * 1000)
+
+        # Open the file and change $NAME to the sample name
+        with xml_path.open(encoding="utf-8") as f:
+            xml_string = f.read()
+        xml_string = xml_string.replace("$NAME", sample)
+        xml_string = xml_string.replace("$CAPACITY", str(capacity_mA_s))
+
+        # Write the xml string to a temporary file
+        current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        try:
+            with Path("temp.xml").open("w", encoding="utf-8") as f:
+                f.write(xml_string)
+            # Transfer the file to the remote PC and start the job
+            with paramiko.SSHClient() as ssh:
+                ssh.load_system_host_keys()
+                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+                with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
+                    remote_xml_path = f"C:/submitted_payloads/{sample}__{current_datetime}.xml"
+                    # Create the directory if it doesn't exist
+                    ssh.exec_command('mkdir "C:/submitted_payloads"')
+                    scp.put("temp.xml", remote_xml_path)
+
+            # Submit the file on the server
+            output = self.command(f"neware start {pipeline} {sample} {remote_xml_path}")
+            result = json.loads(output)
+            # Should be a list with one element [True]
+            if result != [True]:
+                msg = (
+                    "Error submitting job on Neware. "
+                    "Probably an issue with the xml file. "
+                    "You must check the Neware server logs for more information."
+                )
+                raise ValueError(msg)
+        finally:
+            # Remove the file locally
+            Path("temp.xml").unlink()
+        jobid = ""  # TODO get jobid from Neware somehow
+        jobid_on_server = ""  # TODO get jobid from Neware somehow
+        return jobid, jobid_on_server, xml_string
+
+    def cancel(self, job_id_on_server: str) -> str:
+        """Cancel a job on the server.
+
+        Use the STOP command on the Neware-api.
+        """
+        raise NotImplementedError
+
+    def get_pipelines(self) -> dict:
+        """Get the status of all pipelines on the server."""
+        result = json.loads(self.command("neware status"))
+        # result is a dict with keys=pipeline and value a dict of stuff
+        # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
+        pipelines, sampleids, jobids, readys = [], [], [], []
+        for pip, data in result.items():
+            pipelines.append(pip)
+            jobids.append(None)
+            if data["workstatus"] in ["working", "pause", "protect"]: # working\stop\finish\protect\pause
+                sampleids.append(data["barcode"])
+                readys.append(False)
+            else:
+                sampleids.append(None)
+                readys.append(True)
+        return {"pipeline": pipelines, "sampleid": sampleids, "jobid": [None]*len(pipelines), "ready": readys}
+
+    def get_jobs(self) -> dict:
+        """Get all jobs from server.
+
+        Not implemented, return empty dict for now.
+        """
+        return {}
+
+    def snapshot(
+            self,
+            jobid: str,
+            jobid_on_server: str,
+            local_save_location: str,
+            get_raw: bool,
+        ) -> str:
+        """Save a snapshot of a job on the server and download it to the local machine."""
+        raise NotImplementedError
