@@ -99,7 +99,7 @@ class CyclerServer:
         """Submit a job to the server."""
         raise NotImplementedError
 
-    def cancel(self, job_id_on_server: str) -> str:
+    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
         """Cancel a job on the server."""
         raise NotImplementedError
 
@@ -121,6 +121,13 @@ class CyclerServer:
         """Save a snapshot of a job on the server and download it to the local machine."""
         raise NotImplementedError
 
+    def get_last_data(self, job_id_on_server: str) -> dict:
+        """Get the last data from a job."""
+        raise NotImplementedError
+    
+    def get_job_data(self, jobid_on_server: str) -> dict:
+        """Get the jobdata dict for a job."""
+        raise NotImplementedError
 class TomatoServer(CyclerServer):
     """Server class for Tomato servers, implements all the methods in CyclerServer.
 
@@ -161,7 +168,7 @@ class TomatoServer(CyclerServer):
             sample: str,
             capacity_Ah: float,
             payload: str | dict,
-            pipeline: str = "",
+            _pipeline: str = "",
             send_file: bool = False,
         ) -> tuple[str, str, str]:
         """Submit a job to the server.
@@ -234,7 +241,7 @@ class TomatoServer(CyclerServer):
         msg = f"Error submitting job: {output}"
         raise ValueError(msg)
 
-    def cancel(self, job_id_on_server: str) -> str:
+    def cancel(self, job_id_on_server: str, _sampleid: str, _pipeline: str) -> str:
         """Cancel a job on the server."""
         return self.command(f"{self.tomato_scripts_path}ketchup cancel {job_id_on_server}")
 
@@ -351,15 +358,14 @@ class TomatoServer(CyclerServer):
 
         return snapshot_status
 
-    def get_last_data(self, job_id_on_server: int) -> tuple[str,dict]:
+    def get_last_data(self, job_id_on_server: str) -> dict:
         """Get the last data from a job snapshot.
 
         Args:
             job_id_on_server : str
-                The job ID on the server as an integer
+                The job ID on the server (an integer for tomato)
 
         Returns:
-            str: the file name of the latest data json file
             dict: the latest data
 
         """
@@ -394,9 +400,10 @@ class TomatoServer(CyclerServer):
         file_name = stdout.readline().strip()
         file_content = stdout.readline().strip()
         file_content_json = json.loads(file_content)
-        return file_name, file_content_json
+        file_content_json["file_name"] = file_name
+        return file_content_json
 
-    def get_job_data(self, jobid_on_server: int) -> dict:
+    def get_job_data(self, jobid_on_server: str) -> dict:
         """Get the jobdata dict for a job."""
         if not self.tomato_data_path:
             msg = "tomato_data_path not set for this server in config file"
@@ -465,21 +472,29 @@ class NewareServer(CyclerServer):
         Use the START command on the Neware-api.
         """
         if not isinstance(payload, str|Path):
-            msg = "For Neware, payload must be a path to an xml file"
+            msg = "For Neware, payload must be a path to an xml file or xml string"
             raise TypeError(msg)
-        xml_path = Path(payload)
-        if not xml_path.exists():
-            raise FileNotFoundError
-        if xml_path.suffix != ".xml":
-            msg = "Payload must be an xml file"
-            raise ValueError(msg)
-
+        if payload.startswith("<?xml"):
+            if "BTS Client" not in payload:
+                msg = (
+                    "Payload looks like an xml string, but does not contain 'BTS Client'. "
+                    "Make sure this is a valid Neware xml file."
+                )
+                raise ValueError(msg)
+            xml_string = payload
+        else:
+            xml_path = Path(payload)
+            if not xml_path.exists():
+                raise FileNotFoundError
+            if xml_path.suffix != ".xml":
+                msg = "Payload must be an xml file"
+                raise ValueError(msg)
+            with xml_path.open(encoding="utf-8") as f:
+                xml_string = f.read()
         # Convert capacity in Ah to capacity in mA s
         capacity_mA_s = round(capacity_Ah * 3600 * 1000)
 
-        # Open the file and change $NAME to the sample name
-        with xml_path.open(encoding="utf-8") as f:
-            xml_string = f.read()
+        # Open the file and change $NAME and $CAPACITY to appropriate values
         xml_string = xml_string.replace("$NAME", sample)
         xml_string = xml_string.replace("$CAPACITY", str(capacity_mA_s))
 
@@ -494,35 +509,51 @@ class NewareServer(CyclerServer):
                 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
                 ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
                 with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
-                    remote_xml_path = f"C:/submitted_payloads/{sample}__{current_datetime}.xml"
+                    remote_xml_dir = Path("C:/submitted_payloads")
+                    remote_xml_path = remote_xml_dir / f"{sample}__{current_datetime}.xml"
                     # Create the directory if it doesn't exist
-                    ssh.exec_command('mkdir "C:/submitted_payloads"')
+                    if self.shell_type == "cmd":
+                        ssh.exec_command(f'mkdir "{remote_xml_dir!s}"')
+                    elif self.shell_type == "powershell":
+                        ssh.exec_command(f'New-Item -ItemType Directory -Path "{remote_xml_dir!s}"')
                     scp.put("temp.xml", remote_xml_path)
 
-            # Submit the file on the server
+            # Submit the file on the remote PC
             output = self.command(f"neware start {pipeline} {sample} {remote_xml_path}")
-            result = json.loads(output)
-            # Should be a list with one element [True]
-            if result != [True]:
-                msg = (
-                    "Error submitting job on Neware. "
-                    "Probably an issue with the xml file. "
-                    "You must check the Neware server logs for more information."
-                )
-                raise ValueError(msg)
+            print(output)
+            err_msg = (
+                "Error submitting job on Neware. "
+                "Probably an issue with the xml file. "
+                "You must check the Neware server logs for more information."
+            )
+            try:
+                res = json.loads(output)  # list of dicts, here always length 1
+                if res[0]["start"] != "ok":
+                    raise ValueError(err_msg)
+            except json.JSONDecodeError as e:
+                raise ValueError(err_msg) from e
+            print("Successfully started job on Neware")
+
+            # Then ask for the jobid
+            output = self.command(f"neware inquiredf {pipeline}")
+            res = json.loads(output)
+            jobid_on_server = f"{res["devid"]}_{res["subdevid"]}_{res["chlid"]}_{res["testid"]}"
+            jobid = f"{self.label}-{jobid_on_server}"
         finally:
-            # Remove the file locally
-            Path("temp.xml").unlink()
-        jobid = ""  # TODO get jobid from Neware somehow
-        jobid_on_server = ""  # TODO get jobid from Neware somehow
+            Path("temp.xml").unlink()  # Remove the file on local machine
         return jobid, jobid_on_server, xml_string
 
-    def cancel(self, job_id_on_server: str) -> str:
+    def cancel(self, _job_id_on_server: str, _sampleid: str, pipeline: str) -> str:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.
         """
-        raise NotImplementedError
+        output = self.command(f"neware stop {pipeline}")  # returns list of dicts, here always length 1
+        res = json.loads(output)
+        if res[0]["stop"] == "ok":
+            return f"Stopped pipeline {pipeline} on Neware"
+        msg = "Error cancelling job on Neware"
+        raise ValueError(msg)
 
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
@@ -539,12 +570,13 @@ class NewareServer(CyclerServer):
             else:
                 sampleids.append(None)
                 readys.append(True)
+        # TODO need to not overwrite with none if no "sample" on pipeline
         return {"pipeline": pipelines, "sampleid": sampleids, "jobid": [None]*len(pipelines), "ready": readys}
 
     def get_jobs(self) -> dict:
         """Get all jobs from server.
 
-        Not implemented, return empty dict for now.
+        Not implemented, could use inquiredf but very slow. Return empty dict for now.
         """
         return {}
 
@@ -556,4 +588,13 @@ class NewareServer(CyclerServer):
             get_raw: bool,
         ) -> str:
         """Save a snapshot of a job on the server and download it to the local machine."""
+        raise NotImplementedError
+
+    def get_job_data(self, jobid_on_server: str) -> dict:
+        """Get the jobdata dict for a job."""
+        # TODO: This is problematic because Neware XMLs don't easily translate to a dict.
+        raise NotImplementedError
+
+    def get_last_data(self, job_id_on_server: str) -> dict:
+        """Get the last data from a job snapshot."""
         raise NotImplementedError

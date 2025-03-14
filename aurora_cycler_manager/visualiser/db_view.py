@@ -391,7 +391,7 @@ db_view_layout = html.Div(
                     id="submit-modal-body",
                     style={"width": "100%"},
                     children=[
-                        "Select a tomato .json payload to submit",
+                        "Select a payload to submit",
                         dcc.Upload(
                             id="submit-upload",
                             children=html.Div([
@@ -407,7 +407,7 @@ db_view_layout = html.Div(
                                 "borderRadius": "8px",
                                 "textAlign": "center",
                             },
-                            accept=".json",
+                            accept=[".json",".xml"],
                             multiple=False,
                         ),
                         html.P(children="No file selected", id="validator"),
@@ -1043,9 +1043,10 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("payload", "data"),
         Input("submit-upload", "contents"),
         State("submit-upload", "filename"),
+        State("table", "selectedRows"),
         prevent_initial_call=True,
     )
-    def check_json(contents, filename):
+    def check_json(contents, filename, selected_rows):
         if not contents:
             return "No file selected", {}
         content_type, content_string = contents.split(",")
@@ -1053,16 +1054,25 @@ def register_db_view_callbacks(app: Dash) -> None:
             decoded = base64.b64decode(content_string).decode("utf-8")
         except UnicodeDecodeError:
             return f"ERROR: {filename} had decoding error", {}
-        try:
-            payload = json.loads(decoded)
-        except json.JSONDecodeError:
-            return f"ERROR: {filename} is invalid json file", {}
-        # TODO use proper tomato schemas to validate the json
-        missing_keys = [key for key in ["version","method","tomato"] if key not in payload.keys()]
-        if missing_keys:
-            msg = f"ERROR: {filename} is missing keys: {', '.join(missing_keys)}"
-            return msg, {}
-        return f"{filename} loaded", payload
+        if all(s["Server type"] == "tomato" for s in selected_rows):
+            # Should be a JSON file
+            try:
+                payload = json.loads(decoded)
+            except json.JSONDecodeError:
+                return f"ERROR: {filename} is invalid json file", {}
+            missing_keys = [key for key in ["version","method","tomato"] if key not in payload.keys()]
+            if missing_keys:
+                msg = f"ERROR: {filename} is missing keys: {', '.join(missing_keys)}"
+                return msg, {}
+            return f"{filename} loaded", payload
+        elif all(s["Server type"] == "neware" for s in selected_rows):
+            # Should be an XML file
+            if not (decoded.startswith('<?xml version="1.0" encoding="GB2312"?>') and "BTS Client" in decoded):
+                msg = f"ERROR: {filename} is not a valid BTS Client XML file"
+                return msg, {}
+            return f"{filename} loaded", decoded
+        return "Huh, how did you even do this?", {}
+
     # Submit pop up - show custom capacity input if custom capacity is selected
     @app.callback(
         Output("submit-capacity-div", "style"),

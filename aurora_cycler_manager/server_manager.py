@@ -32,7 +32,7 @@ import paramiko
 
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import CONFIG
-from aurora_cycler_manager.cycler_servers import CyclerServer, TomatoServer, NewareServer
+from aurora_cycler_manager.cycler_servers import CyclerServer, NewareServer, TomatoServer
 from aurora_cycler_manager.tomato_converter import convert_tomato_json
 from aurora_cycler_manager.utils import run_from_sample
 
@@ -498,7 +498,7 @@ class ServerManager:
                 The sample ID to submit the job for, must exist in samples table of database
             payload : str or dict
                 (tomato) A .json path, json string, or dictionary with payload to submit to the server
-                (Neware) A .xml path with payload to submit to the server
+                (Neware) A .xml path or xml string with payload to submit to the server
             capacity_Ah : float or str
                 The capacity of the sample in Ah, if 'areal', 'mass', or 'nominal', the capacity is
                 calculated from the sample information
@@ -547,10 +547,10 @@ class ServerManager:
             str: The output from the server cancel command
 
         """
-        result = self.execute_sql("SELECT `Server label`, `Job ID on server` FROM jobs WHERE `Job ID` = ?", (jobid,))
-        server_label, jobid_on_server = result[0]
+        result = self.execute_sql("SELECT `Server label`, `Job ID on server`, `Sample ID`, `Pipeline` FROM jobs WHERE `Job ID` = ?", (jobid,))
+        server_label, jobid_on_server, sampleid, pipeline = result[0]
         server = self.find_server(server_label)
-        output = server.cancel(jobid_on_server)
+        output = server.cancel(jobid_on_server, sampleid, pipeline)
         # If no error, assume job is cancelled and update the database
         self.execute_sql(
             "UPDATE jobs SET `Status` = 'cd' WHERE `Job ID` = ?",
@@ -719,7 +719,7 @@ class ServerManager:
             sleep(20) # to not overload the server
             print(f"{percent_done:.2f}% done, {int(time_remaining/60)} minutes remaining")
 
-    def get_last_data(self, samp_or_jobid: str) -> tuple[str,dict]:
+    def get_last_data(self, samp_or_jobid: str) -> dict:
         """Get the last data from a sample or job.
 
         Args:
@@ -766,6 +766,9 @@ class ServerManager:
                 (json.dumps("Unknown"), "Unknown", jobid),
             )
             return
+        except NotImplementedError:
+            msg = f"Server type {server.server_type} not supported for getting job data."
+            raise NotImplementedError(msg)
         payload = jobdata["payload"]
         sampleid = jobdata["payload"]["sample"]["name"]
         self.execute_sql(
