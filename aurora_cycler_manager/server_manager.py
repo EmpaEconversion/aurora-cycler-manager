@@ -559,6 +559,18 @@ class ServerManager:
                 "`Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (full_jobid, sample, server.label, int(jobid), dt, json_string, comment),
             )
+            # Bit of a duct tape fix until Neware's API improves
+            # It costs around 1 second to get the job id for one channel, so cannot do this in update_pipelines
+            # Just do it once on job submission and don't update until job is finised
+            if server.server_type == "neware":
+                assert isinstance(server, NewareServer)  # noqa: S101
+                jobid_on_server = server._get_testid(pipeline)  # noqa: SLF001
+                full_jobid = f"{server.label}-{jobid}"
+                if jobid_on_server:
+                    self.execute_sql(
+                        "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ? WHERE `Pipeline` = ?",
+                        (full_jobid, jobid_on_server, pipeline),
+                    )
 
     def cancel(self, jobid: str) -> str:
         """Cancel a job on a server.
@@ -808,6 +820,33 @@ class ServerManager:
             result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE `Payload` IS NULL")
         for jobid, in result:
             self.update_payload(jobid)
+
+    def _update_neware_jobids(self) -> None:
+        """Update all Job IDs on Neware servers.
+
+        Temporary measure until we have a faster way to get Job IDs from Newares
+        that can run in update_pipelines. This implementation takes ~1 second
+        per channel.
+
+        """
+        result = self.execute_sql(
+            "SELECT `Pipeline`, `Server label` FROM pipelines WHERE "
+            "`Sample ID` NOT NULL AND `Ready` = 0 AND `Server type` = 'neware'",
+        )
+        pipelines = [row[0] for row in result]
+        serverids = [row[1] for row in result]
+        print(serverids)
+        print(pipelines)
+        for serverid, pipeline in zip(serverids,pipelines):
+            server = self.find_server(serverid)
+            assert isinstance(server,NewareServer)  # noqa: S101
+            jobid_on_server = server._get_testid(pipeline)  # noqa: SLF001
+            full_jobid = f"{server.label}-{jobid_on_server}"
+            print(f"Updating {pipeline} with {full_jobid}")
+            self.execute_sql(
+                "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ? WHERE `Pipeline` = ?",
+                (full_jobid, jobid_on_server, pipeline),
+            )
 
 if __name__ == "__main__":
     pass

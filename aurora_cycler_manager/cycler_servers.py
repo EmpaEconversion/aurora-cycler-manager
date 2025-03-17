@@ -535,9 +535,7 @@ class NewareServer(CyclerServer):
             print("Successfully started job on Neware")
 
             # Then ask for the jobid
-            output = self.command(f"neware inquiredf {pipeline}")
-            res = json.loads(output)
-            jobid_on_server = f"{res["devid"]}_{res["subdevid"]}_{res["chlid"]}_{res["testid"]}"
+            jobid_on_server = self._get_testid(pipeline)
             jobid = f"{self.label}-{jobid_on_server}"
         finally:
             Path("temp.xml").unlink()  # Remove the file on local machine
@@ -597,3 +595,9 @@ class NewareServer(CyclerServer):
     def get_last_data(self, job_id_on_server: str) -> dict:
         """Get the last data from a job snapshot."""
         raise NotImplementedError
+
+    def _get_testid(self, pipeline: str) -> str:
+        """Get the testid for a pipeline."""
+        output = self.command(f"neware inquiredf {pipeline}")
+        res = json.loads(output)[pipeline]
+        return f"{res["devid"]}_{res["subdevid"]}_{res["chlid"]}_{res["testid"]}"
