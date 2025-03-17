@@ -731,13 +731,16 @@ class ServerManager:
         if mode not in ["always", "new_data", "if_not_exists"]:
             msg = f"Invalid mode: {mode}. Must be one of 'always', 'new_data', 'if_not_exists'."
             raise ValueError(msg)
-        where = "`Status` IN ( 'c', 'r', 'rd', 'cd', 'ce')"
-        where += " AND `Sample ID` IS NOT 'Unknown'"
+        where = "`Status` IN ( 'c', 'r', 'rd', 'cd', 'ce') AND `Sample ID` IS NOT 'Unknown'"
         if mode in ["new_data"]:
             where += " AND (`Snapshot status` NOT LIKE 'c%' OR `Snapshot status` IS NULL)"
         if sampleid_contains:
-            where += f" AND `Sample ID` LIKE '%{sampleid_contains}%'"
-        result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE " + where)
+            result = self.execute_sql(
+                "SELECT `Job ID` FROM jobs WHERE " + where + " AND `Sample ID` LIKE ?",  # noqa: S608
+                (f"%{sampleid_contains}%",),
+            )
+        else:
+            result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE " + where)  # noqa: S608
         total_jobs = len(result)
         print(f"Snapshotting {total_jobs} jobs:")
         print([jobid for jobid, in result])
