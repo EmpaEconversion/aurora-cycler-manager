@@ -17,26 +17,32 @@ This is because there is a race condition where the interval may switch to
 'idle' before the final notification is displayed.
 
 """
+
 from dash import Dash, Input, Output, html
 from dash.dcc import Interval
 from dash_mantine_components import Notification, NotificationProvider
 
 notification_queue = []
-idle_time = 1000*60  # Time to check for notifications when 'idle'
+idle_time = 1000 * 60  # Time to check for notifications when 'idle'
 active_time = 500  # Time to check for notifications when 'active'
-trigger_time = 600 # Delay to check one final time after switching to 'idle'
+trigger_time = 600  # Delay to check one final time after switching to 'idle'
+
 
 def queue_notification(notification: Notification) -> None:
     """Add a notification to the queue."""
     global notification_queue
     notification_queue.append(notification)
 
-notifications_layout = html.Div([
-    html.Div([],id="notifications-container"),
-    NotificationProvider(),
-    Interval(id="notify-interval", interval=idle_time),
-    Interval(id="trigger-interval", interval=trigger_time, n_intervals=0, disabled=True),
-])
+
+notifications_layout = html.Div(
+    [
+        html.Div([], id="notifications-container"),
+        NotificationProvider(),
+        Interval(id="notify-interval", interval=idle_time),
+        Interval(id="trigger-interval", interval=trigger_time, n_intervals=0, disabled=True),
+    ]
+)
+
 
 # When in a 'listening' state, a function will set the interval to e.g. 1 second
 # Otherwise in 'idle' it will be set to 1 minute
@@ -66,4 +72,3 @@ def register_notifications_callbacks(app: Dash) -> None:
         notifications = notification_queue
         notification_queue = []
         return notifications, bool(n_trigger)
-

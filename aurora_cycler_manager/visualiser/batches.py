@@ -2,6 +2,7 @@
 
 Batches tab layout and callbacks for the visualiser app.
 """
+
 import json
 import textwrap
 from pathlib import Path
@@ -38,11 +39,11 @@ discrete_color_dict = {k: v for k, v in discrete_color_dict.items() if isinstanc
 discrete_color_options = [{"label": k, "value": k} for k in discrete_color_dict]
 
 batches_menu = html.Div(
-    style = {"overflow": "scroll", "height": "100%"},
-    children = [
+    style={"overflow": "scroll", "height": "100%"},
+    children=[
         html.Div(style={"margin-top": "10px"}),
         dbc.Button(
-            [html.I(className="bi bi-plus-circle-fill me-2"),"Select samples to plot"],
+            [html.I(className="bi bi-plus-circle-fill me-2"), "Select samples to plot"],
             id="batch-samples-button",
             color="primary",
             style={"width": "100%", "margin-top": "50 px", "margin-bottom": "50px"},
@@ -82,8 +83,7 @@ batches_menu = html.Div(
         html.Label("Style by:", htmlFor="batch-cycle-style"),
         dcc.Dropdown(
             id="batch-cycle-style",
-            options=[
-            ],
+            options=[],
         ),
         html.Div(style={"margin-top": "50px"}),
         html.H5("Correlation graph"),
@@ -110,7 +110,7 @@ samples_modal = dmc.Modal(
         dmc.MultiSelect(
             id="batch-batch-dropdown",
             label="Select batches",
-            data=[], # Updated by callback
+            data=[],  # Updated by callback
             value=[],
             clearable=True,
             searchable=True,
@@ -120,21 +120,36 @@ samples_modal = dmc.Modal(
         dmc.MultiSelect(
             id="batch-samples-dropdown",
             label="Select individual samples",
-            data=[], # Updated by callback
+            data=[],  # Updated by callback
             value=[],
             clearable=True,
             searchable=True,
             checkIconPosition="right",
         ),
         html.Div(style={"margin-top": "10px"}),
-        dbc.Alert([html.I(className="bi bi-info-circle me-2"),"You can also load samples from Database > Samples > View data"], color="light", dismissable=True),
+        dbc.Alert(
+            [
+                html.I(className="bi bi-info-circle me-2"),
+                "You can also load samples from Database > Samples > View data",
+            ],
+            color="light",
+            dismissable=True,
+        ),
         html.Div(
             children=[
                 dbc.Button(
-                    "Load", id="batch-yes-close", className="ms-auto", n_clicks=0, color="primary",
+                    "Load",
+                    id="batch-yes-close",
+                    className="ms-auto",
+                    n_clicks=0,
+                    color="primary",
                 ),
                 dbc.Button(
-                    "Go back", id="batch-no-close", className="ms-auto", n_clicks=0, color="secondary",
+                    "Go back",
+                    id="batch-no-close",
+                    className="ms-auto",
+                    n_clicks=0,
+                    color="secondary",
                 ),
             ],
             style={"flex": "1 1 auto", "display": "flex", "justify-content": "space-between"},
@@ -152,16 +167,16 @@ batch_cycle_graph = dcc.Graph(
     figure={
         "data": [],
         "layout": go.Layout(
-            template = graph_template,
-            margin = graph_margin,
-            title = "vs cycle",
-            xaxis = {"title": "Cycle"},
-            yaxis = {"title": ""},
+            template=graph_template,
+            margin=graph_margin,
+            title="vs cycle",
+            xaxis={"title": "Cycle"},
+            yaxis={"title": ""},
         ),
     },
     config={
         "scrollZoom": True,
-        "displaylogo":False,
+        "displaylogo": False,
         "toImageButtonOptions": {"format": "svg"},
     },
     style={"height": "100%"},
@@ -169,18 +184,18 @@ batch_cycle_graph = dcc.Graph(
 
 batch_correlation_map = dcc.Graph(
     id="batch-correlation-map",
-    figure=px.imshow([[0]],color_continuous_scale="balance",aspect="auto",zmin=-1,zmax=1).update_layout(
-        template = graph_template,
-        margin = graph_margin,
+    figure=px.imshow([[0]], color_continuous_scale="balance", aspect="auto", zmin=-1, zmax=1).update_layout(
+        template=graph_template,
+        margin=graph_margin,
         title="Correlation matrix",
-        coloraxis_colorbar={"title": "Correlation","tickvals": [-1, 0, 1], "ticktext": ["-1", "0", "1"]},
+        coloraxis_colorbar={"title": "Correlation", "tickvals": [-1, 0, 1], "ticktext": ["-1", "0", "1"]},
         xaxis={"tickfont": {"size": 8}, "title": ""},
         yaxis={"tickfont": {"size": 8}, "title": ""},
     ),
     config={
         "scrollZoom": False,
-        "displaylogo":False,
-        "modeBarButtonsToRemove" : ["zoom2d","pan2d","zoomIn2d","zoomOut2d","autoScale2d","resetScale2d"],
+        "displaylogo": False,
+        "modeBarButtonsToRemove": ["zoom2d", "pan2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d"],
         "toImageButtonOptions": {"format": "png", "width": 1000, "height": 800},
     },
     style={"height": "100%"},
@@ -192,7 +207,7 @@ batch_correlation_graph = dcc.Graph(
         "data": [],
         "layout": go.Layout(
             template=graph_template,
-            margin = graph_margin,
+            margin=graph_margin,
             title="",
             xaxis={"title": ""},
             yaxis={"title": ""},
@@ -200,15 +215,15 @@ batch_correlation_graph = dcc.Graph(
     },
     config={
         "scrollZoom": True,
-        "displaylogo":False,
+        "displaylogo": False,
         "toImageButtonOptions": {"format": "svg"},
     },
     style={"height": "100%"},
 )
 
-batches_layout =  html.Div(
-    style = {"height": "100%"},
-    children = [
+batches_layout = html.Div(
+    style={"height": "100%"},
+    children=[
         dcc.Store(id="batches-data-store", data={}),
         dcc.Store(id="trace-style-store", data={}),
         samples_modal,
@@ -270,7 +285,10 @@ batches_layout =  html.Div(
     ],
 )
 
-#------------------------------ USEFUL FUNCTIONS ------------------------------#
+
+# ----------------------------- USEFUL FUNCTIONS ----------------------------- #
+
+
 def add_legend_colorbar(fig_dict: dict, sdata: dict) -> go.Figure:
     """Add legend and/or colorbar to figure based on color/style data dict."""
     # Convert figure dict to graph object
@@ -286,7 +304,7 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict) -> go.Figure:
                 "color": [sdata["cmin"], sdata["cmax"]],
                 "colorscale": sdata["colormap"],
                 "showscale": True,
-                "colorbar": {"thickness": 20, "title": {"text":sdata["color_by"], "side": "right"}},
+                "colorbar": {"thickness": 20, "title": {"text": sdata["color_by"], "side": "right"}},
             },
             showlegend=False,
         )
@@ -295,7 +313,7 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict) -> go.Figure:
     # If there is a categorical color scale, add a legend by adding fake traces
     elif sdata["color_mode"]:
         title = "<br>".join(textwrap.wrap(sdata["color_by"], width=24))
-        for uval,uind in zip(sdata["unique_color_labels"],sdata["unique_color_indices"]):
+        for uval, uind in zip(sdata["unique_color_labels"], sdata["unique_color_indices"]):
             if isinstance(uval, float):
                 label = f"{uval:.6g}"
             elif isinstance(uval, int):
@@ -305,21 +323,24 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict) -> go.Figure:
                 label = "<br>".join(textwrap.wrap(uval, width=24))
             else:
                 label = str(uval)
-            fig.add_trace(go.Scatter(
-                x=[None], y=[None],
-                mode="lines+markers",
-                line={"width": 1},
-                marker={"size": 8, "color": sdata["colors"][uind]},
-                legendgroup="color",
-                legendgrouptitle={"text": title},
-                name=label,
-                showlegend=True,
-            ))
+            fig.add_trace(
+                go.Scatter(
+                    x=[None],
+                    y=[None],
+                    mode="lines+markers",
+                    line={"width": 1},
+                    marker={"size": 8, "color": sdata["colors"][uind]},
+                    legendgroup="color",
+                    legendgrouptitle={"text": title},
+                    name=label,
+                    showlegend=True,
+                )
+            )
 
     # If there markers are styled, add a legend by adding fake traces
     if sdata["symbols"]:
         title = "<br>".join(textwrap.wrap(sdata["style_by"], width=24))
-        for ustyle,uind in zip(sdata["unique_style_labels"],sdata["unique_style_indices"]):
+        for ustyle, uind in zip(sdata["unique_style_labels"], sdata["unique_style_indices"]):
             if isinstance(ustyle, float):
                 label = f"{ustyle:.6g}"
             elif isinstance(ustyle, int):
@@ -329,15 +350,18 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict) -> go.Figure:
                 label = "<br>".join(textwrap.wrap(ustyle, width=24))
             else:
                 label = str(ustyle)
-            fig.add_trace(go.Scatter(
-                x=[None], y=[None],
-                mode="lines+markers",
-                marker={"size": 8, "color": "rgb(0, 0, 0)", "symbol": sdata["symbols"][uind]},
-                legendgroup="style",
-                legendgrouptitle={"text": title},
-                name=label,
-                showlegend=True,
-            ))
+            fig.add_trace(
+                go.Scatter(
+                    x=[None],
+                    y=[None],
+                    mode="lines+markers",
+                    marker={"size": 8, "color": "rgb(0, 0, 0)", "symbol": sdata["symbols"][uind]},
+                    legendgroup="style",
+                    legendgrouptitle={"text": title},
+                    name=label,
+                    showlegend=True,
+                )
+            )
 
     # Adjust the layout to prevent overlap
     fig.update_layout(
@@ -359,7 +383,9 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict) -> go.Figure:
 
     return fig
 
-#----------------------------- BATCHES CALLBACKS ------------------------------#
+
+# ---------------------------- BATCHES CALLBACKS ----------------------------- #
+
 
 def register_batches_callbacks(app: Dash) -> None:
     """Register all callbacks for the batches tab."""
@@ -370,7 +396,7 @@ def register_batches_callbacks(app: Dash) -> None:
         Output("batch-edit-batch", "data"),
         Input("batches-store", "data"),
     )
-    def update_batches_dropdown(batches: dict[str, dict]) -> tuple[list[dict],list[dict]]:
+    def update_batches_dropdown(batches: dict[str, dict]) -> tuple[list[dict], list[dict]]:
         data = [{"label": b, "value": b} for b in batches]
         return data, data
 
@@ -404,7 +430,9 @@ def register_batches_callbacks(app: Dash) -> None:
         State("batch-cycle-y", "value"),
         prevent_initial_call=True,
     )
-    def load_selected_samples(n_clicks: int, samples: list, batches: list, data: dict, batch_defs: dict[str, dict], y_val: str):
+    def load_selected_samples(
+        n_clicks: int, samples: list, batches: list, data: dict, batch_defs: dict[str, dict], y_val: str
+    ):
         """Load the selected samples into the data store."""
         if not ctx.triggered:
             return no_update, no_update, no_update, no_update, no_update, no_update
@@ -412,7 +440,7 @@ def register_batches_callbacks(app: Dash) -> None:
         # Add the samples from batches to samples
         sample_set = set(samples)
         for batch in batches:
-            sample_set.update(batch_defs.get(batch,{}).get("samples",[]))
+            sample_set.update(batch_defs.get(batch, {}).get("samples", []))
 
         # Go through the keys in the data store, if they're not in the samples, remove them
         del_keys = [key for key in data if key not in sample_set]
@@ -424,7 +452,7 @@ def register_batches_callbacks(app: Dash) -> None:
             if s in data:
                 continue
             run_id = run_from_sample(s)
-            file_location = Path(CONFIG["Processed snapshots folder path"])/run_id/s/f"cycles.{s}.json"
+            file_location = Path(CONFIG["Processed snapshots folder path"]) / run_id / s / f"cycles.{s}.json"
             if not file_location.exists():
                 continue
             with file_location.open(encoding="utf-8") as f:
@@ -435,8 +463,8 @@ def register_batches_callbacks(app: Dash) -> None:
         y_vars_set = set()
         color_vars_set = set()
         for sample in data.values():
-            y_vars_set.update([k for k,v in sample.items() if isinstance(v,list)])
-            color_vars_set.update([k for k,v in sample.items() if v is not None and not isinstance(v,list)])
+            y_vars_set.update([k for k, v in sample.items() if isinstance(v, list)])
+            color_vars_set.update([k for k, v in sample.items() if v is not None and not isinstance(v, list)])
         y_vars = list(y_vars_set)
         color_vars = list(color_vars_set)
 
@@ -460,7 +488,9 @@ def register_batches_callbacks(app: Dash) -> None:
         Input("batch-cycle-discrete-colormap", "value"),
         Input("batch-cycle-style", "value"),
     )
-    def update_color_style_store(data: dict, color: str, colormap: list[str], discrete_colormap: list[str], style: str) -> dict:
+    def update_color_style_store(
+        data: dict, color: str, colormap: list[str], discrete_colormap: list[str], style: str
+    ) -> dict:
         """Update the color and style data store based on the selected color and style."""
         # get the color for each trace
         if color:
@@ -480,35 +510,37 @@ def register_batches_callbacks(app: Dash) -> None:
                 color_mode = "numerical"
 
             if color_mode == "none":
-                    color_values_norm: list[float|None] = [None] * len(color_values)
-                    unique_color_labels = [None]
-                    unique_color_indices = [0]
+                color_values_norm: list[float | None] = [None] * len(color_values)
+                unique_color_labels = [None]
+                unique_color_indices = [0]
             elif color_mode == "categorical":
-                    unique_valid_values = sorted({v for v in color_values if v is not None})
-                    assigned_values = {}
-                    for i, v in enumerate(unique_valid_values):
-                        assigned_values[v] = i / (len(unique_valid_values) - 1) if len(unique_valid_values) > 1 else 0
-                    color_values_norm = [assigned_values.get(v) if v is not None else None for v in color_values]
-                    color_values = [v if v is not None else "None" for v in color_values]
-                    unique_color_labels, unique_color_indices = np.unique(color_values, return_index=True)
-                    colormap_list = discrete_color_dict.get(discrete_colormap, discrete_color_dict.get("Plotly"))
-                    color_map: dict[str,str] = {label: colormap_list[i % len(colormap_list)] for i, label in enumerate(unique_color_labels)}
-                    colors = [color_map[str(v)] if v is not None else "rgb(150, 150, 150)" for v in color_values]
+                unique_valid_values = sorted({v for v in color_values if v is not None})
+                assigned_values = {}
+                for i, v in enumerate(unique_valid_values):
+                    assigned_values[v] = i / (len(unique_valid_values) - 1) if len(unique_valid_values) > 1 else 0
+                color_values_norm = [assigned_values.get(v) if v is not None else None for v in color_values]
+                color_values = [v if v is not None else "None" for v in color_values]
+                unique_color_labels, unique_color_indices = np.unique(color_values, return_index=True)
+                colormap_list = discrete_color_dict.get(discrete_colormap, discrete_color_dict.get("Plotly"))
+                color_map: dict[str, str] = {
+                    label: colormap_list[i % len(colormap_list)] for i, label in enumerate(unique_color_labels)
+                }
+                colors = [color_map[str(v)] if v is not None else "rgb(150, 150, 150)" for v in color_values]
             elif color_mode == "numerical_categorical":
-                    cmin = min([v for v in color_values if v is not None])
-                    cmax = max([v for v in color_values if v is not None])
-                    color_values_norm = [(v - cmin) / (cmax - cmin) if v else None for v in color_values]
-                    unique_color_labels, unique_color_indices = np.unique(color_values, return_index=True)
+                cmin = min([v for v in color_values if v is not None])
+                cmax = max([v for v in color_values if v is not None])
+                color_values_norm = [(v - cmin) / (cmax - cmin) if v else None for v in color_values]
+                unique_color_labels, unique_color_indices = np.unique(color_values, return_index=True)
             elif color_mode == "numerical":
-                    cmin = min([v for v in color_values if v is not None])
-                    cmax = max([v for v in color_values if v is not None])
-                    color_values_norm = [(v - cmin) / (cmax - cmin) if v else None for v in color_values]
-                    unique_color_labels = [None]
-                    unique_color_indices = [0]
+                cmin = min([v for v in color_values if v is not None])
+                cmax = max([v for v in color_values if v is not None])
+                color_values_norm = [(v - cmin) / (cmax - cmin) if v else None for v in color_values]
+                unique_color_labels = [None]
+                unique_color_indices = [0]
             elif color_mode == "single_value":
-                    color_values_norm = [0.5] * len(color_values)
-                    unique_color_labels = [color_values[0]]
-                    unique_color_indices = [0]
+                color_values_norm = [0.5] * len(color_values)
+                unique_color_labels = [color_values[0]]
+                unique_color_indices = [0]
 
             if color_mode != "categorical":
                 colormap_list = cont_color_dict.get(colormap, cont_color_dict.get("Viridis"))
@@ -524,7 +556,7 @@ def register_batches_callbacks(app: Dash) -> None:
             unique_style_labels, unique_style_indices = np.unique(styles, return_index=True)
             symbols = [list(set(styles)).index(v) for v in styles]
             # to keep symbol values in the ranges 0-32,100-132,200-224
-            symbols = [(s%88)%32 + 100*((s%88)//32) for s in symbols]
+            symbols = [(s % 88) % 32 + 100 * ((s % 88) // 32) for s in symbols]
 
         return {
             "colormap": colormap if color else None,
@@ -560,7 +592,8 @@ def register_batches_callbacks(app: Dash) -> None:
         # Add 1/Formation C if Formation C is in the data
         [
             d.update({"1/Formation C": 1 / d["Formation C"] if d["Formation C"] != 0 else 0})
-            for d in data.values() if "Formation C" in d
+            for d in data.values()
+            if "Formation C" in d
         ]
 
         fig["layout"]["yaxis"]["title"] = yvar
@@ -569,22 +602,22 @@ def register_batches_callbacks(app: Dash) -> None:
         # add trace for each sample
         always_show_legend = False
         show_legend = not sdata["color_mode"] or always_show_legend
-        for i,sample in enumerate(data.values()):
-            color_label = sample.get(sdata["color_by"],"") if sdata["color_by"] else ""
+        for i, sample in enumerate(data.values()):
+            color_label = sample.get(sdata["color_by"], "") if sdata["color_by"] else ""
             if isinstance(color_label, float):
                 color_label = f"{color_label:.6g}"
-            style_label = sample.get(sdata["style_by"],"") if sdata["style_by"] else ""
+            style_label = sample.get(sdata["style_by"], "") if sdata["style_by"] else ""
             if isinstance(style_label, float):
                 style_label = f"{style_label:.6g}"
-            hovertemplate="<br>".join(
+            hovertemplate = "<br>".join(
                 [
                     f"<b>{sample['Sample ID']}</b>",
                     "Cycle: %{x}",
                     f"{yvar}: %{{y}}",
-                ] +
-                ([f"{sdata['color_by']}: {color_label}"] if sdata["color_by"] else []) +
-                ([f"{sdata['style_by']}: {style_label}"] if sdata["style_by"] else []) +
-                ["<extra></extra>"],
+                ]
+                + ([f"{sdata['color_by']}: {color_label}"] if sdata["color_by"] else [])
+                + ([f"{sdata['style_by']}: {style_label}"] if sdata["style_by"] else [])
+                + ["<extra></extra>"],
             )
             trace = go.Scattergl(
                 x=sample["Cycle"],
@@ -619,10 +652,7 @@ def register_batches_callbacks(app: Dash) -> None:
         fig["data"] = []
         if not data or len(data) < 3:
             return fig, [], []
-        data_correlations = [
-            {k:v for k,v in s.items() if v and not isinstance(v, list)}
-            for s in data.values()
-        ]
+        data_correlations = [{k: v for k, v in s.items() if v and not isinstance(v, list)} for s in data.values()]
         dfs = [pd.DataFrame(d, index=[0]) for d in data_correlations]
         if not dfs:
             return fig, [], []
@@ -646,7 +676,7 @@ def register_batches_callbacks(app: Dash) -> None:
         # sort columns reverse alphabetically
         df = df.reindex(sorted(df.columns), axis=1)
         options = df.columns
-        df.columns = ["<br>".join(textwrap.wrap(col,width=24)) for col in df.columns]
+        df.columns = ["<br>".join(textwrap.wrap(col, width=24)) for col in df.columns]
 
         # Calculate the correlation matrix
         corr = correlation_matrix(df)
@@ -747,15 +777,15 @@ def register_batches_callbacks(app: Dash) -> None:
             "Rack position",
             "Run ID",
         ]
-        customdata = [[s.get(col,"") for col in hover_info] for s in data.values()]
-        hovertemplate="<br>".join(
+        customdata = [[s.get(col, "") for col in hover_info] for s in data.values()]
+        hovertemplate = "<br>".join(
             [
                 "Sample ID: %{customdata[0]}",
                 f"{xvar}: %{{x}}",
                 f"{yvar}: %{{y}}",
-            ] +
-            [f"{col}: %{{customdata[{i+1}]}}" for i, col in enumerate(hover_info[1:])] +
-            ["<extra></extra>"],
+            ]
+            + [f"{col}: %{{customdata[{i + 1}]}}" for i, col in enumerate(hover_info[1:])]
+            + ["<extra></extra>"],
         )
         trace = go.Scatter(
             x=x,

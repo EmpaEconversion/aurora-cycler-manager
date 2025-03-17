@@ -112,12 +112,12 @@ class CyclerServer:
         raise NotImplementedError
 
     def snapshot(
-            self,
-            jobid: str,
-            jobid_on_server: str,
-            local_save_location: str,
-            get_raw: bool,
-        ) -> str:
+        self,
+        jobid: str,
+        jobid_on_server: str,
+        local_save_location: str,
+        get_raw: bool,
+    ) -> str:
         """Save a snapshot of a job on the server and download it to the local machine."""
         raise NotImplementedError
 
@@ -128,6 +128,8 @@ class CyclerServer:
     def get_job_data(self, jobid_on_server: str) -> dict:
         """Get the jobdata dict for a job."""
         raise NotImplementedError
+
+
 class TomatoServer(CyclerServer):
     """Server class for Tomato servers, implements all the methods in CyclerServer.
 
@@ -149,11 +151,9 @@ class TomatoServer(CyclerServer):
         """Eject any sample from the pipeline."""
         return self.command(f"{self.tomato_scripts_path}ketchup eject {pipeline}")
 
-
     def load(self, sample: str, pipeline: str) -> str:
         """Load a sample into a pipeline."""
         return self.command(f"{self.tomato_scripts_path}ketchup load {sample} {pipeline}")
-
 
     def ready(self, pipeline: str) -> str:
         """Ready a pipeline for use."""
@@ -164,13 +164,13 @@ class TomatoServer(CyclerServer):
         return self.command(f"{self.tomato_scripts_path}ketchup unready {pipeline}")
 
     def submit(
-            self,
-            sample: str,
-            capacity_Ah: float,
-            payload: str | dict,
-            _pipeline: str = "",
-            send_file: bool = False,
-        ) -> tuple[str, str, str]:
+        self,
+        sample: str,
+        capacity_Ah: float,
+        payload: str | dict,
+        _pipeline: str = "",
+        send_file: bool = False,
+    ) -> tuple[str, str, str]:
         """Submit a job to the server.
 
         Args:
@@ -209,7 +209,7 @@ class TomatoServer(CyclerServer):
         # Change all other instances of $NAME to the sample name
         json_string = json_string.replace("$NAME", sample)
 
-        if send_file: # Write the json string to a file, send it, run it on the server
+        if send_file:  # Write the json string to a file, send it, run it on the server
             # Write file locally
             with Path("temp.json").open("w", encoding="utf-8") as f:
                 f.write(json_string)
@@ -228,7 +228,7 @@ class TomatoServer(CyclerServer):
             # Remove the file locally
             Path("temp.json").unlink()
 
-        else: # Encode the json string to base64 and submit it directly
+        else:  # Encode the json string to base64 and submit it directly
             encoded_json_string = base64.b64encode(json_string.encode()).decode()
             output = self.command(f"{self.tomato_scripts_path}ketchup submit -J {encoded_json_string}")
         if "jobid: " in output:
@@ -267,12 +267,12 @@ class TomatoServer(CyclerServer):
         return queue_all_dict
 
     def snapshot(
-            self,
-            jobid: str,
-            jobid_on_server: str,
-            local_save_location: str,
-            get_raw: bool = False,
-        ) -> str:
+        self,
+        jobid: str,
+        jobid_on_server: str,
+        local_save_location: str,
+        get_raw: bool = False,
+    ) -> str:
         """Save a snapshot of a job on the server and download it to the local machine.
 
         Args:
@@ -294,8 +294,7 @@ class TomatoServer(CyclerServer):
             )
         elif self.shell_type == "cmd":
             self.command(
-                f'if not exist "{remote_save_location}" '
-                f'mkdir "{remote_save_location}"',
+                f'if not exist "{remote_save_location}" mkdir "{remote_save_location}"',
             )
         else:
             msg = "Shell type not recognised, must be 'powershell' or 'cmd', check config.json"
@@ -309,13 +308,11 @@ class TomatoServer(CyclerServer):
             with warnings.catch_warnings(record=True) as w:
                 if self.shell_type == "powershell":
                     self.command(
-                        f"cd {remote_save_location} ; "
-                        f"{self.tomato_scripts_path}ketchup snapshot {jobid_on_server}",
+                        f"cd {remote_save_location} ; {self.tomato_scripts_path}ketchup snapshot {jobid_on_server}",
                     )
                 elif self.shell_type == "cmd":
                     self.command(
-                        f"cd {remote_save_location} && "
-                        f"{self.tomato_scripts_path}ketchup snapshot {jobid_on_server}",
+                        f"cd {remote_save_location} && {self.tomato_scripts_path}ketchup snapshot {jobid_on_server}",
                     )
                 for warning in w:
                     if "out-of-date version" in str(warning.message) or "has been completed" in str(warning.message):
@@ -386,9 +383,7 @@ class TomatoServer(CyclerServer):
         if self.shell_type == "powershell":
             command = ps_command
         elif self.shell_type == "cmd":
-            command = (
-                f'powershell.exe -Command "{ps_command}"'
-            )
+            command = f'powershell.exe -Command "{ps_command}"'
 
         with paramiko.SSHClient() as ssh:
             ssh.load_system_host_keys()
@@ -421,9 +416,7 @@ class TomatoServer(CyclerServer):
         if self.shell_type == "powershell":
             command = ps_command
         elif self.shell_type == "cmd":
-            command = (
-                f'powershell.exe -Command "{ps_command}"'
-            )
+            command = f'powershell.exe -Command "{ps_command}"'
         with paramiko.SSHClient() as ssh:
             ssh.load_system_host_keys()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -437,6 +430,7 @@ class TomatoServer(CyclerServer):
             msg = f"jobdata.json not found for job {jobid_on_server}"
             raise FileNotFoundError(msg)
         return json.loads(stdout)
+
 
 class NewareServer(CyclerServer):
     """Server class for Neware servers, implements all the methods in CyclerServer.
@@ -466,12 +460,12 @@ class NewareServer(CyclerServer):
         """Readying and unreadying does not exist on Neware."""
         raise NotImplementedError
 
-    def submit(self, sample: str, capacity_Ah: float, payload: str|dict, pipeline: str) -> tuple[str, str, str]:
+    def submit(self, sample: str, capacity_Ah: float, payload: str | dict, pipeline: str) -> tuple[str, str, str]:
         """Submit a job to the server.
 
         Use the START command on the Neware-api.
         """
-        if not isinstance(payload, str|Path):
+        if not isinstance(payload, str | Path):
             msg = "For Neware, payload must be a path to an xml file or xml string"
             raise TypeError(msg)
         if payload.startswith("<?xml"):
@@ -561,13 +555,13 @@ class NewareServer(CyclerServer):
         pipelines, sampleids, readys = [], [], []
         for pip, data in result.items():
             pipelines.append(pip)
-            if data["workstatus"] in ["working", "pause", "protect"]: # working\stop\finish\protect\pause
+            if data["workstatus"] in ["working", "pause", "protect"]:  # working\stop\finish\protect\pause
                 sampleids.append(data["barcode"])
                 readys.append(False)
             else:
                 sampleids.append(None)
                 readys.append(True)
-        return {"pipeline": pipelines, "sampleid": sampleids, "jobid": [None]*len(pipelines), "ready": readys}
+        return {"pipeline": pipelines, "sampleid": sampleids, "jobid": [None] * len(pipelines), "ready": readys}
 
     def get_jobs(self) -> dict:
         """Get all jobs from server.
@@ -577,12 +571,12 @@ class NewareServer(CyclerServer):
         return {}
 
     def snapshot(
-            self,
-            jobid: str,
-            jobid_on_server: str,
-            local_save_location: str,
-            get_raw: bool,
-        ) -> str:
+        self,
+        jobid: str,
+        jobid_on_server: str,
+        local_save_location: str,
+        get_raw: bool,
+    ) -> str:
         """Save a snapshot of a job on the server and download it to the local machine."""
         raise NotImplementedError
 
@@ -599,4 +593,4 @@ class NewareServer(CyclerServer):
         """Get the testid for a pipeline."""
         output = self.command(f"neware inquiredf {pipeline}")
         res = json.loads(output)[pipeline]
-        return f"{res["devid"]}_{res["subdevid"]}_{res["chlid"]}_{res["testid"]}"
+        return f"{res['devid']}_{res['subdevid']}_{res['chlid']}_{res['testid']}"

@@ -1,10 +1,12 @@
 """Some utility functions for the Aurora Cycler Manager."""
 
+
 def run_from_sample(sampleid: str) -> str:
     """Get the run_id from a sample_id."""
     if not isinstance(sampleid, str) or len(sampleid.split("_")) < 2 or not sampleid.split("_")[-1].isdigit():
         return "misc"
     return sampleid.rsplit("_", 1)[0]
+
 
 def c_to_float(c_rate: str) -> float:
     """Convert a C-rate string to a float.

@@ -18,6 +18,7 @@ saves them to the processed snapshot folder.
 
 Run the script to harvest and convert all mpr files.
 """
+
 import gzip
 import json
 import os
@@ -49,6 +50,7 @@ def get_snapshot_folder() -> Path:
         )
         raise ValueError(msg)
     return Path(snapshot_parent) / "eclab_snapshots"
+
 
 def get_mprs(
     server_label: str,
@@ -98,14 +100,14 @@ def get_mprs(
         # TODO: grab all the filenames and modified dates, copy if they are newer than local files not just cutoff date
         if server_shell_type == "powershell":
             command = (
-                f'Get-ChildItem -Path \'{server_copy_folder}\' -Recurse '
-                f'| Where-Object {{ $_.LastWriteTime -gt \'{cutoff_date_str}\' -and ($_.Extension -eq \'.mpl\' -or $_.Extension -eq \'.mpr\')}} '
-                f'| Select-Object -ExpandProperty FullName'
+                f"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
+                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' -and ($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr')}} "
+                f"| Select-Object -ExpandProperty FullName"
             )
         elif server_shell_type == "cmd":
             command = (
-                f'powershell.exe -Command "Get-ChildItem -Path \'{server_copy_folder}\' -Recurse '
-                f'| Where-Object {{ $_.LastWriteTime -gt \'{cutoff_date_str}\' -and ($_.Extension -eq \'.mpl\' -or $_.Extension -eq \'.mpr\')}} '
+                f"powershell.exe -Command \"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
+                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' -and ($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr')}} "
                 f'| Select-Object -ExpandProperty FullName"'
             )
         stdin, stdout, stderr = ssh.exec_command(command)
@@ -138,8 +140,7 @@ def get_mprs(
     with sqlite3.connect(CONFIG["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT OR IGNORE INTO harvester (`Server label`, `Server hostname`, `Folder`) "
-            "VALUES (?, ?, ?)",
+            "INSERT OR IGNORE INTO harvester (`Server label`, `Server hostname`, `Folder`) VALUES (?, ?, ?)",
             (server_label, server_hostname, server_copy_folder),
         )
         cursor.execute(
@@ -152,6 +153,7 @@ def get_mprs(
 
         return new_files
 
+
 def get_all_mprs(force_copy: bool = False) -> list[str]:
     """Get all MPR files from the folders specified in the config.
 
@@ -162,7 +164,7 @@ def get_all_mprs(force_copy: bool = False) -> list[str]:
     """
     all_new_files = []
     snapshot_folder = get_snapshot_folder()
-    for server in CONFIG.get("EC-lab harvester",{}).get("Servers",[]):
+    for server in CONFIG.get("EC-lab harvester", {}).get("Servers", []):
         new_files = get_mprs(
             server["label"],
             server["hostname"],
@@ -176,9 +178,10 @@ def get_all_mprs(force_copy: bool = False) -> list[str]:
         all_new_files.extend(new_files)
     return all_new_files
 
+
 def get_mpr_data(
-        mpr_file: str | Path,
-    ) -> tuple[pd.DataFrame, dict, dict]:
+    mpr_file: str | Path,
+) -> tuple[pd.DataFrame, dict, dict]:
     """Convert mpr to dataframe."""
     mpr_file = Path(mpr_file)
 
@@ -198,7 +201,7 @@ def get_mpr_data(
                 # Find the start datetime from the mpl
                 found_start_time = False
                 if line.startswith("Acquisition started on : "):
-                    datetime_str = line.split(":",1)[1].strip()
+                    datetime_str = line.split(":", 1)[1].strip()
                     datetime_object = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")
                     timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
                     uts_timestamp = timezone.localize(datetime_object).timestamp()
@@ -213,20 +216,20 @@ def get_mpr_data(
     # Only keep certain columns in dataframe
     df["V (V)"] = data.data_vars["Ewe"].to_numpy()
     df["I (A)"] = (
-        (3600 / 1000) * data.data_vars["dq"].to_numpy() /
-        np.diff(data.coords["uts"].to_numpy(),prepend=[np.inf])
+        (3600 / 1000) * data.data_vars["dq"].to_numpy() / np.diff(data.coords["uts"].to_numpy(), prepend=[np.inf])
     )
-    df["cycle_number"] = data.data_vars["half cycle"].to_numpy()//2
+    df["cycle_number"] = data.data_vars["half cycle"].to_numpy() // 2
     df["technique"] = data.data_vars["mode"].to_numpy()
     mpr_metadata = json.loads(data.attrs["original_metadata"])
     yadg_metadata = {k: v for k, v in data.attrs.items() if k.startswith("yadg")}
     return df, mpr_metadata, yadg_metadata
 
+
 def convert_mpr(
-        mpr_file: str|Path,
-        output_jsongz_file: bool = False,
-        output_hdf5_file: bool = True,
-    ) -> tuple[pd.DataFrame, dict]:
+    mpr_file: str | Path,
+    output_jsongz_file: bool = False,
+    output_hdf5_file: bool = True,
+) -> tuple[pd.DataFrame, dict]:
     """Convert a ec-lab mpr to dataframe, optionally save as hdf5 or zipped json file.
 
     Args:
@@ -267,7 +270,7 @@ def convert_mpr(
     # Check if the time is incorrect and fix it
     if df["uts"].to_numpy()[0] < 1000000000:  # The measurement started before 2001, assume wrong
         # Grab the start time from mpl file
-        mpl_file = mpr_file.replace(".mpr",".mpl")
+        mpl_file = mpr_file.replace(".mpr", ".mpl")
         try:
             with open(mpl_file, encoding="ANSI") as f:
                 lines = f.readlines()
@@ -275,7 +278,7 @@ def convert_mpr(
                 # Find the start datetime from the mpl
                 found_start_time = False
                 if line.startswith("Acquisition started on : "):
-                    datetime_str = line.split(":",1)[1].strip()
+                    datetime_str = line.split(":", 1)[1].strip()
                     datetime_object = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")
                     timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
                     uts_timestamp = timezone.localize(datetime_object).timestamp()
@@ -290,10 +293,9 @@ def convert_mpr(
     # Only keep certain columns in dataframe
     df["V (V)"] = data.data_vars["Ewe"].to_numpy()
     df["I (A)"] = (
-        (3600 / 1000) * data.data_vars["dq"].to_numpy() /
-        np.diff(data.coords["uts"].to_numpy(),prepend=[np.inf])
+        (3600 / 1000) * data.data_vars["dq"].to_numpy() / np.diff(data.coords["uts"].to_numpy(), prepend=[np.inf])
     )
-    df["cycle_number"] = data.data_vars["half cycle"].to_numpy()//2
+    df["cycle_number"] = data.data_vars["half cycle"].to_numpy() // 2
     df["technique"] = data.data_vars["mode"].to_numpy()
 
     # get sample data from database
@@ -314,7 +316,7 @@ def convert_mpr(
             "snapshot_file": mpr_file,
             "yadg_metadata": yadg_metadata,
             "aurora_metadata": {
-                "mpr_conversion" : {
+                "mpr_conversion": {
                     "repo_url": __url__,
                     "repo_version": __version__,
                     "method": "eclab_harvester.convert_mpr",
@@ -366,27 +368,26 @@ def convert_mpr(
                 (sample_id,),
             )
             cursor.execute(
-                "UPDATE results "
-                "SET `Last snapshot` = ? "
-                "WHERE `Sample ID` = ?",
+                "UPDATE results SET `Last snapshot` = ? WHERE `Sample ID` = ?",
                 (creation_date, sample_id),
             )
             cursor.close()
     return df, metadata
 
-def get_sampleid_from_mpr(mpr_rel_path: str|Path) -> tuple[str,str]:
+
+def get_sampleid_from_mpr(mpr_rel_path: str | Path) -> tuple[str, str]:
     """Try to get the sample ID based on the remote file path."""
     # split the relative path into parts
     parts = Path(mpr_rel_path).parts
 
-    run_id_lookup = CONFIG.get("EC-lab harvester",{}).get("Run ID lookup", {})
+    run_id_lookup = CONFIG.get("EC-lab harvester", {}).get("Run ID lookup", {})
 
     # Usually the run_ID is the 2nd parent folder and the sample number is the level above
     # If this is not the case, try the 3rd parent folder and 1st parent folder
     for i in [-3, -4, -2]:
         try:
             run_folder = parts[i]
-            sample_folder = parts[i+1]
+            sample_folder = parts[i + 1]
         except IndexError as e:
             if i == -2:
                 msg = f"Could not get run and sample number components for {mpr_rel_path}"
@@ -420,6 +421,7 @@ def get_sampleid_from_mpr(mpr_rel_path: str|Path) -> tuple[str,str]:
     sample_id = f"{run_id}_{sample_number:02d}"
     return run_id, sample_id
 
+
 def convert_all_mprs() -> None:
     """Convert all raw .mpr files to gzipped json files.
 
@@ -445,6 +447,7 @@ def convert_all_mprs() -> None:
                     print(f"Error converting {full_path}: {e}")
                     continue
 
+
 def main() -> None:
     new_files = get_all_mprs()
     for mpr_path in new_files:
@@ -457,6 +460,7 @@ def main() -> None:
         except (ValueError, IndexError, KeyError, RuntimeError) as e:  # noqa: PERF203
             print(f"Error converting {mpr_path}: {e}")
             continue
+
 
 if __name__ == "__main__":
     main()

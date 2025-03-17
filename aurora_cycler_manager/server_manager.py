@@ -16,6 +16,7 @@ data locally as a json and convert to a zipped json file. The data can then be
 processed and plotted. See the daemon.py script for how to run this process
 automatically.
 """
+
 from __future__ import annotations
 
 import json
@@ -93,7 +94,7 @@ class ServerManager:
                         TomatoServer(
                             server_config,
                             pkey_path,
-                       ),
+                        ),
                     )
                 except (OSError, ValueError, TimeoutError, paramiko.SSHException) as exc:
                     print(f"CRITICAL: Server {server_config['label']} could not be created, skipping")
@@ -124,12 +125,15 @@ class ServerManager:
                 with sqlite3.connect(self.config["Database path"]) as conn:
                     cursor = conn.cursor()
                     for jobid_on_server, jobname, status, pipeline in zip(
-                        jobs["jobid"], jobs["jobname"], jobs["status"], jobs["pipeline"],
-                        ):
+                        jobs["jobid"],
+                        jobs["jobname"],
+                        jobs["status"],
+                        jobs["pipeline"],
+                    ):
                         # Insert the job if it does not exist
                         cursor.execute(
                             "INSERT OR IGNORE INTO jobs (`Job ID`,`Job ID on server`) VALUES (?,?)",
-                            (f"{label}-{jobid_on_server}",jobid_on_server),
+                            (f"{label}-{jobid_on_server}", jobid_on_server),
                         )
                         # If pipeline is none, do not update (keep old value)
                         if pipeline is None:
@@ -148,8 +152,14 @@ class ServerManager:
                                 "`Last Checked` = ? "
                                 "WHERE `Job ID` = ?",
                                 (
-                                    status, pipeline, jobname, label, hostname,
-                                    jobid_on_server, dt, f"{label}-{jobid_on_server}",
+                                    status,
+                                    pipeline,
+                                    jobname,
+                                    label,
+                                    hostname,
+                                    jobid_on_server,
+                                    dt,
+                                    f"{label}-{jobid_on_server}",
                                 ),
                             )
                     conn.commit()
@@ -166,7 +176,10 @@ class ServerManager:
                 with sqlite3.connect(self.config["Database path"]) as conn:
                     cursor = conn.cursor()
                     for ready, pipeline, sampleid, jobid_on_server in zip(
-                        status["ready"],status["pipeline"], status["sampleid"], status["jobid"],
+                        status["ready"],
+                        status["pipeline"],
+                        status["sampleid"],
+                        status["jobid"],
                     ):
                         cursor.execute(
                             "INSERT OR IGNORE INTO pipelines (`Pipeline`) VALUES (?)",
@@ -183,21 +196,17 @@ class ServerManager:
                         # Tomato null means sample removed, Neware means no update
                         if server_type == "tomato" or sampleid is not None:
                             cursor.execute(
-                                "UPDATE pipelines "
-                                "SET `Sample ID` = ? "
-                                "WHERE `Pipeline` = ?",
+                                "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
                                 (sampleid, pipeline),
                             )
                         if (
                             server_type == "tomato"
                             or jobid_on_server is not None
-                            or (server_type == "neware" and ready==1)
+                            or (server_type == "neware" and ready == 1)
                         ):
                             jobid = f"{label}-{jobid_on_server}" if jobid_on_server else None
                             cursor.execute(
-                                "UPDATE pipelines "
-                                "SET `Job ID on server` = ?, `Job ID` = ? "
-                                "WHERE `Pipeline` = ?",
+                                "UPDATE pipelines SET `Job ID on server` = ?, `Job ID` = ? WHERE `Pipeline` = ?",
                                 (jobid_on_server, jobid, pipeline),
                             )
                     conn.commit()
@@ -268,24 +277,28 @@ class ServerManager:
     @staticmethod
     def sort_pipeline(df: pd.DataFrame) -> pd.DataFrame:
         """Sorting pipelines so e.g. MPG2-1-2 comes before MPG2-1-10."""
+
         def custom_sort(x: str):  # noqa: ANN202
             try:
                 numbers = x.split("-")[-2:]
-                return 1000*int(numbers[0]) + int(numbers[1])
+                return 1000 * int(numbers[0]) + int(numbers[1])
             except ValueError:
                 return x
-        df = df.sort_values(by="Pipeline", key = lambda x: x.map(custom_sort))
+
+        df = df.sort_values(by="Pipeline", key=lambda x: x.map(custom_sort))
         return df.reset_index(drop=True)
 
     @staticmethod
     def sort_job(df: pd.DataFrame) -> pd.DataFrame:
         """Sort jobs so servers are grouped together and jobs are sorted by number."""
+
         def custom_sort(x: str):  # noqa: ANN202
             try:
                 server, number = x.rsplit("-", 1)
                 return (server, int(number))
             except ValueError:
                 return (x, 0)
+
         return df.sort_values(by="Job ID", key=lambda x: x.map(custom_sort))
 
     def get_pipelines(self) -> pd.DataFrame:
@@ -298,8 +311,7 @@ class ServerManager:
         """Return all running and queued jobs as a DataFrame."""
         columns = ["Job ID", "Sample ID", "Status", "Server label"]
         result = self.execute_sql(
-            "SELECT `Job ID`, `Sample ID`, `Status`, `Server label` FROM jobs "
-            "WHERE `Status` IN ('q', 'qw', 'r', 'rd')",
+            "SELECT `Job ID`, `Sample ID`, `Status`, `Server label` FROM jobs WHERE `Status` IN ('q', 'qw', 'r', 'rd')",
         )
         return self.sort_job(pd.DataFrame(result, columns=columns))
 
@@ -310,14 +322,14 @@ class ServerManager:
             "SELECT `Job ID`, `Sample ID`, `Status`, `Server label` FROM jobs "
             "WHERE `Status` IN ('q', 'qw', 'r', 'rd', 'c', 'cd')",
         )
-        return  self.sort_job(pd.DataFrame(result, columns=columns))
+        return self.sort_job(pd.DataFrame(result, columns=columns))
 
     def get_sample_capacity(
-            self,
-            sample: str,
-            mode: Literal["areal","mass","nominal"],
-            ignore_anode: bool = True,
-        ) -> float:
+        self,
+        sample: str,
+        mode: Literal["areal", "mass", "nominal"],
+        ignore_anode: bool = True,
+    ) -> float:
         """Get the capacity of a sample in Ah based on the mode.
 
         Args:
@@ -361,9 +373,7 @@ class ServerManager:
             )
         elif mode == "nominal":
             result = self.execute_sql(
-                "SELECT "
-                "`C-rate definition capacity (mAh)` "
-                "FROM samples WHERE `Sample ID` = ?",
+                "SELECT `C-rate definition capacity (mAh)` FROM samples WHERE `Sample ID` = ?",
                 (sample,),
             )
         if not result:
@@ -371,21 +381,17 @@ class ServerManager:
             raise ValueError(msg)
         if mode == "mass":
             an_cap_mAh_g, an_mass_mg, an_diam_mm, cat_cap_mAh_g, cat_mass_mg, cat_diam_mm = result[0]
-            an_frac_used = min(1,cat_diam_mm**2 / an_diam_mm**2)
-            cat_frac_used = min(1,an_diam_mm**2 / cat_diam_mm**2)
+            an_frac_used = min(1, cat_diam_mm**2 / an_diam_mm**2)
+            cat_frac_used = min(1, an_diam_mm**2 / cat_diam_mm**2)
             an_cap_Ah = an_frac_used * (an_cap_mAh_g * an_mass_mg * 1e-6)
             cat_cap_Ah = cat_frac_used * (cat_cap_mAh_g * cat_mass_mg * 1e-6)
             capacity_Ah = cat_cap_Ah if ignore_anode else min(an_cap_Ah, cat_cap_Ah)
         elif mode == "areal":
             an_cap_mAh_cm2, an_diam_mm, cat_cap_mAh_cm2, cat_diam_mm = result[0]
-            an_frac_used = min(1,cat_diam_mm**2 / an_diam_mm**2)
-            cat_frac_used = min(1,an_diam_mm**2 / cat_diam_mm**2)
-            an_cap_Ah = (
-                an_frac_used * an_cap_mAh_cm2 * (an_diam_mm/2)**2 * 3.14159 * 1e-5
-            )
-            cat_cap_Ah = (
-                cat_frac_used * cat_cap_mAh_cm2 * (cat_diam_mm/2)**2 * 3.14159 * 1e-5
-            )
+            an_frac_used = min(1, cat_diam_mm**2 / an_diam_mm**2)
+            cat_frac_used = min(1, an_diam_mm**2 / cat_diam_mm**2)
+            an_cap_Ah = an_frac_used * an_cap_mAh_cm2 * (an_diam_mm / 2) ** 2 * 3.14159 * 1e-5
+            cat_cap_Ah = cat_frac_used * cat_cap_mAh_cm2 * (cat_diam_mm / 2) ** 2 * 3.14159 * 1e-5
             capacity_Ah = cat_cap_Ah if ignore_anode else min(an_cap_Ah, cat_cap_Ah)
         elif mode == "nominal":
             capacity_Ah = result[0][0] * 1e-3
@@ -514,12 +520,12 @@ class ServerManager:
         return output
 
     def submit(
-            self,
-            sample: str,
-            payload: str | dict,
-            capacity_Ah: float | Literal["areal","mass","nominal"],
-            comment: str = "",
-        ) -> None:
+        self,
+        sample: str,
+        payload: str | dict,
+        capacity_Ah: float | Literal["areal", "mass", "nominal"],
+        comment: str = "",
+    ) -> None:
         """Submit a job to a server.
 
         Args:
@@ -603,11 +609,11 @@ class ServerManager:
         return output
 
     def snapshot(
-            self,
-            samp_or_jobid: str,
-            get_raw: bool = False,
-            mode: Literal["always","new_data","if_not_exists"] = "new_data",
-        ) -> None:
+        self,
+        samp_or_jobid: str,
+        get_raw: bool = False,
+        mode: Literal["always", "new_data", "if_not_exists"] = "new_data",
+    ) -> None:
         """Snapshot sample or job, download data, process, and save.
 
         Args:
@@ -652,9 +658,9 @@ class ServerManager:
                 continue
             run_id = run_from_sample(sample_id)
 
-            local_save_location_processed = Path(self.config["Processed snapshots folder path"])/run_id/sample_id
+            local_save_location_processed = Path(self.config["Processed snapshots folder path"]) / run_id / sample_id
 
-            files_exist = (local_save_location_processed/"snapshot.jobid.h5").exists()
+            files_exist = (local_save_location_processed / "snapshot.jobid.h5").exists()
             if files_exist and mode != "always":
                 if mode == "if_not_exists":
                     print(f"Snapshot {jobid} already exists, skipping.")
@@ -671,7 +677,9 @@ class ServerManager:
             # Otherwise snapshot the job
             server = self.find_server(server_label)
             if server.server_type == "tomato":
-                local_save_location = Path(self.config["Snapshots folder path"])/"tomato_snapshots"/run_id/sample_id
+                local_save_location = (
+                    Path(self.config["Snapshots folder path"]) / "tomato_snapshots" / run_id / sample_id
+                )
             else:
                 msg = f"Server type {server.server_type} not supported for snapshotting."
                 raise NotImplementedError(msg)
@@ -681,8 +689,7 @@ class ServerManager:
                 dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 # Update the snapshot status in the database
                 self.execute_sql(
-                    "INSERT OR IGNORE INTO results "
-                    "(`Sample ID`) VALUES (?)",
+                    "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
                     (sample_id,),
                 )
                 self.execute_sql(
@@ -711,17 +718,17 @@ class ServerManager:
             # Process the file and save to processed snapshots folder
             convert_tomato_json(
                 f"{local_save_location}/snapshot.{jobid}.json",
-                output_hdf_file = True,
-                output_jsongz_file = False,
+                output_hdf_file=True,
+                output_jsongz_file=False,
             )
             # Analyse the new data
             analyse_sample(sample_id)
 
     def snapshot_all(
-            self,
-            sampleid_contains: str = "",
-            mode: Literal["always","new_data","if_not_exists"] = "new_data",
-        ) -> None:
+        self,
+        sampleid_contains: str = "",
+        mode: Literal["always", "new_data", "if_not_exists"] = "new_data",
+    ) -> None:
         """Snapshot all jobs in the database.
 
         Args:
@@ -751,7 +758,7 @@ class ServerManager:
             result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE " + where)  # noqa: S608
         total_jobs = len(result)
         print(f"Snapshotting {total_jobs} jobs:")
-        print([jobid for jobid, in result])
+        print([jobid for (jobid,) in result])
         t0 = time()
         for i, (jobid,) in enumerate(result):
             try:
@@ -763,8 +770,8 @@ class ServerManager:
             percent_done = (i + 1) / total_jobs * 100
             time_elapsed = time() - t0
             time_remaining = time_elapsed / (i + 1) * (total_jobs - i - 1)
-            sleep(20) # to not overload the server
-            print(f"{percent_done:.2f}% done, {int(time_remaining/60)} minutes remaining")
+            sleep(20)  # to not overload the server
+            print(f"{percent_done:.2f}% done, {int(time_remaining / 60)} minutes remaining")
 
     def get_last_data(self, samp_or_jobid: str) -> dict:
         """Get the last data from a sample or job.
@@ -829,7 +836,7 @@ class ServerManager:
             result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE `Payload` IS NULL OR `Payload` = '\"Unknown\"'")
         else:
             result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE `Payload` IS NULL")
-        for jobid, in result:
+        for (jobid,) in result:
             self.update_payload(jobid)
 
     def _update_neware_jobids(self) -> None:
@@ -848,9 +855,9 @@ class ServerManager:
         serverids = [row[1] for row in result]
         print(serverids)
         print(pipelines)
-        for serverid, pipeline in zip(serverids,pipelines):
+        for serverid, pipeline in zip(serverids, pipelines):
             server = self.find_server(serverid)
-            assert isinstance(server,NewareServer)  # noqa: S101
+            assert isinstance(server, NewareServer)  # noqa: S101
             jobid_on_server = server._get_testid(pipeline)  # noqa: SLF001
             full_jobid = f"{server.label}-{jobid_on_server}"
             print(f"Updating {pipeline} with {full_jobid}")
@@ -858,6 +865,7 @@ class ServerManager:
                 "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ? WHERE `Pipeline` = ?",
                 (full_jobid, jobid_on_server, pipeline),
             )
+
 
 if __name__ == "__main__":
     pass

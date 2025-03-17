@@ -2,6 +2,7 @@
 
 Samples tab layout and callbacks for the visualiser app.
 """
+
 import gzip
 import json
 import os
@@ -23,102 +24,104 @@ graph_template = "seaborn"
 graph_margin = {"l": 50, "r": 10, "t": 50, "b": 75}
 
 # Side menu for the samples tab
-samples_menu =  html.Div(
-        style = {"overflow": "scroll", "height": "100%"},
-        children = [
-            html.H5("Select samples to plot:"),
-            dcc.Dropdown(
-                id="samples-dropdown",
-                options=[], # updated by callback
-                value=[],
-                multi=True,
-            ),
-            Checklist(
-                options=[{
+samples_menu = html.Div(
+    style={"overflow": "scroll", "height": "100%"},
+    children=[
+        html.H5("Select samples to plot:"),
+        dcc.Dropdown(
+            id="samples-dropdown",
+            options=[],  # updated by callback
+            value=[],
+            multi=True,
+        ),
+        Checklist(
+            options=[
+                {
                     "label": "Use compressed files",
                     "value": 1,
-                }],
-                value = [1],
-                id="compressed-files",
-            ),
-            Tooltip(
-                "Use compressed time-series data where available - better performance, less accurate.",
-                target="compressed-files",
-                delay={"show": 1000},
-            ),
-            html.Div(style={"margin-top": "50px"}),
-            html.H5("Time graph"),
-            html.Label("X-axis:", htmlFor="samples-time-x"),
-            dcc.Dropdown(
-                id="samples-time-x",
-                options=["Unix time","From start","From formation","From cycling"],
-                value="From start",
-                multi=False,
-            ),
-            dcc.Dropdown(
-                id="samples-time-units",
-                options=["Seconds","Minutes","Hours","Days"],
-                value="Hours",
-            ),
-            html.Div(style={"margin-top": "10px"}),
-            html.Label("Y-axis:", htmlFor="samples-time-y"),
-            dcc.Dropdown(
-                id="samples-time-y",
-                options=["V (V)"],
-                value="V (V)",
-                multi=False,
-            ),
-            html.Div(style={"margin-top": "50px"}),
-            html.H5("Cycles graph"),
-            html.P("X-axis: Cycle"),
-            html.Label("Y-axis:", htmlFor="samples-cycles-y"),
-            dcc.Dropdown(
-                id="samples-cycles-y",
-                options=[
-                    "Specific discharge capacity (mAh/g)",
-                    "Efficiency (%)",
-                ],
-                value="Specific discharge capacity (mAh/g)",
-                multi=False,
-            ),
-            html.Div(style={"margin-top": "50px"}),
-            html.H5("One cycle graph"),
-            html.Label("X-axis:", htmlFor="samples-cycle-x"),
-            dcc.Dropdown(
-                id="samples-cycle-x",
-                options=["Q (mAh)", "V (V)", "dQdV (mAh/V)"],
-                value="Q (mAh)",
-            ),
-            html.Div(style={"margin-top": "10px"}),
-            html.Label("Y-axis:", htmlFor="samples-cycle-y"),
-            dcc.Dropdown(
-                id="samples-cycle-y",
-                options=["Q (mAh)", "V (V)", "dQdV (mAh/V)"],
-                value="V (V)",
-            ),
-            html.Div(style={"margin-top": "10px"}),
-            html.Label("Cycle number:", htmlFor="cycle-number"),
-            dcc.Input(
-                id="cycle-number",
-                type="number",
-                placeholder="Cycle number",
-                min=1,
-                value=1,
-                style={"width": "100%"},
-            ),
-            html.Div(style={"margin-top": "100px"}),
-        ],
-    )
+                }
+            ],
+            value=[1],
+            id="compressed-files",
+        ),
+        Tooltip(
+            "Use compressed time-series data where available - better performance, less accurate.",
+            target="compressed-files",
+            delay={"show": 1000},
+        ),
+        html.Div(style={"margin-top": "50px"}),
+        html.H5("Time graph"),
+        html.Label("X-axis:", htmlFor="samples-time-x"),
+        dcc.Dropdown(
+            id="samples-time-x",
+            options=["Unix time", "From start", "From formation", "From cycling"],
+            value="From start",
+            multi=False,
+        ),
+        dcc.Dropdown(
+            id="samples-time-units",
+            options=["Seconds", "Minutes", "Hours", "Days"],
+            value="Hours",
+        ),
+        html.Div(style={"margin-top": "10px"}),
+        html.Label("Y-axis:", htmlFor="samples-time-y"),
+        dcc.Dropdown(
+            id="samples-time-y",
+            options=["V (V)"],
+            value="V (V)",
+            multi=False,
+        ),
+        html.Div(style={"margin-top": "50px"}),
+        html.H5("Cycles graph"),
+        html.P("X-axis: Cycle"),
+        html.Label("Y-axis:", htmlFor="samples-cycles-y"),
+        dcc.Dropdown(
+            id="samples-cycles-y",
+            options=[
+                "Specific discharge capacity (mAh/g)",
+                "Efficiency (%)",
+            ],
+            value="Specific discharge capacity (mAh/g)",
+            multi=False,
+        ),
+        html.Div(style={"margin-top": "50px"}),
+        html.H5("One cycle graph"),
+        html.Label("X-axis:", htmlFor="samples-cycle-x"),
+        dcc.Dropdown(
+            id="samples-cycle-x",
+            options=["Q (mAh)", "V (V)", "dQdV (mAh/V)"],
+            value="Q (mAh)",
+        ),
+        html.Div(style={"margin-top": "10px"}),
+        html.Label("Y-axis:", htmlFor="samples-cycle-y"),
+        dcc.Dropdown(
+            id="samples-cycle-y",
+            options=["Q (mAh)", "V (V)", "dQdV (mAh/V)"],
+            value="V (V)",
+        ),
+        html.Div(style={"margin-top": "10px"}),
+        html.Label("Cycle number:", htmlFor="cycle-number"),
+        dcc.Input(
+            id="cycle-number",
+            type="number",
+            placeholder="Cycle number",
+            min=1,
+            value=1,
+            style={"width": "100%"},
+        ),
+        html.Div(style={"margin-top": "100px"}),
+    ],
+)
 
 time_graph = dcc.Graph(
     id="time-graph",
     style={"height": "100%"},
-    config={"scrollZoom":True, "displaylogo":False},
+    config={"scrollZoom": True, "displaylogo": False},
     figure={
         "data": [],
         "layout": go.Layout(
-            template = graph_template,
-            margin = graph_margin,
+            template=graph_template,
+            margin=graph_margin,
             title="vs time",
             xaxis={"title": "Time"},
             yaxis={"title": ""},
@@ -130,15 +133,15 @@ time_graph = dcc.Graph(
 cycles_graph = dcc.Graph(
     id="cycles-graph",
     style={"height": "100%"},
-    config={"scrollZoom":True, "displaylogo":False},
+    config={"scrollZoom": True, "displaylogo": False},
     figure={
         "data": [],
         "layout": go.Layout(
-            template = graph_template,
-            margin = graph_margin,
-            title = "vs cycle",
-            xaxis = {"title": "Cycle"},
-            yaxis = {"title": ""},
+            template=graph_template,
+            margin=graph_margin,
+            title="vs cycle",
+            xaxis={"title": "Cycle"},
+            yaxis={"title": ""},
             showlegend=False,
         ),
     },
@@ -146,24 +149,24 @@ cycles_graph = dcc.Graph(
 
 one_cycle_graph = dcc.Graph(
     id="cycle-graph",
-    config={"scrollZoom":True, "displaylogo":False},
+    config={"scrollZoom": True, "displaylogo": False},
     style={"height": "100%"},
     figure={
         "data": [],
         "layout": go.Layout(
-            template = graph_template,
-            margin = graph_margin,
-            title = "One cycle",
-            xaxis = {"title": ""},
-            yaxis = {"title": ""},
+            template=graph_template,
+            margin=graph_margin,
+            title="One cycle",
+            xaxis={"title": ""},
+            yaxis={"title": ""},
             showlegend=False,
         ),
     },
 )
 
-samples_layout =  html.Div(
+samples_layout = html.Div(
     style={"height": "100%"},
-    children = [
+    children=[
         dcc.Store(
             id="samples-data-store",
             data={"data_sample_time": {}, "data_sample_cycle": {}},
@@ -229,7 +232,8 @@ samples_layout =  html.Div(
     ],
 )
 
-#--------------------------------- CALLBACKS ----------------------------------#
+
+# --------------------------------- CALLBACKS ----------------------------------#
 def register_samples_callbacks(app: Dash) -> None:
     """Register all callbacks for the samples tab."""
 
@@ -275,7 +279,7 @@ def register_samples_callbacks(app: Dash) -> None:
             # Otherwise import the data
             run_id = run_from_sample(sample)
             data_folder = CONFIG["Processed snapshots folder path"]
-            file_location = os.path.join(data_folder,run_id,sample)
+            file_location = os.path.join(data_folder, run_id, sample)
 
             # Get raw data
             try:
@@ -299,12 +303,12 @@ def register_samples_callbacks(app: Dash) -> None:
                 data["data_sample_time"][sample] = data_dict
             else:
                 cycling_files = [
-                    os.path.join(file_location,f) for f in files
-                    if (f.startswith("snapshot") and f.endswith(".h5"))
+                    os.path.join(file_location, f) for f in files if (f.startswith("snapshot") and f.endswith(".h5"))
                 ]
                 if not cycling_files:
                     cycling_files = [
-                        os.path.join(file_location,f) for f in files
+                        os.path.join(file_location, f)
+                        for f in files
                         if (f.startswith("snapshot") and f.endswith(".json.gz"))
                     ]
                     if not cycling_files:
@@ -332,7 +336,7 @@ def register_samples_callbacks(app: Dash) -> None:
 
         cycles_y_vars = {"Specific discharge capacity (mAh/g)", "Normalised discharge capacity (%)", "Efficiency (%)"}
         for data_dict in data["data_sample_cycle"].values():
-            cycles_y_vars.update([k for k,v in data_dict.items() if isinstance(v,list)])
+            cycles_y_vars.update([k for k, v in data_dict.items() if isinstance(v, list)])
         cycles_y_vars = list(cycles_y_vars)
 
         return data, time_y_vars, cycles_y_vars
@@ -363,13 +367,13 @@ def register_samples_callbacks(app: Dash) -> None:
         for sample, data_dict in data["data_sample_time"].items():
             uts = np.array(data_dict["uts"])
             if xvar == "From start":
-                offset=uts[0]
+                offset = uts[0]
             elif xvar == "From formation":
-                offset=uts[next(i for i, x in enumerate(data_dict["Cycle"]) if x >= 1)]
+                offset = uts[next(i for i, x in enumerate(data_dict["Cycle"]) if x >= 1)]
             elif xvar == "From cycling":
-                offset=uts[next(i for i, x in enumerate(data_dict["Cycle"]) if x >= 4)]
+                offset = uts[next(i for i, x in enumerate(data_dict["Cycle"]) if x >= 4)]
             else:
-                offset=0
+                offset = 0
 
             trace = go.Scatter(
                 x=(np.array(data_dict["uts"]) - offset) / multiplier,
@@ -380,7 +384,6 @@ def register_samples_callbacks(app: Dash) -> None:
             )
             fig.add_trace(trace)
         return fig
-
 
     # Update the cycles graph
     @app.callback(

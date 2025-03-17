@@ -8,6 +8,7 @@ file paths and server information. The database samples table is created
 with columns specified in the config file, with alternative names for handling
 different naming conventions in output files.
 """
+
 import json
 import sqlite3
 import sys
@@ -17,28 +18,26 @@ from pathlib import Path
 def default_config(base_dir: Path) -> dict:
     """Create default shared config file."""
     return {
-        "Database path": str(base_dir/"database"/"database.db"),
-        "Database backup folder path": str(base_dir/"database"/"backup"),
-        "Samples folder path": str(base_dir/"samples"),
-        "Processed snapshots folder path": str(base_dir/"snapshots"),
-        "Batches folder path": str(base_dir/"batches"),
-        "Graphs folder path": str(base_dir/"snapshots"),
-
-        "Servers" : [
+        "Database path": str(base_dir / "database" / "database.db"),
+        "Database backup folder path": str(base_dir / "database" / "backup"),
+        "Samples folder path": str(base_dir / "samples"),
+        "Processed snapshots folder path": str(base_dir / "snapshots"),
+        "Batches folder path": str(base_dir / "batches"),
+        "Graphs folder path": str(base_dir / "snapshots"),
+        "Servers": [
             {
                 "label": "example-server",
                 "hostname": "example-hostname",
                 "username": "username on remote server",
                 "server_type": "tomato (only supported type at the moment)",
                 "shell_type": "powershell or cmd - changes some commands",
-                "command_prefix" : "this is put before any command, e.g. conda activate tomato ; ",
-                "command_suffix" : "",
+                "command_prefix": "this is put before any command, e.g. conda activate tomato ; ",
+                "command_suffix": "",
                 "tomato_scripts_path": "tomato-specific: this is put before ketchup in the command",
                 "tomato_data_path": "tomato-specific: the folder where data is stored, usually AppData/local/dgbowl/tomato/version/jobs",
             },
         ],
-
-        "EC-lab harvester" : {
+        "EC-lab harvester": {
             "Servers": [
                 {
                     "label": "example-server",
@@ -52,11 +51,10 @@ def default_config(base_dir: Path) -> dict:
                 "folder name on server": "run_id in database",
             },
         },
-
-        "Neware harvester" : {
+        "Neware harvester": {
             "Servers": [
                 {
-                    "label" : "example-server",
+                    "label": "example-server",
                     "hostname": "example-hostname",
                     "username": "username on remote server",
                     "shell_type": "cmd",
@@ -64,101 +62,151 @@ def default_config(base_dir: Path) -> dict:
                 },
             ],
         },
-
-        "OpenBIS PAT" : "Path/to/OpenBIS/personal/access/token",
-
-        "User mapping" : {
+        "OpenBIS PAT": "Path/to/OpenBIS/personal/access/token",
+        "User mapping": {
             "short_name": "full_name used in OpenBIS",
         },
-
-        "Sample database" : [
-            {"Name" : "Sample ID", "Alternative names" : ["sampleid"], "Type" : "VARCHAR(255) PRIMARY KEY"},
-            {"Name" : "Run ID", "Type" : "VARCHAR(255)"},
-            {"Name" : "Cell number", "Alternative names" : ["Battery_Number"], "Type" : "INT"},
-            {"Name" : "N:P ratio", "Alternative names" : ["Actual N:P Ratio"], "Type" : "FLOAT"},
-            {"Name" : "Rack position", "Alternative names" : ["Rack_Position"], "Type" : "INT"},
-            {"Name" : "Separator type", "Type" : "VARCHAR(255)"},
-            {"Name" : "Electrolyte name", "Alternative names" : ["Electrolyte"], "Type" : "VARCHAR(255)"},
-            {"Name" : "Electrolyte description", "Type" : "TEXT"},
-            {"Name" : "Electrolyte position", "Type" : "INT"},
-            {"Name" : "Electrolyte amount (uL)", "Alternative names" : ["Electrolyte Amount"], "Type" : "FLOAT"},
-            {"Name" : "Electrolyte dispense order", "Type" : "VARCHAR(255)"},
-            {"Name" : "Electrolyte amount before separator (uL)", "Alternative names" : ["Electrolyte Amount Before Seperator (uL)"], "Type" : "FLOAT"},
-            {"Name" : "Electrolyte amount after separator (uL)", "Alternative names" : ["Electrolyte Amount After Seperator (uL)"], "Type" : "FLOAT"},
-            {"Name" : "Anode rack position", "Alternative names" : ["Anode Position"], "Type" : "INT"},
-            {"Name" : "Anode type", "Type" : "VARCHAR(255)"},
-            {"Name" : "Anode description", "Type" : "TEXT"},
-            {"Name" : "Anode diameter (mm)", "Alternative names" : ["Anode_Diameter", "Anode Diameter"], "Type" : "FLOAT"},
-            {"Name" : "Anode mass (mg)", "Alternative names" : ["Anode Weight (mg)", "Anode Weight"], "Type" : "FLOAT"},
-            {"Name" : "Anode current collector mass (mg)", "Alternative names" : ["Anode Current Collector Weight (mg)"], "Type" : "FLOAT"},
-            {"Name" : "Anode active material mass fraction", "Alternative names" : ["Anode AM Content"], "Type" : "FLOAT"},
-            {"Name" : "Anode active material mass (mg)", "Alternative names" : ["Anode Active Material Weight (mg)", "Anode AM Weight (mg)"], "Type" : "FLOAT"},
-            {"Name" : "Anode C-rate definition areal capacity (mAh/cm2)", "Type" : "FLOAT"},
-            {"Name" : "Anode C-rate definition specific capacity (mAh/g)", "Type" : "FLOAT"},
-            {"Name" : "Anode balancing specific capacity (mAh/g)", "Alternative names" : ["Anode Practical Capacity (mAh/g)","Anode Nominal Specific Capacity (mAh/g)"], "Type" : "FLOAT"},
-            {"Name" : "Anode balancing capacity (mAh)", "Alternative names" : ["Anode Capacity (mAh)"], "Type" : "FLOAT"},
-            {"Name" : "Cathode rack position", "Alternative names" : ["Cathode Position"], "Type" : "INT"},
-            {"Name" : "Cathode type", "Type" : "VARCHAR(255)"},
-            {"Name" : "Cathode description", "Type" : "TEXT"},
-            {"Name" : "Cathode diameter (mm)", "Alternative names" : ["Cathode_Diameter", "Cathode Diameter"], "Type" : "FLOAT"},
-            {"Name" : "Cathode mass (mg)", "Alternative names" : ["Cathode Weight (mg)"], "Type" : "FLOAT"},
-            {"Name" : "Cathode current collector mass (mg)", "Alternative names" : ["Cathode Current Collector Weight (mg)"], "Type" : "FLOAT"},
-            {"Name" : "Cathode active material mass fraction", "Alternative names" : ["Cathode Active Material Weight Fraction","Cathode AM Content"], "Type" : "FLOAT"},
-            {"Name" : "Cathode active material mass (mg)", "Alternative names" : ["Cathode Active Material Weight (mg)","Cathode AM Weight (mg)"], "Type" : "FLOAT"},
-            {"Name" : "Cathode C-rate definition areal capacity (mAh/cm2)", "Type" : "FLOAT"},
-            {"Name" : "Cathode C-rate definition specific capacity (mAh/g)", "Type" : "FLOAT"},
-            {"Name" : "Cathode balancing specific capacity (mAh/g)", "Alternative names" : ["Cathode Practical Capacity (mAh/g)","Cathode Nominal Specific Capacity (mAh/g)"], "Type" : "FLOAT"},
-            {"Name" : "Cathode balancing capacity (mAh)", "Alternative names" : ["Cathode Capacity (mAh)"], "Type" : "FLOAT"},
-            {"Name" : "C-rate definition capacity (mAh)", "Alternative names" : ["Capacity (mAh)", "C-rate Capacity (mAh)"], "Type" : "FLOAT"},
-            {"Name" : "Target N:P ratio", "Type" : "FLOAT"},
-            {"Name" : "Minimum N:P ratio", "Type" : "FLOAT"},
-            {"Name" : "Maximum N:P ratio", "Type" : "FLOAT"},
-            {"Name" : "N:P ratio overlap factor", "Type" : "FLOAT"},
-            {"Name" : "Casing type", "Type" : "VARCHAR(255)"},
-            {"Name" : "Separator diameter (mm)", "Type" : "FLOAT"},
-            {"Name" : "Spacer (mm)", "Type" : "FLOAT"},
-            {"Name" : "Comment", "Alternative names" : ["Comments"], "Type" : "TEXT"},
-            {"Name" : "Label", "Type" : "VARCHAR(255)"},
-            {"Name" : "Barcode", "Type" : "VARCHAR(255)"},
-            {"Name" : "Subbatch number", "Alternative names" : ["Batch Number","Subbatch"], "Type" : "INT"},
-            {"Name" : "Assembly history", "Type" : "TEXT"},
-            {"Name" : "Timestamp step 1", "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 2", "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 3", "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 4", "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 5", "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 6", "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 7", "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 8", "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 9", "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 10", "Type" : "DATETIME"},
-            {"Name" : "Timestamp step 11", "Type" : "DATETIME"},
+        "Sample database": [
+            {"Name": "Sample ID", "Alternative names": ["sampleid"], "Type": "VARCHAR(255) PRIMARY KEY"},
+            {"Name": "Run ID", "Type": "VARCHAR(255)"},
+            {"Name": "Cell number", "Alternative names": ["Battery_Number"], "Type": "INT"},
+            {"Name": "N:P ratio", "Alternative names": ["Actual N:P Ratio"], "Type": "FLOAT"},
+            {"Name": "Rack position", "Alternative names": ["Rack_Position"], "Type": "INT"},
+            {"Name": "Separator type", "Type": "VARCHAR(255)"},
+            {"Name": "Electrolyte name", "Alternative names": ["Electrolyte"], "Type": "VARCHAR(255)"},
+            {"Name": "Electrolyte description", "Type": "TEXT"},
+            {"Name": "Electrolyte position", "Type": "INT"},
+            {"Name": "Electrolyte amount (uL)", "Alternative names": ["Electrolyte Amount"], "Type": "FLOAT"},
+            {"Name": "Electrolyte dispense order", "Type": "VARCHAR(255)"},
+            {
+                "Name": "Electrolyte amount before separator (uL)",
+                "Alternative names": ["Electrolyte Amount Before Seperator (uL)"],
+                "Type": "FLOAT",
+            },
+            {
+                "Name": "Electrolyte amount after separator (uL)",
+                "Alternative names": ["Electrolyte Amount After Seperator (uL)"],
+                "Type": "FLOAT",
+            },
+            {"Name": "Anode rack position", "Alternative names": ["Anode Position"], "Type": "INT"},
+            {"Name": "Anode type", "Type": "VARCHAR(255)"},
+            {"Name": "Anode description", "Type": "TEXT"},
+            {"Name": "Anode diameter (mm)", "Alternative names": ["Anode_Diameter", "Anode Diameter"], "Type": "FLOAT"},
+            {"Name": "Anode mass (mg)", "Alternative names": ["Anode Weight (mg)", "Anode Weight"], "Type": "FLOAT"},
+            {
+                "Name": "Anode current collector mass (mg)",
+                "Alternative names": ["Anode Current Collector Weight (mg)"],
+                "Type": "FLOAT",
+            },
+            {"Name": "Anode active material mass fraction", "Alternative names": ["Anode AM Content"], "Type": "FLOAT"},
+            {
+                "Name": "Anode active material mass (mg)",
+                "Alternative names": ["Anode Active Material Weight (mg)", "Anode AM Weight (mg)"],
+                "Type": "FLOAT",
+            },
+            {"Name": "Anode C-rate definition areal capacity (mAh/cm2)", "Type": "FLOAT"},
+            {"Name": "Anode C-rate definition specific capacity (mAh/g)", "Type": "FLOAT"},
+            {
+                "Name": "Anode balancing specific capacity (mAh/g)",
+                "Alternative names": ["Anode Practical Capacity (mAh/g)", "Anode Nominal Specific Capacity (mAh/g)"],
+                "Type": "FLOAT",
+            },
+            {"Name": "Anode balancing capacity (mAh)", "Alternative names": ["Anode Capacity (mAh)"], "Type": "FLOAT"},
+            {"Name": "Cathode rack position", "Alternative names": ["Cathode Position"], "Type": "INT"},
+            {"Name": "Cathode type", "Type": "VARCHAR(255)"},
+            {"Name": "Cathode description", "Type": "TEXT"},
+            {
+                "Name": "Cathode diameter (mm)",
+                "Alternative names": ["Cathode_Diameter", "Cathode Diameter"],
+                "Type": "FLOAT",
+            },
+            {"Name": "Cathode mass (mg)", "Alternative names": ["Cathode Weight (mg)"], "Type": "FLOAT"},
+            {
+                "Name": "Cathode current collector mass (mg)",
+                "Alternative names": ["Cathode Current Collector Weight (mg)"],
+                "Type": "FLOAT",
+            },
+            {
+                "Name": "Cathode active material mass fraction",
+                "Alternative names": ["Cathode Active Material Weight Fraction", "Cathode AM Content"],
+                "Type": "FLOAT",
+            },
+            {
+                "Name": "Cathode active material mass (mg)",
+                "Alternative names": ["Cathode Active Material Weight (mg)", "Cathode AM Weight (mg)"],
+                "Type": "FLOAT",
+            },
+            {"Name": "Cathode C-rate definition areal capacity (mAh/cm2)", "Type": "FLOAT"},
+            {"Name": "Cathode C-rate definition specific capacity (mAh/g)", "Type": "FLOAT"},
+            {
+                "Name": "Cathode balancing specific capacity (mAh/g)",
+                "Alternative names": [
+                    "Cathode Practical Capacity (mAh/g)",
+                    "Cathode Nominal Specific Capacity (mAh/g)",
+                ],
+                "Type": "FLOAT",
+            },
+            {
+                "Name": "Cathode balancing capacity (mAh)",
+                "Alternative names": ["Cathode Capacity (mAh)"],
+                "Type": "FLOAT",
+            },
+            {
+                "Name": "C-rate definition capacity (mAh)",
+                "Alternative names": ["Capacity (mAh)", "C-rate Capacity (mAh)"],
+                "Type": "FLOAT",
+            },
+            {"Name": "Target N:P ratio", "Type": "FLOAT"},
+            {"Name": "Minimum N:P ratio", "Type": "FLOAT"},
+            {"Name": "Maximum N:P ratio", "Type": "FLOAT"},
+            {"Name": "N:P ratio overlap factor", "Type": "FLOAT"},
+            {"Name": "Casing type", "Type": "VARCHAR(255)"},
+            {"Name": "Separator diameter (mm)", "Type": "FLOAT"},
+            {"Name": "Spacer (mm)", "Type": "FLOAT"},
+            {"Name": "Comment", "Alternative names": ["Comments"], "Type": "TEXT"},
+            {"Name": "Label", "Type": "VARCHAR(255)"},
+            {"Name": "Barcode", "Type": "VARCHAR(255)"},
+            {"Name": "Subbatch number", "Alternative names": ["Batch Number", "Subbatch"], "Type": "INT"},
+            {"Name": "Assembly history", "Type": "TEXT"},
+            {"Name": "Timestamp step 1", "Type": "DATETIME"},
+            {"Name": "Timestamp step 2", "Type": "DATETIME"},
+            {"Name": "Timestamp step 3", "Type": "DATETIME"},
+            {"Name": "Timestamp step 4", "Type": "DATETIME"},
+            {"Name": "Timestamp step 5", "Type": "DATETIME"},
+            {"Name": "Timestamp step 6", "Type": "DATETIME"},
+            {"Name": "Timestamp step 7", "Type": "DATETIME"},
+            {"Name": "Timestamp step 8", "Type": "DATETIME"},
+            {"Name": "Timestamp step 9", "Type": "DATETIME"},
+            {"Name": "Timestamp step 10", "Type": "DATETIME"},
+            {"Name": "Timestamp step 11", "Type": "DATETIME"},
         ],
     }
+
 
 def create_database() -> None:
     """Create/update a database file."""
     # Load the configuration
     from aurora_cycler_manager.config import CONFIG
+
     config = CONFIG
     database_path = Path(config["Database path"])
 
     # Check if database file already exists
     if database_path.exists() and database_path.suffix == ".db":
-        db_existed=True
+        db_existed = True
         print(f"Found database at {database_path}")
     else:
         print(f"No database at {database_path}, creating new database")
-        db_existed=False
+        db_existed = False
         database_path.parent.mkdir(exist_ok=True)
     # Get the list of columns from the configuration
     columns = config["Sample database"]
-    column_definitions = [f'`{col["Name"]}` {col["Type"]}' for col in columns]
+    column_definitions = [f"`{col['Name']}` {col['Type']}" for col in columns]
 
     # Connect to database, create tables
     with sqlite3.connect(config["Database path"]) as conn:
         cursor = conn.cursor()
-        cursor.execute(f'CREATE TABLE IF NOT EXISTS samples ({", ".join(column_definitions)})')
+        cursor.execute(f"CREATE TABLE IF NOT EXISTS samples ({', '.join(column_definitions)})")
         cursor.execute(
             "CREATE TABLE IF NOT EXISTS jobs ("
             "`Job ID` VARCHAR(255) PRIMARY KEY, "
@@ -253,14 +301,8 @@ def create_database() -> None:
             existing_columns = cursor.fetchall()
             existing_columns = [col[1] for col in existing_columns]
             new_columns = [col["Name"] for col in config["Sample database"]]
-            added_columns = [
-                col for col in new_columns
-                if col not in existing_columns
-            ]
-            removed_columns = [
-                col for col in existing_columns
-                if col not in new_columns
-            ]
+            added_columns = [col for col in new_columns if col not in existing_columns]
+            removed_columns = [col for col in existing_columns if col not in new_columns]
             if removed_columns:
                 # Ask user to double confirm
                 print(f"Database config would remove columns: {', '.join(removed_columns)}")
@@ -283,6 +325,7 @@ def create_database() -> None:
         else:
             print(f"Created database at {database_path}")
 
+
 def main() -> None:
     """Create the shared config and database files."""
     root_dir = Path(__file__).resolve().parent
@@ -290,6 +333,7 @@ def main() -> None:
 
     try:
         from aurora_cycler_manager.config import CONFIG
+
         if CONFIG.get("Shared config path") and CONFIG.get("Database path"):
             print("Set up already exists:")
             print(f"User config file: {config_path}")
@@ -303,19 +347,19 @@ def main() -> None:
             if choice not in ["yes", "y"]:
                 print("Exiting")
                 sys.exit()
-    except (ValueError,FileNotFoundError):
+    except (ValueError, FileNotFoundError):
         pass
 
     choice = input("Connect to an existing configuration and database? (yes/no):")
-    if choice.lower() in ["yes","y"]:
+    if choice.lower() in ["yes", "y"]:
         shared_config_path_str = input("Please enter the path to the shared_config.json file or parent folder:")
         # Remove quotes, spaces etc.
-        shared_config_path = Path(shared_config_path_str.strip('\'" ')).resolve()
+        shared_config_path = Path(shared_config_path_str.strip("'\" ")).resolve()
         # Try to find the shared config file in a few different locations
         potential_paths = [
             shared_config_path,
-            shared_config_path/"shared_config.json",
-            shared_config_path/"database"/"shared_config.json",
+            shared_config_path / "shared_config.json",
+            shared_config_path / "database" / "shared_config.json",
         ]
         for path in potential_paths:
             if path.exists() and path.suffix == ".json":
@@ -334,13 +378,16 @@ def main() -> None:
             json.dump(config, f, indent=4)
         # If this runs successfully, the user can now run the app
         from aurora_cycler_manager.config import CONFIG
+
         print("Successfully connected to existing configuration. Run the app with 'aurora-app'")
     elif choice.lower() in ["no", "n"]:
         choice = input("Create a new config, database and file structure? (yes/no):")
-        if choice.lower() not in ["yes","y"]:
+        if choice.lower() not in ["yes", "y"]:
             print("Exiting")
             sys.exit()
-        base_dir = Path(input("Please enter the folder path to be used for Aurora database and data storage:")).resolve()
+        base_dir = Path(
+            input("Please enter the folder path to be used for Aurora database and data storage:")
+        ).resolve()
         # If it doesn't exist, ask user if they want to create the folder
         if not base_dir.exists():
             choice = input(f"Folder {base_dir} does not exist. Create it? (yes/no): ")
@@ -359,31 +406,32 @@ def main() -> None:
         print(f"Created folder structure in {base_dir}")
 
         # Create the config file, if it already exists warn the user
-        config_path = base_dir/"database"/"shared_config.json"
+        config_path = base_dir / "database" / "shared_config.json"
         if config_path.exists():
             choice = input(f"Config file {config_path} already exists. Overwrite it? (yes/no): ")
-            if choice.lower() not in ["yes","y"]:
+            if choice.lower() not in ["yes", "y"]:
                 print("Exiting")
-        with (base_dir/"database"/"shared_config.json").open("w") as f:
+        with (base_dir / "database" / "shared_config.json").open("w") as f:
             json.dump(default_config(base_dir), f, indent=4)
         # Read the user config file and update with the shared config file
         try:
             from aurora_cycler_manager.config import CONFIG
         except (FileNotFoundError, ValueError):
             # If it didn't exist before, get_config will have created a blank file
-            with (root_dir/"config.json").open("r") as f:
+            with (root_dir / "config.json").open("r") as f:
                 CONFIG = json.load(f)
         CONFIG["Shared config path"] = str(config_path)
-        with (root_dir/"config.json").open("w") as f:
+        with (root_dir / "config.json").open("w") as f:
             json.dump(CONFIG, f, indent=4)
         print(f"Created shared config file at {config_path}")
-        print(f"Updated user config at {root_dir/'config.json'} to point to shared config file")
+        print(f"Updated user config at {root_dir / 'config.json'} to point to shared config file")
 
         # Create the database
         create_database()
 
         print(f"IMPORTANT: Before use you must fill in server details in {config_path}")
         print("If you change database columns, run this script again.")
+
 
 if __name__ == "__main__":
     main()
