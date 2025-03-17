@@ -163,14 +163,38 @@ class ServerManager:
                 with sqlite3.connect(self.config["Database path"]) as conn:
                     cursor = conn.cursor()
                     for ready, pipeline, sampleid, jobid_on_server in zip(status["ready"],status["pipeline"], status["sampleid"], status["jobid"]):
-                        jobid = f"{label}-{jobid_on_server}" if jobid_on_server else None
                         cursor.execute(
-                            "INSERT OR REPLACE INTO pipelines "
-                            "(`Pipeline`, `Sample ID`, `Job ID`, `Ready`, `Last checked`, "
-                            "`Server label`, `Server hostname`, `Job ID on server`, `Server type`) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            (pipeline, sampleid, jobid, ready, dt, label, hostname, jobid_on_server, server_type),
+                            "INSERT OR IGNORE INTO pipelines (`Pipeline`) VALUES (?)",
+                            (pipeline,),
                         )
+                        cursor.execute(
+                            "UPDATE pipelines "
+                            "SET `Ready` = ?, `Last checked` = ?, `Server label` = ?, "
+                            "`Server hostname` = ?, `Server type` = ? "
+                            "WHERE `Pipeline` = ?",
+                            (ready, dt, label, hostname, server_type, pipeline),
+                        )
+                        # Need to treat nulls from tomato and Neware differently...
+                        # Tomato null means sample removed, Neware means no update
+                        if server_type == "tomato" or sampleid is not None:
+                            cursor.execute(
+                                "UPDATE pipelines "
+                                "SET `Sample ID` = ? "
+                                "WHERE `Pipeline` = ?",
+                                (sampleid, pipeline),
+                            )
+                        if (
+                            server_type == "tomato"
+                            or jobid_on_server is not None
+                            or (server_type == "neware" and ready==1)
+                        ):
+                            jobid = f"{label}-{jobid_on_server}" if jobid_on_server else None
+                            cursor.execute(
+                                "UPDATE pipelines "
+                                "SET `Job ID on server` = ?, `Job ID` = ? "
+                                "WHERE `Pipeline` = ?",
+                                (jobid_on_server, jobid, pipeline),
+                            )
                     conn.commit()
 
     def update_flags(self) -> None:

@@ -570,7 +570,6 @@ class NewareServer(CyclerServer):
             else:
                 sampleids.append(None)
                 readys.append(True)
-        # TODO need to not overwrite with none if no "sample" on pipeline
         return {"pipeline": pipelines, "sampleid": sampleids, "jobid": [None]*len(pipelines), "ready": readys}
 
     def get_jobs(self) -> dict:
