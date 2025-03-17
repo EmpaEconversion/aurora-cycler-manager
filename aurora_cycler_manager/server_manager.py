@@ -147,7 +147,10 @@ class ServerManager:
                                 "`Server Hostname` = ?, `Job ID on server` = ?, "
                                 "`Last Checked` = ? "
                                 "WHERE `Job ID` = ?",
-                                (status, pipeline, jobname, label, hostname, jobid_on_server, dt, f"{label}-{jobid_on_server}"),
+                                (
+                                    status, pipeline, jobname, label, hostname,
+                                    jobid_on_server, dt, f"{label}-{jobid_on_server}",
+                                ),
                             )
                     conn.commit()
 
@@ -162,7 +165,9 @@ class ServerManager:
             if status:
                 with sqlite3.connect(self.config["Database path"]) as conn:
                     cursor = conn.cursor()
-                    for ready, pipeline, sampleid, jobid_on_server in zip(status["ready"],status["pipeline"], status["sampleid"], status["jobid"]):
+                    for ready, pipeline, sampleid, jobid_on_server in zip(
+                        status["ready"],status["pipeline"], status["sampleid"], status["jobid"],
+                    ):
                         cursor.execute(
                             "INSERT OR IGNORE INTO pipelines (`Pipeline`) VALUES (?)",
                             (pipeline,),
@@ -361,27 +366,27 @@ class ServerManager:
                 "FROM samples WHERE `Sample ID` = ?",
                 (sample,),
             )
-        if result is None:
+        if not result:
             msg = f"Sample '{sample}' not found in the database."
             raise ValueError(msg)
         if mode == "mass":
-            anode_capacity_mAh_g, anode_weight_mg, anode_diameter_mm, cathode_capacity_mAh_g, cathode_weight_mg, cathode_diameter_mm = result[0]
-            anode_frac_used = min(1,cathode_diameter_mm**2 / anode_diameter_mm**2)
-            cathode_frac_used = min(1,anode_diameter_mm**2 / cathode_diameter_mm**2)
-            anode_capacity_Ah = anode_frac_used * (anode_capacity_mAh_g * anode_weight_mg * 1e-6)
-            cathode_capacity_Ah = cathode_frac_used * (cathode_capacity_mAh_g * cathode_weight_mg * 1e-6)
-            capacity_Ah = cathode_capacity_Ah if ignore_anode else min(anode_capacity_Ah, cathode_capacity_Ah)
+            an_cap_mAh_g, an_mass_mg, an_diam_mm, cat_cap_mAh_g, cat_mass_mg, cat_diam_mm = result[0]
+            an_frac_used = min(1,cat_diam_mm**2 / an_diam_mm**2)
+            cat_frac_used = min(1,an_diam_mm**2 / cat_diam_mm**2)
+            an_cap_Ah = an_frac_used * (an_cap_mAh_g * an_mass_mg * 1e-6)
+            cat_cap_Ah = cat_frac_used * (cat_cap_mAh_g * cat_mass_mg * 1e-6)
+            capacity_Ah = cat_cap_Ah if ignore_anode else min(an_cap_Ah, cat_cap_Ah)
         elif mode == "areal":
-            anode_capacity_mAh_cm2, anode_diameter_mm, cathode_capacity_mAh_cm2, cathode_diameter_mm = result[0]
-            anode_frac_used = min(1,cathode_diameter_mm**2 / anode_diameter_mm**2)
-            cathode_frac_used = min(1,anode_diameter_mm**2 / cathode_diameter_mm**2)
-            anode_capacity_Ah = (
-                anode_frac_used * anode_capacity_mAh_cm2 * (anode_diameter_mm/2)**2 * 3.14159 * 1e-5
+            an_cap_mAh_cm2, an_diam_mm, cat_cap_mAh_cm2, cat_diam_mm = result[0]
+            an_frac_used = min(1,cat_diam_mm**2 / an_diam_mm**2)
+            cat_frac_used = min(1,an_diam_mm**2 / cat_diam_mm**2)
+            an_cap_Ah = (
+                an_frac_used * an_cap_mAh_cm2 * (an_diam_mm/2)**2 * 3.14159 * 1e-5
             )
-            cathode_capacity_Ah = (
-                cathode_frac_used * cathode_capacity_mAh_cm2 * (cathode_diameter_mm/2)**2 * 3.14159 * 1e-5
+            cat_cap_Ah = (
+                cat_frac_used * cat_cap_mAh_cm2 * (cat_diam_mm/2)**2 * 3.14159 * 1e-5
             )
-            capacity_Ah = cathode_capacity_Ah if ignore_anode else min(anode_capacity_Ah, cathode_capacity_Ah)
+            capacity_Ah = cat_cap_Ah if ignore_anode else min(an_cap_Ah, cat_cap_Ah)
         elif mode == "nominal":
             capacity_Ah = result[0][0] * 1e-3
         return capacity_Ah
@@ -583,7 +588,10 @@ class ServerManager:
             str: The output from the server cancel command
 
         """
-        result = self.execute_sql("SELECT `Server label`, `Job ID on server`, `Sample ID`, `Pipeline` FROM jobs WHERE `Job ID` = ?", (jobid,))
+        result = self.execute_sql(
+            "SELECT `Server label`, `Job ID on server`, `Sample ID`, `Pipeline` FROM jobs WHERE `Job ID` = ?",
+            (jobid,),
+        )
         server_label, jobid_on_server, sampleid, pipeline = result[0]
         server = self.find_server(server_label)
         output = server.cancel(jobid_on_server, sampleid, pipeline)

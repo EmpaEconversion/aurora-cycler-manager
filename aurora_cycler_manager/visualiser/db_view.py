@@ -1018,7 +1018,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             return no_update, 0
         for row in selected_rows:
             print(f"Unreadying {row['Pipeline']}")
-            output = sm.unready(row["Pipeline"])
+            _output = sm.unready(row["Pipeline"])
         return no_update, 1
 
     # Submit button pop up
@@ -1061,12 +1061,12 @@ def register_db_view_callbacks(app: Dash) -> None:
                 payload = json.loads(decoded)
             except json.JSONDecodeError:
                 return f"ERROR: {filename} is invalid json file", {}
-            missing_keys = [key for key in ["version","method","tomato"] if key not in payload.keys()]
+            missing_keys = [key for key in ["version","method","tomato"] if key not in payload]
             if missing_keys:
                 msg = f"ERROR: {filename} is missing keys: {', '.join(missing_keys)}"
                 return msg, {}
             return f"{filename} loaded", payload
-        elif all(s["Server type"] == "neware" for s in selected_rows):
+        if all(s["Server type"] == "neware" for s in selected_rows):
             # Should be an XML file
             if not (decoded.startswith('<?xml version="1.0" encoding="GB2312"?>') and "BTS Client" in decoded):
                 msg = f"ERROR: {filename} is not a valid BTS Client XML file"

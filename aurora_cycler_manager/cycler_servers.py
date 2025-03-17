@@ -124,7 +124,7 @@ class CyclerServer:
     def get_last_data(self, job_id_on_server: str) -> dict:
         """Get the last data from a job."""
         raise NotImplementedError
-    
+
     def get_job_data(self, jobid_on_server: str) -> dict:
         """Get the jobdata dict for a job."""
         raise NotImplementedError
@@ -558,10 +558,9 @@ class NewareServer(CyclerServer):
         result = json.loads(self.command("neware status"))
         # result is a dict with keys=pipeline and value a dict of stuff
         # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
-        pipelines, sampleids, jobids, readys = [], [], [], []
+        pipelines, sampleids, readys = [], [], []
         for pip, data in result.items():
             pipelines.append(pip)
-            jobids.append(None)
             if data["workstatus"] in ["working", "pause", "protect"]: # working\stop\finish\protect\pause
                 sampleids.append(data["barcode"])
                 readys.append(False)
