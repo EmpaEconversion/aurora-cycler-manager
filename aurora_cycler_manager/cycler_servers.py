@@ -591,6 +591,5 @@ class NewareServer(CyclerServer):
 
     def _get_testid(self, pipeline: str) -> str:
         """Get the testid for a pipeline."""
-        output = self.command(f"neware inquiredf {pipeline}")
-        res = json.loads(output)[pipeline]
-        return f"{res['devid']}_{res['subdevid']}_{res['chlid']}_{res['testid']}"
+        output = self.command(f"neware testid {pipeline}")
+        return json.loads(output)[pipeline]["full_test_id"]
