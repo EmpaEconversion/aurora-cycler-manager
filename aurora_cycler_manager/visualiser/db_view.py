@@ -94,6 +94,8 @@ visibility_settings = {
         "cancel-button",
         "view-button",
         "snapshot-button",
+        "label-button",
+        "create-batch-button",
     },
     "jobs": {
         "table-container",
@@ -104,6 +106,7 @@ visibility_settings = {
         "table-container",
         "view-button",
         "label-button",
+        "create-batch-button",
     },
     "samples": {
         "table-container",
@@ -113,6 +116,7 @@ visibility_settings = {
         "delete-button",
         "add-samples-button",
         "label-button",
+        "create-batch-button",
     },
 }
 
@@ -935,31 +939,37 @@ def register_db_view_callbacks(app: Dash) -> None:
         if selected_rows:
             enabled |= {"copy-button"}
             if accessible_servers:  # Need cycler permissions to do anything except copy, view or upload
-                if table == "pipelines":
-                    if all(s["Server label"] in accessible_servers for s in selected_rows):
-                        if all(s["Sample ID"] is not None for s in selected_rows):
+                match table:
+                    case "samples":
+                        enabled |= {"add-samples-button"}
+                        if all(s.get("Sample ID") is not None for s in selected_rows):
+                            enabled |= {"delete-button", "label-button", "create-batch-button"}
+                    case "pipelines":
+                        all_samples = all(s.get("Sample ID") is not None for s in selected_rows)
+                        all_servers = all(s.get("Server label") in accessible_servers for s in selected_rows)
+                        no_samples = all(s.get("Sample ID") is None for s in selected_rows)
+                        if all_samples:
+                            enabled |= {"label-button", "create-batch-button"}
+                        if all_servers and all_samples:
                             enabled |= {"snapshot-button"}
                             if len({s.get("Server type") for s in selected_rows}) == 1:
                                 enabled |= {"submit-button"}
                             if all(s["Job ID"] is None for s in selected_rows):
                                 enabled |= {"eject-button"}
-                                if all(s["Server type"] == "tomato" for s in selected_rows):
+                                if all(s.get("Server type") == "tomato" for s in selected_rows):
                                     enabled |= {"ready-button", "unready-button"}
-                            elif all(s["Job ID"] is not None for s in selected_rows):
+                            elif all(s.get("Job ID") is not None for s in selected_rows):
                                 enabled |= {"cancel-button"}
-                        elif all(s["Sample ID"] is None for s in selected_rows):
+                        elif all_servers and no_samples:
                             enabled |= {"load-button"}
-                elif table == "jobs":
-                    if all(s["Server label"] in accessible_servers for s in selected_rows):
-                        enabled |= {"snapshot-button"}
-                        if all(s["Status"] in ["r", "q", "qw"] for s in selected_rows):
-                            enabled |= {"cancel-button"}
-                elif table == "samples":  # noqa: SIM102
-                    enabled |= {"add-samples-button"}
-                    if all(s["Sample ID"] is not None for s in selected_rows):
-                        enabled |= {"delete-button", "label-button"}
-                        if len(selected_rows) > 1:
-                            enabled |= {"create-batch-button"}
+                    case "jobs":
+                        if all(s.get("Server label") in accessible_servers for s in selected_rows):
+                            enabled |= {"snapshot-button"}
+                            if all(s.get("Status") in ["r", "q", "qw"] for s in selected_rows):
+                                enabled |= {"cancel-button"}
+                    case "results":
+                        if all(s.get("Sample ID") is not None for s in selected_rows):
+                            enabled |= {"label-button", "create-batch-button"}
             if table == "samples" and not OPENBIS_DISABLED:
                 enabled |= {"openbis-button"}
             if any(s["Sample ID"] is not None for s in selected_rows):
