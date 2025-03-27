@@ -8,7 +8,6 @@ from __future__ import annotations
 import base64
 import json
 from datetime import datetime
-from pathlib import Path
 
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
@@ -18,7 +17,6 @@ from dash import callback_context as ctx
 from dash_mantine_components import TextInput
 
 from aurora_cycler_manager.analysis import update_sample_metadata
-from aurora_cycler_manager.config import CONFIG
 from aurora_cycler_manager.database_funcs import (
     add_samples_from_object,
     delete_samples,
