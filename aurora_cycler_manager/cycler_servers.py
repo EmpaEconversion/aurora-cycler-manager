@@ -495,7 +495,7 @@ class NewareServer(CyclerServer):
         # Write the xml string to a temporary file
         current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         try:
-            with Path("temp.xml").open("w", encoding="utf-8") as f:
+            with Path("./temp.xml").open("w", encoding="utf-8") as f:
                 f.write(xml_string)
             # Transfer the file to the remote PC and start the job
             with paramiko.SSHClient() as ssh:
@@ -503,18 +503,17 @@ class NewareServer(CyclerServer):
                 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
                 ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
                 with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
-                    remote_xml_dir = Path("C:/submitted_payloads")
-                    remote_xml_path = remote_xml_dir / f"{sample}__{current_datetime}.xml"
+                    remote_xml_dir = "C:/submitted_payloads/"
+                    remote_xml_path = remote_xml_dir + f"{sample}__{current_datetime}.xml"
                     # Create the directory if it doesn't exist
                     if self.shell_type == "cmd":
                         ssh.exec_command(f'mkdir "{remote_xml_dir!s}"')
                     elif self.shell_type == "powershell":
                         ssh.exec_command(f'New-Item -ItemType Directory -Path "{remote_xml_dir!s}"')
-                    scp.put("temp.xml", remote_xml_path)
+                    scp.put("./temp.xml", remote_xml_path)
 
             # Submit the file on the remote PC
             output = self.command(f"neware start {pipeline} {sample} {remote_xml_path}")
-            print(output)
             err_msg = (
                 "Error submitting job on Neware. "
                 "Probably an issue with the xml file. "
