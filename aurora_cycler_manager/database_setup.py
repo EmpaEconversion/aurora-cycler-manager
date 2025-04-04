@@ -216,7 +216,7 @@ def create_database() -> None:
             "`Jobname` VARCHAR(50), "
             "`Server label` VARCHAR(255), "
             "`Server hostname` VARCHAR(255), "
-            "`Job ID on server` INT, "
+            "`Job ID on server` VARCHAR(255), "
             "`Submitted` DATETIME, "
             "`Payload` TEXT, "
             "`Comment` TEXT, "
