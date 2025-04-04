@@ -566,9 +566,9 @@ class ServerManager:
         # Update the job table in the database
         if full_jobid and jobid:
             self.execute_sql(
-                "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Job ID on server`, "
-                "`Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (full_jobid, sample, server.label, int(jobid), dt, json_string, comment),
+                "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Server hostname`, `Job ID on server`, "
+                "`Pipeline`, `Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (full_jobid, sample, server.label, server.hostname, jobid, pipeline, dt, json_string, comment),
             )
             # Bit of a duct tape fix until Neware's API improves
             # It costs around 1 second to get the job id for one channel, so cannot do this in update_pipelines
