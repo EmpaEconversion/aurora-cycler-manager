@@ -534,11 +534,29 @@ class NewareServer(CyclerServer):
             Path("temp.xml").unlink()  # Remove the file on local machine
         return jobid, jobid_on_server, xml_string
 
-    def cancel(self, _job_id_on_server: str, _sampleid: str, pipeline: str) -> str:
+    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.
         """
+        # Check that sample ID matches
+        output = self.command(f"neware status {pipeline}")
+        barcode = json.loads(output).get(pipeline, {}).get("barcode")
+        if barcode != sampleid:
+            msg = "Barcode on server does not match Sample ID being cancelled"
+            raise ValueError(msg)
+        # Check that a job is running
+        workstatus = json.loads(output).get(pipeline, {}).get("workstatus")
+        if workstatus not in ["working", "pause", "protect"]:
+            msg = "Pipeline is not running, cannot cancel job"
+            raise ValueError(msg)
+        # Check that job ID matches
+        output = self.command(f"neware testid {pipeline}")
+        full_test_id = self._get_testid(pipeline)
+        if full_test_id != job_id_on_server:
+            msg = "Job ID on server does not match Job ID being cancelled"
+            raise ValueError(msg)
+        # Stop the pipeline
         output = self.command(f"neware stop {pipeline}")  # returns list of dicts, here always length 1
         res = json.loads(output)
         if res[0]["stop"] == "ok":
