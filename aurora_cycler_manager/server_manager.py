@@ -853,14 +853,11 @@ class ServerManager:
         )
         pipelines = [row[0] for row in result]
         serverids = [row[1] for row in result]
-        print(serverids)
-        print(pipelines)
         for serverid, pipeline in zip(serverids, pipelines):
             server = self.find_server(serverid)
             assert isinstance(server, NewareServer)  # noqa: S101
             jobid_on_server = server._get_testid(pipeline)  # noqa: SLF001
             full_jobid = f"{server.label}-{jobid_on_server}"
-            print(f"Updating {pipeline} with {full_jobid}")
             self.execute_sql(
                 "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ? WHERE `Pipeline` = ?",
                 (full_jobid, jobid_on_server, pipeline),
