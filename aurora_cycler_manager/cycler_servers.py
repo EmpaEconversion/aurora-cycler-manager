@@ -514,17 +514,14 @@ class NewareServer(CyclerServer):
 
             # Submit the file on the remote PC
             output = self.command(f"neware start {pipeline} {sample} {remote_xml_path}")
-            err_msg = (
-                "Error submitting job on Neware. "
-                "Probably an issue with the xml file. "
-                "You must check the Neware server logs for more information."
-            )
-            try:
-                res = json.loads(output)  # list of dicts, here always length 1
-                if res[0]["start"] != "ok":
-                    raise ValueError(err_msg)
-            except json.JSONDecodeError as e:
-                raise ValueError(err_msg) from e
+            # Expect the output to be empty if successful, otherwise print error
+            if output:
+                msg = (
+                    f"Command 'neware stop {pipeline}' failed with response:\n{output}\n"
+                    "Probably an issue with the xml file. "
+                    "You must check the Neware client logs for more information."
+                )
+                raise ValueError(msg)
             print("Successfully started job on Neware")
 
             # Then ask for the jobid
@@ -557,12 +554,16 @@ class NewareServer(CyclerServer):
             msg = "Job ID on server does not match Job ID being cancelled"
             raise ValueError(msg)
         # Stop the pipeline
-        output = self.command(f"neware stop {pipeline}")  # returns list of dicts, here always length 1
-        res = json.loads(output)
-        if res[0]["stop"] == "ok":
-            return f"Stopped pipeline {pipeline} on Neware"
-        msg = "Error cancelling job on Neware"
-        raise ValueError(msg)
+        output = self.command(f"neware stop {pipeline}")
+        # Expect the output to be empty if successful, otherwise print error
+        if output:
+            msg = (
+                f"Command 'neware stop {pipeline}' failed with response:\n{output}\n"
+                "Check the Neware client logs for more information."
+            )
+            raise ValueError(output)
+        return f"Stopped pipeline {pipeline} on Neware"
+
 
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
