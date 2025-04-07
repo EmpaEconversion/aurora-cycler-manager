@@ -528,7 +528,7 @@ class NewareServer(CyclerServer):
             print("Successfully started job on Neware")
 
             # Then ask for the jobid
-            jobid_on_server = self._get_testid(pipeline)
+            jobid_on_server = self._get_job_id(pipeline)
             jobid = f"{self.label}-{jobid_on_server}"
         finally:
             Path("temp.xml").unlink()  # Remove the file on local machine
@@ -552,7 +552,7 @@ class NewareServer(CyclerServer):
             raise ValueError(msg)
         # Check that job ID matches
         output = self.command(f"neware testid {pipeline}")
-        full_test_id = self._get_testid(pipeline)
+        full_test_id = self._get_job_id(pipeline)
         if full_test_id != job_id_on_server:
             msg = "Job ID on server does not match Job ID being cancelled"
             raise ValueError(msg)
@@ -606,7 +606,7 @@ class NewareServer(CyclerServer):
         """Get the last data from a job snapshot."""
         raise NotImplementedError
 
-    def _get_testid(self, pipeline: str) -> str:
+    def _get_job_id(self, pipeline: str) -> str:
         """Get the testid for a pipeline."""
-        output = self.command(f"neware testid {pipeline}")
-        return json.loads(output).get(pipeline, {}).get("full_test_id")
+        output = self.command(f"neware get-job-id {pipeline} --full-id")
+        return json.loads(output).get(pipeline)
