@@ -151,13 +151,9 @@ def combine_jobs(
     for step, group_df in df.groupby("Step"):
         # To be considered a cycle (subject to change):
         # - more than 10 data points
-        # - 99th percentile min and max voltage of charge and discharge within 2 V of each other
-        # - total change in charge less than 50% of absolute total charge
-        # - e.g. 1 mAh charge and 0.3 mAh discharge gives 0.7 mAh change and 1.3 mAh total = 54%
-        #        this would not be considered a cycle
-        # - e.g. 1 mAh charge and 0.5 mAh discharge gives 0.5 mAh change and 1.5 mAh total = 33%
-        #        this would be considered a cycle
-        if len(group_df) > 10 and abs(group_df["dQ (mAh)"].sum()) < 0.5 * group_df["dQ (mAh)"].abs().sum():
+        # - more than 5 charging points
+        # - more than 5 discharging points
+        if len(group_df) > 10 and sum(group_df["I (A)"] > 0) > 5 and sum(group_df["I (A)"] < 0) > 5:
             df.loc[df["Step"] == step, "Cycle"] = cycle
             cycle += 1
 
