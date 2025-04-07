@@ -130,7 +130,7 @@ def combine_jobs(
             "Ewe": "V (V)",
             "I": "I (A)",
             "uts": "uts",
-        }
+        },
     )
     df["dt (s)"] = np.concatenate([[0], df["uts"].to_numpy()[1:] - df["uts"].to_numpy()[:-1]])
     df["Iavg (A)"] = np.concatenate([[0], (df["I (A)"].to_numpy()[1:] + df["I (A)"].to_numpy()[:-1]) / 2])
@@ -225,7 +225,7 @@ def analyse_cycles(
                 "method": "analysis.analyse_cycles",
                 "datetime": datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S %z"),
             },
-        }
+        },
     )
 
     sample_data = metadata.get("sample_data", {})
@@ -359,15 +359,15 @@ def analyse_cycles(
             charge_avg_V.append((charge_data["V (V)"] * charge_data["dQ (mAh)"]).sum() / charge_data["dQ (mAh)"].sum())
             charge_energy_mWh.append((charge_data["V (V)"] * charge_data["dQ (mAh)"]).sum())
             charge_avg_I.append(
-                (charge_data["Iavg (A)"] * charge_data["dQ (mAh)"]).sum() / charge_data["dQ (mAh)"].sum()
+                (charge_data["Iavg (A)"] * charge_data["dQ (mAh)"]).sum() / charge_data["dQ (mAh)"].sum(),
             )
             discharge_capacity_mAh.append(-discharge_data["dQ (mAh)"].sum())
             discharge_avg_V.append(
-                (discharge_data["V (V)"] * discharge_data["dQ (mAh)"]).sum() / discharge_data["dQ (mAh)"].sum()
+                (discharge_data["V (V)"] * discharge_data["dQ (mAh)"]).sum() / discharge_data["dQ (mAh)"].sum(),
             )
             discharge_energy_mWh.append((-discharge_data["V (V)"] * discharge_data["dQ (mAh)"]).sum())
             discharge_avg_I.append(
-                (-discharge_data["Iavg (A)"] * discharge_data["dQ (mAh)"]).sum() / discharge_data["dQ (mAh)"].sum()
+                (-discharge_data["Iavg (A)"] * discharge_data["dQ (mAh)"]).sum() / discharge_data["dQ (mAh)"].sum(),
             )
 
     formation_cycle_count = 3
@@ -503,7 +503,8 @@ def analyse_cycles(
             electrolyte_ind = [i for i, step in enumerate(assembly_history) if step["Step"] == "Electrolyte"]
             if electrolyte_ind:
                 first_electrolyte = next(
-                    (step.get("uts", None) for step in assembly_history if step["Step"] == "Electrolyte"), None
+                    (step.get("uts", None) for step in assembly_history if step["Step"] == "Electrolyte"),
+                    None,
                 )
                 history_after_electrolyte = assembly_history[max(electrolyte_ind) :]
                 cover_electrolyte = next(
@@ -892,10 +893,10 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
         [
             pd.DataFrame({k: v for k, v in cycle_dict.items() if isinstance(v, list) or k == "Sample ID"})
             for cycle_dict in cycle_dicts
-        ]
+        ],
     )
     only_vals = pd.DataFrame(
-        [{k: v for k, v in cycle_dict.items() if not isinstance(v, list)} for cycle_dict in cycle_dicts]
+        [{k: v for k, v in cycle_dict.items() if not isinstance(v, list)} for cycle_dict in cycle_dicts],
     )
 
     with pd.ExcelWriter(f"{save_location}/batch.{plot_name}.xlsx") as writer:
