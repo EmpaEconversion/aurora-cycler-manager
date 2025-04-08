@@ -68,7 +68,7 @@ def harvest_neware_files(
     local_folder: str | Path,
     local_private_key_path: str | None = None,
     force_copy: bool = False,
-) -> list[str]:
+) -> list[Path]:
     """Get Neware files from subfolders of specified folder.
 
     Args:
@@ -138,10 +138,10 @@ def harvest_neware_files(
             for file in modified_files:
                 # Maintain the folder structure when copying
                 relative_path = os.path.relpath(file, server_copy_folder)
-                local_path = os.path.join(local_folder, relative_path)
-                local_dir = os.path.dirname(local_path)
-                if not os.path.exists(local_dir):
-                    os.makedirs(local_dir)
+                local_path = Path(local_folder) / relative_path
+                local_path.parent.mkdir(parents=True, exist_ok=True)  # Create local directory if it doesn't exist
+                # Prepend the server label to the filename
+                local_path = local_path.with_name(f"{server_label}-{local_path.name.replace("_","-").replace(" ","-")}")
                 print(f"Copying {file} to {local_path}")
                 sftp.get(file, local_path)
                 new_files.append(local_path)
@@ -164,7 +164,7 @@ def harvest_neware_files(
     return new_files
 
 
-def harvest_all_neware_files(force_copy: bool = False) -> list[str]:
+def harvest_all_neware_files(force_copy: bool = False) -> list[Path]:
     """Get neware files from all servers specified in the config."""
     all_new_files = []
     snapshots_folder = get_snapshot_folder()
@@ -384,6 +384,11 @@ def get_neware_ndax_metadata(file_path: Path) -> dict:
     metadata["Barcode"] = testinfo.get("Barcode")
     metadata["Start time"] = testinfo.get("StartTime")
     metadata["Step name"] = testinfo.get("StepName")
+    metadata["Device type"] = testinfo.get("DevType")
+    metadata["Device ID"] = testinfo.get("DevID")
+    metadata["Subdevice ID"] = testinfo.get("UnitID") # Seems like this doesn't work from Neware's side
+    metadata["Channel ID"] = testinfo.get("ChlID")
+    metadata["Test ID"] = testinfo.get("TestID")
     metadata["Voltage range (V)"] = float(testinfo.get("VoltRange", 0))
     metadata["Current range (mA)"] = float(testinfo.get("CurrRange", 0))
     return metadata
@@ -464,6 +469,71 @@ def get_neware_ndax_data(file_path: Path) -> pd.DataFrame:
     output_df["uts"] = df["Timestamp"].apply(lambda x: x.timestamp())
     return output_df
 
+def update_database_job(
+    filepath: Path,
+) -> None:
+    """Update the database with job information.
+
+    Args:
+        filepath (Path): Path to the file
+
+    """
+    # Check that filename is in the format text_*_*_*_* where * is a number e.g. tt4_120_5_3_24.ndax
+    # Otherwise we cannot get the full job ID, as sub-device ID is not reported properly
+    if not re.match(r"^\S+-\d+-\d+-\d+-\d+", filepath.stem):
+        msg = (
+            "Filename not in expected format. "
+            "Expect files in the format: "
+            "{serverlabel}-{devid}-{subdevid}-{channelid}-{testid} "
+            "e.g. nw4-120-1-3-24.ndax"
+        )
+        raise ValueError(msg)
+    if filepath.suffix == ".xlsx":
+        metadata = get_neware_xlsx_metadata(filepath)
+    elif filepath.suffix == ".ndax":
+        metadata = get_neware_ndax_metadata(filepath)
+    else:
+        msg = f"File type {filepath.suffix} not supported"
+        raise ValueError(msg)
+    sampleid = get_sampleid_from_metadata(metadata)
+    if not sampleid:
+        msg = f"Sample ID not found in metadata for file {filepath}"
+        raise ValueError(msg)
+    full_job_id = filepath.stem
+    job_id_on_server = "-".join(full_job_id.split("-")[-4:])  # Get job ID from filename
+    server_label = "-".join(full_job_id.split("-")[:-4])  # Get server label from filename
+    pipeline = "-".join(job_id_on_server.split("-")[:-1]) # because sub-device ID reported properly
+    submitted = metadata.get("Start time")
+    payload = json.dumps(metadata.get("Payload"))
+    last_snapshot_uts = filepath.stat().st_birthtime
+    last_snapshot = datetime.fromtimestamp(last_snapshot_uts).strftime("%Y-%m-%d %H:%M:%S")
+    server_hostname = next(
+        (server["hostname"] for server in CONFIG.get("Neware harvester", {}).get("Servers", []) if server["label"] == server_label),
+        None,
+    )
+    if not server_hostname:
+        msg = f"Server hostname not found for server label {server_label}"
+        raise ValueError(msg)
+
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO jobs (`Job ID`) VALUES (?)",
+            (full_job_id,),
+        )
+        cursor.execute(
+            "UPDATE jobs SET "
+            "`Job ID on server` = ?, `Pipeline` = ?, `Sample ID` = ?, "
+            "`Server Label` = ?, `Server Hostname` = ?, `Submitted` = ?, "
+            "`Payload` = ?, `Last Snapshot` = ?, `Job ID on server` = ? "
+            "WHERE `Job ID` = ?",
+            (
+                job_id_on_server, pipeline, sampleid,
+                server_label, server_hostname, submitted,
+                payload, last_snapshot, job_id_on_server,
+                full_job_id,
+            ),
+        )
 
 def convert_neware_data(
     file_path: Path | str,
@@ -582,16 +652,25 @@ def convert_all_neware_data() -> None:
             convert_neware_data(file, output_hdf5_file=True)
         except ValueError as e:  # noqa: PERF203
             print(f"Error converting {file}: {e}")
+        try:
+            update_database_job(file)
+        except ValueError as e:  # noqa: PERF203
+            print(f"Error updating database for {file}: {e}")
 
 
 def main() -> None:
     """Harvest and convert files that have changed."""
     new_files = harvest_all_neware_files()
     for file in new_files:
+        print(f"Processing {file}")
         try:
             convert_neware_data(file, output_hdf5_file=True)
         except ValueError as e:  # noqa: PERF203
             print(f"Error converting {file}: {e}")
+        try:
+            update_database_job(file)
+        except ValueError as e:  # noqa: PERF203
+            print(f"Error updating database for {file}: {e}")
 
 
 if __name__ == "__main__":
