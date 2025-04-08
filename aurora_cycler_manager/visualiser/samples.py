@@ -39,7 +39,7 @@ samples_menu = html.Div(
                 {
                     "label": "Use compressed files",
                     "value": 1,
-                }
+                },
             ],
             value=[1],
             id="compressed-files",
@@ -115,7 +115,7 @@ samples_menu = html.Div(
 
 time_graph = dcc.Graph(
     id="time-graph",
-    style={"height": "100%"},
+    style={"height": "100%", "width": "100%"},
     config={"scrollZoom": True, "displaylogo": False},
     figure={
         "data": [],
@@ -132,7 +132,7 @@ time_graph = dcc.Graph(
 
 cycles_graph = dcc.Graph(
     id="cycles-graph",
-    style={"height": "100%"},
+    style={"height": "100%", "width": "100%"},
     config={"scrollZoom": True, "displaylogo": False},
     figure={
         "data": [],
@@ -150,7 +150,7 @@ cycles_graph = dcc.Graph(
 one_cycle_graph = dcc.Graph(
     id="cycle-graph",
     config={"scrollZoom": True, "displaylogo": False},
-    style={"height": "100%"},
+    style={"height": "100%", "width": "100%"},
     figure={
         "data": [],
         "layout": go.Layout(
@@ -413,7 +413,7 @@ def register_samples_callbacks(app: Dash) -> None:
                 hovertemplate=f"{sample}<br>Cycle: %{{x}}<br>{yvar}: %{{y}}<extra></extra>",
             )
             fig["data"].append(trace)
-        return fig
+        return go.Figure(data=fig["data"], layout=fig["layout"])
 
     # When the user clicks on a point, update the cycle number
     @app.callback(
@@ -466,4 +466,4 @@ def register_samples_callbacks(app: Dash) -> None:
             )
             fig["data"].append(trace)
         fig["layout"]["title"] = f"{yvar} vs {xvar} for cycle {cycle}"
-        return fig
+        return go.Figure(data=fig["data"], layout=fig["layout"])
