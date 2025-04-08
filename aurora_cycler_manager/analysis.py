@@ -138,6 +138,8 @@ def combine_jobs(
     df.loc[df["dt (s)"] > 600, "dQ (mAh)"] = 0
     if "loop_number" not in df.columns:
         df["loop_number"] = 0
+    else:
+        df["loop_number"] = df["loop_number"].fillna(0)
 
     df["group_id"] = (
         (df["loop_number"].shift(-1) < df["loop_number"])
@@ -249,11 +251,7 @@ def analyse_cycles(
     status = None
     if job_data:
         job_types = [j.get("job_type", None) for j in job_data]
-        if all(jt == job_types[0] for jt in job_types):
-            job_type = job_types[0]
-        else:
-            msg = "Different job types found in job data"
-            raise ValueError(msg)
+        job_type = job_types[0] if all(jt == job_types[0] for jt in job_types) else "mixture"
 
         # tomato 0.2.3 using biologic driver
         if job_type == "tomato_0_2_biologic":
@@ -311,6 +309,10 @@ def analyse_cycles(
             for m in job_data:
                 V = max(float(step.get("Voltage (V)", 0)) for step in m["Payload"])
                 max_V = max(V, max_V)
+
+        # Mixture of jobs - give up
+        elif job_type == "mixture":
+            pass
 
     # Fill some missing values
     if not formation_C:
