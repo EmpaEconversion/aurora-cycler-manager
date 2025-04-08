@@ -16,7 +16,7 @@ dependencies = [
     "xmltodict",
     "NewareNDA",
     "scp",
-    "dash",
+    "dash >= 2.18.0",
     "scipy",
     "dash_bootstrap_components",
     "dash_mantine_components",
