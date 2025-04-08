@@ -11,6 +11,7 @@ information from the database.
 convert_all_tomato_jsons does this for all tomato files in the local snapshot
 folder.
 """
+
 from __future__ import annotations
 
 import gzip
@@ -27,7 +28,8 @@ from aurora_cycler_manager.database_funcs import get_job_data, get_sample_data
 from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.version import __url__, __version__
 
-tz = pytz.timezone(CONFIG.get("Time zone","Europe/Zurich"))
+tz = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
+
 
 def get_snapshot_folder() -> Path:
     """Get the path to the snapshot folder for tomato files."""
@@ -40,11 +42,12 @@ def get_snapshot_folder() -> Path:
         raise ValueError(msg)
     return Path(snapshot_parent) / "tomato_snapshots"
 
+
 def convert_tomato_json(
-        snapshot_file_path: Path | str,
-        output_hdf_file: bool = True,
-        output_jsongz_file: bool = False,
-    ) -> tuple[pd.DataFrame, dict]:
+    snapshot_file_path: Path | str,
+    output_hdf_file: bool = True,
+    output_jsongz_file: bool = False,
+) -> tuple[pd.DataFrame, dict]:
     """Convert a raw json file from tomato to a pandas dataframe.
 
     Args:
@@ -78,16 +81,16 @@ def convert_tomato_json(
         input_dict = json.load(f)
     n_steps = len(input_dict["steps"])
     dfs = []
-    technique_code = {"NONE":0,"OCV":100,"CA":101,"CP":102,"CV":103,"CPLIMIT":155,"CALIMIT":157}
+    technique_code = {"NONE": 0, "OCV": 100, "CA": 101, "CP": 102, "CV": 103, "CPLIMIT": 155, "CALIMIT": 157}
     for i in range(n_steps):
         step_data = input_dict["steps"][i]["data"]
         step_dict = {
-            "uts" : [row["uts"] for row in step_data],
-            "V (V)" : [row["raw"]["Ewe"]["n"] for row in step_data],
+            "uts": [row["uts"] for row in step_data],
+            "V (V)": [row["raw"]["Ewe"]["n"] for row in step_data],
             "I (A)": [row["raw"]["I"]["n"] if "I" in row["raw"] else 0 for row in step_data],
             "cycle_number": [row["raw"].get("cycle number", 0) for row in step_data],
             "loop_number": [row["raw"].get("loop number", 0) for row in step_data],
-            "index" : [row["raw"].get("index", -1) for row in step_data],
+            "index": [row["raw"].get("index", -1) for row in step_data],
             "technique": [technique_code.get(row.get("raw", {}).get("technique"), -1) for row in step_data],
         }
         dfs.append(pd.DataFrame(step_dict))
@@ -125,7 +128,7 @@ def convert_tomato_json(
             "cycle_number": "Number of cycles within one technique from EC-lab",
             "index": "index of the method in the payload, i.e. 0 for the first method, 1 for the second etc.",
             "technique": "code of technique using definitions from MPG2 developer package, see technique codes",
-            "technique codes": {v:k for k,v in technique_code.items()},
+            "technique codes": {v: k for k, v in technique_code.items()},
         },
     }
 
@@ -144,12 +147,14 @@ def convert_tomato_json(
         if output_hdf_file:
             hdf5_filepath = folder / json_filename.replace(".json", ".h5")
             data = data.astype({"V (V)": "float32", "I (A)": "float32"})
-            data = data.astype({
-                "technique": "int16",
-                "cycle_number": "int32",
-                "loop_number": "int32",
-                "index": "int16",
-            })
+            data = data.astype(
+                {
+                    "technique": "int16",
+                    "cycle_number": "int32",
+                    "loop_number": "int32",
+                    "index": "int16",
+                }
+            )
             data.to_hdf(
                 hdf5_filepath,
                 key="data",
@@ -161,6 +166,7 @@ def convert_tomato_json(
             with h5py.File(hdf5_filepath, "a") as f:
                 f.create_dataset("metadata", data=json.dumps(metadata))
     return data, metadata
+
 
 def convert_all_tomato_jsons(sampleid_contains: str = "") -> None:
     """Goes through all the raw json files in the snapshots folder and converts them to hdf5."""

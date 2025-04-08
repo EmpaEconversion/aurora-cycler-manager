@@ -2,6 +2,7 @@
 
 Useful functions for the visualiser app.
 """
+
 import sqlite3
 from contextlib import suppress
 from datetime import datetime
@@ -16,6 +17,7 @@ from scipy import stats
 from aurora_cycler_manager.config import CONFIG
 
 ArrayLike = Union[list, np.ndarray, pd.Series]
+
 
 def get_database() -> dict[str, Any]:
     """Get all data from the database.
@@ -46,10 +48,10 @@ def get_database() -> dict[str, Any]:
         "pipelines": pipelines_df.to_dict("records"),
     }
     db_columns = {
-        "samples": [{"field" : col, "filter": True, "tooltipField": col} for col in samples_df.columns],
-        "results": [{"field" : col, "filter": True, "tooltipField": col} for col in results_df.columns],
-        "jobs": [{"field" : col, "filter": True, "tooltipField": col} for col in jobs_df.columns],
-        "pipelines": [{"field" : col, "filter": True, "tooltipField": col} for col in pipelines_df.columns],
+        "samples": [{"field": col, "filter": True, "tooltipField": col} for col in samples_df.columns],
+        "results": [{"field": col, "filter": True, "tooltipField": col} for col in results_df.columns],
+        "jobs": [{"field": col, "filter": True, "tooltipField": col} for col in jobs_df.columns],
+        "pipelines": [{"field": col, "filter": True, "tooltipField": col} for col in pipelines_df.columns],
     }
 
     # Use custom comparator for pipeline column
@@ -58,15 +60,17 @@ def get_database() -> dict[str, Any]:
         pipeline_field["comparator"] = {"function": "pipelineComparatorCustom"}
         pipeline_field["sort"] = "asc"
 
-    return {"data":db_data, "column_defs": db_columns}
+    return {"data": db_data, "column_defs": db_columns}
+
 
 def get_db_last_update() -> str:
     """Get the last update time of the database."""
     db_path = Path(CONFIG["Database path"])
     modified_uts = db_path.stat().st_mtime
-    tz = timezone(CONFIG.get("Time zone","Europe/Zurich"))
+    tz = timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     modified_datetime = datetime.fromtimestamp(int(modified_uts), tz=tz)
     return modified_datetime.strftime("%Y-%m-%d %H:%M:%S %z")
+
 
 def make_pipelines_comparable(pipelines: list[str | None]) -> list[str | None]:
     """Convert pipelines string to a comparable format.
@@ -99,6 +103,7 @@ def make_pipelines_comparable(pipelines: list[str | None]) -> list[str | None]:
 
     return [convert_pipeline(p) for p in pipelines]
 
+
 def cramers_v(x: ArrayLike, y: ArrayLike) -> float:
     """Calculate Cramer's V for two categorical variables."""
     confusion_matrix = pd.crosstab(x, y)
@@ -106,12 +111,13 @@ def cramers_v(x: ArrayLike, y: ArrayLike) -> float:
     n = confusion_matrix.sum().sum()
     phi2 = chi2 / n
     r, k = confusion_matrix.shape
-    phi2corr = max(0, phi2 - ((k-1)*(r-1))/(n-1))
-    rcorr = r - ((r-1)**2)/(n-1)
-    kcorr = k - ((k-1)**2)/(n-1)
-    if min((kcorr-1), (rcorr-1)) == 0:
+    phi2corr = max(0, phi2 - ((k - 1) * (r - 1)) / (n - 1))
+    rcorr = r - ((r - 1) ** 2) / (n - 1)
+    kcorr = k - ((k - 1) ** 2) / (n - 1)
+    if min((kcorr - 1), (rcorr - 1)) == 0:
         return 0.0
-    return np.sqrt(phi2corr / min((kcorr-1), (rcorr-1)))
+    return np.sqrt(phi2corr / min((kcorr - 1), (rcorr - 1)))
+
 
 def anova_test(x: ArrayLike, y: ArrayLike) -> float:
     """ANOVA test between categorical and continuous variables."""
@@ -120,21 +126,23 @@ def anova_test(x: ArrayLike, y: ArrayLike) -> float:
     f_stat, p_value = stats.f_oneway(*groups)
     return p_value
 
+
 def correlation_ratio(categories: ArrayLike, measurements: ArrayLike) -> float:
     """Measure of the relationship between a categorical and numerical variable."""
     fcat, _ = pd.factorize(np.array(categories))
-    cat_num = np.max(fcat)+1
+    cat_num = np.max(fcat) + 1
     y_avg_array = np.zeros(cat_num)
     n_array = np.zeros(cat_num)
     for i in range(cat_num):
         cat_measures = measurements[fcat == i]
         n_array[i] = len(cat_measures)
         y_avg_array[i] = np.average(cat_measures)
-    y_total_avg = np.sum(np.multiply(y_avg_array,n_array))/np.sum(n_array)
-    numerator = np.sum(np.multiply(n_array,np.power(np.subtract(y_avg_array,y_total_avg),2)))
-    denominator = np.sum(np.power(np.subtract(measurements,y_total_avg),2))
+    y_total_avg = np.sum(np.multiply(y_avg_array, n_array)) / np.sum(n_array)
+    numerator = np.sum(np.multiply(n_array, np.power(np.subtract(y_avg_array, y_total_avg), 2)))
+    denominator = np.sum(np.power(np.subtract(measurements, y_total_avg), 2))
     eta = 0.0 if numerator == 0 else np.sqrt(numerator / denominator)
     return eta
+
 
 def correlation_matrix(df: pd.DataFrame) -> pd.DataFrame:
     """Calculate the correlation matrix for a DataFrame including categorical columns.
@@ -163,14 +171,16 @@ def correlation_matrix(df: pd.DataFrame) -> pd.DataFrame:
                 corr.loc[col1, col2] = cramers_v(df[col1], df[col2])
     return corr
 
+
 def moving_average(x: ArrayLike, npoints: int = 11) -> np.ndarray:
     if npoints % 2 == 0:
         npoints += 1  # Ensure npoints is odd for a symmetric window
     window = np.ones(npoints) / npoints
     xav = np.convolve(x, window, mode="same")
-    xav[:npoints // 2] = np.nan
-    xav[-npoints // 2:] = np.nan
+    xav[: npoints // 2] = np.nan
+    xav[-npoints // 2 :] = np.nan
     return xav
+
 
 def deriv(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     with np.errstate(divide="ignore"):
@@ -184,14 +194,15 @@ def deriv(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     dydx[1:-1][mask] = np.nan
     return dydx
 
+
 def smoothed_derivative(
-        x: np.ndarray,
-        y: np.ndarray,
-        npoints: int = 21,
-    ) -> np.ndarray:
+    x: np.ndarray,
+    y: np.ndarray,
+    npoints: int = 21,
+) -> np.ndarray:
     x_smooth = moving_average(x, npoints)
     y_smooth = moving_average(y, npoints)
     dydx_smooth = deriv(x_smooth, y_smooth)
-    dydx_smooth[deriv(x_smooth,np.arange(len(x_smooth))) < 0] *= -1
+    dydx_smooth[deriv(x_smooth, np.arange(len(x_smooth))) < 0] *= -1
     dydx_smooth[abs(dydx_smooth) > 100] = np.nan
     return dydx_smooth

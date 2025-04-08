@@ -2,6 +2,7 @@
 
 Functions for getting the configuration settings.
 """
+
 import json
 from pathlib import Path
 
@@ -31,26 +32,26 @@ def get_config() -> dict:
 
     # if there is no user config file, create one
     if not user_config_path.exists():
-        with user_config_path.open("w", encoding = "utf-8") as f:
+        with user_config_path.open("w", encoding="utf-8") as f:
             f.write(
                 json.dumps(
                     {
                         "Shared config path": "",
-                        "SSH private key path" : "",
-                        "Snapshots folder path" : "",
+                        "SSH private key path": "",
+                        "Snapshots folder path": "",
                     },
-                    indent = 4,
+                    indent=4,
                 ),
             )
             raise FileNotFoundError(err_msg)
 
-    with user_config_path.open(encoding = "utf-8") as f:
+    with user_config_path.open(encoding="utf-8") as f:
         config = json.load(f)
 
     # If there is a shared config file, update with settings from that file
     shared_config_path = config.get("Shared config path")
     if shared_config_path:
-        with Path(shared_config_path).open(encoding = "utf-8") as f:
+        with Path(shared_config_path).open(encoding="utf-8") as f:
             shared_config = json.load(f)
         config.update(shared_config)
 
@@ -60,5 +61,6 @@ def get_config() -> dict:
     config["User config path"] = str(user_config_path)
 
     return config
+
 
 CONFIG = get_config()

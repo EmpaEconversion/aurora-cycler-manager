@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aurora-cycler-manager"
 requires-python = ">=3.9"
-version = "0.5.9"
+version = "0.6.0"
 dependencies = [
     "yadg",
     "pytz",
@@ -16,7 +16,7 @@ dependencies = [
     "xmltodict",
     "NewareNDA",
     "scp",
-    "dash",
+    "dash >= 2.18.0",
     "scipy",
     "dash_bootstrap_components",
     "dash_mantine_components",
@@ -27,7 +27,6 @@ dependencies = [
     "toml",
     "tsdownsample",
     "waitress",
-    "obvibe @ git+https://github.com/EmpaEconversion/obvibe.git@0.1.3"
 ]
 
 [project.scripts]

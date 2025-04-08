@@ -6,6 +6,7 @@ Updates database regularly and snapshots all jobs then analyses and plots graphs
 at specified times each day. Change the update time and snapshot times in the
 main block to suit your needs.
 """
+
 from __future__ import annotations
 
 import logging
@@ -30,11 +31,12 @@ def handle_exceptions(func: callable) -> None:
         logging.critical("Error in %s: %s", func.__name__, e)
         logging.debug(traceback.format_exc())
 
+
 def daemon_loop(
-        update_time: float | None = 300,
-        snapshot_times: list | None = None,
-        save_log: bool = False,
-    ) -> None:
+    update_time: float | None = 300,
+    snapshot_times: list | None = None,
+    save_log: bool = False,
+) -> None:
     """Run main loop for updating, snapshotting and plotting.
 
     Args:
@@ -76,7 +78,7 @@ def daemon_loop(
     next_run_time = min(snapshot_datetimes)  # Find the earliest next run time
     logging.info("Next snapshot at %s", next_run_time)
 
-    sm=server_manager.ServerManager()
+    sm = server_manager.ServerManager()
     sm.update_db()
 
     # Main loop
@@ -101,9 +103,11 @@ def daemon_loop(
             next_run_time = min(snapshot_datetimes)
             logging.info("Next snapshot at %s", next_run_time)
 
+
 def main() -> None:
     """Run the daemon, stop with KeyboardInterrupt."""
     daemon_loop()
+
 
 if __name__ == "__main__":
     main()

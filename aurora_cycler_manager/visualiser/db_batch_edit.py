@@ -1,4 +1,5 @@
 """Batch edit sub-layout for the database tab."""
+
 import dash_bootstrap_components as dbc
 from dash import Dash, Input, Output, State, dcc, html, no_update
 from dash_mantine_components import MultiSelect, Select, Textarea, TextInput
@@ -10,12 +11,12 @@ from aurora_cycler_manager.database_funcs import (
 
 batch_edit_layout = html.Div(
     id="batch-container",
-    children = [
+    children=[
         ### Main layout ###
         Select(
             id="batch-edit-batch",
             label="Select batch to view",
-            data=[], # Filled in by callback
+            data=[],  # Filled in by callback
             searchable=True,
             style={"margin-top": "10px"},
         ),
@@ -37,7 +38,7 @@ batch_edit_layout = html.Div(
         MultiSelect(
             id="batch-edit-samples",
             label="Samples",
-            data=[], # Filled in by callback
+            data=[],  # Filled in by callback
             searchable=True,
             clearable=True,
             placeholder="Select samples",
@@ -46,20 +47,19 @@ batch_edit_layout = html.Div(
         html.Div(style={"margin-top": "20px"}),
         ### Buttons ###
         dbc.Button(
-            [html.I(className="bi-save me-2"),"Save"],
+            [html.I(className="bi-save me-2"), "Save"],
             id="batch-edit-save-button",
             color="primary",
             className="me-1",
             disabled=True,
         ),
         dbc.Button(
-            [html.I(className="bi-trash3 me-2"),"Delete"],
+            [html.I(className="bi-trash3 me-2"), "Delete"],
             id="batch-edit-delete-button",
             color="danger",
             className="me-1",
             disabled=True,
         ),
-
         ### Confirmation dialogs ###
         # Add sample confirmation
         dcc.ConfirmDialog(
@@ -81,11 +81,11 @@ batch_edit_layout = html.Div(
             id="delete-batch-confirm",
             message="This will delete the batch. It will not remove the samples or data. Are you sure?",
         ),
-
         # A list of samples when creating a batch from other tab
         dcc.Store(id="create-batch-store", data=[]),
     ],
 )
+
 
 ### Callbacks ###
 def register_batch_edit_callbacks(app: Dash, database_access: bool):
@@ -107,9 +107,9 @@ def register_batch_edit_callbacks(app: Dash, database_access: bool):
             return "", "", samples, None, {}
         # normal batch selected
         if batch:
-            description = str(batch_defs.get(batch, {}).get("description",""))
+            description = str(batch_defs.get(batch, {}).get("description", ""))
             description = description if description else ""
-            samples = batch_defs.get(batch, {}).get("samples",[])
+            samples = batch_defs.get(batch, {}).get("samples", [])
             samples = samples if samples else []
             return batch, description, samples, no_update, no_update
         return "", "", [], no_update, no_update

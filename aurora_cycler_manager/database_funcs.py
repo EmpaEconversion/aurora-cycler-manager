@@ -1,4 +1,5 @@
 """Functions for interacting with the database."""
+
 import json
 import sqlite3
 from pathlib import Path
@@ -10,10 +11,12 @@ from aurora_cycler_manager.utils import run_from_sample
 
 ### SAMPLES ###
 
+
 def add_samples_from_object(samples: list[dict], overwrite: bool = False) -> None:
     """Add a samples to database from a list of dicts."""
     df = pd.DataFrame(samples)
     sample_df_to_db(df, overwrite)
+
 
 def add_samples_from_file(json_file: str | Path, overwrite: bool = False) -> None:
     """Add a samples to database from a JSON file."""
@@ -21,6 +24,7 @@ def add_samples_from_file(json_file: str | Path, overwrite: bool = False) -> Non
     _pre_check_sample_file(json_file)
     df = pd.read_json(json_file, orient="records")
     sample_df_to_db(df, overwrite)
+
 
 def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
     """Upload the sample dataframe to the database."""
@@ -64,6 +68,7 @@ def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
             cursor.execute(sql, (*tuple(row), row["Sample ID"]))
         conn.commit()
 
+
 def _pre_check_sample_file(json_file: Path) -> None:
     """Raise error if file is not a sensible JSON file."""
     json_file = Path(json_file)
@@ -77,6 +82,7 @@ def _pre_check_sample_file(json_file: Path) -> None:
     if json_file.stat().st_size > 2e6:
         msg = f"File {json_file} is over 2 MB, skipping"
         raise ValueError(msg)
+
 
 def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
     """Calculate some values for sample data before inserting into database."""
@@ -130,10 +136,9 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
         "Anode active material mass fraction",
     ]
     if all(col in df.columns for col in required_columns):
-        df["Anode active material mass (mg)"] = (
-            (df["Anode mass (mg)"] - df["Anode current collector mass (mg)"])
-            * df["Anode active material mass fraction"]
-        )
+        df["Anode active material mass (mg)"] = (df["Anode mass (mg)"] - df["Anode current collector mass (mg)"]) * df[
+            "Anode active material mass fraction"
+        ]
     required_columns = [
         "Cathode mass (mg)",
         "Cathode current collector mass (mg)",
@@ -141,9 +146,8 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
     ]
     if all(col in df.columns for col in required_columns):
         df["Cathode active material mass (mg)"] = (
-            (df["Cathode mass (mg)"] - df["Cathode current collector mass (mg)"])
-            * df["Cathode active material mass fraction"]
-        )
+            df["Cathode mass (mg)"] - df["Cathode current collector mass (mg)"]
+        ) * df["Cathode active material mass fraction"]
     # Capacities
     required_columns = ["Anode active material mass (mg)", "Anode balancing specific capacity (mAh/g)"]
     if all(col in df.columns for col in required_columns):
@@ -158,7 +162,7 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
     # N:P ratio overlap factor
     required_columns = ["Anode diameter (mm)", "Cathode diameter (mm)"]
     if all(col in df.columns for col in required_columns):
-        df["N:P ratio overlap factor"] = (df["Cathode diameter (mm)"]**2 / df["Anode diameter (mm)"]**2).fillna(0)
+        df["N:P ratio overlap factor"] = (df["Cathode diameter (mm)"] ** 2 / df["Anode diameter (mm)"] ** 2).fillna(0)
     # N:P ratio
     required_columns = [
         "Anode balancing capacity (mAh)",
@@ -167,7 +171,8 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
     ]
     if all(col in df.columns for col in required_columns):
         df["N:P ratio"] = (
-            df["Anode balancing capacity (mAh)"] * df["N:P ratio overlap factor"]
+            df["Anode balancing capacity (mAh)"]
+            * df["N:P ratio overlap factor"]
             / df["Cathode balancing capacity (mAh)"]
         )
     # Run ID - if column is missing or where it is empty, find from the sample ID
@@ -176,6 +181,7 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df["Run ID"] = df["Run ID"].fillna(df["Sample ID"].apply(lambda x: run_from_sample(x)))
     return df
+
 
 def update_sample_label(sample_ids: str | list[str], label: str | None) -> None:
     """Update the label of a sample in the database."""
@@ -186,6 +192,7 @@ def update_sample_label(sample_ids: str | list[str], label: str | None) -> None:
         for sample_id in sample_ids:
             cursor.execute("UPDATE samples SET `Label` = ? WHERE `Sample ID` = ?", (label, sample_id))
         conn.commit()
+
 
 def delete_samples(sample_ids: str | list) -> None:
     """Remove a sample(s) from the database.
@@ -204,12 +211,14 @@ def delete_samples(sample_ids: str | list) -> None:
             cursor.execute("DELETE FROM samples WHERE `Sample ID` = ?", (sample_id,))
         conn.commit()
 
+
 def get_all_sampleids() -> list[str]:
     """Get a list of all sample IDs in the database."""
     with sqlite3.connect(CONFIG["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT `Sample ID` FROM samples")
         return [row[0] for row in cursor.fetchall()]
+
 
 def get_job_data(job_id: str) -> dict:
     """Get all data about a job from the database."""
@@ -228,6 +237,7 @@ def get_job_data(job_id: str) -> dict:
             job_data["Payload"] = json.loads(payload)
     return job_data
 
+
 def get_sample_data(sample_id: str) -> dict:
     """Get all data about a sample from the database."""
     with sqlite3.connect(CONFIG["Database path"]) as conn:
@@ -245,7 +255,9 @@ def get_sample_data(sample_id: str) -> dict:
             sample_data["Assembly history"] = json.loads(history)
     return sample_data
 
+
 ### BATCHES ###
+
 
 def get_batch_details() -> dict[str, dict]:
     """Get all batch names, descriptions and samples from the database."""
@@ -264,6 +276,7 @@ def get_batch_details() -> dict[str, dict]:
             batches[batch]["samples"].append(sample)
         # sort the keys alphabetically
         return dict(sorted(batches.items()))
+
 
 def save_or_overwrite_batch(batch_name: str, batch_description: str, sample_ids: list) -> None:
     """Save a batch to the database, overwriting it if the name already exists."""
@@ -284,7 +297,7 @@ def save_or_overwrite_batch(batch_name: str, batch_description: str, sample_ids:
         else:
             cur.execute(
                 "INSERT INTO batches (label, description) VALUES (?,?)",
-                (batch_name,batch_description),
+                (batch_name, batch_description),
             )
             batch_id = cur.lastrowid
         for sample_id in sample_ids:
@@ -293,6 +306,7 @@ def save_or_overwrite_batch(batch_name: str, batch_description: str, sample_ids:
                 (batch_id, sample_id),
             )
         conn.commit()
+
 
 def create_batch(batch_name: str, batch_description: str, sample_ids: list) -> None:
     """Create a new batch in the database.
@@ -305,11 +319,12 @@ def create_batch(batch_name: str, batch_description: str, sample_ids: list) -> N
         if cur.fetchone():
             msg = f"Batch {batch_name} already exists."
             raise ValueError(msg)
-        cur.execute("INSERT INTO batches (label, description) VALUES (?,?)", (batch_name,batch_description))
+        cur.execute("INSERT INTO batches (label, description) VALUES (?,?)", (batch_name, batch_description))
         batch_id = cur.lastrowid
         for sample_id in sample_ids:
             cur.execute("INSERT INTO batch_samples (batch_id, sample_id) VALUES (?, ?)", (batch_id, sample_id))
         conn.commit()
+
 
 def modify_batch(old_label: str, new_label: str, batch_description: str, sample_ids: list) -> None:
     """Change name, description or samples in a batch.
@@ -333,6 +348,7 @@ def modify_batch(old_label: str, new_label: str, batch_description: str, sample_
         for sample_id in sample_ids:
             cur.execute("INSERT INTO batch_samples (batch_id, sample_id) VALUES (?, ?)", (batch_id, sample_id))
         conn.commit()
+
 
 def remove_batch(batch_name: str) -> None:
     """Remove a batch from the database."""

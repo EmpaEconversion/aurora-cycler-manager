@@ -11,6 +11,7 @@ charge, discharge and efficiency of each cycle, and links this to various
 quantities extracted from the cycling, such as C-rate and max voltage, and
 from the sample database such as cathode active material mass.
 """
+
 from __future__ import annotations
 
 import gzip
@@ -51,7 +52,8 @@ SAMPLE_METADATA_TO_DATA = [
     "Label",
 ]
 
-def _sort_times(start_times: list|np.ndarray, end_times: list|np.ndarray) -> np.ndarray:
+
+def _sort_times(start_times: list | np.ndarray, end_times: list | np.ndarray) -> np.ndarray:
     """Sort by start time, if equal only keep the longest."""
     start_times = np.array(start_times)
     end_times = np.array(end_times)
@@ -65,8 +67,9 @@ def _sort_times(start_times: list|np.ndarray, end_times: list|np.ndarray) -> np.
     unique_mask = np.concatenate(([True], start_times[1:] != start_times[:-1]))
     return sorted_indices[unique_mask]
 
+
 def combine_jobs(
-        job_files: list[Path],
+    job_files: list[Path],
 ) -> tuple[pd.DataFrame, dict]:
     """Read multiple job files and return a single dataframe.
 
@@ -93,7 +96,7 @@ def combine_jobs(
                 metadata = json.loads(h5f["metadata"][()])
                 metadatas.append(metadata)
                 sampleids.append(
-                    metadata.get("sample_data",{}).get("Sample ID",""),
+                    metadata.get("sample_data", {}).get("Sample ID", ""),
                 )
         elif f.name.endswith(".json.gz"):
             with gzip.open(f, "rt", encoding="utf-8") as file:
@@ -101,7 +104,7 @@ def combine_jobs(
                 dfs.append(pd.DataFrame(data["data"]))
                 metadatas.append(data["metadata"])
                 sampleids.append(
-                    data["metadata"].get("sample_data",{}).get("Sample ID",""),
+                    data["metadata"].get("sample_data", {}).get("Sample ID", ""),
                 )
     if len(set(sampleids)) != 1:
         msg = "All files must be from the same sample"
@@ -117,42 +120,42 @@ def combine_jobs(
     job_files = [job_files[i] for i in order]
     metadatas = [metadatas[i] for i in order]
 
-    for i,df in enumerate(dfs):
+    for i, df in enumerate(dfs):
         df["job_number"] = i
     df = pd.concat(dfs)
     df = df.sort_values("uts")
     # rename columns
-    df = df.rename(columns={
-        "Ewe": "V (V)",
-        "I": "I (A)",
-        "uts": "uts",
-    })
-    df["dt (s)"] = np.concatenate([[0],df["uts"].to_numpy()[1:] - df["uts"].to_numpy()[:-1]])
-    df["Iavg (A)"] = np.concatenate([[0],(df["I (A)"].to_numpy()[1:] + df["I (A)"].to_numpy()[:-1]) / 2])
+    df = df.rename(
+        columns={
+            "Ewe": "V (V)",
+            "I": "I (A)",
+            "uts": "uts",
+        },
+    )
+    df["dt (s)"] = np.concatenate([[0], df["uts"].to_numpy()[1:] - df["uts"].to_numpy()[:-1]])
+    df["Iavg (A)"] = np.concatenate([[0], (df["I (A)"].to_numpy()[1:] + df["I (A)"].to_numpy()[:-1]) / 2])
     df["dQ (mAh)"] = 1e3 * df["Iavg (A)"] * df["dt (s)"] / 3600
     df.loc[df["dt (s)"] > 600, "dQ (mAh)"] = 0
     if "loop_number" not in df.columns:
         df["loop_number"] = 0
+    else:
+        df["loop_number"] = df["loop_number"].fillna(0)
 
     df["group_id"] = (
-        (df["loop_number"].shift(-1) < df["loop_number"]) |
-        (df["cycle_number"].shift(-1) < df["cycle_number"]) |
-        (df["job_number"].shift(-1) < df["job_number"])
+        (df["loop_number"].shift(-1) < df["loop_number"])
+        | (df["cycle_number"].shift(-1) < df["cycle_number"])
+        | (df["job_number"].shift(-1) < df["job_number"])
     ).cumsum()
-    df["Step"] = df.groupby(["job_number","group_id","cycle_number","loop_number"]).ngroup()
-    df = df.drop(columns=["job_number", "group_id", "cycle_number", "loop_number","index"], errors="ignore")
-    df["Cycle"]=0
-    cycle=1
+    df["Step"] = df.groupby(["job_number", "group_id", "cycle_number", "loop_number"]).ngroup()
+    df = df.drop(columns=["job_number", "group_id", "cycle_number", "loop_number", "index"], errors="ignore")
+    df["Cycle"] = 0
+    cycle = 1
     for step, group_df in df.groupby("Step"):
         # To be considered a cycle (subject to change):
         # - more than 10 data points
-        # - 99th percentile min and max voltage of charge and discharge within 2 V of each other
-        # - total change in charge less than 50% of absolute total charge
-        # - e.g. 1 mAh charge and 0.3 mAh discharge gives 0.7 mAh change and 1.3 mAh total = 54%
-        #        this would not be considered a cycle
-        # - e.g. 1 mAh charge and 0.5 mAh discharge gives 0.5 mAh change and 1.5 mAh total = 33%
-        #        this would be considered a cycle
-        if len(group_df) > 10 and abs(group_df["dQ (mAh)"].sum()) < 0.5 * group_df["dQ (mAh)"].abs().sum():
+        # - more than 5 charging points
+        # - more than 5 discharging points
+        if len(group_df) > 10 and sum(group_df["I (A)"] > 0) > 5 and sum(group_df["I (A)"] < 0) > 5:
             df.loc[df["Step"] == step, "Cycle"] = cycle
             cycle += 1
 
@@ -162,7 +165,7 @@ def combine_jobs(
     sample_data = get_sample_data(sampleids[0])
     # Merge glossary dicts
     glossary = {}
-    for g in [m.get("glossary",{}) for m in metadatas]:
+    for g in [m.get("glossary", {}) for m in metadatas]:
         glossary.update(g)
     metadata = {
         "provenance": {
@@ -178,20 +181,21 @@ def combine_jobs(
             "original_file_provenance": {str(f): m["provenance"] for f, m in zip(job_files, metadatas)},
         },
         "sample_data": sample_data,
-        "job_data": [m.get("job_data",{}) for m in metadatas],
+        "job_data": [m.get("job_data", {}) for m in metadatas],
         "glossary": glossary,
     }
 
     return df, metadata
 
+
 def analyse_cycles(
-        job_files: list[Path],
-        voltage_lower_cutoff: float = 0,
-        voltage_upper_cutoff: float = 5,
-        save_cycle_dict: bool = False,
-        save_merged_hdf: bool = False,
-        save_merged_jsongz: bool = False,
-    ) -> tuple[pd.DataFrame, dict, dict]:
+    job_files: list[Path],
+    voltage_lower_cutoff: float = 0,
+    voltage_upper_cutoff: float = 5,
+    save_cycle_dict: bool = False,
+    save_merged_hdf: bool = False,
+    save_merged_jsongz: bool = False,
+) -> tuple[pd.DataFrame, dict, dict]:
     """Take multiple dataframes, merge and analyse the cycling data.
 
     Args:
@@ -215,28 +219,30 @@ def analyse_cycles(
     # update metadata
     timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     metadata.setdefault("provenance", {}).setdefault("aurora_metadata", {})
-    metadata["provenance"]["aurora_metadata"].update({
-        "analysis": {
-            "repo_url": __url__,
-            "repo_version": __version__,
-            "method": "analysis.analyse_cycles",
-            "datetime": datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S %z"),
+    metadata["provenance"]["aurora_metadata"].update(
+        {
+            "analysis": {
+                "repo_url": __url__,
+                "repo_version": __version__,
+                "method": "analysis.analyse_cycles",
+                "datetime": datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S %z"),
+            },
         },
-    })
+    )
 
-    sample_data = metadata.get("sample_data",{})
-    sampleid = sample_data.get("Sample ID",None)
-    job_data = metadata.get("job_data",None)
-    snapshot_status = job_data[-1].get("Snapshot status",None) if job_data else None
-    snapshot_pipeline = job_data[-1].get("Pipeline",None) if job_data else None
-    last_snapshot = job_data[-1].get("Last snapshot",None) if job_data else None
+    sample_data = metadata.get("sample_data", {})
+    sampleid = sample_data.get("Sample ID", None)
+    job_data = metadata.get("job_data", None)
+    snapshot_status = job_data[-1].get("Snapshot status", None) if job_data else None
+    snapshot_pipeline = job_data[-1].get("Pipeline", None) if job_data else None
+    last_snapshot = job_data[-1].get("Last snapshot", None) if job_data else None
 
     # Extract useful information from the metadata
-    mass_mg = sample_data.get("Cathode active material mass (mg)",np.nan)
+    mass_mg = sample_data.get("Cathode active material mass (mg)", np.nan)
 
-    max_V = 0.
-    formation_C = 0.
-    cycle_C = 0.
+    max_V = 0.0
+    formation_C = 0.0
+    cycle_C = 0.0
 
     # TODO: separate formation and cycling C-rates and voltages, get C-rates for mpr and neware
 
@@ -244,16 +250,12 @@ def analyse_cycles(
     pipeline = None
     status = None
     if job_data:
-        job_types = [j.get("job_type",None) for j in job_data]
-        if all(jt == job_types[0] for jt in job_types):
-            job_type = job_types[0]
-        else:
-            msg = "Different job types found in job data"
-            raise ValueError(msg)
+        job_types = [j.get("job_type", None) for j in job_data]
+        job_type = job_types[0] if all(jt == job_types[0] for jt in job_types) else "mixture"
 
         # tomato 0.2.3 using biologic driver
         if job_type == "tomato_0_2_biologic":
-            payloads = [j.get("Payload",[]) for j in job_data]
+            payloads = [j.get("Payload", []) for j in job_data]
             with sqlite3.connect(CONFIG["Database path"]) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
@@ -266,15 +268,15 @@ def analyse_cycles(
                         status = cursor.fetchone()[0]
 
             for payload in payloads:
-                for method in payload.get("method",[]):
-                    voltage = method.get("limit_voltage_max",0)
+                for method in payload.get("method", []):
+                    voltage = method.get("limit_voltage_max", 0)
                     max_V = max(voltage, max_V)
 
             for payload in payloads:
-                for method in payload.get("method",[]):
-                    if method.get("technique",None) == "loop":
-                        if method["n_gotos"] < 4: # it is probably formation
-                            for m in payload.get("method",[]):
+                for method in payload.get("method", []):
+                    if method.get("technique", None) == "loop":
+                        if method["n_gotos"] < 4:  # it is probably formation
+                            for m in payload.get("method", []):
                                 if "current" in m and "C" in m["current"]:
                                     try:
                                         formation_C = c_to_float(m["current"])
@@ -282,8 +284,8 @@ def analyse_cycles(
                                         print(f"Not a valid C-rate: {m['current']}")
                                         formation_C = 0
                                     break
-                        if method.get("n_gotos",0) > 10: # it is probably cycling
-                            for m in payload.get("method",[]):
+                        if method.get("n_gotos", 0) > 10:  # it is probably cycling
+                            for m in payload.get("method", []):
                                 if "current" in m and "C" in m["current"]:
                                     try:
                                         cycle_C = c_to_float(m["current"])
@@ -295,18 +297,22 @@ def analyse_cycles(
         # ec-lab mpr
         elif job_type == "eclab_mpr":
             for m in job_data:
-                params = m.get("params",[])
-                if isinstance(params,list):
+                params = m.get("params", [])
+                if isinstance(params, list):
                     for param in params:
-                        if isinstance(param,dict):
-                            V = round(param.get("EM",0),3)
+                        if isinstance(param, dict):
+                            V = round(param.get("EM", 0), 3)
                             max_V = max(V, max_V)
 
         # Neware xlsx
         elif job_type in ("neware_xlsx", "neware_ndax"):
             for m in job_data:
-                V = max(float(step.get("Voltage (V)",0)) for step in m["Payload"])
+                V = max(float(step.get("Voltage (V)", 0)) for step in m["Payload"])
                 max_V = max(V, max_V)
+
+        # Mixture of jobs - give up
+        elif job_type == "mixture":
+            pass
 
     # Fill some missing values
     if not formation_C:
@@ -335,30 +341,36 @@ def analyse_cycles(
                 started_discharge = False
             continue
         charge_data = group_df[
-            (group_df["Iavg (A)"] > 0) &
-            (group_df["V (V)"] > voltage_lower_cutoff) &
-            (group_df["V (V)"] < voltage_upper_cutoff) &
-            (group_df["dt (s)"] < 600)
+            (group_df["Iavg (A)"] > 0)
+            & (group_df["V (V)"] > voltage_lower_cutoff)
+            & (group_df["V (V)"] < voltage_upper_cutoff)
+            & (group_df["dt (s)"] < 600)
         ]
         discharge_data = group_df[
-            (group_df["Iavg (A)"] < 0) &
-            (group_df["V (V)"] > voltage_lower_cutoff) &
-            (group_df["V (V)"] < voltage_upper_cutoff) &
-            (group_df["dt (s)"] < 600)
+            (group_df["Iavg (A)"] < 0)
+            & (group_df["V (V)"] > voltage_lower_cutoff)
+            & (group_df["V (V)"] < voltage_upper_cutoff)
+            & (group_df["dt (s)"] < 600)
         ]
         # Only consider cycles with more than 10 data points
-        started_charge=len(charge_data)>10
-        started_discharge=len(discharge_data)>10
+        started_charge = len(charge_data) > 10
+        started_discharge = len(discharge_data) > 10
 
         if started_charge and started_discharge:
             charge_capacity_mAh.append(charge_data["dQ (mAh)"].sum())
-            charge_avg_V.append((charge_data["V (V)"]*charge_data["dQ (mAh)"]).sum()/charge_data["dQ (mAh)"].sum())
-            charge_energy_mWh.append((charge_data["V (V)"]*charge_data["dQ (mAh)"]).sum())
-            charge_avg_I.append((charge_data["Iavg (A)"]*charge_data["dQ (mAh)"]).sum()/charge_data["dQ (mAh)"].sum())
+            charge_avg_V.append((charge_data["V (V)"] * charge_data["dQ (mAh)"]).sum() / charge_data["dQ (mAh)"].sum())
+            charge_energy_mWh.append((charge_data["V (V)"] * charge_data["dQ (mAh)"]).sum())
+            charge_avg_I.append(
+                (charge_data["Iavg (A)"] * charge_data["dQ (mAh)"]).sum() / charge_data["dQ (mAh)"].sum(),
+            )
             discharge_capacity_mAh.append(-discharge_data["dQ (mAh)"].sum())
-            discharge_avg_V.append((discharge_data["V (V)"]*discharge_data["dQ (mAh)"]).sum()/discharge_data["dQ (mAh)"].sum())
-            discharge_energy_mWh.append((-discharge_data["V (V)"]*discharge_data["dQ (mAh)"]).sum())
-            discharge_avg_I.append((-discharge_data["Iavg (A)"]*discharge_data["dQ (mAh)"]).sum()/discharge_data["dQ (mAh)"].sum())
+            discharge_avg_V.append(
+                (discharge_data["V (V)"] * discharge_data["dQ (mAh)"]).sum() / discharge_data["dQ (mAh)"].sum(),
+            )
+            discharge_energy_mWh.append((-discharge_data["V (V)"] * discharge_data["dQ (mAh)"]).sum())
+            discharge_avg_I.append(
+                (-discharge_data["Iavg (A)"] * discharge_data["dQ (mAh)"]).sum() / discharge_data["dQ (mAh)"].sum(),
+            )
 
     formation_cycle_count = 3
     initial_cycle = formation_cycle_count + 2
@@ -366,7 +378,7 @@ def analyse_cycles(
     formed = len(charge_capacity_mAh) >= initial_cycle
     # A row is added if charge data is complete and discharge started
     # Last dict may have incomplete discharge data
-    if snapshot_status in ["r","cd","ce"]:  # This only works for tomato, harvesters will assume last cycle complete
+    if snapshot_status in ["r", "cd", "ce"]:  # This only works for tomato, harvesters will assume last cycle complete
         if started_charge and started_discharge:
             # Probably recorded an incomplete discharge for last recorded cycle
             discharge_capacity_mAh[-1] = np.nan
@@ -381,17 +393,25 @@ def analyse_cycles(
     # TODO: add datetime of every cycle
     cycle_dict = {
         "Sample ID": sampleid,
-        "Cycle": list(range(1,len(charge_capacity_mAh)+1)),
+        "Cycle": list(range(1, len(charge_capacity_mAh) + 1)),
         "Charge capacity (mAh)": charge_capacity_mAh,
         "Discharge capacity (mAh)": discharge_capacity_mAh,
-        "Efficiency (%)": [100*d/c for d,c in zip(discharge_capacity_mAh,charge_capacity_mAh)],
-        "Specific charge capacity (mAh/g)": [c/(mass_mg*1e-3) for c in charge_capacity_mAh],
-        "Specific discharge capacity (mAh/g)": [d/(mass_mg*1e-3) for d in discharge_capacity_mAh],
-        "Normalised discharge capacity (%)": [100*d/discharge_capacity_mAh[initial_cycle-1] for d in discharge_capacity_mAh] if formed else None,
-        "Normalised discharge energy (%)": [100*d/discharge_energy_mWh[initial_cycle-1] for d in discharge_energy_mWh] if formed else None,
+        "Efficiency (%)": [100 * d / c for d, c in zip(discharge_capacity_mAh, charge_capacity_mAh)],
+        "Specific charge capacity (mAh/g)": [c / (mass_mg * 1e-3) for c in charge_capacity_mAh],
+        "Specific discharge capacity (mAh/g)": [d / (mass_mg * 1e-3) for d in discharge_capacity_mAh],
+        "Normalised discharge capacity (%)": [
+            100 * d / discharge_capacity_mAh[initial_cycle - 1] for d in discharge_capacity_mAh
+        ]
+        if formed
+        else None,
+        "Normalised discharge energy (%)": [
+            100 * d / discharge_energy_mWh[initial_cycle - 1] for d in discharge_energy_mWh
+        ]
+        if formed
+        else None,
         "Charge average voltage (V)": charge_avg_V,
         "Discharge average voltage (V)": discharge_avg_V,
-        "Delta V (V)": [c-d for c,d in zip(charge_avg_V,discharge_avg_V)],
+        "Delta V (V)": [c - d for c, d in zip(charge_avg_V, discharge_avg_V)],
         "Charge average current (A)": charge_avg_I,
         "Discharge average current (A)": discharge_avg_I,
         "Charge energy (mWh)": charge_energy_mWh,
@@ -414,61 +434,95 @@ def analyse_cycles(
         last_idx = -1 if complete else -2
 
         cycle_dict["First formation efficiency (%)"] = cycle_dict["Efficiency (%)"][0]
-        cycle_dict["First formation specific discharge capacity (mAh/g)"] = cycle_dict["Specific discharge capacity (mAh/g)"][0]
-        cycle_dict["Initial specific discharge capacity (mAh/g)"] = cycle_dict["Specific discharge capacity (mAh/g)"][initial_cycle-1] if formed else None
-        cycle_dict["Initial efficiency (%)"] = cycle_dict["Efficiency (%)"][initial_cycle-1] if formed else None
-        cycle_dict["Capacity loss (%)"] = 100 - cycle_dict["Normalised discharge capacity (%)"][last_idx] if formed else None
-        cycle_dict["Last specific discharge capacity (mAh/g)"] = cycle_dict["Specific discharge capacity (mAh/g)"][last_idx]
+        cycle_dict["First formation specific discharge capacity (mAh/g)"] = cycle_dict[
+            "Specific discharge capacity (mAh/g)"
+        ][0]
+        cycle_dict["Initial specific discharge capacity (mAh/g)"] = (
+            cycle_dict["Specific discharge capacity (mAh/g)"][initial_cycle - 1] if formed else None
+        )
+        cycle_dict["Initial efficiency (%)"] = cycle_dict["Efficiency (%)"][initial_cycle - 1] if formed else None
+        cycle_dict["Capacity loss (%)"] = (
+            100 - cycle_dict["Normalised discharge capacity (%)"][last_idx] if formed else None
+        )
+        cycle_dict["Last specific discharge capacity (mAh/g)"] = cycle_dict["Specific discharge capacity (mAh/g)"][
+            last_idx
+        ]
         cycle_dict["Last efficiency (%)"] = cycle_dict["Efficiency (%)"][last_idx]
-        cycle_dict["Formation average voltage (V)"] = np.mean(cycle_dict["Charge average voltage (V)"][:initial_cycle-1]) if formed else None
-        cycle_dict["Formation average current (A)"] = np.mean(cycle_dict["Charge average current (A)"][:initial_cycle-1]) if formed else None
-        cycle_dict["Initial delta V (V)"] = cycle_dict["Delta V (V)"][initial_cycle-1] if formed else None
+        cycle_dict["Formation average voltage (V)"] = (
+            np.mean(cycle_dict["Charge average voltage (V)"][: initial_cycle - 1]) if formed else None
+        )
+        cycle_dict["Formation average current (A)"] = (
+            np.mean(cycle_dict["Charge average current (A)"][: initial_cycle - 1]) if formed else None
+        )
+        cycle_dict["Initial delta V (V)"] = cycle_dict["Delta V (V)"][initial_cycle - 1] if formed else None
 
         # Calculate cycles to x% of initial discharge capacity
-        def _find_first_element(arr: np.ndarray, start_idx: int) -> int|None:
+        def _find_first_element(arr: np.ndarray, start_idx: int) -> int | None:
             """Find first element in array that is 1 where at least 1 of the next 2 elements are also 1.
 
             Since cycles are 1-indexed and arrays are 0-indexed, this gives the first cycle BEFORE a condition is met.
             """
             if len(arr) - start_idx < 3:
                 return None
-            for i in range(start_idx, len(arr)-2):
+            for i in range(start_idx, len(arr) - 2):
                 if arr[i] == 0:
                     continue
-                if arr[i+1] == 1 or arr[i+2] == 1:
+                if arr[i + 1] == 1 or arr[i + 2] == 1:
                     return i
             return None
 
-        pcents = [95,90,85,80,75,70,60,50]
+        pcents = [95, 90, 85, 80, 75, 70, 60, 50]
         norm = np.array(cycle_dict["Normalised discharge capacity (%)"])
         for pcent in pcents:
-            cycle_dict[f"Cycles to {pcent}% capacity"] = _find_first_element(
-                norm<pcent,
-                initial_cycle-1,
-            ) if formed else None
+            cycle_dict[f"Cycles to {pcent}% capacity"] = (
+                _find_first_element(
+                    norm < pcent,
+                    initial_cycle - 1,
+                )
+                if formed
+                else None
+            )
         norm = np.array(cycle_dict["Normalised discharge energy (%)"])
         for pcent in pcents:
-            cycle_dict[f"Cycles to {pcent}% energy"] = _find_first_element(
-                norm<pcent,
-                initial_cycle-1,
-            ) if formed else None
+            cycle_dict[f"Cycles to {pcent}% energy"] = (
+                _find_first_element(
+                    norm < pcent,
+                    initial_cycle - 1,
+                )
+                if formed
+                else None
+            )
 
         cycle_dict["Run ID"] = run_from_sample(sampleid)
 
         # If assembly history is available, calculate times between steps
-        assembly_history = sample_data.get("Assembly history",[])
-        if isinstance(assembly_history,str):
+        assembly_history = sample_data.get("Assembly history", [])
+        if isinstance(assembly_history, str):
             assembly_history = json.loads(assembly_history)
-        if assembly_history and isinstance(assembly_history,list):
+        if assembly_history and isinstance(assembly_history, list):
             job_start = df["uts"].iloc[0]
-            press = next((step.get("uts",None) for step in assembly_history if step["Step"] == "Press"), None)
+            press = next((step.get("uts", None) for step in assembly_history if step["Step"] == "Press"), None)
             electrolyte_ind = [i for i, step in enumerate(assembly_history) if step["Step"] == "Electrolyte"]
             if electrolyte_ind:
-                first_electrolyte = next((step.get("uts",None) for step in assembly_history if step["Step"] == "Electrolyte"), None)
-                history_after_electrolyte = assembly_history[max(electrolyte_ind):]
-                cover_electrolyte = next((step.get("uts",None) for step in history_after_electrolyte if step["Step"] in ["Anode","Cathode"]), None)
-                cycle_dict["Electrolyte to press (s)"] = press - first_electrolyte if first_electrolyte and press else None
-                cycle_dict["Electrolyte to electrode (s)"] = cover_electrolyte - first_electrolyte if first_electrolyte and cover_electrolyte else None
+                first_electrolyte = next(
+                    (step.get("uts", None) for step in assembly_history if step["Step"] == "Electrolyte"),
+                    None,
+                )
+                history_after_electrolyte = assembly_history[max(electrolyte_ind) :]
+                cover_electrolyte = next(
+                    (
+                        step.get("uts", None)
+                        for step in history_after_electrolyte
+                        if step["Step"] in ["Anode", "Cathode"]
+                    ),
+                    None,
+                )
+                cycle_dict["Electrolyte to press (s)"] = (
+                    press - first_electrolyte if first_electrolyte and press else None
+                )
+                cycle_dict["Electrolyte to electrode (s)"] = (
+                    cover_electrolyte - first_electrolyte if first_electrolyte and cover_electrolyte else None
+                )
                 cycle_dict["Electrode to protection (s)"] = job_start - cover_electrolyte if cover_electrolyte else None
             cycle_dict["Press to protection (s)"] = job_start - press if press else None
 
@@ -509,9 +563,9 @@ def analyse_cycles(
         }
 
         # round any floats to 3 decimal places
-        for k,v in update_row.items():
+        for k, v in update_row.items():
             if isinstance(v, float):
-                update_row[k] = round(v,3)
+                update_row[k] = round(v, 3)
 
         with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
@@ -528,7 +582,7 @@ def analyse_cycles(
         save_folder = job_files[0].parent
         if save_cycle_dict:
             with (save_folder / f"cycles.{sampleid}.json").open("w", encoding="utf-8") as f:
-                json.dump({"data": cycle_dict, "metadata": metadata},f)
+                json.dump({"data": cycle_dict, "metadata": metadata}, f)
         if save_merged_hdf or save_merged_jsongz:
             df = df.drop(columns=["dt (s)", "Iavg (A)"])
         if save_merged_hdf:
@@ -548,9 +602,10 @@ def analyse_cycles(
             with h5py.File(output_hdf5_file, "a") as f:
                 f.create_dataset("metadata", data=json.dumps(metadata))
         if save_merged_jsongz:
-            with gzip.open(save_folder/f"full.{sampleid}.json.gz", "wt", encoding="utf-8") as f:
+            with gzip.open(save_folder / f"full.{sampleid}.json.gz", "wt", encoding="utf-8") as f:
                 json.dump({"data": df.to_dict(orient="list"), "metadata": metadata}, f)
     return df, cycle_dict, metadata
+
 
 def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
     """Analyse a single sample.
@@ -579,6 +634,7 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
             (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), sample),
         )
     return df, cycle_dict, metadata
+
 
 def update_sample_metadata(sample_ids: str | list[str]) -> None:
     """Update "sample_data" in metadata of full.x.hdf5 and cycles.x.json files.
@@ -623,6 +679,7 @@ def update_sample_metadata(sample_ids: str | list[str]) -> None:
         with json_file.open("w", encoding="utf-8") as f:
             json.dump(data, f)
 
+
 def shrink_sample(sample_id: str) -> None:
     """Find the full.x.h5 file for the sample and save a lossy, compressed version."""
     run_id = run_from_sample(sample_id)
@@ -632,7 +689,7 @@ def shrink_sample(sample_id: str) -> None:
         raise FileNotFoundError(msg)
     df = pd.read_hdf(file_location)
     # Only keep a few columns
-    df = df[["V (V)", "I (A)", "uts","dQ (mAh)", "Cycle"]]
+    df = df[["V (V)", "I (A)", "uts", "dQ (mAh)", "Cycle"]]
     # Reduce precision of some columns
     for col in ["V (V)", "I (A)", "dQ (mAh)"]:
         df[col] = df[col].astype(np.float16)
@@ -640,12 +697,12 @@ def shrink_sample(sample_id: str) -> None:
 
     # Use the LTTB downsampler to reduce the number of data points
     original_length = len(df)
-    new_length = min(original_length, original_length//20+1000, 50000)
+    new_length = min(original_length, original_length // 20 + 1000, 50000)
     if new_length < 3:
         msg = f"Too few data points ({original_length}) to shrink {sample_id}"
         raise ValueError(msg)
-    s_ds_V = MinMaxLTTBDownsampler().downsample(df["uts"], df["V (V)"], n_out = new_length)
-    s_ds_I = MinMaxLTTBDownsampler().downsample(df["uts"], df["I (A)"], n_out = new_length)
+    s_ds_V = MinMaxLTTBDownsampler().downsample(df["uts"], df["V (V)"], n_out=new_length)
+    s_ds_I = MinMaxLTTBDownsampler().downsample(df["uts"], df["I (A)"], n_out=new_length)
     ind = np.sort(np.concatenate([s_ds_V, s_ds_I]))
 
     df["Q (mAh)"] = df["dQ (mAh)"].cumsum()
@@ -653,11 +710,12 @@ def shrink_sample(sample_id: str) -> None:
     df = df.iloc[ind]
 
     df["dQ (mAh)"] = df["Q (mAh)"].diff().fillna(0)
-    df=df.drop(columns=["Q (mAh)"])
+    df = df.drop(columns=["Q (mAh)"])
 
     # Save the new file
     new_file_location = file_location.with_name(f"shrunk.{sample_id}.h5")
     df.to_hdf(new_file_location, key="data", mode="w", complib="blosc", complevel=9)
+
 
 def shrink_all_samples(sampleid_contains: str = "") -> None:
     """Shrink all samples in the processed snapshots folder.
@@ -680,10 +738,11 @@ def shrink_all_samples(sampleid_contains: str = "") -> None:
                     tb = traceback.format_exc()
                     print(f"Failed to analyse {sample.name} with error {e}\n{tb}")
 
+
 def analyse_all_samples(
-        sampleid_contains: str = "",
-        mode: Literal["always","new_data","if_not_exists"] = "new_data",
-    ) -> None:
+    sampleid_contains: str = "",
+    mode: Literal["always", "new_data", "if_not_exists"] = "new_data",
+) -> None:
     """Analyse all samples in the processed snapshots folder.
 
     Args: sampleid_contains (str, optional): only analyse samples with this
@@ -697,12 +756,9 @@ def analyse_all_samples(
             results = cursor.fetchall()
         dtformat = "%Y-%m-%d %H:%M:%S"
         samples_to_analyse = [
-            r[0] for r in results
-            if r[0] and (
-                not r[1] or
-                not r[2] or
-                datetime.strptime(r[1], dtformat) > datetime.strptime(r[2], dtformat)
-            )
+            r[0]
+            for r in results
+            if r[0] and (not r[1] or not r[2] or datetime.strptime(r[1], dtformat) > datetime.strptime(r[2], dtformat))
         ]
     elif mode == "if_not_exists":
         with sqlite3.connect(CONFIG["Database path"]) as conn:
@@ -726,9 +782,10 @@ def analyse_all_samples(
                     tb = traceback.format_exc()
                     print(f"Failed to analyse {sample.name} with error {e}\n{tb}")
 
+
 def parse_sample_plotting_file(
-        file_path: Path,
-    ) -> dict:
+    file_path: Path,
+) -> dict:
     """Read the graph config file and returns a dictionary of the batches to plot.
 
     Args: file_path (str): path to the yaml file containing the plotting configuration
@@ -749,7 +806,7 @@ def parse_sample_plotting_file(
         samples = batch["samples"]
         transformed_samples = []
         for sample in samples:
-            split_name = sample.split(" ",1)
+            split_name = sample.split(" ", 1)
             if len(split_name) == 1:  # the batch is a single sample
                 sample_id = sample
                 run_id = run_from_sample(sample_id)
@@ -761,7 +818,7 @@ def parse_sample_plotting_file(
                     transformed_samples.extend([f"{run_id}_{i:02d}" for i in sample_numbers])
                 elif sample_range == "all":
                     # Check the folders
-                    run_path = data_folder/run_id
+                    run_path = data_folder / run_id
                     if run_path.exists():
                         transformed_samples.extend([f.name for f in run_path.iterdir() if f.is_dir()])
                     else:
@@ -769,7 +826,7 @@ def parse_sample_plotting_file(
                 else:
                     numbers = re.findall(r"\d+", sample_range)
                     start, end = map(int, numbers) if len(numbers) == 2 else (int(numbers[0]), int(numbers[0]))
-                    transformed_samples.extend([f"{run_id}_{i:02d}" for i in range(start, end+1)])
+                    transformed_samples.extend([f"{run_id}_{i:02d}" for i in range(start, end + 1)])
 
         # Check if individual sample folders exist
         for sample in transformed_samples:
@@ -785,27 +842,27 @@ def parse_sample_plotting_file(
 
     return batches
 
+
 def analyse_batch(plot_name: str, batch: dict) -> None:
     """Combine data for a batch of samples."""
     save_location = Path(CONFIG["Batches folder path"]) / plot_name
     if not save_location.exists():
         save_location.mkdir(parents=True, exist_ok=True)
-    samples = batch.get("samples",[])
+    samples = batch.get("samples", [])
     cycle_dicts = []
-    metadata: dict[str,dict] = {"sample_metadata":{}}
+    metadata: dict[str, dict] = {"sample_metadata": {}}
     for sample in samples:
         # get the anaylsed data
         run_id = run_from_sample(sample)
         sample_folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample
         try:
             analysed_file = next(
-                f for f in sample_folder.iterdir()
-                if (f.name.startswith("cycles.") and f.name.endswith(".json"))
+                f for f in sample_folder.iterdir() if (f.name.startswith("cycles.") and f.name.endswith(".json"))
             )
             with analysed_file.open(encoding="utf-8") as f:
                 data = json.load(f)
-                cycle_dict = data.get("data",{})
-                metadata["sample_metadata"][sample] = data.get("metadata",{})
+                cycle_dict = data.get("data", {})
+                metadata["sample_metadata"][sample] = data.get("metadata", {})
             if cycle_dict.get("Cycle") and cycle_dict["Cycle"]:
                 cycle_dicts.append(cycle_dict)
             else:
@@ -834,14 +891,22 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
     }
 
     # make another df where we only keep the lists from the dictionaries in the list
-    only_lists = pd.concat([pd.DataFrame({k:v for k,v in cycle_dict.items() if isinstance(v, list) or k=="Sample ID"}) for cycle_dict in cycle_dicts])
-    only_vals = pd.DataFrame([{k:v for k,v in cycle_dict.items() if not isinstance(v, list)} for cycle_dict in cycle_dicts])
+    only_lists = pd.concat(
+        [
+            pd.DataFrame({k: v for k, v in cycle_dict.items() if isinstance(v, list) or k == "Sample ID"})
+            for cycle_dict in cycle_dicts
+        ],
+    )
+    only_vals = pd.DataFrame(
+        [{k: v for k, v in cycle_dict.items() if not isinstance(v, list)} for cycle_dict in cycle_dicts],
+    )
 
     with pd.ExcelWriter(f"{save_location}/batch.{plot_name}.xlsx") as writer:
         only_lists.to_excel(writer, sheet_name="Data by cycle", index=False)
         only_vals.to_excel(writer, sheet_name="Results by sample", index=False)
     with (save_location / f"batch.{plot_name}.json").open("w", encoding="utf-8") as f:
-        json.dump({"data":cycle_dicts, "metadata": metadata},f)
+        json.dump({"data": cycle_dicts, "metadata": metadata}, f)
+
 
 def analyse_all_batches() -> None:
     """Analyses all the batches according to the configuration file.
@@ -857,6 +922,6 @@ def analyse_all_batches() -> None:
     batches = parse_sample_plotting_file(Path(CONFIG["Graph config path"]))
     for plot_name, batch in batches.items():
         try:
-            analyse_batch(plot_name,batch)
+            analyse_batch(plot_name, batch)
         except (ValueError, KeyError, PermissionError, RuntimeError, FileNotFoundError) as e:
             print(f"Failed to analyse {plot_name} with error {e}")
