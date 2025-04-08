@@ -564,7 +564,6 @@ class NewareServer(CyclerServer):
             raise ValueError(output)
         return f"Stopped pipeline {pipeline} on Neware"
 
-
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
         result = json.loads(self.command("neware status"))

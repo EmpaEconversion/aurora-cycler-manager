@@ -141,7 +141,9 @@ def harvest_neware_files(
                 local_path = Path(local_folder) / relative_path
                 local_path.parent.mkdir(parents=True, exist_ok=True)  # Create local directory if it doesn't exist
                 # Prepend the server label to the filename
-                local_path = local_path.with_name(f"{server_label}-{local_path.name.replace("_","-").replace(" ","-")}")
+                local_path = local_path.with_name(
+                    f"{server_label}-{local_path.name.replace('_', '-').replace(' ', '-')}"
+                )
                 print(f"Copying {file} to {local_path}")
                 sftp.get(file, local_path)
                 new_files.append(local_path)
@@ -386,7 +388,7 @@ def get_neware_ndax_metadata(file_path: Path) -> dict:
     metadata["Step name"] = testinfo.get("StepName")
     metadata["Device type"] = testinfo.get("DevType")
     metadata["Device ID"] = testinfo.get("DevID")
-    metadata["Subdevice ID"] = testinfo.get("UnitID") # Seems like this doesn't work from Neware's side
+    metadata["Subdevice ID"] = testinfo.get("UnitID")  # Seems like this doesn't work from Neware's side
     metadata["Channel ID"] = testinfo.get("ChlID")
     metadata["Test ID"] = testinfo.get("TestID")
     metadata["Voltage range (V)"] = float(testinfo.get("VoltRange", 0))
@@ -469,6 +471,7 @@ def get_neware_ndax_data(file_path: Path) -> pd.DataFrame:
     output_df["uts"] = df["Timestamp"].apply(lambda x: x.timestamp())
     return output_df
 
+
 def update_database_job(
     filepath: Path,
 ) -> None:
@@ -502,13 +505,17 @@ def update_database_job(
     full_job_id = filepath.stem
     job_id_on_server = "-".join(full_job_id.split("-")[-4:])  # Get job ID from filename
     server_label = "-".join(full_job_id.split("-")[:-4])  # Get server label from filename
-    pipeline = "-".join(job_id_on_server.split("-")[:-1]) # because sub-device ID reported properly
+    pipeline = "-".join(job_id_on_server.split("-")[:-1])  # because sub-device ID reported properly
     submitted = metadata.get("Start time")
     payload = json.dumps(metadata.get("Payload"))
     last_snapshot_uts = filepath.stat().st_birthtime
     last_snapshot = datetime.fromtimestamp(last_snapshot_uts).strftime("%Y-%m-%d %H:%M:%S")
     server_hostname = next(
-        (server["hostname"] for server in CONFIG.get("Neware harvester", {}).get("Servers", []) if server["label"] == server_label),
+        (
+            server["hostname"]
+            for server in CONFIG.get("Neware harvester", {}).get("Servers", [])
+            if server["label"] == server_label
+        ),
         None,
     )
     if not server_hostname:
@@ -528,12 +535,19 @@ def update_database_job(
             "`Payload` = ?, `Last Snapshot` = ?, `Job ID on server` = ? "
             "WHERE `Job ID` = ?",
             (
-                job_id_on_server, pipeline, sampleid,
-                server_label, server_hostname, submitted,
-                payload, last_snapshot, job_id_on_server,
+                job_id_on_server,
+                pipeline,
+                sampleid,
+                server_label,
+                server_hostname,
+                submitted,
+                payload,
+                last_snapshot,
+                job_id_on_server,
                 full_job_id,
             ),
         )
+
 
 def convert_neware_data(
     file_path: Path | str,
@@ -650,11 +664,11 @@ def convert_all_neware_data() -> None:
     for file in neware_files:
         try:
             convert_neware_data(file, output_hdf5_file=True)
-        except ValueError as e:  # noqa: PERF203
+        except ValueError as e:
             print(f"Error converting {file}: {e}")
         try:
             update_database_job(file)
-        except ValueError as e:  # noqa: PERF203
+        except ValueError as e:
             print(f"Error updating database for {file}: {e}")
 
 
@@ -665,11 +679,11 @@ def main() -> None:
         print(f"Processing {file}")
         try:
             convert_neware_data(file, output_hdf5_file=True)
-        except ValueError as e:  # noqa: PERF203
+        except ValueError as e:
             print(f"Error converting {file}: {e}")
         try:
             update_database_job(file)
-        except ValueError as e:  # noqa: PERF203
+        except ValueError as e:
             print(f"Error updating database for {file}: {e}")
 
 
