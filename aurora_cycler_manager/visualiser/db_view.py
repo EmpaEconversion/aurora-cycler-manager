@@ -797,19 +797,21 @@ def register_db_view_callbacks(app: Dash) -> None:
                 elif table == "pipelines":
                     all_samples = all(s.get("Sample ID") is not None for s in selected_rows)
                     all_servers = all(s.get("Server label") in accessible_servers for s in selected_rows)
+                    all_tomato = all(s.get("Server type") == "tomato" for s in selected_rows)
                     no_samples = all(s.get("Sample ID") is None for s in selected_rows)
                     if all_samples:
                         enabled |= {"label-button", "create-batch-button"}
-                    if all_servers and all_samples:
-                        enabled |= {"snapshot-button"}
-                        if len({s.get("Server type") for s in selected_rows}) == 1:
-                            enabled |= {"submit-button"}
-                        if all(s["Job ID"] is None for s in selected_rows):
-                            enabled |= {"eject-button"}
-                            if all(s.get("Server type") == "tomato" for s in selected_rows):
-                                enabled |= {"ready-button", "unready-button"}
-                        elif all(s.get("Job ID") is not None for s in selected_rows):
-                            enabled |= {"cancel-button"}
+                        if all_servers:
+                            if len({s.get("Server type") for s in selected_rows}) == 1:
+                                enabled |= {"submit-button"}
+                                if all_tomato:
+                                    enabled |= {"snapshot-button"}
+                            if all(s["Job ID"] is None for s in selected_rows):
+                                enabled |= {"eject-button"}
+                                if all_tomato:
+                                    enabled |= {"ready-button", "unready-button"}
+                            elif all(s.get("Job ID") is not None for s in selected_rows):
+                                enabled |= {"cancel-button"}
                     elif all_servers and no_samples:
                         enabled |= {"load-button"}
                 elif table == "jobs":
