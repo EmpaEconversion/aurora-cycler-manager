@@ -2,10 +2,8 @@
 
 import os
 
-import pytest
 
-
-@pytest.fixture(autouse=True)
-def set_pytest_env() -> None:
-    """Set envinonment variable for pytest."""
+def pytest_configure(config) -> None:  # noqa: ANN001, ARG001
+    """Set PYTEST_RUNNING env variable early, before any tests are collected or run."""
     os.environ["PYTEST_RUNNING"] = "1"
+    print("PYTEST_RUNNING set to 1 in pytest_configure")
