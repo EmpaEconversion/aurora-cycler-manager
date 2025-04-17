@@ -16,9 +16,11 @@ from dash_bootstrap_components import Checklist, Tooltip
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
 from aurora_cycler_manager.analysis import combine_jobs
-from aurora_cycler_manager.config import CONFIG
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.visualiser.funcs import smoothed_derivative
+
+CONFIG = get_config()
 
 graph_template = "seaborn"
 graph_margin = {"l": 50, "r": 10, "t": 50, "b": 75}
@@ -279,7 +281,7 @@ def register_samples_callbacks(app: Dash) -> None:
             # Otherwise import the data
             run_id = run_from_sample(sample)
             data_folder = CONFIG["Processed snapshots folder path"]
-            file_location = os.path.join(data_folder, run_id, sample)
+            file_location = str(data_folder / run_id / sample)
 
             # Get raw data
             try:
@@ -332,14 +334,12 @@ def register_samples_callbacks(app: Dash) -> None:
         time_y_vars = {"V (V)"}
         for data_dict in data["data_sample_time"].values():
             time_y_vars.update(data_dict.keys())
-        time_y_vars = list(time_y_vars)
 
         cycles_y_vars = {"Specific discharge capacity (mAh/g)", "Normalised discharge capacity (%)", "Efficiency (%)"}
         for data_dict in data["data_sample_cycle"].values():
             cycles_y_vars.update([k for k, v in data_dict.items() if isinstance(v, list)])
-        cycles_y_vars = list(cycles_y_vars)
 
-        return data, time_y_vars, cycles_y_vars
+        return data, list(time_y_vars), list(cycles_y_vars)
 
     # Update the time graph
     @app.callback(

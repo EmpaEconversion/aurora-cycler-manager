@@ -35,10 +35,11 @@ import paramiko
 import pytz
 import yadg
 
-from aurora_cycler_manager.config import CONFIG
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.version import __url__, __version__
 
+CONFIG = get_config()
 
 def get_snapshot_folder() -> Path:
     """Get the path to the snapshot folder for neware files."""

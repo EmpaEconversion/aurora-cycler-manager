@@ -18,9 +18,11 @@ from dash import callback_context as ctx
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 from plotly.colors import sample_colorscale
 
-from aurora_cycler_manager.config import CONFIG
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.visualiser.funcs import correlation_matrix
+
+CONFIG = get_config()
 
 graph_template = "seaborn"
 graph_margin = {"l": 50, "r": 10, "t": 50, "b": 75}

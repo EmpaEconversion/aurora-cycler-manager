@@ -32,11 +32,12 @@ import pandas as pd
 import paramiko
 
 from aurora_cycler_manager.analysis import analyse_sample
-from aurora_cycler_manager.config import CONFIG
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.cycler_servers import CyclerServer, NewareServer, TomatoServer
 from aurora_cycler_manager.tomato_converter import convert_tomato_json
 from aurora_cycler_manager.utils import run_from_sample
 
+CONFIG = get_config()
 
 class ServerManager:
     """The ServerManager class manages the database and cycling servers.

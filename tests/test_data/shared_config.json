@@ -1,0 +1,166 @@
+{
+    "Database path" : "database/database.db",
+    "Database backup folder path" : "database/backup",
+    "Processed snapshots folder path" : "snapshots",
+    "Time zone" : "Europe/Zurich",
+    
+    "Servers" : [
+        {
+            "label": "fakeltomato",
+            "hostname": "fakehostname",
+            "username": "fakeuser",
+            "server_type": "tomato",
+            "shell_type": "cmd",
+            "command_prefix" : "conda activate tomato && ",
+            "command_suffix" : "",
+            "tomato_scripts_path": "",
+            "tomato_data_path": "C:/fake/path/to/tomato/0.2.3/Jobs"
+        },
+        {
+			"label": "fakeneware",
+			"hostname": "fakehostname",
+			"username": "fakeuser",
+			"server_type": "neware",
+			"shell_type": "cmd"
+		}
+    ],
+    
+    "Unused pipelines" : [
+        "fake-unused-%"
+    ],
+
+    "EC-lab harvester" : {
+        "Servers": [
+            {
+                "label" : "fakeeclab",
+                "hostname": "fakehostname",
+                "username": "fakeuser",
+                "shell_type": "powershell",
+                "EC-lab folder location": "C:/fake/path/"
+            }
+        ],
+        "Run ID lookup": {
+            "wrong_run_id": "correct_run_id"
+        }
+    },
+
+    "Neware harvester" : {
+        "Servers": [
+            {
+                "label" : "fakeneware",
+                "hostname": "fakehostname",
+                "username": "lfakeuser",
+                "Neware folder location": "C:/Neware data/",
+                "shell_type": "cmd"
+            }
+        ]
+    },
+
+    "User mapping": {
+        "fusr": "Fake User"
+    },
+
+    "Sample database": [
+        {"Name": "Sample ID", "Alternative names": ["sampleid"], "Type": "VARCHAR(255) PRIMARY KEY"},
+        {"Name": "Run ID", "Type": "VARCHAR(255)"},
+        {"Name": "Cell number", "Alternative names": ["Battery_Number"], "Type": "INT"},
+        {"Name": "N:P ratio", "Alternative names": ["Actual N:P Ratio"], "Type": "FLOAT"},
+        {"Name": "Rack position", "Alternative names": ["Rack_Position"], "Type": "INT"},
+        {"Name": "Separator type", "Type": "VARCHAR(255)"},
+        {"Name": "Electrolyte name", "Alternative names": ["Electrolyte"], "Type": "VARCHAR(255)"},
+        {"Name": "Electrolyte description", "Type": "TEXT"},
+        {"Name": "Electrolyte position", "Type": "INT"},
+        {"Name": "Electrolyte amount (uL)", "Alternative names": ["Electrolyte Amount"], "Type": "FLOAT"},
+        {"Name": "Electrolyte dispense order", "Type": "VARCHAR(255)"},
+        {
+            "Name": "Electrolyte amount before separator (uL)",
+            "Alternative names": ["Electrolyte Amount Before Seperator (uL)"],
+            "Type": "FLOAT"
+        },
+        {
+            "Name": "Electrolyte amount after separator (uL)",
+            "Alternative names": ["Electrolyte Amount After Seperator (uL)"],
+            "Type": "FLOAT"
+        },
+        {"Name": "Anode rack position", "Alternative names": ["Anode Position"], "Type": "INT"},
+        {"Name": "Anode type", "Type": "VARCHAR(255)"},
+        {"Name": "Anode description", "Type": "TEXT"},
+        {"Name": "Anode diameter (mm)", "Alternative names": ["Anode_Diameter", "Anode Diameter"], "Type": "FLOAT"},
+        {"Name": "Anode mass (mg)", "Alternative names": ["Anode Weight (mg)", "Anode Weight"], "Type": "FLOAT"},
+        {
+            "Name": "Anode current collector mass (mg)",
+            "Alternative names": ["Anode Current Collector Weight (mg)"],
+            "Type": "FLOAT"
+        },
+        {"Name": "Anode active material mass fraction", "Alternative names": ["Anode AM Content"], "Type": "FLOAT"},
+        {
+            "Name": "Anode active material mass (mg)",
+            "Alternative names": ["Anode Active Material Weight (mg)", "Anode AM Weight (mg)"],
+            "Type": "FLOAT"
+        },
+        {"Name": "Anode C-rate definition areal capacity (mAh/cm2)", "Type": "FLOAT"},
+        {"Name": "Anode C-rate definition specific capacity (mAh/g)", "Type": "FLOAT"},
+        {
+            "Name": "Anode balancing specific capacity (mAh/g)",
+            "Alternative names": ["Anode Practical Capacity (mAh/g)", "Anode Nominal Specific Capacity (mAh/g)"],
+            "Type": "FLOAT"
+        },
+        {"Name": "Anode balancing capacity (mAh)", "Alternative names": ["Anode Capacity (mAh)"], "Type": "FLOAT"},
+        {"Name": "Cathode rack position", "Alternative names": ["Cathode Position"], "Type": "INT"},
+        {"Name": "Cathode type", "Type": "VARCHAR(255)"},
+        {"Name": "Cathode description", "Type": "TEXT"},
+        {
+            "Name": "Cathode diameter (mm)",
+            "Alternative names": ["Cathode_Diameter", "Cathode Diameter"],
+            "Type": "FLOAT"
+        },
+        {"Name": "Cathode mass (mg)", "Alternative names": ["Cathode Weight (mg)"], "Type": "FLOAT"},
+        {
+            "Name": "Cathode current collector mass (mg)",
+            "Alternative names": ["Cathode Current Collector Weight (mg)"],
+            "Type": "FLOAT"
+        },
+        {
+            "Name": "Cathode active material mass fraction",
+            "Alternative names": ["Cathode Active Material Weight Fraction", "Cathode AM Content"],
+            "Type": "FLOAT"
+        },
+        {
+            "Name": "Cathode active material mass (mg)",
+            "Alternative names": ["Cathode Active Material Weight (mg)", "Cathode AM Weight (mg)"],
+            "Type": "FLOAT"
+        },
+        {"Name": "Cathode C-rate definition areal capacity (mAh/cm2)", "Type": "FLOAT"},
+        {"Name": "Cathode C-rate definition specific capacity (mAh/g)", "Type": "FLOAT"},
+        {
+            "Name": "Cathode balancing specific capacity (mAh/g)",
+            "Alternative names": [
+                "Cathode Practical Capacity (mAh/g)",
+                "Cathode Nominal Specific Capacity (mAh/g)"
+            ],
+            "Type": "FLOAT"
+        },
+        {
+            "Name": "Cathode balancing capacity (mAh)",
+            "Alternative names": ["Cathode Capacity (mAh)"],
+            "Type": "FLOAT"
+        },
+        {
+            "Name": "C-rate definition capacity (mAh)",
+            "Alternative names": ["Capacity (mAh)", "C-rate Capacity (mAh)"],
+            "Type": "FLOAT"
+        },
+        {"Name": "Target N:P ratio", "Type": "FLOAT"},
+        {"Name": "Minimum N:P ratio", "Type": "FLOAT"},
+        {"Name": "Maximum N:P ratio", "Type": "FLOAT"},
+        {"Name": "N:P ratio overlap factor", "Type": "FLOAT"},
+        {"Name": "Casing type", "Type": "VARCHAR(255)"},
+        {"Name": "Separator diameter (mm)", "Type": "FLOAT"},
+        {"Name": "Spacer (mm)", "Type": "FLOAT"},
+        {"Name": "Comment", "Alternative names": ["Comments"], "Type": "TEXT"},
+        {"Name": "Label", "Type": "VARCHAR(255)"},
+        {"Name": "Barcode", "Type": "VARCHAR(255)"},
+        {"Name": "Subbatch number", "Alternative names": ["Batch Number", "Subbatch"], "Type": "INT"},
+        {"Name": "Assembly history", "Type": "TEXT"}
+    ]
+}

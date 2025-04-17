@@ -38,12 +38,13 @@ import paramiko
 import pytz
 import xmltodict
 
-from aurora_cycler_manager.config import CONFIG
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
+CONFIG = get_config()
 tz = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
 
 

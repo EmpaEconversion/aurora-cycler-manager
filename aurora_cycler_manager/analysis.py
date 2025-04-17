@@ -31,13 +31,14 @@ import pytz
 import yaml
 from tsdownsample import MinMaxLTTBDownsampler
 
-from aurora_cycler_manager.config import CONFIG
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.utils import c_to_float, run_from_sample
 from aurora_cycler_manager.version import __url__, __version__
 
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="All-NaN axis encountered")
 
+CONFIG = get_config()
 # Metadata that gets copied in the json data file for more convenient access
 SAMPLE_METADATA_TO_DATA = [
     "N:P ratio",

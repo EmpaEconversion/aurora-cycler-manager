@@ -6,8 +6,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from aurora_cycler_manager.config import CONFIG
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.utils import run_from_sample
+
+CONFIG = get_config()
 
 ### SAMPLES ###
 
