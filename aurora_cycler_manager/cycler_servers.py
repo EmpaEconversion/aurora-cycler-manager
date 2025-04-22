@@ -38,7 +38,7 @@ class CyclerServer:
         self.last_queue_all = None
         self.check_connection()
 
-    def command(self, command: str) -> str:
+    def command(self, command: str, timeout: float = 300) -> str:
         """Send a command to the server and return the output.
 
         The command is prefixed with the command_prefix specified in the server_config, is run on
@@ -47,7 +47,10 @@ class CyclerServer:
         with paramiko.SSHClient() as ssh:
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
-            stdin, stdout, stderr = ssh.exec_command(self.command_prefix + command + self.command_suffix)
+            stdin, stdout, stderr = ssh.exec_command(
+                self.command_prefix + command + self.command_suffix,
+                timeout=timeout,
+            )
             output = stdout.read().decode("utf-8")
             error = stderr.read().decode("utf-8")
         if error:
@@ -72,7 +75,7 @@ class CyclerServer:
 
         """
         test_phrase = "hellothere"
-        output = self.command(f"echo {test_phrase}").strip()
+        output = self.command(f"echo {test_phrase}", timeout=5).strip()
         if output != test_phrase:
             msg = f"Connection error, expected output '{test_phrase}', got '{output}'"
             raise ValueError(msg)
