@@ -9,6 +9,7 @@ from pathlib import Path
 
 CONFIG = None
 
+
 def _read_config_file() -> dict:
     """Get the configuration data from the user and shared config files.
 
@@ -19,12 +20,13 @@ def _read_config_file() -> dict:
     current_dir = Path(__file__).resolve().parent
 
     # Check if the environment is set for pytest
-    is_testing = os.getenv("PYTEST_RUNNING") == "1"
-    print(f"Is testing: {is_testing}")
-    config_dir = Path(current_dir.parent / "tests" / "test_data" if is_testing else current_dir)
+    if os.getenv("PYTEST_RUNNING") == "1":
+        config_dir = current_dir.parent / "tests" / "test_data"
+        user_config_path = config_dir / "test_config.json"
+    else:
+        config_dir = current_dir
+        user_config_path = config_dir / "config.json"
 
-    user_config_path = config_dir / "config.json"
-    print(f"User config path: {user_config_path}")
     err_msg = f"""
         Please fill in the config file at {user_config_path}.
 
@@ -86,6 +88,7 @@ def _read_config_file() -> dict:
     config["User config path"] = user_config_path
 
     return config
+
 
 def get_config(reload: bool = False) -> dict:
     """Return global configuration dictionary.
