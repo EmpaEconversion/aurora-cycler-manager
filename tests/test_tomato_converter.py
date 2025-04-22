@@ -21,12 +21,21 @@ class TestGetSnapshotFolder:
         expected_path = Path(__file__).parent / "test_data" / "local_snapshots" / "tomato_snapshots"
         assert result == expected_path
 
+
 class TestConvertTomatoJson:
     """Test the convert_tomato_json function."""
 
     def test_convert_tomato_json(self) -> None:
         """Test the convert_tomato_json function."""
-        snapshot_file_path = Path(__file__).parent / "test_data" / "local_snapshots" / "tomato_snapshots" / "240606_svfe_gen1" / "240606_svfe_gen1_15" / "snapshot.tt1-100.json"
+        snapshot_file_path = (
+            Path(__file__).parent
+            / "test_data"
+            / "local_snapshots"
+            / "tomato_snapshots"
+            / "240606_svfe_gen1"
+            / "240606_svfe_gen1_15"
+            / "snapshot.tt1-100.json"
+        )
         df, metadata = convert_tomato_json(snapshot_file_path, output_hdf_file=False, output_jsongz_file=False)
         # DataFrame checks
         assert isinstance(df, pd.DataFrame)
@@ -34,16 +43,17 @@ class TestConvertTomatoJson:
         expected_cols = ["uts", "V (V)", "I (A)", "cycle_number", "loop_number", "index", "technique"]
         assert all(col in df.columns for col in expected_cols)
         # Check time is sensible
-        assert all(df["uts"]>1.7e9)
-        assert all(df["uts"]<1.8e9)
-        assert all(df["I (A)"]>-1e-3)
-        assert all(df["I (A)"]<1e-3)
-        assert all(df["V (V)"]>0)
-        assert all(df["V (V)"]<5)
+        assert all(df["uts"] > 1.7e9)
+        assert all(df["uts"] < 1.8e9)
+        assert all(df["I (A)"] > -1e-3)
+        assert all(df["I (A)"] < 1e-3)
+        assert all(df["V (V)"] > 0)
+        assert all(df["V (V)"] < 5)
         # Metadata checks
         assert isinstance(metadata, dict)
         expected_keys = ["sample_data", "job_data", "provenance"]
         assert all(key in metadata for key in expected_keys)
+
 
 class TestConvertAllTomatoJson:
     """Test convert all function."""

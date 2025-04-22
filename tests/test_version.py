@@ -25,9 +25,7 @@ class TestVersion:
             __url__,
             __version__,
         ]
-        assert all(
-            isinstance(attr, str) and len(attr) > 0 for attr in attrs
-        )
+        assert all(isinstance(attr, str) and len(attr) > 0 for attr in attrs)
         # Should follow semantic versioning e.g "1.0.0" or "1.0.0-dev" or "1.0.0-rc.2"
         digits = __version__.split("-")[0].split(".")
         assert len(digits) == 3

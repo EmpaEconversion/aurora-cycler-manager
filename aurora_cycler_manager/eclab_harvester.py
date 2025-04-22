@@ -41,6 +41,7 @@ from aurora_cycler_manager.version import __url__, __version__
 
 CONFIG = get_config()
 
+
 def get_snapshot_folder() -> Path:
     """Get the path to the snapshot folder for neware files."""
     snapshot_parent = CONFIG.get("Snapshots folder path")

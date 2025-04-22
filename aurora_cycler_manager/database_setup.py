@@ -408,7 +408,7 @@ def main() -> None:
                 config = json.load(f)
 
         # Change all the Path objects to strings to dump to json
-        for k,v in config.items():
+        for k, v in config.items():
             if isinstance(v, Path):
                 config[k] = str(v)
         with (root_dir / "config.json").open("w") as f:

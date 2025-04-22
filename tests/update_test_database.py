@@ -18,7 +18,9 @@ def copy_database_schema(source_db: Path, target_db: Path) -> None:
         cursor_target = conn_target.cursor()
 
         # Get schema for all objects (tables, indexes, etc.)
-        cursor_source.execute("SELECT sql FROM sqlite_master WHERE type IN ('table', 'index', 'trigger', 'view') AND sql NOT NULL")
+        cursor_source.execute(
+            "SELECT sql FROM sqlite_master WHERE type IN ('table', 'index', 'trigger', 'view') AND sql NOT NULL",
+        )
 
         for (sql,) in cursor_source.fetchall():
             if "sqlite_sequence" in sql.lower():
@@ -28,6 +30,7 @@ def copy_database_schema(source_db: Path, target_db: Path) -> None:
         conn_target.commit()
 
     print("Schema copied successfully.")
+
 
 def copy_rows(source_db: Path, target_db: Path, table: str, id_col: str, row_ids: list[str]) -> None:
     """Copy the rows from one sqlite3 database to another."""
@@ -53,7 +56,7 @@ def copy_rows(source_db: Path, target_db: Path, table: str, id_col: str, row_ids
             row = cursor_source.fetchone()
             if row:
                 cursor_target.execute(
-                    f"INSERT OR REPLACE INTO {table} ({columns_str}) VALUES ({placeholders})",   # noqa: S608
+                    f"INSERT OR REPLACE INTO {table} ({columns_str}) VALUES ({placeholders})",  # noqa: S608
                     row,
                 )
                 print("Row copied:", row_id)

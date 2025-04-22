@@ -39,6 +39,7 @@ from aurora_cycler_manager.utils import run_from_sample
 
 CONFIG = get_config()
 
+
 class ServerManager:
     """The ServerManager class manages the database and cycling servers.
 

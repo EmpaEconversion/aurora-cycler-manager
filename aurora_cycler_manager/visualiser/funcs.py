@@ -20,6 +20,7 @@ ArrayLike = Union[list, np.ndarray, pd.Series]
 
 CONFIG = get_config()
 
+
 def get_database() -> dict[str, Any]:
     """Get all data from the database.
 
