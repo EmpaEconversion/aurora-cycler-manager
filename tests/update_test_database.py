@@ -1,4 +1,7 @@
-"""Utility to copy parts of the prod database for testing."""
+"""Utility to copy parts of the prod database for testing.
+
+Intended to be run as a script to create a subset of the database for pytest.
+"""
 
 import os
 import sqlite3
@@ -9,7 +12,9 @@ from aurora_cycler_manager.config import get_config
 
 CONFIG = get_config()
 DB_PATH = CONFIG["Database path"]
-TEST_DB_PATH = Path(__file__).parent / "test_data" / "database" / "database.db"
+TEST_DB_PATH = Path(__file__).parent / "test_data" / "database" / "test_database.db"
+TEST_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
 
 def copy_database_schema(source_db: Path, target_db: Path) -> None:
     """Create test database from prod database schema."""
