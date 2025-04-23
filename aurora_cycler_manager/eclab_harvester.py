@@ -173,7 +173,7 @@ def get_all_mprs(force_copy: bool = False) -> list[str]:
             server["username"],
             server["shell_type"],
             server["EC-lab folder location"],
-            paramiko.RSAKey.from_private_key_file(CONFIG["SSH private key path"]),
+            paramiko.RSAKey.from_private_key_file(str(CONFIG["SSH private key path"])),
             snapshot_folder,
             force_copy,
         )

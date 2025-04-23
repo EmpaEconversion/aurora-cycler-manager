@@ -179,7 +179,7 @@ def harvest_all_neware_files(force_copy: bool = False) -> list[Path]:
             server_shell_type=server["shell_type"],
             server_copy_folder=server["Neware folder location"],
             local_folder=snapshots_folder,
-            local_private_key_path=CONFIG["SSH private key path"],
+            local_private_key_path=str(CONFIG["SSH private key path"]),
             force_copy=force_copy,
         )
         all_new_files.extend(new_files)
