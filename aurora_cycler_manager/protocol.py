@@ -12,60 +12,70 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from decimal import Decimal, getcontext
 from pathlib import Path
-from typing import Literal, Union
+from typing import Annotated, Literal, Union
 from xml.dom import minidom
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, Field, model_validator
 from typing_extensions import Self
 
 getcontext().prec = 10
 
 
+def coerce_to_decimal(v: Decimal | float | str) -> Decimal:
+    """Coerces input (int, float, str) to Decimal."""
+    return Decimal(v)
+
+
+PreciseDecimal = Annotated[Decimal, BeforeValidator(coerce_to_decimal)]
+
+
 class SampleParams(BaseModel):
     """Sample parameters."""
 
-    name: str
-    capacity_mAh: Decimal = Field(gt=0)
+    name: str = Field(default="$NAME")
+    capacity_mAh: PreciseDecimal | None = Field(gt=0, default=None)
 
 
 class MeasurementParams(BaseModel):
     """Measurement parameters, i.e. when to record."""
 
-    current_mA: Decimal | None = None
-    voltage_V: Decimal | None = None
-    time_s: Decimal = Field(gt=0)
+    current_mA: PreciseDecimal | None = None
+    voltage_V: PreciseDecimal | None = None
+    time_s: PreciseDecimal = Field(gt=0)
 
 
 class SafetyParams(BaseModel):
     """Safety parameters, i.e. limits before cancelling measurement."""
 
-    max_voltage_V: Decimal | None = None
-    min_voltage_V: Decimal | None = None
-    max_current_mA: Decimal | None = None
-    min_current_mA: Decimal | None = None
-    max_capacity_mAh: Decimal | None = None
-    delay_s: Decimal = Field(ge=0)
+    max_voltage_V: PreciseDecimal | None = None
+    min_voltage_V: PreciseDecimal | None = None
+    max_current_mA: PreciseDecimal | None = None
+    min_current_mA: PreciseDecimal | None = None
+    max_capacity_mAh: PreciseDecimal | None = None
+    delay_s: PreciseDecimal = Field(ge=0, default=Decimal(0))
 
 
 class BaseTechnique(BaseModel):
     """Base class for all techniques."""
+
+    name: str
 
 
 class OpenCircuitVoltage(BaseTechnique):
     """Open circuit voltage technique."""
 
     name: Literal["open_circuit_voltage"] = "open_circuit_voltage"
-    until_time_s: Decimal | None = Field(gt=0)
+    until_time_s: PreciseDecimal = Field(gt=0)
 
 
 class ConstantCurrent(BaseTechnique):
     """Constant current technique."""
 
     name: Literal["constant_current"] = "constant_current"
-    rate_C: Decimal | None = None
-    current_mA: Decimal | None = None
-    until_time_s: Decimal | None = None
-    until_voltage_V: Decimal | None = None
+    rate_C: PreciseDecimal | None = None
+    current_mA: PreciseDecimal | None = None
+    until_time_s: PreciseDecimal | None = None
+    until_voltage_V: PreciseDecimal | None = None
 
     @model_validator(mode="after")
     def ensure_rate_or_current(self) -> Self:
@@ -92,10 +102,10 @@ class ConstantVoltage(BaseTechnique):
     """Constant voltage technique."""
 
     name: Literal["constant_voltage"] = "constant_voltage"
-    voltage_V: Decimal
-    until_time_s: Decimal | None = None
-    until_rate_C: Decimal | None = None
-    until_current_mA: Decimal | None = None
+    voltage_V: PreciseDecimal
+    until_time_s: PreciseDecimal | None = None
+    until_rate_C: PreciseDecimal | None = None
+    until_current_mA: PreciseDecimal | None = None
 
     @model_validator(mode="after")
     def check_stop_condition(self) -> Self:
@@ -103,7 +113,6 @@ class ConstantVoltage(BaseTechnique):
         has_time_s = self.until_time_s is not None and self.until_time_s != 0
         has_rate_C = self.until_rate_C is not None and self.until_rate_C != 0
         has_current_mA = self.until_current_mA is not None and self.until_current_mA != 0
-        print(has_time_s, has_rate_C, has_current_mA)
         if not (has_time_s or has_rate_C or has_current_mA):
             msg = "Either until_time_s, until_rate_C, or until_current_mA must be set and non-zero."
             raise ValueError(msg)
@@ -118,23 +127,43 @@ class Loop(BaseTechnique):
     cycle_count: int = Field(gt=0)
 
 
-AnyTechnique = Union[ConstantCurrent, ConstantVoltage, OpenCircuitVoltage, Loop]
+AnyTechnique = Union[BaseTechnique, ConstantCurrent, ConstantVoltage, OpenCircuitVoltage, Loop]
 
 
 # --- Main Protocol Model ---
 class Protocol(BaseModel):
     """Protocol model which can be converted to various formats."""
 
-    sample: SampleParams
+    sample: SampleParams = Field(default_factory=SampleParams)
     measurement: MeasurementParams
     safety: SafetyParams
     method: list[AnyTechnique] = Field(min_length=1)  # Ensure at least one step
 
-    def to_neware_xml(self, save_path: Path | None = None) -> str:
-        """Convert the protocol to Neware XML format."""
-        # Neware takes capacity as milliamp seconds (mAs)
-        capacity_mAs = self.sample.capacity_mAh * 3600
+    def _validate_capacity_c_rates(self) -> None:
+        """Ensure if using C-rate steps, a capacity is set."""
+        if not self.sample.capacity_mAh and any(
+            getattr(s, "rate_C", None) or getattr(s, "until_rate_C", None) for s in self.method
+        ):
+            msg = "Sample capacity must be set if using C-rate steps."
+            raise ValueError(msg)
 
+    def to_neware_xml(
+        self,
+        save_path: Path | None = None,
+        sample_name: str | None = None,
+        capacity_mAh: Decimal | float | None = None,
+    ) -> str:
+        """Convert the protocol to Neware XML format."""
+        # Allow overwriting name and capacity
+        if sample_name:
+            self.sample.name = sample_name
+        if capacity_mAh:
+            self.sample.capacity_mAh = Decimal(capacity_mAh)
+
+        # Make sure capacity is set if using C-rate steps
+        self._validate_capacity_c_rates()
+
+        # Create XML structure
         root = ET.Element("root")
         config = ET.SubElement(
             root,
@@ -151,8 +180,10 @@ class Protocol(BaseModel):
         ET.SubElement(head_info, "Start_Step", Value="1", Hide_Ctrl_Step="0")
         ET.SubElement(head_info, "Creator", Value="aurora_cycler_manager.protocol")
         ET.SubElement(head_info, "Remark", Value=self.sample.name)
-        ET.SubElement(head_info, "RateType", Value="105")
-        ET.SubElement(head_info, "MultCap", Value=str(capacity_mAs))
+        # 103, non C-rate mode, seems to give more precise values vs 105
+        ET.SubElement(head_info, "RateType", Value="103")
+        if self.sample.capacity_mAh:
+            ET.SubElement(head_info, "MultCap", Value=str(self.sample.capacity_mAh * 3600))
 
         whole_prt = ET.SubElement(config, "Whole_Prt")
         protect = ET.SubElement(whole_prt, "Protect")
@@ -168,7 +199,7 @@ class Protocol(BaseModel):
         if self.safety.min_current_mA:
             ET.SubElement(curr, "Lower", Value=str(self.safety.min_current_mA))
         if self.safety.delay_s:
-            ET.SubElement(main_protect, "Delay_Time", Value=str(self.safety.delay_s))
+            ET.SubElement(main_protect, "Delay_Time", Value=str(self.safety.delay_s * 1000))
         cap = ET.SubElement(main_protect, "Cap")
         if self.safety.max_capacity_mAh:
             ET.SubElement(cap, "Upper", Value=str(self.safety.max_capacity_mAh * 3600))
@@ -186,7 +217,7 @@ class Protocol(BaseModel):
 
         def _step_to_element(step: AnyTechnique, step_num: int, parent: ET.Element) -> None:
             """Create XML subelement from protocol technique."""
-            if step.name == "constant_current":
+            if isinstance(step, ConstantCurrent):
                 if step.rate_C is not None and step.rate_C != 0:
                     step_type = "1" if step.rate_C > 0 else "2"
                 elif step.current_mA is not None and step.current_mA != 0:
@@ -197,19 +228,15 @@ class Protocol(BaseModel):
                 main = ET.SubElement(limit, "Main")
                 if step.rate_C is not None:
                     ET.SubElement(main, "Rate", Value=str(abs(step.rate_C)))
-                    ET.SubElement(
-                        main, "Curr", Value=str(abs(step.rate_C) * self.sample.capacity_mAh)
-                    )  # TODO: double check this should actually be mA
+                    ET.SubElement(main, "Curr", Value=str(abs(step.rate_C) * self.sample.capacity_mAh))
                 elif step.current_mA is not None:
-                    ET.SubElement(
-                        main, "Curr", Value=str(abs(step.current_mA))
-                    )  # TODO: double check this should actually be mA
+                    ET.SubElement(main, "Curr", Value=str(abs(step.current_mA)))
                 if step.until_time_s is not None:
-                    ET.SubElement(main, "Time", Value=str(step.until_time_s))
+                    ET.SubElement(main, "Time", Value=str(step.until_time_s * 1000))
                 if step.until_voltage_V is not None:
                     ET.SubElement(main, "Stop_Volt", Value=str(step.until_voltage_V * 10000))
 
-            elif step.name == "constant_voltage":
+            elif isinstance(step, ConstantVoltage):
                 if step.until_rate_C is not None and step.until_rate_C != 0:
                     step_type = "3" if step.until_rate_C > 0 else "4"
                 elif step.until_current_mA is not None and step.until_current_mA != 0:
@@ -221,27 +248,29 @@ class Protocol(BaseModel):
                 main = ET.SubElement(limit, "Main")
                 ET.SubElement(main, "Volt", Value=str(step.voltage_V * 10000))
                 if step.until_time_s is not None:
-                    ET.SubElement(main, "Time", Value=str(step.until_time_s))
+                    ET.SubElement(main, "Time", Value=str(step.until_time_s * 1000))
                 if step.until_rate_C is not None:
                     ET.SubElement(main, "Stop_Rate", Value=str(abs(step.until_rate_C)))
-                    ET.SubElement(
-                        main, "Stop_Curr", Value=str(abs(step.until_rate_C) * self.sample.capacity_mAh)
-                    )  # TODO: double check this should actually be mA
+                    ET.SubElement(main, "Stop_Curr", Value=str(abs(step.until_rate_C) * self.sample.capacity_mAh))
                 elif step.until_current_mA is not None:
                     ET.SubElement(main, "Stop_Curr", Value=str(abs(step.until_current_mA)))
 
-            elif step.name == "open_circuit_voltage":
+            elif isinstance(step, OpenCircuitVoltage):
                 step_element = ET.SubElement(parent, f"Step{step_num}", Step_ID=str(step_num), Step_Type="4")
                 limit = ET.SubElement(step_element, "Limit")
                 main = ET.SubElement(limit, "Main")
-                ET.SubElement(main, "Time", Value=str(step.until_time_s))
+                ET.SubElement(main, "Time", Value=str(step.until_time_s * 1000))
 
-            elif step.name == "loop":
+            elif isinstance(step, Loop):
                 step_element = ET.SubElement(parent, f"Step{step_num}", Step_ID=str(step_num), Step_Type="5")
                 limit = ET.SubElement(step_element, "Limit")
                 other = ET.SubElement(limit, "Other")
                 ET.SubElement(other, "Start_Step", Value=str(step.start_step))
                 ET.SubElement(other, "Cycle_Count", Value=str(step.cycle_count))
+
+            else:
+                msg = f"to_neware_xml does not support step type: {step.name}"
+                raise TypeError(msg)
 
         for i, technique in enumerate(self.method):
             step_num = i + 1
@@ -261,8 +290,24 @@ class Protocol(BaseModel):
                 f.write(pretty_xml_string)
         return pretty_xml_string
 
-    def to_tomato_mpg2(self, save_path: Path | None = None, tomato_output: Path = Path("C:/tomato_data/")) -> str:
+    def to_tomato_mpg2(
+        self,
+        save_path: Path | None = None,
+        tomato_output: Path = Path("C:/tomato_data/"),
+        sample_name: str | None = None,
+        capacity_mAh: Decimal | float | None = None,
+    ) -> str:
         """Convert protocol to tomato 0.2.3 + MPG2 compatible JSON format."""
+        # Allow overwriting name and capacity
+        if sample_name:
+            self.sample.name = sample_name
+        if capacity_mAh:
+            self.sample.capacity_mAh = Decimal(capacity_mAh)
+
+        # Make sure capacity is set if using C-rate steps
+        self._validate_capacity_c_rates()
+
+        # Create JSON structure
         tomato_dict: dict = {
             "version": "0.1",
             "sample": {},
@@ -276,9 +321,9 @@ class Protocol(BaseModel):
                 },
             },
         }
+        # tomato -> MPG2 does not support safety parameters, they are set in the instrument
         tomato_dict["sample"]["name"] = self.sample.name
         tomato_dict["sample"]["capacity_mAh"] = self.sample.capacity_mAh
-        # TODO Check if tomato can handle safety parameters. Might be fixed in the device.
         for step in self.method:
             tomato_step: dict = {}
             tomato_step["device"] = "MPG2"
@@ -293,10 +338,10 @@ class Protocol(BaseModel):
                 tomato_step["I_range"] = "10 mA"
                 tomato_step["E_range"] = "+-5.0 V"
 
-            if step.name == "open_circuit_voltage":
+            if isinstance(step, OpenCircuitVoltage):
                 tomato_step["time"] = step.until_time_s
 
-            elif step.name == "constant_current":
+            elif isinstance(step, ConstantCurrent):
                 if step.rate_C:
                     if step.rate_C > 0:
                         charging = True
@@ -319,7 +364,7 @@ class Protocol(BaseModel):
                     else:
                         tomato_step["limit_voltage_min"] = step.until_voltage_V
 
-            elif step.name == "constant_voltage":
+            elif isinstance(step, ConstantVoltage):
                 tomato_step["voltage"] = step.voltage_V
                 if step.until_time_s:
                     tomato_step["time"] = step.until_time_s
@@ -329,9 +374,13 @@ class Protocol(BaseModel):
                     else:
                         tomato_step["limit_current_max"] = str(abs(step.until_rate_C)) + "D"
 
-            elif step.name == "loop":
+            elif isinstance(step, Loop):
                 tomato_step["goto"] = step.start_step - 1  # 0-indexed in mpr
                 tomato_step["n_gotos"] = step.cycle_count - 1  # gotos is one less than cycles
+
+            else:
+                msg = f"to_tomato_mpg2 does not support step type: {step.name}"
+                raise TypeError(msg)
 
             tomato_dict["method"].append(tomato_step)
 
@@ -350,11 +399,13 @@ class Protocol(BaseModel):
 
     def to_pybamm_experiment(self) -> list[str]:
         """Convert protocol to PyBaMM experiment format."""
+        # A PyBaMM experiment doesn't need capacity or sample name
+        # Don't need to validate capacity if using C-rate steps
         pybamm_experiment: list[str] = []
         loops: dict[int, dict] = {}
         for i, step in enumerate(self.method):
             step_str = ""
-            if step.name == "constant_current":
+            if isinstance(step, ConstantCurrent):
                 if step.rate_C:
                     if step.rate_C > 0:
                         step_str += f"Charge at {step.rate_C}C"
@@ -375,7 +426,7 @@ class Protocol(BaseModel):
                 if step.until_voltage_V:
                     step_str += f" until {step.until_voltage_V} V"
 
-            elif step.name == "constant_voltage":
+            elif isinstance(step, ConstantVoltage):
                 step_str += f"Hold at {step.voltage_V} V"
                 conditions = []
                 if step.until_time_s:
@@ -392,12 +443,16 @@ class Protocol(BaseModel):
                 if conditions:
                     step_str += " " + " or ".join(conditions)
 
-            elif step.name == "open_circuit_voltage":
+            elif isinstance(step, OpenCircuitVoltage):
                 step_str += f"Rest for {step.until_time_s} seconds"
 
-            elif step.name == "loop":
+            elif isinstance(step, Loop):
                 # The string from this will get dropped later
                 loops[i] = {"goto": step.start_step - 1, "n": step.cycle_count, "n_done": 0}
+
+            else:
+                msg = f"to_pybamm_experiment does not support step type: {step.name}"
+                raise TypeError(msg)
 
             pybamm_experiment.append(step_str)
 
@@ -417,7 +472,7 @@ class Protocol(BaseModel):
                 i += 1
             total_itr += 1
             if total_itr > 10000:
-                msg = "Over 10000 steps in protocol to_pybamm_experiment()"
+                msg = "Over 10000 steps in protocol to_pybamm_experiment(), likely a loop definition error."
                 raise RuntimeError(msg)
 
         # remove all loop steps from the list
