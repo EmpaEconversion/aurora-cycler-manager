@@ -764,7 +764,9 @@ class ServerManager:
                 tb = traceback.format_exc()
                 error_message = str(e) if str(e) else "An error occurred but no message was provided."
                 warnings.warn(
-                    f"Unexpected error snapshotting {jobid}: {error_message}\n{tb}", RuntimeWarning, stacklevel=2,
+                    f"Unexpected error snapshotting {jobid}: {error_message}\n{tb}",
+                    RuntimeWarning,
+                    stacklevel=2,
                 )
                 sleep(10)  # to not overload the server
                 continue

@@ -498,10 +498,10 @@ class NewareServer(CyclerServer):
 
         # Check the xml string is valid
         if not xml_string.startswith("<?xml"):
-            msg = ("Payload does not look like xml, does not start with '<?xml'. ")
+            msg = "Payload does not look like xml, does not start with '<?xml'. "
             raise ValueError(msg)
         if 'config type="Step File"' not in xml_string or 'client_version="BTS Client' not in xml_string:
-            msg = ("Payload looks like xml, but not a Neware step file.")
+            msg = "Payload looks like xml, but not a Neware step file."
             raise ValueError(msg)
 
         # Convert capacity in Ah to capacity in mA s
