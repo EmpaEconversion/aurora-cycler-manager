@@ -398,8 +398,10 @@ def analyse_cycles(
         "Charge capacity (mAh)": charge_capacity_mAh,
         "Discharge capacity (mAh)": discharge_capacity_mAh,
         "Efficiency (%)": [100 * d / c for d, c in zip(discharge_capacity_mAh, charge_capacity_mAh)],
-        "Specific charge capacity (mAh/g)": [c / (mass_mg * 1e-3) for c in charge_capacity_mAh],
-        "Specific discharge capacity (mAh/g)": [d / (mass_mg * 1e-3) for d in discharge_capacity_mAh],
+        "Specific charge capacity (mAh/g)": [c / (mass_mg * 1e-3) for c in charge_capacity_mAh] if mass_mg else None,
+        "Specific discharge capacity (mAh/g)": [d / (mass_mg * 1e-3) for d in discharge_capacity_mAh]
+        if mass_mg
+        else None,
         "Normalised discharge capacity (%)": [
             100 * d / discharge_capacity_mAh[initial_cycle - 1] for d in discharge_capacity_mAh
         ]
