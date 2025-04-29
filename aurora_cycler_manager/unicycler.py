@@ -23,6 +23,8 @@ getcontext().prec = 10
 
 def coerce_to_decimal(v: Decimal | float | str) -> Decimal:
     """Coerces input (int, float, str) to Decimal."""
+    if isinstance(v, float):
+        return Decimal(str(v))  # Avoids float precision issues
     return Decimal(v)
 
 
@@ -183,35 +185,35 @@ class Protocol(BaseModel):
         # 103, non C-rate mode, seems to give more precise values vs 105
         ET.SubElement(head_info, "RateType", Value="103")
         if self.sample.capacity_mAh:
-            ET.SubElement(head_info, "MultCap", Value=str(self.sample.capacity_mAh * 3600))
+            ET.SubElement(head_info, "MultCap", Value=f"{self.sample.capacity_mAh * 3600:f}")
 
         whole_prt = ET.SubElement(config, "Whole_Prt")
         protect = ET.SubElement(whole_prt, "Protect")
         main_protect = ET.SubElement(protect, "Main")
         volt = ET.SubElement(main_protect, "Volt")
         if self.safety.max_voltage_V:
-            ET.SubElement(volt, "Upper", Value=str(self.safety.max_voltage_V * 10000))
+            ET.SubElement(volt, "Upper", Value=f"{self.safety.max_voltage_V * 10000:f}")
         if self.safety.min_voltage_V:
-            ET.SubElement(volt, "Lower", Value=str(self.safety.min_voltage_V * 10000))
+            ET.SubElement(volt, "Lower", Value=f"{self.safety.min_voltage_V * 10000:f}")
         curr = ET.SubElement(main_protect, "Curr")
         if self.safety.max_current_mA:
-            ET.SubElement(curr, "Upper", Value=str(self.safety.max_current_mA))
+            ET.SubElement(curr, "Upper", Value=f"{self.safety.max_current_mA:f}")
         if self.safety.min_current_mA:
-            ET.SubElement(curr, "Lower", Value=str(self.safety.min_current_mA))
+            ET.SubElement(curr, "Lower", Value=f"{self.safety.min_current_mA:f}")
         if self.safety.delay_s:
-            ET.SubElement(main_protect, "Delay_Time", Value=str(self.safety.delay_s * 1000))
+            ET.SubElement(main_protect, "Delay_Time", Value=f"{self.safety.delay_s * 1000:f}")
         cap = ET.SubElement(main_protect, "Cap")
         if self.safety.max_capacity_mAh:
-            ET.SubElement(cap, "Upper", Value=str(self.safety.max_capacity_mAh * 3600))
+            ET.SubElement(cap, "Upper", Value=f"{self.safety.max_capacity_mAh * 3600:f}")
 
         record = ET.SubElement(whole_prt, "Record")
         main_record = ET.SubElement(record, "Main")
         if self.measurement.time_s:
-            ET.SubElement(main_record, "Time", Value=str(self.measurement.time_s * 1000))
+            ET.SubElement(main_record, "Time", Value=f"{self.measurement.time_s * 1000:f}")
         if self.measurement.voltage_V:
-            ET.SubElement(main_record, "Volt", Value=str(self.measurement.voltage_V * 10000))
+            ET.SubElement(main_record, "Volt", Value=f"{self.measurement.voltage_V * 10000:f}")
         if self.measurement.current_mA:
-            ET.SubElement(main_record, "Curr", Value=str(self.measurement.current_mA))
+            ET.SubElement(main_record, "Curr", Value=f"{self.measurement.current_mA:f}")
 
         step_info = ET.SubElement(config, "Step_Info", Num=str(len(self.method)))
 
@@ -227,14 +229,14 @@ class Protocol(BaseModel):
                 limit = ET.SubElement(step_element, "Limit")
                 main = ET.SubElement(limit, "Main")
                 if step.rate_C is not None:
-                    ET.SubElement(main, "Rate", Value=str(abs(step.rate_C)))
-                    ET.SubElement(main, "Curr", Value=str(abs(step.rate_C) * self.sample.capacity_mAh))
+                    ET.SubElement(main, "Rate", Value=f"{abs(step.rate_C):f}")
+                    ET.SubElement(main, "Curr", Value=f"{abs(step.rate_C) * self.sample.capacity_mAh:f}")
                 elif step.current_mA is not None:
-                    ET.SubElement(main, "Curr", Value=str(abs(step.current_mA)))
+                    ET.SubElement(main, "Curr", Value=f"{abs(step.current_mA):f}")
                 if step.until_time_s is not None:
-                    ET.SubElement(main, "Time", Value=str(step.until_time_s * 1000))
+                    ET.SubElement(main, "Time", Value=f"{step.until_time_s * 1000:f}")
                 if step.until_voltage_V is not None:
-                    ET.SubElement(main, "Stop_Volt", Value=str(step.until_voltage_V * 10000))
+                    ET.SubElement(main, "Stop_Volt", Value=f"{step.until_voltage_V * 10000:f}")
 
             elif isinstance(step, ConstantVoltage):
                 if step.until_rate_C is not None and step.until_rate_C != 0:
@@ -246,20 +248,20 @@ class Protocol(BaseModel):
                 step_element = ET.SubElement(parent, f"Step{step_num}", Step_ID=str(step_num), Step_Type=step_type)
                 limit = ET.SubElement(step_element, "Limit")
                 main = ET.SubElement(limit, "Main")
-                ET.SubElement(main, "Volt", Value=str(step.voltage_V * 10000))
+                ET.SubElement(main, "Volt", Value=f"{step.voltage_V * 10000:f}")
                 if step.until_time_s is not None:
-                    ET.SubElement(main, "Time", Value=str(step.until_time_s * 1000))
+                    ET.SubElement(main, "Time", Value=f"{step.until_time_s * 1000:f}")
                 if step.until_rate_C is not None:
-                    ET.SubElement(main, "Stop_Rate", Value=str(abs(step.until_rate_C)))
-                    ET.SubElement(main, "Stop_Curr", Value=str(abs(step.until_rate_C) * self.sample.capacity_mAh))
+                    ET.SubElement(main, "Stop_Rate", Value=f"{abs(step.until_rate_C):f}")
+                    ET.SubElement(main, "Stop_Curr", Value=f"{abs(step.until_rate_C) * self.sample.capacity_mAh:f}")
                 elif step.until_current_mA is not None:
-                    ET.SubElement(main, "Stop_Curr", Value=str(abs(step.until_current_mA)))
+                    ET.SubElement(main, "Stop_Curr", Value=f"{abs(step.until_current_mA):f}")
 
             elif isinstance(step, OpenCircuitVoltage):
                 step_element = ET.SubElement(parent, f"Step{step_num}", Step_ID=str(step_num), Step_Type="4")
                 limit = ET.SubElement(step_element, "Limit")
                 main = ET.SubElement(limit, "Main")
-                ET.SubElement(main, "Time", Value=str(step.until_time_s * 1000))
+                ET.SubElement(main, "Time", Value=f"{step.until_time_s * 1000:f}")
 
             elif isinstance(step, Loop):
                 step_element = ET.SubElement(parent, f"Step{step_num}", Step_ID=str(step_num), Step_Type="5")
