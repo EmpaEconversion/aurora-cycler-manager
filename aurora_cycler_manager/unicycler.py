@@ -215,7 +215,7 @@ class Protocol(BaseModel):
         if self.measurement.current_mA:
             ET.SubElement(main_record, "Curr", Value=f"{self.measurement.current_mA:f}")
 
-        step_info = ET.SubElement(config, "Step_Info", Num=str(len(self.method)))
+        step_info = ET.SubElement(config, "Step_Info", Num=str(len(self.method)+1))  # +1 for end step
 
         def _step_to_element(step: AnyTechnique, step_num: int, parent: ET.Element) -> None:
             """Create XML subelement from protocol technique."""
@@ -279,6 +279,7 @@ class Protocol(BaseModel):
             _step_to_element(technique, step_num, step_info)
 
         # Add an end step
+        step_num = len(self.method) + 1
         ET.SubElement(step_info, f"Step{step_num}", Step_ID=str(step_num), Step_Type="6")
 
         smbus = ET.SubElement(config, "SMBUS")
