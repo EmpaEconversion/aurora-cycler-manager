@@ -1088,7 +1088,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         State("table", "selectedRows"),
         prevent_initial_call=True,
     )
-    def check_json(contents, filename, selected_rows):
+    def check_payload(contents, filename, selected_rows):
         if not contents:
             return "No file selected", {}
         content_type, content_string = contents.split(",")
@@ -1108,11 +1108,19 @@ def register_db_view_callbacks(app: Dash) -> None:
                 return msg, {}
             return f"{filename} loaded", payload
         if all(s["Server type"] == "neware" for s in selected_rows):
-            # Should be an XML file
-            if not (decoded.startswith('<?xml version="1.0" encoding="GB2312"?>') and "BTS Client" in decoded):
-                msg = f"ERROR: {filename} is not a valid BTS Client XML file"
-                return msg, {}
-            return f"{filename} loaded", decoded
+            # Should be an XML file or universal JSON file
+            if decoded.startswith('<?xml version="1.0"'):  # It's an XML file
+                if "BTS Client" in decoded and 'config type="Step File"' in decoded:
+                    return f"{filename} loaded", decoded
+                return f"ERROR: {filename} is not a Neware xml file", {}
+            try:  # It might be json
+                payload = json.loads(decoded)
+                required_keys = ["measurement", "safety", "method"]
+                if all(k in payload for k in required_keys) and isinstance(payload["method"], list):
+                    return f"{filename} loaded", payload
+                return f"ERROR: {filename} is not a unicycler json file", {}  # noqa: TRY300
+            except json.JSONDecodeError:
+                return f"ERROR: {filename} couldn't be parsed as xml or json", {}
         return "Huh, how did you even do this?", {}
 
     # Submit pop up - show custom capacity input if custom capacity is selected
