@@ -478,13 +478,12 @@ class NewareServer(CyclerServer):
             raise TypeError(msg)
         if isinstance(payload, dict):  # assume unicycler dict
             xml_string = unicycler.from_dict(payload, sample, capacity_Ah * 1000).to_neware_xml()
-        assert isinstance(payload, str | Path)  # noqa: S101 for mypy type checking
-        if isinstance(payload, str):  # it is a file path
+        elif isinstance(payload, str):  # it is a file path
             if payload.startswith("<?xml"):  # it is already an xml string
                 xml_string = payload
             else:  # it is probably a file path
                 payload = Path(payload)
-        if isinstance(payload, Path):  # it is a file path
+        elif isinstance(payload, Path):  # it is a file path
             if not payload.exists():
                 raise FileNotFoundError
             if payload.suffix == ".xml":
