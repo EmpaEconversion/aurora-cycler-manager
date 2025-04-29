@@ -43,7 +43,7 @@ database_access = False
 sm: ServerManager | None = None
 try:
     sm = ServerManager()
-    accessible_servers = [s.label for s in sm.servers]
+    accessible_servers = list(sm.servers.keys())
     database_access = bool(accessible_servers)
 except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
     print(e)
