@@ -42,6 +42,8 @@ line-length = 120
 lint.select = ["ALL"]
 lint.ignore = [
     "N806",
+    "N803",
+    "N815",
     "T201",
     "FA102",
     "PD901",
@@ -68,3 +70,4 @@ exclude = [
     "test\\.py$", # files end with test.py
     "^test", # files that start with test
 ]
+plugins = ["pydantic.mypy"]
