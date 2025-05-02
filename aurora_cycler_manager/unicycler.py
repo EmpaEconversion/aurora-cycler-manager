@@ -23,6 +23,8 @@ getcontext().prec = 10
 
 def coerce_to_decimal(v: Decimal | float | str) -> Decimal:
     """Coerces input (int, float, str) to Decimal."""
+    if v is None:
+        return None
     if isinstance(v, float):
         return Decimal(str(v))  # Avoids float precision issues
     return Decimal(v)
@@ -495,8 +497,8 @@ def from_dict(data: dict, sample_name: str | None = None, sample_capacity_mAh: f
     if not isinstance(data["sample"].get("name"), str) or data["sample"].get("name") == "$NAME":
         msg = "If using blank sample name or $NAME placeholder, a sample name must be provided in this function."
         raise ValueError(msg)
-    cap = data["sample"].get("capacity_mAh")
-    if cap == 0 or not isinstance(cap, (int, float)) or data["sample"].get("capacity_mAh") == "$CAPACITY":
+    cap = coerce_to_decimal(data["sample"].get("capacity_mAh"))
+    if cap == 0 or not isinstance(cap, (int, float, Decimal)) or data["sample"].get("capacity_mAh") == "$CAPACITY":
         msg = "If using blank, 0, or $CAPACITY placeholder, a sample capacity must be provided in this function."
         raise ValueError(msg)
     return Protocol(**data)
