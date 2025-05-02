@@ -62,9 +62,8 @@ def default_config(base_dir: Path) -> dict:
                 },
             ],
         },
-        "OpenBIS PAT": "Path/to/OpenBIS/personal/access/token",
         "User mapping": {
-            "short_name": "full_name used in OpenBIS",
+            "short_name": "full_name",
         },
         "Sample database": [
             {"Name": "Sample ID", "Alternative names": ["sampleid"], "Type": "VARCHAR(255) PRIMARY KEY"},
