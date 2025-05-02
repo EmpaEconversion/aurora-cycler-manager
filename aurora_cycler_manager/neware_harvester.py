@@ -27,6 +27,8 @@ import json
 import os
 import re
 import sqlite3
+import traceback
+import warnings
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -38,6 +40,7 @@ import paramiko
 import pytz
 import xmltodict
 
+from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.utils import run_from_sample
@@ -676,16 +679,25 @@ def convert_all_neware_data() -> None:
 def main() -> None:
     """Harvest and convert files that have changed."""
     new_files = harvest_all_neware_files()
+    new_samples = set()
     for file in new_files:
         print(f"Processing {file}")
         try:
-            convert_neware_data(file, output_hdf5_file=True)
-        except ValueError as e:
-            print(f"Error converting {file}: {e}")
-        try:
+            _data, metadata = convert_neware_data(file, output_hdf5_file=True)
             update_database_job(file)
+            sampleid = metadata.get("sample_data", {}).get("Sample ID")
+            if sampleid:
+                new_samples.add(sampleid)
         except ValueError as e:
-            print(f"Error updating database for {file}: {e}")
+            warnings.warn(f"Error updating database for {file}: {e}", UserWarning, stacklevel=2)
+    for sample in new_samples:
+        try:
+            analyse_sample(sample)
+        except KeyError as e:  # noqa: PERF203
+            warnings.warn(f"No metadata found for {sample}: {e}", UserWarning, stacklevel=2)
+        except (ValueError, PermissionError, RuntimeError, FileNotFoundError) as e:
+            tb = traceback.format_exc()
+            warnings.warn(f"Failed to analyse {sample.name} with error {e}\n{tb}", UserWarning, stacklevel=2)
 
 
 if __name__ == "__main__":
