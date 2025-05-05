@@ -708,7 +708,7 @@ def register_batches_callbacks(app: Dash) -> None:
     def update_correlation_vars(click_data: dict) -> tuple[str, str]:
         """Update the x and y variables based on the clicked data."""
         if not click_data:
-            return no_update
+            return no_update, no_update
         point = click_data["points"][0]
         xvar = point["x"].replace("<br>", " ")
         yvar = point["y"].replace("<br>", " ")
