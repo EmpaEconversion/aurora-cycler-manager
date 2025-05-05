@@ -280,13 +280,16 @@ def get_batch_details() -> dict[str, dict]:
         return dict(sorted(batches.items()))
 
 
-def save_or_overwrite_batch(batch_name: str, batch_description: str, sample_ids: list) -> None:
+def save_or_overwrite_batch(batch_name: str, batch_description: str, sample_ids: list, overwrite: bool = False) -> None:
     """Save a batch to the database, overwriting it if the name already exists."""
     with sqlite3.connect(CONFIG["Database path"]) as conn:
         cur = conn.cursor()
         cur.execute("SELECT id FROM batches WHERE label = ?", (batch_name,))
         result = cur.fetchone()
         if result:
+            if not overwrite:
+                msg = f"Batch {batch_name} already exists. Set overwrite=True to overwrite."
+                raise ValueError(msg)
             batch_id = result[0]
             cur.execute(
                 "UPDATE batches SET description = ? WHERE id = ?",
@@ -307,24 +310,6 @@ def save_or_overwrite_batch(batch_name: str, batch_description: str, sample_ids:
                 "INSERT INTO batch_samples (batch_id, sample_id) VALUES (?, ?)",
                 (batch_id, sample_id),
             )
-        conn.commit()
-
-
-def create_batch(batch_name: str, batch_description: str, sample_ids: list) -> None:
-    """Create a new batch in the database.
-
-    Raises error if batch name already exists.
-    """
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT label FROM batches WHERE label = ?", (batch_name,))
-        if cur.fetchone():
-            msg = f"Batch {batch_name} already exists."
-            raise ValueError(msg)
-        cur.execute("INSERT INTO batches (label, description) VALUES (?,?)", (batch_name, batch_description))
-        batch_id = cur.lastrowid
-        for sample_id in sample_ids:
-            cur.execute("INSERT INTO batch_samples (batch_id, sample_id) VALUES (?, ?)", (batch_id, sample_id))
         conn.commit()
 
 

@@ -162,7 +162,7 @@ def register_batch_edit_callbacks(app: Dash, database_access: bool):
     )
     def save_batch(save_click, overwrite_click, name, description, samples):
         print(f"Saving batch '{name}'")
-        save_or_overwrite_batch(name, description, samples)
+        save_or_overwrite_batch(name, description, samples, overwrite=True)
         return 1
 
     # When delete batch is pressed, open confirm dialog
