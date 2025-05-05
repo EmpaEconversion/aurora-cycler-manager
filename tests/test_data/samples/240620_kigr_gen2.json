@@ -1,0 +1,4034 @@
+[
+    {
+        "Sample ID":"240620_kigr_gen2_01",
+        "Rack Position":1,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.58,
+        "Anode Active Material Weight (mg)":6.1236,
+        "Anode Balancing Capacity (mAh)":3.75516,
+        "Anode Rack Position":1,
+        "Cathode Weight (mg)":35.35,
+        "Cathode Active Material Weight (mg)":24.4076,
+        "Cathode Balancing Capacity (mAh)":3.52849,
+        "Cathode Rack Position":14,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9522633934,
+        "Cell Number":1,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 08:17:10 +0200",
+                "uts":1718864230
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 08:46:57 +0200",
+                "uts":1718866017
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 08:49:27 +0200",
+                "uts":1718866167
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 10:40:25 +0200",
+                "uts":1718872825
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 10:42:13 +0200",
+                "uts":1718872933
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 10:44:12 +0200",
+                "uts":1718873052
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 10:46:47 +0200",
+                "uts":1718873207
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 10:49:47 +0200",
+                "uts":1718873387
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 10:53:05 +0200",
+                "uts":1718873585
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 11:11:04 +0200",
+                "uts":1718874664
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_02",
+        "Rack Position":2,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.72,
+        "Anode Active Material Weight (mg)":6.2559,
+        "Anode Balancing Capacity (mAh)":3.83629,
+        "Anode Rack Position":2,
+        "Cathode Weight (mg)":35.77,
+        "Cathode Active Material Weight (mg)":24.794,
+        "Cathode Balancing Capacity (mAh)":3.58435,
+        "Cathode Rack Position":4,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9576758893,
+        "Cell Number":2,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 08:17:28 +0200",
+                "uts":1718864248
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 08:47:16 +0200",
+                "uts":1718866036
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 08:49:48 +0200",
+                "uts":1718866188
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 10:40:38 +0200",
+                "uts":1718872838
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 10:42:32 +0200",
+                "uts":1718872952
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 10:44:33 +0200",
+                "uts":1718873073
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 10:47:12 +0200",
+                "uts":1718873232
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 10:50:07 +0200",
+                "uts":1718873407
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 11:05:38 +0200",
+                "uts":1718874338
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 11:11:24 +0200",
+                "uts":1718874684
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_03",
+        "Rack Position":3,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.83,
+        "Anode Active Material Weight (mg)":6.35985,
+        "Anode Balancing Capacity (mAh)":3.900035,
+        "Anode Rack Position":3,
+        "Cathode Weight (mg)":36.07,
+        "Cathode Active Material Weight (mg)":25.07,
+        "Cathode Balancing Capacity (mAh)":3.62425,
+        "Cathode Rack Position":8,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9628705225,
+        "Cell Number":3,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 08:17:47 +0200",
+                "uts":1718864267
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 08:48:07 +0200",
+                "uts":1718866087
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 08:50:10 +0200",
+                "uts":1718866210
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 10:40:51 +0200",
+                "uts":1718872851
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 10:42:50 +0200",
+                "uts":1718872970
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 10:44:51 +0200",
+                "uts":1718873091
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 10:47:34 +0200",
+                "uts":1718873254
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 10:50:29 +0200",
+                "uts":1718873429
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 11:08:17 +0200",
+                "uts":1718874497
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 11:11:44 +0200",
+                "uts":1718874704
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_04",
+        "Rack Position":4,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":23.08,
+        "Anode Active Material Weight (mg)":6.5961,
+        "Anode Balancing Capacity (mAh)":4.04491,
+        "Anode Rack Position":4,
+        "Cathode Weight (mg)":36.64,
+        "Cathode Active Material Weight (mg)":25.5944,
+        "Cathode Balancing Capacity (mAh)":3.70006,
+        "Cathode Rack Position":28,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9781774138,
+        "Cell Number":4,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 08:18:05 +0200",
+                "uts":1718864285
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 08:48:26 +0200",
+                "uts":1718866106
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 08:50:33 +0200",
+                "uts":1718866233
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 10:41:03 +0200",
+                "uts":1718872863
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 10:43:12 +0200",
+                "uts":1718872992
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 10:45:12 +0200",
+                "uts":1718873112
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 10:47:58 +0200",
+                "uts":1718873278
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 10:50:48 +0200",
+                "uts":1718873448
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 10:54:31 +0200",
+                "uts":1718873671
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 11:12:06 +0200",
+                "uts":1718874726
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_05",
+        "Rack Position":5,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.81,
+        "Anode Active Material Weight (mg)":6.34095,
+        "Anode Balancing Capacity (mAh)":3.888445,
+        "Anode Rack Position":5,
+        "Cathode Weight (mg)":36.0,
+        "Cathode Active Material Weight (mg)":25.0056,
+        "Cathode Balancing Capacity (mAh)":3.61494,
+        "Cathode Rack Position":32,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9624815241,
+        "Cell Number":5,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 08:18:24 +0200",
+                "uts":1718864304
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 08:48:45 +0200",
+                "uts":1718866125
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 08:50:54 +0200",
+                "uts":1718866254
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 10:41:16 +0200",
+                "uts":1718872876
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 10:43:32 +0200",
+                "uts":1718873012
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 10:45:30 +0200",
+                "uts":1718873130
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 10:48:20 +0200",
+                "uts":1718873300
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 10:51:10 +0200",
+                "uts":1718873470
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 11:06:58 +0200",
+                "uts":1718874418
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 11:12:25 +0200",
+                "uts":1718874745
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_06",
+        "Rack Position":6,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":23.16,
+        "Anode Active Material Weight (mg)":6.6717,
+        "Anode Balancing Capacity (mAh)":4.09127,
+        "Anode Rack Position":6,
+        "Cathode Weight (mg)":36.7,
+        "Cathode Active Material Weight (mg)":25.6496,
+        "Cathode Balancing Capacity (mAh)":3.70804,
+        "Cathode Rack Position":21,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9872593725,
+        "Cell Number":6,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 08:18:42 +0200",
+                "uts":1718864322
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 08:49:03 +0200",
+                "uts":1718866143
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 08:51:18 +0200",
+                "uts":1718866278
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 10:41:29 +0200",
+                "uts":1718872889
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 10:43:54 +0200",
+                "uts":1718873034
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 10:45:50 +0200",
+                "uts":1718873150
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 10:48:46 +0200",
+                "uts":1718873326
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 10:51:30 +0200",
+                "uts":1718873490
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 11:09:35 +0200",
+                "uts":1718874575
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 11:12:49 +0200",
+                "uts":1718874769
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_07",
+        "Rack Position":7,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":23.72,
+        "Anode Active Material Weight (mg)":7.2009,
+        "Anode Balancing Capacity (mAh)":4.41579,
+        "Anode Rack Position":7,
+        "Cathode Weight (mg)":37.1,
+        "Cathode Active Material Weight (mg)":26.0176,
+        "Cathode Balancing Capacity (mAh)":3.76124,
+        "Cathode Rack Position":29,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":1.0504972019,
+        "Cell Number":7,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 11:13:49 +0200",
+                "uts":1718874829
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 11:15:50 +0200",
+                "uts":1718874950
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 11:18:16 +0200",
+                "uts":1718875096
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 11:22:48 +0200",
+                "uts":1718875368
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 11:24:43 +0200",
+                "uts":1718875483
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 11:27:12 +0200",
+                "uts":1718875632
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 11:29:56 +0200",
+                "uts":1718875796
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 11:32:48 +0200",
+                "uts":1718875968
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 11:37:02 +0200",
+                "uts":1718876222
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 11:46:33 +0200",
+                "uts":1718876793
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_08",
+        "Rack Position":8,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":23.73,
+        "Anode Active Material Weight (mg)":7.21035,
+        "Anode Balancing Capacity (mAh)":4.421585,
+        "Anode Rack Position":8,
+        "Cathode Weight (mg)":37.26,
+        "Cathode Active Material Weight (mg)":26.1648,
+        "Cathode Balancing Capacity (mAh)":3.78252,
+        "Cathode Rack Position":27,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":1.0459580811,
+        "Cell Number":8,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 11:14:09 +0200",
+                "uts":1718874849
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 11:16:11 +0200",
+                "uts":1718874971
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 11:18:39 +0200",
+                "uts":1718875119
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 11:23:01 +0200",
+                "uts":1718875381
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 11:25:11 +0200",
+                "uts":1718875511
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 11:27:32 +0200",
+                "uts":1718875652
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 11:30:21 +0200",
+                "uts":1718875821
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 11:33:10 +0200",
+                "uts":1718875990
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 11:39:36 +0200",
+                "uts":1718876376
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 11:46:58 +0200",
+                "uts":1718876818
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_09",
+        "Rack Position":9,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.79,
+        "Anode Active Material Weight (mg)":6.32205,
+        "Anode Balancing Capacity (mAh)":3.876855,
+        "Anode Rack Position":9,
+        "Cathode Weight (mg)":36.0,
+        "Cathode Active Material Weight (mg)":25.0056,
+        "Cathode Balancing Capacity (mAh)":3.61494,
+        "Cathode Rack Position":31,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9596127267,
+        "Cell Number":9,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 11:14:28 +0200",
+                "uts":1718874868
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 11:16:53 +0200",
+                "uts":1718875013
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 11:19:01 +0200",
+                "uts":1718875141
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 11:23:13 +0200",
+                "uts":1718875393
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 11:25:40 +0200",
+                "uts":1718875540
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 11:27:51 +0200",
+                "uts":1718875671
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 11:30:40 +0200",
+                "uts":1718875840
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 11:33:30 +0200",
+                "uts":1718876010
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 11:42:48 +0200",
+                "uts":1718876568
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 11:47:25 +0200",
+                "uts":1718876845
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_10",
+        "Rack Position":10,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.89,
+        "Anode Active Material Weight (mg)":6.41655,
+        "Anode Balancing Capacity (mAh)":3.934805,
+        "Anode Rack Position":10,
+        "Cathode Weight (mg)":36.23,
+        "Cathode Active Material Weight (mg)":25.2172,
+        "Cathode Balancing Capacity (mAh)":3.64553,
+        "Cathode Rack Position":5,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9657841473,
+        "Cell Number":10,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 11:14:47 +0200",
+                "uts":1718874887
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 11:17:14 +0200",
+                "uts":1718875034
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 11:19:24 +0200",
+                "uts":1718875164
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 11:23:26 +0200",
+                "uts":1718875406
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 11:26:00 +0200",
+                "uts":1718875560
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 11:28:10 +0200",
+                "uts":1718875690
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 11:31:00 +0200",
+                "uts":1718875860
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 11:33:50 +0200",
+                "uts":1718876030
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 11:38:18 +0200",
+                "uts":1718876298
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 11:47:46 +0200",
+                "uts":1718876866
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_11",
+        "Rack Position":11,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":23.15,
+        "Anode Active Material Weight (mg)":6.66225,
+        "Anode Balancing Capacity (mAh)":4.085475,
+        "Anode Rack Position":11,
+        "Cathode Weight (mg)":36.64,
+        "Cathode Active Material Weight (mg)":25.5944,
+        "Cathode Balancing Capacity (mAh)":3.70006,
+        "Cathode Rack Position":12,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.987987216,
+        "Cell Number":11,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 11:15:09 +0200",
+                "uts":1718874909
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 11:17:32 +0200",
+                "uts":1718875052
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 11:19:50 +0200",
+                "uts":1718875190
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 11:23:39 +0200",
+                "uts":1718875419
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 11:26:22 +0200",
+                "uts":1718875582
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 11:28:29 +0200",
+                "uts":1718875709
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 11:31:21 +0200",
+                "uts":1718875881
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 11:34:11 +0200",
+                "uts":1718876051
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 11:41:18 +0200",
+                "uts":1718876478
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 11:48:12 +0200",
+                "uts":1718876892
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_12",
+        "Rack Position":12,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.7,
+        "Anode Active Material Weight (mg)":6.237,
+        "Anode Balancing Capacity (mAh)":3.8247,
+        "Anode Rack Position":12,
+        "Cathode Weight (mg)":35.77,
+        "Cathode Active Material Weight (mg)":24.794,
+        "Cathode Balancing Capacity (mAh)":3.58435,
+        "Cathode Rack Position":19,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9547826087,
+        "Cell Number":12,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 11:15:29 +0200",
+                "uts":1718874929
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 11:17:51 +0200",
+                "uts":1718875071
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 11:20:14 +0200",
+                "uts":1718875214
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 11:23:52 +0200",
+                "uts":1718875432
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 11:26:50 +0200",
+                "uts":1718875610
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 11:28:47 +0200",
+                "uts":1718875727
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 11:31:41 +0200",
+                "uts":1718875901
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 11:34:33 +0200",
+                "uts":1718876073
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 11:44:10 +0200",
+                "uts":1718876650
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 11:48:34 +0200",
+                "uts":1718876914
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_13",
+        "Rack Position":13,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.86,
+        "Anode Active Material Weight (mg)":6.3882,
+        "Anode Balancing Capacity (mAh)":3.91742,
+        "Anode Rack Position":13,
+        "Cathode Weight (mg)":36.09,
+        "Cathode Active Material Weight (mg)":25.0884,
+        "Cathode Balancing Capacity (mAh)":3.62691,
+        "Cathode Rack Position":15,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.966453341,
+        "Cell Number":13,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 11:50:22 +0200",
+                "uts":1718877022
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 11:52:38 +0200",
+                "uts":1718877158
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 11:54:57 +0200",
+                "uts":1718877297
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 11:59:54 +0200",
+                "uts":1718877594
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 12:02:21 +0200",
+                "uts":1718877741
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 12:04:53 +0200",
+                "uts":1718877893
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 12:07:52 +0200",
+                "uts":1718878072
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 12:10:56 +0200",
+                "uts":1718878256
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 12:15:51 +0200",
+                "uts":1718878551
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 12:24:31 +0200",
+                "uts":1718879071
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_14",
+        "Rack Position":14,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.72,
+        "Anode Active Material Weight (mg)":6.2559,
+        "Anode Balancing Capacity (mAh)":3.83629,
+        "Anode Rack Position":14,
+        "Cathode Weight (mg)":35.8,
+        "Cathode Active Material Weight (mg)":24.8216,
+        "Cathode Balancing Capacity (mAh)":3.58834,
+        "Cathode Rack Position":30,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9566110162,
+        "Cell Number":14,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 11:50:44 +0200",
+                "uts":1718877044
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 11:53:01 +0200",
+                "uts":1718877181
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 11:55:22 +0200",
+                "uts":1718877322
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 12:00:07 +0200",
+                "uts":1718877607
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 12:02:48 +0200",
+                "uts":1718877768
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 12:05:15 +0200",
+                "uts":1718877915
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 12:08:12 +0200",
+                "uts":1718878092
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 12:11:19 +0200",
+                "uts":1718878279
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 12:18:34 +0200",
+                "uts":1718878714
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 12:24:56 +0200",
+                "uts":1718879096
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_15",
+        "Rack Position":15,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":23.06,
+        "Anode Active Material Weight (mg)":6.5772,
+        "Anode Balancing Capacity (mAh)":4.03332,
+        "Anode Rack Position":15,
+        "Cathode Weight (mg)":36.46,
+        "Cathode Active Material Weight (mg)":25.4288,
+        "Cathode Balancing Capacity (mAh)":3.67612,
+        "Cathode Rack Position":1,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9817265463,
+        "Cell Number":15,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 11:51:06 +0200",
+                "uts":1718877066
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 11:53:21 +0200",
+                "uts":1718877201
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 11:55:46 +0200",
+                "uts":1718877346
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 12:00:20 +0200",
+                "uts":1718877620
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 12:03:09 +0200",
+                "uts":1718877789
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 12:05:36 +0200",
+                "uts":1718877936
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 12:08:38 +0200",
+                "uts":1718878118
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 12:11:41 +0200",
+                "uts":1718878301
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 12:21:12 +0200",
+                "uts":1718878872
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 12:25:18 +0200",
+                "uts":1718879118
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_16",
+        "Rack Position":16,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":23.26,
+        "Anode Active Material Weight (mg)":6.7662,
+        "Anode Balancing Capacity (mAh)":4.14922,
+        "Anode Rack Position":16,
+        "Cathode Weight (mg)":36.92,
+        "Cathode Active Material Weight (mg)":25.852,
+        "Cathode Balancing Capacity (mAh)":3.7373,
+        "Cathode Rack Position":34,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9934043014,
+        "Cell Number":16,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 11:51:29 +0200",
+                "uts":1718877089
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 11:53:45 +0200",
+                "uts":1718877225
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 11:56:13 +0200",
+                "uts":1718877373
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 12:00:32 +0200",
+                "uts":1718877632
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 12:03:36 +0200",
+                "uts":1718877816
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 12:05:59 +0200",
+                "uts":1718877959
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 12:08:58 +0200",
+                "uts":1718878138
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 12:12:05 +0200",
+                "uts":1718878325
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 12:17:09 +0200",
+                "uts":1718878629
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 12:25:42 +0200",
+                "uts":1718879142
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_17",
+        "Rack Position":17,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.83,
+        "Anode Active Material Weight (mg)":6.35985,
+        "Anode Balancing Capacity (mAh)":3.900035,
+        "Anode Rack Position":17,
+        "Cathode Weight (mg)":36.03,
+        "Cathode Active Material Weight (mg)":25.0332,
+        "Cathode Balancing Capacity (mAh)":3.61893,
+        "Cathode Rack Position":20,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9642859882,
+        "Cell Number":17,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 11:51:52 +0200",
+                "uts":1718877112
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 11:54:08 +0200",
+                "uts":1718877248
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 11:56:41 +0200",
+                "uts":1718877401
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 12:00:45 +0200",
+                "uts":1718877645
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 12:04:05 +0200",
+                "uts":1718877845
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 12:06:21 +0200",
+                "uts":1718877981
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 12:09:24 +0200",
+                "uts":1718878164
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 12:12:27 +0200",
+                "uts":1718878347
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 12:19:59 +0200",
+                "uts":1718878799
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 12:26:08 +0200",
+                "uts":1718879168
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_18",
+        "Rack Position":18,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.68,
+        "Anode Active Material Weight (mg)":6.2181,
+        "Anode Balancing Capacity (mAh)":3.81311,
+        "Anode Rack Position":18,
+        "Cathode Weight (mg)":35.74,
+        "Cathode Active Material Weight (mg)":24.7664,
+        "Cathode Balancing Capacity (mAh)":3.58036,
+        "Cathode Rack Position":36,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.952950126,
+        "Cell Number":18,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 11:52:12 +0200",
+                "uts":1718877132
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 11:54:30 +0200",
+                "uts":1718877270
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 11:57:05 +0200",
+                "uts":1718877425
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 12:00:58 +0200",
+                "uts":1718877658
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 12:04:30 +0200",
+                "uts":1718877870
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 12:06:41 +0200",
+                "uts":1718878001
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 12:09:46 +0200",
+                "uts":1718878186
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 12:12:49 +0200",
+                "uts":1718878369
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 12:22:37 +0200",
+                "uts":1718878957
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 12:26:28 +0200",
+                "uts":1718879188
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_19",
+        "Rack Position":19,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":23.0,
+        "Anode Active Material Weight (mg)":6.5205,
+        "Anode Balancing Capacity (mAh)":3.99855,
+        "Anode Rack Position":19,
+        "Cathode Weight (mg)":36.35,
+        "Cathode Active Material Weight (mg)":25.3276,
+        "Cathode Balancing Capacity (mAh)":3.66149,
+        "Cathode Rack Position":3,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9771521976,
+        "Cell Number":19,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 12:27:42 +0200",
+                "uts":1718879262
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 12:30:35 +0200",
+                "uts":1718879435
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 12:33:34 +0200",
+                "uts":1718879614
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 12:38:16 +0200",
+                "uts":1718879896
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 12:40:13 +0200",
+                "uts":1718880013
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 12:42:30 +0200",
+                "uts":1718880150
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 12:45:59 +0200",
+                "uts":1718880359
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 12:49:06 +0200",
+                "uts":1718880546
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 12:53:54 +0200",
+                "uts":1718880834
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 13:02:56 +0200",
+                "uts":1718881376
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_20",
+        "Rack Position":20,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.93,
+        "Anode Active Material Weight (mg)":6.45435,
+        "Anode Balancing Capacity (mAh)":3.957985,
+        "Anode Rack Position":20,
+        "Cathode Weight (mg)":36.28,
+        "Cathode Active Material Weight (mg)":25.2632,
+        "Cathode Balancing Capacity (mAh)":3.65218,
+        "Cathode Rack Position":2,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9697047088,
+        "Cell Number":20,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 12:28:09 +0200",
+                "uts":1718879289
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 12:31:03 +0200",
+                "uts":1718879463
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 12:34:05 +0200",
+                "uts":1718879645
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 12:38:29 +0200",
+                "uts":1718879909
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 12:40:34 +0200",
+                "uts":1718880034
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 12:43:00 +0200",
+                "uts":1718880180
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 12:46:22 +0200",
+                "uts":1718880382
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 12:49:36 +0200",
+                "uts":1718880576
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 12:56:32 +0200",
+                "uts":1718880992
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 13:03:18 +0200",
+                "uts":1718881398
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_21",
+        "Rack Position":21,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.73,
+        "Anode Active Material Weight (mg)":6.26535,
+        "Anode Balancing Capacity (mAh)":3.842085,
+        "Anode Rack Position":21,
+        "Cathode Weight (mg)":35.95,
+        "Cathode Active Material Weight (mg)":24.9596,
+        "Cathode Balancing Capacity (mAh)":3.60829,
+        "Cathode Rack Position":26,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9527590186,
+        "Cell Number":21,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 12:28:37 +0200",
+                "uts":1718879317
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 12:31:32 +0200",
+                "uts":1718879492
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 12:34:37 +0200",
+                "uts":1718879677
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 12:38:42 +0200",
+                "uts":1718879922
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 12:41:03 +0200",
+                "uts":1718880063
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 12:43:28 +0200",
+                "uts":1718880208
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 12:46:46 +0200",
+                "uts":1718880406
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 12:50:07 +0200",
+                "uts":1718880607
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 12:59:18 +0200",
+                "uts":1718881158
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 13:03:44 +0200",
+                "uts":1718881424
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_22",
+        "Rack Position":22,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.69,
+        "Anode Active Material Weight (mg)":6.22755,
+        "Anode Balancing Capacity (mAh)":3.818905,
+        "Anode Rack Position":22,
+        "Cathode Weight (mg)":35.75,
+        "Cathode Active Material Weight (mg)":24.7756,
+        "Cathode Balancing Capacity (mAh)":3.58169,
+        "Cathode Rack Position":6,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9540439788,
+        "Cell Number":22,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 12:29:08 +0200",
+                "uts":1718879348
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 12:32:01 +0200",
+                "uts":1718879521
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 12:35:08 +0200",
+                "uts":1718879708
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 12:38:54 +0200",
+                "uts":1718879934
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 12:41:23 +0200",
+                "uts":1718880083
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 12:43:57 +0200",
+                "uts":1718880237
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 12:47:05 +0200",
+                "uts":1718880425
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 12:50:38 +0200",
+                "uts":1718880638
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 12:55:17 +0200",
+                "uts":1718880917
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 13:04:10 +0200",
+                "uts":1718881450
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_23",
+        "Rack Position":23,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.63,
+        "Anode Active Material Weight (mg)":6.17085,
+        "Anode Balancing Capacity (mAh)":3.784135,
+        "Anode Rack Position":23,
+        "Cathode Weight (mg)":35.46,
+        "Cathode Active Material Weight (mg)":24.5088,
+        "Cathode Balancing Capacity (mAh)":3.54312,
+        "Cathode Rack Position":9,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9556487466,
+        "Cell Number":23,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 12:29:36 +0200",
+                "uts":1718879376
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 12:32:31 +0200",
+                "uts":1718879551
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 12:35:40 +0200",
+                "uts":1718879740
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 12:39:08 +0200",
+                "uts":1718879948
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 12:41:41 +0200",
+                "uts":1718880101
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 12:44:24 +0200",
+                "uts":1718880264
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 12:47:29 +0200",
+                "uts":1718880449
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 12:51:09 +0200",
+                "uts":1718880669
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 12:57:48 +0200",
+                "uts":1718881068
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 13:04:32 +0200",
+                "uts":1718881472
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_24",
+        "Rack Position":24,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":23.0,
+        "Anode Active Material Weight (mg)":6.5205,
+        "Anode Balancing Capacity (mAh)":3.99855,
+        "Anode Rack Position":24,
+        "Cathode Weight (mg)":36.33,
+        "Cathode Active Material Weight (mg)":25.3092,
+        "Cathode Balancing Capacity (mAh)":3.65883,
+        "Cathode Rack Position":17,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9778625954,
+        "Cell Number":24,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 12:30:05 +0200",
+                "uts":1718879405
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 12:33:01 +0200",
+                "uts":1718879581
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 12:36:13 +0200",
+                "uts":1718879773
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 12:39:21 +0200",
+                "uts":1718879961
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 12:42:01 +0200",
+                "uts":1718880121
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 12:44:52 +0200",
+                "uts":1718880292
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 12:47:50 +0200",
+                "uts":1718880470
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 12:51:41 +0200",
+                "uts":1718880701
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 13:00:43 +0200",
+                "uts":1718881243
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 13:04:59 +0200",
+                "uts":1718881499
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_25",
+        "Rack Position":25,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.63,
+        "Anode Active Material Weight (mg)":6.17085,
+        "Anode Balancing Capacity (mAh)":3.784135,
+        "Anode Rack Position":25,
+        "Cathode Weight (mg)":35.43,
+        "Cathode Active Material Weight (mg)":24.4812,
+        "Cathode Balancing Capacity (mAh)":3.53913,
+        "Cathode Rack Position":10,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9567261409,
+        "Cell Number":25,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 13:06:11 +0200",
+                "uts":1718881571
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 13:09:00 +0200",
+                "uts":1718881740
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 13:11:59 +0200",
+                "uts":1718881919
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 13:16:37 +0200",
+                "uts":1718882197
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 13:18:33 +0200",
+                "uts":1718882313
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 13:21:07 +0200",
+                "uts":1718882467
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 13:24:42 +0200",
+                "uts":1718882682
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 13:27:48 +0200",
+                "uts":1718882868
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 13:32:08 +0200",
+                "uts":1718883128
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 13:40:40 +0200",
+                "uts":1718883640
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_26",
+        "Rack Position":26,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.99,
+        "Anode Active Material Weight (mg)":6.51105,
+        "Anode Balancing Capacity (mAh)":3.992755,
+        "Anode Rack Position":26,
+        "Cathode Weight (mg)":36.33,
+        "Cathode Active Material Weight (mg)":25.3092,
+        "Cathode Balancing Capacity (mAh)":3.65883,
+        "Cathode Rack Position":16,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9764454033,
+        "Cell Number":26,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 13:06:38 +0200",
+                "uts":1718881598
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 13:09:28 +0200",
+                "uts":1718881768
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 13:12:31 +0200",
+                "uts":1718881951
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 13:16:50 +0200",
+                "uts":1718882210
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 13:18:54 +0200",
+                "uts":1718882334
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 13:21:36 +0200",
+                "uts":1718882496
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 13:25:02 +0200",
+                "uts":1718882702
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 13:28:19 +0200",
+                "uts":1718882899
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 13:34:44 +0200",
+                "uts":1718883284
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 13:41:01 +0200",
+                "uts":1718883661
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_27",
+        "Rack Position":27,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.87,
+        "Anode Active Material Weight (mg)":6.39765,
+        "Anode Balancing Capacity (mAh)":3.923215,
+        "Anode Rack Position":27,
+        "Cathode Weight (mg)":36.21,
+        "Cathode Active Material Weight (mg)":25.1988,
+        "Cathode Balancing Capacity (mAh)":3.64287,
+        "Cathode Rack Position":23,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9636425544,
+        "Cell Number":27,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 13:07:06 +0200",
+                "uts":1718881626
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 13:09:58 +0200",
+                "uts":1718881798
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 13:13:03 +0200",
+                "uts":1718881983
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 13:17:03 +0200",
+                "uts":1718882223
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 13:19:24 +0200",
+                "uts":1718882364
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 13:22:05 +0200",
+                "uts":1718882525
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 13:25:27 +0200",
+                "uts":1718882727
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 13:28:50 +0200",
+                "uts":1718882930
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 13:37:21 +0200",
+                "uts":1718883441
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 13:41:26 +0200",
+                "uts":1718883686
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_28",
+        "Rack Position":28,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.61,
+        "Anode Active Material Weight (mg)":6.15195,
+        "Anode Balancing Capacity (mAh)":3.772545,
+        "Anode Rack Position":28,
+        "Cathode Weight (mg)":35.43,
+        "Cathode Active Material Weight (mg)":24.4812,
+        "Cathode Balancing Capacity (mAh)":3.53913,
+        "Cathode Rack Position":35,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9537958924,
+        "Cell Number":28,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 13:07:34 +0200",
+                "uts":1718881654
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 13:10:26 +0200",
+                "uts":1718881826
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 13:13:34 +0200",
+                "uts":1718882014
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 13:17:15 +0200",
+                "uts":1718882235
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 13:19:51 +0200",
+                "uts":1718882391
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 13:22:36 +0200",
+                "uts":1718882556
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 13:25:53 +0200",
+                "uts":1718882753
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 13:29:20 +0200",
+                "uts":1718882960
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 13:33:26 +0200",
+                "uts":1718883206
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 13:41:49 +0200",
+                "uts":1718883709
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_29",
+        "Rack Position":29,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":23.26,
+        "Anode Active Material Weight (mg)":6.7662,
+        "Anode Balancing Capacity (mAh)":4.14922,
+        "Anode Rack Position":29,
+        "Cathode Weight (mg)":36.92,
+        "Cathode Active Material Weight (mg)":25.852,
+        "Cathode Balancing Capacity (mAh)":3.7373,
+        "Cathode Rack Position":24,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9934043014,
+        "Cell Number":29,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 13:08:01 +0200",
+                "uts":1718881681
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 13:10:55 +0200",
+                "uts":1718881855
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 13:14:07 +0200",
+                "uts":1718882047
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 13:17:28 +0200",
+                "uts":1718882248
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 13:20:20 +0200",
+                "uts":1718882420
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 13:23:04 +0200",
+                "uts":1718882584
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 13:26:17 +0200",
+                "uts":1718882777
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 13:29:51 +0200",
+                "uts":1718882991
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 13:36:09 +0200",
+                "uts":1718883369
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 13:42:16 +0200",
+                "uts":1718883736
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_30",
+        "Rack Position":30,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":23.07,
+        "Anode Active Material Weight (mg)":6.58665,
+        "Anode Balancing Capacity (mAh)":4.039115,
+        "Anode Rack Position":30,
+        "Cathode Weight (mg)":36.47,
+        "Cathode Active Material Weight (mg)":25.438,
+        "Cathode Balancing Capacity (mAh)":3.67745,
+        "Cathode Rack Position":13,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.982781508,
+        "Cell Number":30,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 13:08:31 +0200",
+                "uts":1718881711
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 13:11:25 +0200",
+                "uts":1718881885
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 13:14:41 +0200",
+                "uts":1718882081
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 13:17:41 +0200",
+                "uts":1718882261
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 13:20:40 +0200",
+                "uts":1718882440
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 13:23:32 +0200",
+                "uts":1718882612
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 13:26:41 +0200",
+                "uts":1718882801
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 13:30:22 +0200",
+                "uts":1718883022
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 13:38:47 +0200",
+                "uts":1718883527
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 13:42:37 +0200",
+                "uts":1718883757
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_31",
+        "Rack Position":31,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":23.01,
+        "Anode Active Material Weight (mg)":6.52995,
+        "Anode Balancing Capacity (mAh)":4.004345,
+        "Anode Rack Position":31,
+        "Cathode Weight (mg)":36.43,
+        "Cathode Active Material Weight (mg)":25.4012,
+        "Cathode Balancing Capacity (mAh)":3.67213,
+        "Cathode Rack Position":11,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9757329575,
+        "Cell Number":31,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 13:44:15 +0200",
+                "uts":1718883855
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 13:46:53 +0200",
+                "uts":1718884013
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 13:49:38 +0200",
+                "uts":1718884178
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 13:55:18 +0200",
+                "uts":1718884518
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 13:57:15 +0200",
+                "uts":1718884635
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 13:59:47 +0200",
+                "uts":1718884787
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 14:03:12 +0200",
+                "uts":1718884992
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 14:06:32 +0200",
+                "uts":1718885192
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 14:10:38 +0200",
+                "uts":1718885438
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 14:21:23 +0200",
+                "uts":1718886083
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_32",
+        "Rack Position":32,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.66,
+        "Anode Active Material Weight (mg)":6.1992,
+        "Anode Balancing Capacity (mAh)":3.80152,
+        "Anode Rack Position":32,
+        "Cathode Weight (mg)":35.5,
+        "Cathode Active Material Weight (mg)":24.5456,
+        "Cathode Balancing Capacity (mAh)":3.54844,
+        "Cathode Rack Position":18,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9585998305,
+        "Cell Number":32,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 13:44:42 +0200",
+                "uts":1718883882
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 13:47:22 +0200",
+                "uts":1718884042
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 13:50:09 +0200",
+                "uts":1718884209
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 13:55:31 +0200",
+                "uts":1718884531
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 13:57:37 +0200",
+                "uts":1718884657
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 14:00:14 +0200",
+                "uts":1718884814
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 14:03:36 +0200",
+                "uts":1718885016
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 14:07:03 +0200",
+                "uts":1718885223
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 14:13:43 +0200",
+                "uts":1718885623
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 14:21:50 +0200",
+                "uts":1718886110
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_33",
+        "Rack Position":33,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":23.04,
+        "Anode Active Material Weight (mg)":6.5583,
+        "Anode Balancing Capacity (mAh)":4.02173,
+        "Anode Rack Position":33,
+        "Cathode Weight (mg)":36.44,
+        "Cathode Active Material Weight (mg)":25.4104,
+        "Cathode Balancing Capacity (mAh)":3.67346,
+        "Cathode Rack Position":22,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9796143311,
+        "Cell Number":33,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 13:45:07 +0200",
+                "uts":1718883907
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 13:47:47 +0200",
+                "uts":1718884067
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 13:50:39 +0200",
+                "uts":1718884239
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 13:55:44 +0200",
+                "uts":1718884544
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 13:58:05 +0200",
+                "uts":1718884685
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 14:00:40 +0200",
+                "uts":1718884840
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 14:04:01 +0200",
+                "uts":1718885041
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 14:07:30 +0200",
+                "uts":1718885250
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 14:16:46 +0200",
+                "uts":1718885806
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 14:22:11 +0200",
+                "uts":1718886131
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_34",
+        "Rack Position":34,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.64,
+        "Anode Active Material Weight (mg)":6.1803,
+        "Anode Balancing Capacity (mAh)":3.78993,
+        "Anode Rack Position":34,
+        "Cathode Weight (mg)":35.47,
+        "Cathode Active Material Weight (mg)":24.518,
+        "Cathode Balancing Capacity (mAh)":3.54445,
+        "Cathode Rack Position":7,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9567530794,
+        "Cell Number":34,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 13:45:34 +0200",
+                "uts":1718883934
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 13:48:14 +0200",
+                "uts":1718884094
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 13:51:11 +0200",
+                "uts":1718884271
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 13:55:57 +0200",
+                "uts":1718884557
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 13:58:26 +0200",
+                "uts":1718884706
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 14:01:07 +0200",
+                "uts":1718884867
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 14:04:22 +0200",
+                "uts":1718885062
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 14:07:59 +0200",
+                "uts":1718885279
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 14:11:55 +0200",
+                "uts":1718885515
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 14:22:37 +0200",
+                "uts":1718886157
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_35",
+        "Rack Position":35,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.68,
+        "Anode Active Material Weight (mg)":6.2181,
+        "Anode Balancing Capacity (mAh)":3.81311,
+        "Anode Rack Position":35,
+        "Cathode Weight (mg)":35.64,
+        "Cathode Active Material Weight (mg)":24.6744,
+        "Cathode Balancing Capacity (mAh)":3.56706,
+        "Cathode Rack Position":25,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9565032584,
+        "Cell Number":35,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 13:46:00 +0200",
+                "uts":1718883960
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 13:48:41 +0200",
+                "uts":1718884121
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 13:51:40 +0200",
+                "uts":1718884300
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 13:56:09 +0200",
+                "uts":1718884569
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 13:58:54 +0200",
+                "uts":1718884734
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 14:01:33 +0200",
+                "uts":1718884893
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 14:04:51 +0200",
+                "uts":1718885091
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 14:08:28 +0200",
+                "uts":1718885308
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 14:14:57 +0200",
+                "uts":1718885697
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 14:22:59 +0200",
+                "uts":1718886179
+            }
+        ]
+    },
+    {
+        "Sample ID":"240620_kigr_gen2_36",
+        "Rack Position":36,
+        "Anode Type":"Si-graphite",
+        "Cathode Type":"LMNO",
+        "Target N:P Ratio":1.1,
+        "Minimum N:P Ratio":0.9,
+        "Maximum N:P Ratio":1.5,
+        "Separator":"Whatman",
+        "Separator Diameter (mm)":16,
+        "Electrolyte Position":1,
+        "Electrolyte Name":"IntelLiGent baseline",
+        "Electrolyte Amount (uL)":100,
+        "Electrolyte Dispense Order":"After",
+        "Casing Type":2032,
+        "Spacer (mm)":1,
+        "Batch Number":1,
+        "Comments":null,
+        "Electrolyte Description":"1M LiPF6 in (EC:DEC (1:1 vol)) : FEC (90:10 wt) + 1wt% LiBOB",
+        "Electrolyte Amount Before Separator (uL)":0.0,
+        "Electrolyte Amount After Separator (uL)":100.0,
+        "Anode Description":"IntelLiGent baseline",
+        "Anode Diameter (mm)":15,
+        "Anode Current Collector Weight (mg)":16.1,
+        "Anode Active Material Weight Fraction":0.945,
+        "Anode Balancing Specific Capacity (mAh\/g)":610,
+        "Anode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Anode C-rate Definition Specific Capacity (mAh\/g)":610,
+        "Cathode Description":"IntelLiGent baseline",
+        "Cathode Diameter (mm)":14,
+        "Cathode Current Collector Weight (mg)":8.82,
+        "Cathode Active Material Weight Fraction":0.92,
+        "Cathode Balancing Specific Capacity (mAh\/g)":140,
+        "Cathode C-rate Definition Areal Capacity (mAh\/cm2)":null,
+        "Cathode C-rate Definition Specific Capacity (mAh\/g)":147,
+        "Anode Weight (mg)":22.98,
+        "Anode Active Material Weight (mg)":6.5016,
+        "Anode Balancing Capacity (mAh)":3.98696,
+        "Anode Rack Position":36,
+        "Cathode Weight (mg)":36.3,
+        "Cathode Active Material Weight (mg)":25.2816,
+        "Cathode Balancing Capacity (mAh)":3.65484,
+        "Cathode Rack Position":33,
+        "N:P ratio overlap factor":0.8711111111,
+        "Actual N:P Ratio":0.9760926524,
+        "Cell Number":36,
+        "Last Completed Step":11,
+        "Barcode":null,
+        "Run ID":"240620_kigr_gen2",
+        "Assembly history":[
+            {
+                "Step":"Bottom",
+                "Description":"Place bottom casing",
+                "Timestamp":"2024-06-20 13:46:25 +0200",
+                "uts":1718883985
+            },
+            {
+                "Step":"Anode",
+                "Description":"Place anode face up",
+                "Timestamp":"2024-06-20 13:49:06 +0200",
+                "uts":1718884146
+            },
+            {
+                "Step":"Separator",
+                "Description":"Place separator",
+                "Timestamp":"2024-06-20 13:52:09 +0200",
+                "uts":1718884329
+            },
+            {
+                "Step":"Electrolyte",
+                "Description":"Add electrolyte after separator",
+                "Timestamp":"2024-06-20 13:56:22 +0200",
+                "uts":1718884582
+            },
+            {
+                "Step":"Cathode",
+                "Description":"Place cathode face down",
+                "Timestamp":"2024-06-20 13:59:20 +0200",
+                "uts":1718884760
+            },
+            {
+                "Step":"Spacer",
+                "Description":"Place top spacer",
+                "Timestamp":"2024-06-20 14:01:59 +0200",
+                "uts":1718884919
+            },
+            {
+                "Step":"Spring",
+                "Description":"Place spring",
+                "Timestamp":"2024-06-20 14:05:17 +0200",
+                "uts":1718885117
+            },
+            {
+                "Step":"Top",
+                "Description":"Place top casing",
+                "Timestamp":"2024-06-20 14:08:56 +0200",
+                "uts":1718885336
+            },
+            {
+                "Step":"Press",
+                "Description":"Press cell using 6.2 kN hydraulic press",
+                "Timestamp":"2024-06-20 14:19:13 +0200",
+                "uts":1718885953
+            },
+            {
+                "Step":"Return",
+                "Description":"Return pressed cell to rack",
+                "Timestamp":"2024-06-20 14:23:29 +0200",
+                "uts":1718886209
+            }
+        ]
+    }
+]
