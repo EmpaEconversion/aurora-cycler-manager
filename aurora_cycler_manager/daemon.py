@@ -47,36 +47,36 @@ def daemon_loop(
 
     """
     # Set up logging
-    logging.basicConfig(
-        filename="aurora-daemon.log" if save_log else None,
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-    )
+    # Get the root logger
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+
     # Add a stream handler to also log to the console
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
     console_handler.setFormatter(formatter)
-    logging.getLogger().addHandler(console_handler)
+    logger.addHandler(console_handler)
+
     logging.getLogger("paramiko").setLevel(logging.WARNING)
     logging.getLogger("scp").setLevel(logging.WARNING)
 
     if not update_time:
         update_time = 300
-        logging.warning("No update time specified, defaulting to 5 minutes")
+        logger.warning("No update time specified, defaulting to 5 minutes")
     else:
-        logging.info("Sleeping for %s seconds between database updates", update_time)
+        logger.info("Sleeping for %s seconds between database updates", update_time)
     if not snapshot_times:
         snapshot_times = ["02:00"]
-        logging.warning("No snapshot times specified, defaulting to 2am")
+        logger.warning("No snapshot times specified, defaulting to 2am")
     else:
-        logging.info("Snapshotting and plotting at %s each day", snapshot_times)
+        logger.info("Snapshotting and plotting at %s each day", snapshot_times)
 
     now = datetime.now()
     snapshot_datetimes = [datetime.combine(now, datetime.strptime(t, "%H:%M").time()) for t in snapshot_times]
     snapshot_datetimes = [t if t > now else t + timedelta(days=1) for t in snapshot_datetimes]
     next_run_time = min(snapshot_datetimes)  # Find the earliest next run time
-    logging.info("Next snapshot at %s", next_run_time)
+    logger.info("Next snapshot at %s", next_run_time)
 
     sm = server_manager.ServerManager()
     sm.update_db()
@@ -85,7 +85,7 @@ def daemon_loop(
     while True:
         sleep(update_time)
         now = datetime.now()
-        logging.info("Updating database...")
+        logger.info("Updating database...")
 
         handle_exceptions(sm.update_db)
 
@@ -101,7 +101,7 @@ def daemon_loop(
             snapshot_datetimes = [datetime.combine(now, datetime.strptime(t, "%H:%M").time()) for t in snapshot_times]
             snapshot_datetimes = [t if t > now else t + timedelta(days=1) for t in snapshot_datetimes]
             next_run_time = min(snapshot_datetimes)
-            logging.info("Next snapshot at %s", next_run_time)
+            logger.info("Next snapshot at %s", next_run_time)
 
 
 def main() -> None:
