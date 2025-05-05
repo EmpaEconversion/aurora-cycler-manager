@@ -168,7 +168,6 @@ payloads/
 
 # Config, database, logs, notebooks
 config.json
-*.db
 *.log
 *.ipynb
 *.code-workspace
