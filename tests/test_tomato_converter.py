@@ -60,13 +60,22 @@ class TestConvertAllTomatoJson:
 
     def test_convert_all_tomato_jsons(self) -> None:
         """Test the convert_all_tomato_jsons function."""
-        convert_all_tomato_jsons()
-        # check that the hdf5 outputs were created
         snapshot_folder = get_config().get("Processed snapshots folder path")
-        assert snapshot_folder is not None, "Snapshots folder path not set in config"
+        if snapshot_folder is None:
+            msg = "Snapshots folder path not set in config"
+            raise ValueError(msg)
         expected_snapshots = [
             Path(snapshot_folder) / "240606_svfe_gen1" / "240606_svfe_gen1_15" / "snapshot.tt1-100.h5",
             Path(snapshot_folder) / "240606_svfe_gen1" / "240606_svfe_gen1_15" / "snapshot.tt1-68.h5",
             Path(snapshot_folder) / "240606_svfe_gen1" / "240606_svfe_gen1_16" / "snapshot.tt1-69.h5",
         ]
-        assert all(snapshot.exists() for snapshot in expected_snapshots), "Not all expected snapshots were created"
+        try:
+            convert_all_tomato_jsons()
+            # check that the hdf5 outputs were created
+            assert snapshot_folder is not None, "Snapshots folder path not set in config"
+            assert all(snapshot.exists() for snapshot in expected_snapshots), "Not all expected snapshots were created"
+        finally:
+            # Clean up the created files
+            for snapshot in expected_snapshots:
+                if snapshot.exists():
+                    snapshot.unlink()
