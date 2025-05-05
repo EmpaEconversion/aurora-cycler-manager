@@ -63,7 +63,9 @@ class TestUnicycler(TestCase):
 
     def test_check_sample_details(self) -> None:
         """Test handling of missing sample details."""
-        missing_name_msg = "If using blank sample name or $NAME placeholder, a sample name must be provided in this function."
+        missing_name_msg = (
+            "If using blank sample name or $NAME placeholder, a sample name must be provided in this function."
+        )
         with pytest.raises(ValueError) as context:
             from_dict(self.example_protocol_data[1])
         assert str(context.value) == missing_name_msg
@@ -71,7 +73,9 @@ class TestUnicycler(TestCase):
             from_dict(self.example_protocol_data[2])
         assert str(context.value) == missing_name_msg
 
-        missing_cap_msg = "If using blank, 0, or $CAPACITY placeholder, a sample capacity must be provided in this function."
+        missing_cap_msg = (
+            "If using blank, 0, or $CAPACITY placeholder, a sample capacity must be provided in this function."
+        )
         with pytest.raises(ValueError) as context:
             from_dict(self.example_protocol_data[1], sample_name="test_sample")
         assert str(context.value) == missing_cap_msg
@@ -112,7 +116,7 @@ class TestUnicycler(TestCase):
         assert config.find("Whole_Prt/Record") is not None
         step_info = config.find("Step_Info")
         assert step_info is not None
-        assert step_info.attrib["Num"] == str(len(protocol.method)+1)  # +1 for 'End' step added for Neware
+        assert step_info.attrib["Num"] == str(len(protocol.method) + 1)  # +1 for 'End' step added for Neware
         assert len(step_info) == int(step_info.attrib["Num"])
 
     def test_to_tomato_mpg2(self) -> None:
@@ -146,7 +150,7 @@ class TestUnicycler(TestCase):
         assert experiment_list[3].startswith("Charge at")
         assert experiment_list[4].startswith("Hold at")
         assert experiment_list[5].startswith("Discharge at")
-        assert experiment_list[6].startswith("Charge at") # no 'loop' in pybamm experiment
+        assert experiment_list[6].startswith("Charge at")  # no 'loop' in pybamm experiment
 
     def test_constant_current_validation(self) -> None:
         """Test validation of ConstantCurrent technique."""
@@ -201,52 +205,52 @@ class TestUnicycler(TestCase):
         """Test creating a Protocol instance from a dictionary."""
         protocol = from_dict(self.example_protocol_data[0])
         protocol = Protocol(
-            sample = SampleParams(
-                name = "test_sample",
-                capacity_mAh = 123,
+            sample=SampleParams(
+                name="test_sample",
+                capacity_mAh=123,
             ),
-            measurement = MeasurementParams(
-                time_s = Decimal(10),
-                voltage_V = 0.1,
-                current_mA = "0.1",
+            measurement=MeasurementParams(
+                time_s=Decimal(10),
+                voltage_V=0.1,
+                current_mA="0.1",
             ),
-            safety = SafetyParams(
-                max_current_mA = 10,
-                min_current_mA = -10,
-                max_voltage_V = 5,
-                min_voltage_V = -0.1,
-                delay_s = 10,
+            safety=SafetyParams(
+                max_current_mA=10,
+                min_current_mA=-10,
+                max_voltage_V=5,
+                min_voltage_V=-0.1,
+                delay_s=10,
             ),
-            method = [
+            method=[
                 OpenCircuitVoltage(
-                    until_time_s = 60 * 60,
+                    until_time_s=60 * 60,
                 ),
                 ConstantCurrent(
-                    rate_C = 1/10,
-                    until_time_s = 60 * 10,
-                    until_voltage_V = 2,
+                    rate_C=1 / 10,
+                    until_time_s=60 * 10,
+                    until_voltage_V=2,
                 ),
                 OpenCircuitVoltage(
-                    until_time_s = 60 * 60 * 12,
+                    until_time_s=60 * 60 * 12,
                 ),
                 ConstantCurrent(
-                    rate_C = 0.1,
-                    until_time_s = 60 * 60 * 1/0.1 * 1.5,
-                    until_voltage_V = 4.9,
+                    rate_C=0.1,
+                    until_time_s=60 * 60 * 1 / 0.1 * 1.5,
+                    until_voltage_V=4.9,
                 ),
                 ConstantVoltage(
-                    voltage_V = 4.9,
-                    until_rate_C = 0.01,
-                    until_time_s = 60 * 60 * 6,
+                    voltage_V=4.9,
+                    until_rate_C=0.01,
+                    until_time_s=60 * 60 * 6,
                 ),
                 ConstantCurrent(
-                    rate_C = -0.1,
-                    until_time_s = 60 * 60 * 1/0.1 * 1.5,
-                    until_voltage_V = 3.5,
+                    rate_C=-0.1,
+                    until_time_s=60 * 60 * 1 / 0.1 * 1.5,
+                    until_voltage_V=3.5,
                 ),
                 Loop(
-                    start_step = 4,
-                    cycle_count = 3,
+                    start_step=4,
+                    cycle_count=3,
                 ),
             ],
         )

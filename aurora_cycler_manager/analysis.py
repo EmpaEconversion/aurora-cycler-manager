@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import gzip
 import json
-import re
 import sqlite3
 import traceback
 import warnings
@@ -28,11 +27,10 @@ import h5py
 import numpy as np
 import pandas as pd
 import pytz
-import yaml
 from tsdownsample import MinMaxLTTBDownsampler
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.database_funcs import get_sample_data, get_batch_details
+from aurora_cycler_manager.database_funcs import get_batch_details, get_sample_data
 from aurora_cycler_manager.utils import c_to_float, run_from_sample
 from aurora_cycler_manager.version import __url__, __version__
 

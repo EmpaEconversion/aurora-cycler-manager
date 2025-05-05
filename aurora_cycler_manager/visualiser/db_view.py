@@ -1024,7 +1024,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             return no_update, 0
         for row in selected_rows:
             print(f"Readying {row['Pipeline']}")
-            output = sm.ready(row["Pipeline"])
+            sm.ready(row["Pipeline"])
         return no_update, 1
 
     # Unready button pop up

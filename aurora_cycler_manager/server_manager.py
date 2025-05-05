@@ -823,9 +823,9 @@ class ServerManager:
                 (json.dumps("Unknown"), "Unknown", jobid),
             )
             return
-        except NotImplementedError:
+        except NotImplementedError as e:
             msg = f"Server type {server.server_type} not supported for getting job data."
-            raise NotImplementedError(msg)
+            raise NotImplementedError(msg) from e
         payload = jobdata["payload"]
         sampleid = jobdata["payload"]["sample"]["name"]
         self.execute_sql(
