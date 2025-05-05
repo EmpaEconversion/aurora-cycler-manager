@@ -7,26 +7,26 @@ name = "aurora-cycler-manager"
 requires-python = ">=3.9"
 version = "0.6.0"
 dependencies = [
-    "yadg",
-    "pytz",
-    "paramiko",
-    "pandas",
-    "numpy",
-    "h5py",
-    "xmltodict",
-    "NewareNDA",
-    "scp",
     "dash >= 2.18.0",
-    "scipy",
+    "dash_ag_grid",
     "dash_bootstrap_components",
     "dash_mantine_components",
     "dash_resizable_panels",
-    "dash_ag_grid",
+    "defusedxml",
+    "h5py",
+    "NewareNDA",
+    "numpy",
+    "pandas",
+    "paramiko",
     "python-calamine",
+    "pytz",
+    "scp",
+    "scipy",
     "tables",
-    "toml",
     "tsdownsample",
     "waitress",
+    "xmltodict",
+    "yadg",
 ]
 
 [project.scripts]
