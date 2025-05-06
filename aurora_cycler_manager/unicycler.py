@@ -39,6 +39,8 @@ class SampleParams(BaseModel):
     name: str = Field(default="$NAME")
     capacity_mAh: PreciseDecimal | None = Field(gt=0, default=None)
 
+    model_config = {"extra": "forbid"}
+
 
 class MeasurementParams(BaseModel):
     """Measurement parameters, i.e. when to record."""
@@ -46,6 +48,8 @@ class MeasurementParams(BaseModel):
     current_mA: PreciseDecimal | None = None
     voltage_V: PreciseDecimal | None = None
     time_s: PreciseDecimal = Field(gt=0)
+
+    model_config = {"extra": "forbid"}
 
 
 class SafetyParams(BaseModel):
@@ -58,11 +62,17 @@ class SafetyParams(BaseModel):
     max_capacity_mAh: PreciseDecimal | None = None
     delay_s: PreciseDecimal = Field(ge=0, default=Decimal(0))
 
+    model_config = {
+        "extra": "forbid",
+    }
+
 
 class BaseTechnique(BaseModel):
     """Base class for all techniques."""
 
     name: str
+
+    model_config = {"extra": "forbid"}
 
 
 class OpenCircuitVoltage(BaseTechnique):
@@ -142,6 +152,8 @@ class Protocol(BaseModel):
     measurement: MeasurementParams
     safety: SafetyParams
     method: list[AnyTechnique] = Field(min_length=1)  # Ensure at least one step
+
+    model_config = {"extra": "forbid"}
 
     def _validate_capacity_c_rates(self) -> None:
         """Ensure if using C-rate steps, a capacity is set."""
