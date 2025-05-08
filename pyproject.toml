@@ -5,28 +5,28 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aurora-cycler-manager"
 requires-python = ">=3.9"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
-    "yadg",
-    "pytz",
-    "paramiko",
-    "pandas",
-    "numpy",
-    "h5py",
-    "xmltodict",
-    "NewareNDA",
-    "scp",
     "dash >= 2.18.0",
-    "scipy",
+    "dash_ag_grid",
     "dash_bootstrap_components",
     "dash_mantine_components",
     "dash_resizable_panels",
-    "dash_ag_grid",
+    "defusedxml",
+    "h5py",
+    "NewareNDA",
+    "numpy",
+    "pandas",
+    "paramiko",
     "python-calamine",
+    "pytz",
+    "scp",
+    "scipy",
     "tables",
-    "toml",
     "tsdownsample",
     "waitress",
+    "xmltodict",
+    "yadg",
 ]
 
 [project.scripts]
@@ -42,6 +42,8 @@ line-length = 120
 lint.select = ["ALL"]
 lint.ignore = [
     "N806",
+    "N803",
+    "N815",
     "T201",
     "FA102",
     "PD901",
@@ -56,5 +58,16 @@ lint.ignore = [
 ]
 fix = true
 
+[tool.ruff.lint.extend-per-file-ignores]
+"tests/*.py" = [
+    "S101", # asserts allowed in tests
+    "PT011", # allow just checking for ValueError without match
+]
+
 [tool.mypy]
 disable_error_code = ["import-untyped"]
+exclude = [
+    "test\\.py$", # files end with test.py
+    "^test", # files that start with test
+]
+plugins = ["pydantic.mypy"]

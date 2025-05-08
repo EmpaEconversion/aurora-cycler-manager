@@ -14,9 +14,11 @@ import pandas as pd
 from pytz import timezone
 from scipy import stats
 
-from aurora_cycler_manager.config import CONFIG
+from aurora_cycler_manager.config import get_config
 
 ArrayLike = Union[list, np.ndarray, pd.Series]
+
+CONFIG = get_config()
 
 
 def get_database() -> dict[str, Any]:

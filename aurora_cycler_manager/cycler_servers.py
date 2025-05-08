@@ -19,6 +19,8 @@ from pathlib import Path
 import paramiko
 from scp import SCPClient
 
+from aurora_cycler_manager import unicycler
+
 
 class CyclerServer:
     """Base class for server objects, should not be instantiated directly."""
@@ -38,7 +40,7 @@ class CyclerServer:
         self.last_queue_all = None
         self.check_connection()
 
-    def command(self, command: str) -> str:
+    def command(self, command: str, timeout: float = 300) -> str:
         """Send a command to the server and return the output.
 
         The command is prefixed with the command_prefix specified in the server_config, is run on
@@ -47,7 +49,10 @@ class CyclerServer:
         with paramiko.SSHClient() as ssh:
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
-            stdin, stdout, stderr = ssh.exec_command(self.command_prefix + command + self.command_suffix)
+            stdin, stdout, stderr = ssh.exec_command(
+                self.command_prefix + command + self.command_suffix,
+                timeout=timeout,
+            )
             output = stdout.read().decode("utf-8")
             error = stderr.read().decode("utf-8")
         if error:
@@ -72,7 +77,7 @@ class CyclerServer:
 
         """
         test_phrase = "hellothere"
-        output = self.command(f"echo {test_phrase}").strip()
+        output = self.command(f"echo {test_phrase}", timeout=5).strip()
         if output != test_phrase:
             msg = f"Connection error, expected output '{test_phrase}', got '{output}'"
             raise ValueError(msg)
@@ -460,35 +465,49 @@ class NewareServer(CyclerServer):
         """Readying and unreadying does not exist on Neware."""
         raise NotImplementedError
 
-    def submit(self, sample: str, capacity_Ah: float, payload: str | dict, pipeline: str) -> tuple[str, str, str]:
+    def submit(
+        self, sample: str, capacity_Ah: float, payload: str | dict | Path, pipeline: str
+    ) -> tuple[str, str, str]:
         """Submit a job to the server.
 
         Use the START command on the Neware-api.
         """
-        if not isinstance(payload, str | Path):
-            msg = "For Neware, payload must be a path to an xml file or xml string"
+        # Parse the input into an xml string
+        if not isinstance(payload, str | Path | dict):
+            msg = "For Neware, payload must be a path to an xml file or xml string."
             raise TypeError(msg)
-        if payload.startswith("<?xml"):
-            if "BTS Client" not in payload:
-                msg = (
-                    "Payload looks like an xml string, but does not contain 'BTS Client'. "
-                    "Make sure this is a valid Neware xml file."
-                )
-                raise ValueError(msg)
-            xml_string = payload
-        else:
-            xml_path = Path(payload)
-            if not xml_path.exists():
+        if isinstance(payload, dict):  # assume unicycler dict
+            xml_string = unicycler.from_dict(payload, sample, capacity_Ah * 1000).to_neware_xml()
+        elif isinstance(payload, str):  # it is a file path
+            if payload.startswith("<?xml"):  # it is already an xml string
+                xml_string = payload
+            else:  # it is probably a file path
+                payload = Path(payload)
+        elif isinstance(payload, Path):  # it is a file path
+            if not payload.exists():
                 raise FileNotFoundError
-            if xml_path.suffix != ".xml":
-                msg = "Payload must be an xml file"
-                raise ValueError(msg)
-            with xml_path.open(encoding="utf-8") as f:
-                xml_string = f.read()
-        # Convert capacity in Ah to capacity in mA s
-        capacity_mA_s = round(capacity_Ah * 3600 * 1000)
+            if payload.suffix == ".xml":
+                with payload.open(encoding="utf-8") as f:
+                    xml_string = f.read()
+            elif payload.suffix == ".json":
+                with payload.open(encoding="utf-8") as f:
+                    xml_string = unicycler.from_dict(json.load(f), sample, capacity_Ah * 1000).to_neware_xml()
+            else:
+                msg = "Payload must be a path to an xml or json file or xml string or dict."
+                raise TypeError(msg)
 
-        # Open the file and change $NAME and $CAPACITY to appropriate values
+        # Check the xml string is valid
+        if not xml_string.startswith("<?xml"):
+            msg = "Payload does not look like xml, does not start with '<?xml'. "
+            raise ValueError(msg)
+        if 'config type="Step File"' not in xml_string or 'client_version="BTS Client' not in xml_string:
+            msg = "Payload looks like xml, but not a Neware step file."
+            raise ValueError(msg)
+
+        # Convert capacity in Ah to capacity in mA s
+        capacity_mA_s = round(capacity_Ah * 1000 * 3600)
+
+        # If they still exist, change $NAME and $CAPACITY to appropriate values
         xml_string = xml_string.replace("$NAME", sample)
         xml_string = xml_string.replace("$CAPACITY", str(capacity_mA_s))
 

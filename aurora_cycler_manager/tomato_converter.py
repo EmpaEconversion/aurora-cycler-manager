@@ -23,11 +23,12 @@ import h5py
 import pandas as pd
 import pytz
 
-from aurora_cycler_manager.config import CONFIG
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_job_data, get_sample_data
 from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.version import __url__, __version__
 
+CONFIG = get_config()
 tz = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
 
 
@@ -153,7 +154,7 @@ def convert_tomato_json(
                     "cycle_number": "int32",
                     "loop_number": "int32",
                     "index": "int16",
-                }
+                },
             )
             data.to_hdf(
                 hdf5_filepath,

@@ -7,29 +7,35 @@
 
 Cycler management, data pipeline, and data visualisation for Empa's robotic battery lab.
 
-- Track samples, experiments and results with a database.
-- Sample data is imported from the Aurora battery assembly robot.
-- Automatically harvest and analyse cycling data.
+- Tracks samples, experiments and results.
+- Control Neware and Biologic cyclers on multiple machines from one place.
+- Automatically collect and analyse cycling data.
 - Results in consistent, open format including metadata with provenance tracking and sample information.
-- Reads data from `tomato` servers, Biologic's EC-lab, and Neware's BTS software running on different machines.
-- Control experiments on `tomato` servers with a graphical interface.
-- Convenient, in-depth data exploration using `Dash`-based webapp.
+- Convenient cycler control and in-depth data exploration using `Dash`-based webapp.
 
 ### Jobs
 
-The Aurora cycler manager can be used to do all `tomato` functions (load, submit, eject, ready, cancel, snapshot) from one place to multiple `tomato` servers. Jobs can be submitted using C-rates, and can automatically calculate the current required based on measured electrode masses from the robot.
+Aurora cycler manager can be used to control and submit experiments to Biologic and Neware cyclers. Biologic cyclers are controlled through `tomato`, and Neware through a Python API.
+
+Jobs can be either be submitted with a cycler-specific file (e.g. xml protocols for Neware).
+
+Alternatively, a `unicycler` universal .json protocol can be used, which is converted to the appropriate format on submission. `unicycler` protocols can currently be converted to Neware .xml, `tomato` .json, and `PyBaMM` experiments. It is particularly useful for generating Neware .xml which can be difficult to define programmatically.
+
+Experiments can use C-rates and the program will automatically calculate the current required based on the sample information in the database.
 
 ### Data harvesting
 
-Functions are available to snapshot and download data from `tomato` servers. Harvesters are available to download new data from Biologic's EC-lab, converting from the closed .mpr filetype using `yadg`, and from Neware's BTS .xlsx reports or closed .ndax files using `NewareNDA`.
+Data is automatically gathered from cyclers. Harvesters are also available to download data from Biologic's EC-Lab.
+
+The program converts all incoming filetypes to one open standard - accepts Biologic .mpr, `tomato` .json, Neware .ndax, and Neware .xlsx. Raw time-series data is converted to a hdf5 file including provenance tracked metadata.
 
 ### Analysis
 
-Full cycling data (voltage and current vs time) is converted to fast, efficient .h5 files with provenance tracked metadata. This data is analysed to extract per-cycle summary data such as charge and discharge capacities, stored alongside metadata in a .json file.
+The time-series hdf5 data is analysed to extract per-cycle summary data such as charge and discharge capacities, stored alongside metadata in a .json file.
 
 ### Visualisation
 
-A web-app based on `Plotly Dash` allows rapid, interactive viewing of data, as well as the ability to control experiments on tomato cyclers through the graphical interface.
+A web-app based on `Plotly Dash` allows rapid, interactive viewing of time-series and per-cycle data, as well as the ability to control experiments on tomato cyclers through the graphical interface.
 
 ## Installation
 
@@ -52,11 +58,11 @@ To _interact with servers on an existing set up_:
 - In config.json fill in 'SSH private key path' and 'Snapshots folder path'
 - Snapshots folder path stores the raw data downloaded from cyclers which is processed. This data can be deleted any time.
 - To connect and control `tomato` servers, `tomato v0.2.3` must be configured on the remote PC
-- To harvest from EC-lab or Neware cyclers, set data to save/backup to some location and specify this location in the shared configuration file
+- To harvest from EC-Lab or Neware cyclers, set data to save/backup to some location and specify this location in the shared configuration file
 
 To _create a new set up_: 
 - Use `aurora-setup` to create a configuration and database - it is currently designed with network storage in mind, so other users can access data.
-- Fill in the configuration file with details about e.g. tomato, Neware and EC-lab servers. Examples are left in the default config file.
+- Fill in the configuration file with details about e.g. tomato, Neware and EC-Lab servers. Examples are left in the default config file.
 
 ## Updating
 
@@ -64,7 +70,7 @@ From versions `0.5.x` you do not have to re-do any of the setup steps, just upgr
 ```
 pip install git+https://github.com/EmpaEconversion/aurora-cycler-manager.git --upgrade
 ```
-If upgrading from ealier versions, first `pip uninstall aurora-cycler-manager` then follow the installation steps.
+If upgrading from earlier versions, first `pip uninstall aurora-cycler-manager` then follow the installation steps.
 
 ## Usage
 
@@ -73,11 +79,11 @@ A web app allows users to view analysed data and see the status of samples, jobs
 aurora-app
 ```
 
-To upload sample information to the database, place output .csv files from the Aurora robot into the samples folder defined in the configuration.
+To upload sample information to the database, place output .json files from the Aurora robot into the samples folder defined in the configuration.
 
-Hand made cells can also be added, a .csv must be created with the headers defined in the shared configuration.
+Hand-made cells can also be added, a .json must be created with the keys defined in the shared configuration.
 
-Loading samples, submitting jobs etc. can be performed on `tomato` directly, or using the `aurora-app` GUI, or by writing a Python script to use the functions in server_manager.py.
+Loading samples, submitting jobs etc. can be performed on `tomato` or Neware directly, or using the `aurora-app` GUI, or by writing a Python script to use the functions in server_manager.py.
 
 With SSH access, automatic data harvesting and analysis is run using:
 ```
@@ -90,4 +96,4 @@ aurora-daemon
 
 ## Acknowledgements
 
-This software was developed at the Materials for Energy Conversion Lab at the Swiss Federal Laboratories for Materials Science and Technology (Empa), and supported through the EU's Horizon programme under the IntelLiGent project (101069765) and the Swiss State Secretariat for Education, Research and Innovation (SERI) (22.00142). 🇪🇺🇨🇭
+This software was developed at the Materials for Energy Conversion Lab at the Swiss Federal Laboratories for Materials Science and Technology (Empa), and supported through the EU's Horizon program under the IntelLiGent project (101069765) and the Swiss State Secretariat for Education, Research and Innovation (SERI) (22.00142). 🇪🇺🇨🇭

@@ -35,9 +35,11 @@ import paramiko
 import pytz
 import yadg
 
-from aurora_cycler_manager.config import CONFIG
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.version import __url__, __version__
+
+CONFIG = get_config()
 
 
 def get_snapshot_folder() -> Path:
@@ -171,7 +173,7 @@ def get_all_mprs(force_copy: bool = False) -> list[str]:
             server["username"],
             server["shell_type"],
             server["EC-lab folder location"],
-            paramiko.RSAKey.from_private_key_file(CONFIG["SSH private key path"]),
+            paramiko.RSAKey.from_private_key_file(str(CONFIG["SSH private key path"])),
             snapshot_folder,
             force_copy,
         )

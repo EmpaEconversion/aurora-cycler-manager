@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import gzip
 import json
-import re
 import sqlite3
 import traceback
 import warnings
@@ -28,16 +27,16 @@ import h5py
 import numpy as np
 import pandas as pd
 import pytz
-import yaml
 from tsdownsample import MinMaxLTTBDownsampler
 
-from aurora_cycler_manager.config import CONFIG
-from aurora_cycler_manager.database_funcs import get_sample_data
+from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.database_funcs import get_batch_details, get_sample_data
 from aurora_cycler_manager.utils import c_to_float, run_from_sample
 from aurora_cycler_manager.version import __url__, __version__
 
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="All-NaN axis encountered")
 
+CONFIG = get_config()
 # Metadata that gets copied in the json data file for more convenient access
 SAMPLE_METADATA_TO_DATA = [
     "N:P ratio",
@@ -397,8 +396,10 @@ def analyse_cycles(
         "Charge capacity (mAh)": charge_capacity_mAh,
         "Discharge capacity (mAh)": discharge_capacity_mAh,
         "Efficiency (%)": [100 * d / c for d, c in zip(discharge_capacity_mAh, charge_capacity_mAh)],
-        "Specific charge capacity (mAh/g)": [c / (mass_mg * 1e-3) for c in charge_capacity_mAh],
-        "Specific discharge capacity (mAh/g)": [d / (mass_mg * 1e-3) for d in discharge_capacity_mAh],
+        "Specific charge capacity (mAh/g)": [c / (mass_mg * 1e-3) for c in charge_capacity_mAh] if mass_mg else None,
+        "Specific discharge capacity (mAh/g)": [d / (mass_mg * 1e-3) for d in discharge_capacity_mAh]
+        if mass_mg
+        else None,
         "Normalised discharge capacity (%)": [
             100 * d / discharge_capacity_mAh[initial_cycle - 1] for d in discharge_capacity_mAh
         ]
@@ -783,66 +784,6 @@ def analyse_all_samples(
                     print(f"Failed to analyse {sample.name} with error {e}\n{tb}")
 
 
-def parse_sample_plotting_file(
-    file_path: Path,
-) -> dict:
-    """Read the graph config file and returns a dictionary of the batches to plot.
-
-    Args: file_path (str): path to the yaml file containing the plotting configuration
-
-    Returns: dict: dictionary of the batches to plot
-        Dictionary contains the plot name as the key and a dictionary of the batch details as the
-        value. Batch dict contains the samples to plot and any other plotting options.
-
-    TODO: Put the graph config location in the config file.
-
-    """
-    data_folder = Path(CONFIG["Processed snapshots folder path"])
-
-    with file_path.open(encoding="utf-8") as file:
-        batches = yaml.safe_load(file)
-
-    for plot_name, batch in batches.items():
-        samples = batch["samples"]
-        transformed_samples = []
-        for sample in samples:
-            split_name = sample.split(" ", 1)
-            if len(split_name) == 1:  # the batch is a single sample
-                sample_id = sample
-                run_id = run_from_sample(sample_id)
-                transformed_samples.append(sample_id)
-            else:
-                run_id, sample_range = split_name
-                if sample_range.strip().startswith("[") and sample_range.strip().endswith("]"):
-                    sample_numbers = json.loads(sample_range)
-                    transformed_samples.extend([f"{run_id}_{i:02d}" for i in sample_numbers])
-                elif sample_range == "all":
-                    # Check the folders
-                    run_path = data_folder / run_id
-                    if run_path.exists():
-                        transformed_samples.extend([f.name for f in run_path.iterdir() if f.is_dir()])
-                    else:
-                        print(f"Folder {run_path!s} does not exist")
-                else:
-                    numbers = re.findall(r"\d+", sample_range)
-                    start, end = map(int, numbers) if len(numbers) == 2 else (int(numbers[0]), int(numbers[0]))
-                    transformed_samples.extend([f"{run_id}_{i:02d}" for i in range(start, end + 1)])
-
-        # Check if individual sample folders exist
-        for sample in transformed_samples:
-            run_id = run_from_sample(sample)
-            sample_folder = Path(data_folder) / run_id / sample
-            if not sample_folder.exists():
-                print(f"{sample} has no data folder, removing from list")
-                # remove this element from the list
-                transformed_samples.remove(sample)
-
-        # overwrite the samples with the transformed samples
-        batches[plot_name]["samples"] = transformed_samples
-
-    return batches
-
-
 def analyse_batch(plot_name: str, batch: dict) -> None:
     """Combine data for a batch of samples."""
     save_location = Path(CONFIG["Batches folder path"]) / plot_name
@@ -855,6 +796,9 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
         # get the anaylsed data
         run_id = run_from_sample(sample)
         sample_folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample
+        if not sample_folder.exists():
+            print(f"Folder {sample_folder} does not exist")
+            continue
         try:
             analysed_file = next(
                 f for f in sample_folder.iterdir() if (f.name.startswith("cycles.") and f.name.endswith(".json"))
@@ -919,7 +863,7 @@ def analyse_all_batches() -> None:
     save the capacity and efficiency vs cycle for each batch of samples.
 
     """
-    batches = parse_sample_plotting_file(Path(CONFIG["Graph config path"]))
+    batches = get_batch_details()
     for plot_name, batch in batches.items():
         try:
             analyse_batch(plot_name, batch)

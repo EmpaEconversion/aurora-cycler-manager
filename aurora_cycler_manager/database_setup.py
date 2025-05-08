@@ -10,9 +10,12 @@ different naming conventions in output files.
 """
 
 import json
+import os
 import sqlite3
 import sys
 from pathlib import Path
+
+from aurora_cycler_manager.config import get_config
 
 
 def default_config(base_dir: Path) -> dict:
@@ -22,8 +25,6 @@ def default_config(base_dir: Path) -> dict:
         "Database backup folder path": str(base_dir / "database" / "backup"),
         "Samples folder path": str(base_dir / "samples"),
         "Processed snapshots folder path": str(base_dir / "snapshots"),
-        "Batches folder path": str(base_dir / "batches"),
-        "Graphs folder path": str(base_dir / "snapshots"),
         "Servers": [
             {
                 "label": "example-server",
@@ -62,9 +63,8 @@ def default_config(base_dir: Path) -> dict:
                 },
             ],
         },
-        "OpenBIS PAT": "Path/to/OpenBIS/personal/access/token",
         "User mapping": {
-            "short_name": "full_name used in OpenBIS",
+            "short_name": "full_name",
         },
         "Sample database": [
             {"Name": "Sample ID", "Alternative names": ["sampleid"], "Type": "VARCHAR(255) PRIMARY KEY"},
@@ -168,17 +168,6 @@ def default_config(base_dir: Path) -> dict:
             {"Name": "Barcode", "Type": "VARCHAR(255)"},
             {"Name": "Subbatch number", "Alternative names": ["Batch Number", "Subbatch"], "Type": "INT"},
             {"Name": "Assembly history", "Type": "TEXT"},
-            {"Name": "Timestamp step 1", "Type": "DATETIME"},
-            {"Name": "Timestamp step 2", "Type": "DATETIME"},
-            {"Name": "Timestamp step 3", "Type": "DATETIME"},
-            {"Name": "Timestamp step 4", "Type": "DATETIME"},
-            {"Name": "Timestamp step 5", "Type": "DATETIME"},
-            {"Name": "Timestamp step 6", "Type": "DATETIME"},
-            {"Name": "Timestamp step 7", "Type": "DATETIME"},
-            {"Name": "Timestamp step 8", "Type": "DATETIME"},
-            {"Name": "Timestamp step 9", "Type": "DATETIME"},
-            {"Name": "Timestamp step 10", "Type": "DATETIME"},
-            {"Name": "Timestamp step 11", "Type": "DATETIME"},
         ],
     }
 
@@ -186,9 +175,8 @@ def default_config(base_dir: Path) -> dict:
 def create_database() -> None:
     """Create/update a database file."""
     # Load the configuration
-    from aurora_cycler_manager.config import CONFIG
 
-    config = CONFIG
+    config = get_config()
     database_path = Path(config["Database path"])
 
     # Check if database file already exists
@@ -329,16 +317,21 @@ def create_database() -> None:
 def main() -> None:
     """Create the shared config and database files."""
     root_dir = Path(__file__).resolve().parent
-    config_path = root_dir / "config.json"
+
+    # Check if the environment is set for pytest
+    if os.getenv("PYTEST_RUNNING") == "1":
+        root_dir = root_dir.parent / "tests" / "test_data"
+        config_path = root_dir / "test_config.json"
+    else:
+        config_path = root_dir / "config.json"
 
     try:
-        from aurora_cycler_manager.config import CONFIG
-
-        if CONFIG.get("Shared config path") and CONFIG.get("Database path"):
+        config = get_config()
+        if config.get("Shared config path") and config.get("Database path"):
             print("Set up already exists:")
             print(f"User config file: {config_path}")
-            print(f"Shared config file: {CONFIG['Shared config path']}")
-            print(f"Database: {CONFIG['Database path']}")
+            print(f"Shared config file: {config['Shared config path']}")
+            print(f"Database: {config['Database path']}")
             choice = input("Update existing database entries? (yes/no): ")
             if choice.lower() in ["yes", "y"]:
                 create_database()
@@ -377,7 +370,7 @@ def main() -> None:
         with (config_path).open("w") as f:
             json.dump(config, f, indent=4)
         # If this runs successfully, the user can now run the app
-        from aurora_cycler_manager.config import CONFIG
+        get_config()
 
         print("Successfully connected to existing configuration. Run the app with 'aurora-app'")
     elif choice.lower() in ["no", "n"]:
@@ -401,7 +394,6 @@ def main() -> None:
         (base_dir / "database").mkdir(exist_ok=True)
         (base_dir / "samples").mkdir(exist_ok=True)
         (base_dir / "snapshots").mkdir(exist_ok=True)
-        (base_dir / "batches").mkdir(exist_ok=True)
         (base_dir / "payloads").mkdir(exist_ok=True)
         print(f"Created folder structure in {base_dir}")
 
@@ -415,14 +407,18 @@ def main() -> None:
             json.dump(default_config(base_dir), f, indent=4)
         # Read the user config file and update with the shared config file
         try:
-            from aurora_cycler_manager.config import CONFIG
+            get_config()
         except (FileNotFoundError, ValueError):
             # If it didn't exist before, get_config will have created a blank file
-            with (root_dir / "config.json").open("r") as f:
-                CONFIG = json.load(f)
-        CONFIG["Shared config path"] = str(config_path)
-        with (root_dir / "config.json").open("w") as f:
-            json.dump(CONFIG, f, indent=4)
+            with (config_path).open("r") as f:
+                config = json.load(f)
+
+        # Change all the Path objects to strings to dump to json
+        for k, v in config.items():
+            if isinstance(v, Path):
+                config[k] = str(v)
+        with (config_path).open("w") as f:
+            json.dump(config, f, indent=4)
         print(f"Created shared config file at {config_path}")
         print(f"Updated user config at {root_dir / 'config.json'} to point to shared config file")
 

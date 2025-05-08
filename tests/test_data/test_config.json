@@ -1,0 +1,5 @@
+{
+    "Shared config path": "shared_config.json",
+    "SSH private key path": "fake/private/key",
+    "Snapshots folder path": "local_snapshots"
+}

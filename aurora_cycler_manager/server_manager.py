@@ -32,10 +32,12 @@ import pandas as pd
 import paramiko
 
 from aurora_cycler_manager.analysis import analyse_sample
-from aurora_cycler_manager.config import CONFIG
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.cycler_servers import CyclerServer, NewareServer, TomatoServer
 from aurora_cycler_manager.tomato_converter import convert_tomato_json
 from aurora_cycler_manager.utils import run_from_sample
+
+CONFIG = get_config()
 
 
 class ServerManager:
@@ -80,9 +82,9 @@ class ServerManager:
             raise ValueError(msg)
         print("Server manager initialised, consider updating database with update_db()")
 
-    def get_servers(self) -> list[CyclerServer]:
+    def get_servers(self) -> dict[str, CyclerServer]:
         """Create the cycler server objects from the config file."""
-        servers: list[CyclerServer] = []
+        servers: dict[str, CyclerServer] = {}
         pkey_path = self.config.get("SSH private key path")
         if not pkey_path:
             msg = "'SSH private key path' not found in config file. Cannot connect to servers."
@@ -90,23 +92,13 @@ class ServerManager:
         for server_config in self.config["Servers"]:
             if server_config["server_type"] == "tomato":
                 try:
-                    servers.append(
-                        TomatoServer(
-                            server_config,
-                            pkey_path,
-                        ),
-                    )
+                    servers[server_config["label"]] = TomatoServer(server_config, pkey_path)
                 except (OSError, ValueError, TimeoutError, paramiko.SSHException) as exc:
                     print(f"CRITICAL: Server {server_config['label']} could not be created, skipping")
                     print(f"Error: {exc}")
             elif server_config["server_type"] == "neware":
                 try:
-                    servers.append(
-                        NewareServer(
-                            server_config,
-                            pkey_path,
-                        ),
-                    )
+                    servers[server_config["label"]] = NewareServer(server_config, pkey_path)
                 except (OSError, ValueError, TimeoutError, paramiko.SSHException) as exc:
                     print(f"CRITICAL: Server {server_config['label']} could not be created, skipping")
                     print(f"Error: {exc}")
@@ -116,10 +108,9 @@ class ServerManager:
 
     def update_jobs(self) -> None:
         """Update the jobs table in the database with the current job status."""
-        for server in self.servers:
+        for label, server in self.servers.items():
             jobs = server.get_jobs()
             dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            label = server.label
             hostname = server.hostname
             if jobs:
                 with sqlite3.connect(self.config["Database path"]) as conn:
@@ -166,10 +157,9 @@ class ServerManager:
 
     def update_pipelines(self) -> None:
         """Update the pipelines table in the database with the current status."""
-        for server in self.servers:
+        for label, server in self.servers.items():
             status = server.get_pipelines()
             dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            label = server.label
             hostname = server.hostname
             server_type = server.server_type
             if status:
@@ -265,13 +255,13 @@ class ServerManager:
                 "E.g. if you are searching for a sample ID, the ID might be wrong."
             )
             raise ValueError(msg)
-        server = next((server for server in self.servers if server.label == label), None)
+        server = self.servers.get(label, None)
         if not server:
             msg = (
                 f"Server with label {label} not found. "
                 "Either there is a mistake in the label name or you do not have access to the server."
             )
-            raise ValueError(msg)
+            raise KeyError(msg)
         return server
 
     @staticmethod
@@ -683,38 +673,35 @@ class ServerManager:
             else:
                 msg = f"Server type {server.server_type} not supported for snapshotting."
                 raise NotImplementedError(msg)
-            print(f"Snapshotting sample {sample_id} job {jobid}")
             try:
+                print(f"Snapshotting sample {sample_id} job {jobid}")
                 new_snapshot_status = server.snapshot(jobid, jobid_on_server, local_save_location, get_raw)
-                dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                # Update the snapshot status in the database
-                self.execute_sql(
-                    "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
-                    (sample_id,),
-                )
-                self.execute_sql(
-                    "UPDATE results SET `Last snapshot` = ? WHERE `Sample ID` = ?",
-                    (dt, sample_id),
-                )
-                self.execute_sql(
-                    "UPDATE jobs SET `Snapshot status` = ?, `Last snapshot` = ? WHERE `Job ID` = ?",
-                    (new_snapshot_status, dt, jobid),
-                )
             except FileNotFoundError as e:
-                warnings.warn(
+                msg = (
                     f"Error snapshotting {jobid}: {e}\n"
                     "Likely the job was cancelled before starting. "
-                    "Setting `Snapshot Status` to 'ce' in the database.",
-                    RuntimeWarning,
-                    stacklevel=2,
+                    "Setting `Snapshot Status` to 'ce' in the database."
                 )
                 self.execute_sql(
                     "UPDATE jobs SET `Snapshot status` = 'ce' WHERE `Job ID` = ?",
                     (jobid,),
                 )
-            except ValueError as e:
-                warnings.warn(f"Error snapshotting {jobid}: {e}", RuntimeWarning, stacklevel=2)
+                raise FileNotFoundError(msg) from e
 
+            # Update the snapshot status in the database
+            dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.execute_sql(
+                "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
+                (sample_id,),
+            )
+            self.execute_sql(
+                "UPDATE results SET `Last snapshot` = ? WHERE `Sample ID` = ?",
+                (dt, sample_id),
+            )
+            self.execute_sql(
+                "UPDATE jobs SET `Snapshot status` = ?, `Last snapshot` = ? WHERE `Job ID` = ?",
+                (new_snapshot_status, dt, jobid),
+            )
             # Process the file and save to processed snapshots folder
             convert_tomato_json(
                 f"{local_save_location}/snapshot.{jobid}.json",
@@ -743,6 +730,7 @@ class ServerManager:
                 Default is 'new_data'.
 
         """
+        # Find the jobs that need snapshotting
         if mode not in ["always", "new_data", "if_not_exists"]:
             msg = f"Invalid mode: {mode}. Must be one of 'always', 'new_data', 'if_not_exists'."
             raise ValueError(msg)
@@ -760,17 +748,32 @@ class ServerManager:
         print(f"Snapshotting {total_jobs} jobs:")
         print([jobid for (jobid,) in result])
         t0 = time()
+        # Snapshot each job, ignore errors and continue
+        # Sleeps are added after each to not overload the server
+        # If snapshotting non-stop for hours, you can stop data transfer in the machine
+        # This could result in memory filling up in the cycler and data being lost
         for i, (jobid,) in enumerate(result):
             try:
                 self.snapshot(jobid, mode=mode)
-            except Exception as e:
+            except (KeyError, NotImplementedError, FileNotFoundError) as e:
+                print(f"Skipping job {jobid} with error: {type(e).__name__} - {e}")
+                if isinstance(e, FileNotFoundError):  # Something ran on server, so sleep
+                    sleep(10)
+                continue
+            except Exception as e:  # noqa: BLE001
                 tb = traceback.format_exc()
                 error_message = str(e) if str(e) else "An error occurred but no message was provided."
-                warnings.warn(f"Error snapshotting {jobid}: {error_message}\n{tb}", RuntimeWarning, stacklevel=2)
+                warnings.warn(
+                    f"Unexpected error snapshotting {jobid}: {error_message}\n{tb}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                sleep(10)  # to not overload the server
+                continue
             percent_done = (i + 1) / total_jobs * 100
             time_elapsed = time() - t0
             time_remaining = time_elapsed / (i + 1) * (total_jobs - i - 1)
-            sleep(20)  # to not overload the server
+            sleep(10)  # to not overload the server
             print(f"{percent_done:.2f}% done, {int(time_remaining / 60)} minutes remaining")
 
     def get_last_data(self, samp_or_jobid: str) -> dict:
@@ -820,9 +823,9 @@ class ServerManager:
                 (json.dumps("Unknown"), "Unknown", jobid),
             )
             return
-        except NotImplementedError:
+        except NotImplementedError as e:
             msg = f"Server type {server.server_type} not supported for getting job data."
-            raise NotImplementedError(msg)
+            raise NotImplementedError(msg) from e
         payload = jobdata["payload"]
         sampleid = jobdata["payload"]["sample"]["name"]
         self.execute_sql(
