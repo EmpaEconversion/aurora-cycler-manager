@@ -16,7 +16,7 @@ import plotly.graph_objs as go
 from dash import Dash, Input, Output, State, dcc, html, no_update
 from dash import callback_context as ctx
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
-from plotly.colors import sample_colorscale, hex_to_rgb, label_rgb
+from plotly.colors import hex_to_rgb, label_rgb, sample_colorscale
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.utils import run_from_sample
@@ -335,7 +335,7 @@ batches_layout = html.Div(
 # ----------------------------- USEFUL FUNCTIONS ----------------------------- #
 
 
-def add_legend_colorbar(fig_dict: dict, sdata: dict, plot_style: str, plot_err: str) -> go.Figure:
+def add_legend_colorbar(fig_dict: dict, sdata: dict, plot_style: str) -> go.Figure:
     """Add legend and/or colorbar to figure based on color/style data dict."""
     # Convert figure dict to graph object
     fig = go.Figure(fig_dict)
@@ -381,7 +381,7 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict, plot_style: str, plot_err: 
                     legendgrouptitle={"text": title},
                     name=label,
                     showlegend=True,
-                )
+                ),
             )
 
     # If there markers are styled, add a legend by adding fake traces
@@ -411,7 +411,7 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict, plot_style: str, plot_err: 
                     legendgrouptitle={"text": title},
                     name=label,
                     showlegend=True,
-                )
+                ),
             )
 
     # Adjust the layout to prevent overlap
@@ -482,7 +482,12 @@ def register_batches_callbacks(app: Dash) -> None:
         prevent_initial_call=True,
     )
     def load_selected_samples(
-        n_clicks: int, samples: list, batches: list, data: dict, batch_defs: dict[str, dict], y_val: str
+        n_clicks: int,
+        samples: list,
+        batches: list,
+        data: dict,
+        batch_defs: dict[str, dict],
+        y_val: str,
     ):
         """Load the selected samples into the data store."""
         if not ctx.triggered:
@@ -540,7 +545,11 @@ def register_batches_callbacks(app: Dash) -> None:
         Input("batch-cycle-style", "value"),
     )
     def update_color_style_store(
-        data: dict, color: str, colormap: list[str], discrete_colormap: list[str], style: str
+        data: dict,
+        color: str,
+        colormap: list[str],
+        discrete_colormap: list[str],
+        style: str,
     ) -> dict:
         """Update the color and style data store based on the selected color and style."""
         # get the color for each trace
@@ -668,7 +677,6 @@ def register_batches_callbacks(app: Dash) -> None:
 
         fig["layout"]["yaxis"]["title"] = yvar
         fig["layout"]["title"] = f"{yvar} vs cycle"
-        plot_averages = True
         always_show_legend = False
         show_legend = not sdata["color_mode"] or always_show_legend
         if plot_err == "none":  # Plot a trace for every sample
@@ -777,7 +785,7 @@ def register_batches_callbacks(app: Dash) -> None:
                         hoverinfo="none",
                     )
                     fig["data"].append(trace_fill)
-        return add_legend_colorbar(fig, sdata, plot_style, plot_err)
+        return add_legend_colorbar(fig, sdata, plot_style)
 
     # Update the correlation map
     @app.callback(
@@ -946,5 +954,5 @@ def register_batches_callbacks(app: Dash) -> None:
         gofig.add_trace(trace)
 
         if show_legend:
-            gofig = add_legend_colorbar(gofig, sdata, "markers", "none")
+            gofig = add_legend_colorbar(gofig, sdata, "markers")
         return gofig
