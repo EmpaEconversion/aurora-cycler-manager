@@ -10,6 +10,7 @@ different naming conventions in output files.
 """
 
 import json
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -316,7 +317,13 @@ def create_database() -> None:
 def main() -> None:
     """Create the shared config and database files."""
     root_dir = Path(__file__).resolve().parent
-    config_path = root_dir / "config.json"
+
+    # Check if the environment is set for pytest
+    if os.getenv("PYTEST_RUNNING") == "1":
+        root_dir = root_dir.parent / "tests" / "test_data"
+        config_path = root_dir / "test_config.json"
+    else:
+        config_path = root_dir / "config.json"
 
     try:
         config = get_config()
@@ -403,14 +410,14 @@ def main() -> None:
             get_config()
         except (FileNotFoundError, ValueError):
             # If it didn't exist before, get_config will have created a blank file
-            with (root_dir / "config.json").open("r") as f:
+            with (config_path).open("r") as f:
                 config = json.load(f)
 
         # Change all the Path objects to strings to dump to json
         for k, v in config.items():
             if isinstance(v, Path):
                 config[k] = str(v)
-        with (root_dir / "config.json").open("w") as f:
+        with (config_path).open("w") as f:
             json.dump(config, f, indent=4)
         print(f"Created shared config file at {config_path}")
         print(f"Updated user config at {root_dir / 'config.json'} to point to shared config file")
