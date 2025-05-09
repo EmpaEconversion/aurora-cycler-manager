@@ -259,6 +259,7 @@ def register_samples_callbacks(app: Dash) -> None:
         Input("samples-dropdown", "value"),
         Input("compressed-files", "value"),
         State("samples-data-store", "data"),
+        running=[(Output("loading-message-store", "data"), "Loading data...", "")],
     )
     def update_sample_data(samples: list, compressed: list, data: dict) -> tuple[dict, list, list]:
         """Load data for selected samples and put in data store."""
@@ -349,6 +350,7 @@ def register_samples_callbacks(app: Dash) -> None:
         Input("samples-time-x", "value"),
         Input("samples-time-units", "value"),
         Input("samples-time-y", "value"),
+        running=[(Output("loading-message-store", "data"), "Plotting time-series...", "")],
     )
     def update_time_graph(fig: dict, data: dict, xvar: str, xunits: str, yvar: str) -> dict:
         """When data or x/y variables change, update the time graph."""
@@ -362,7 +364,7 @@ def register_samples_callbacks(app: Dash) -> None:
                 fig["layout"]["title"] = "Select x and y variables"
             return fig
         fig["layout"]["title"] = f"{yvar} vs time"
-        fig = go.Figure(data=fig["data"], layout=fig["layout"])
+        go_fig = go.Figure(data=fig["data"], layout=fig["layout"])
         multiplier = {"Seconds": 1, "Minutes": 60, "Hours": 3600, "Days": 86400}[xunits]
         for sample, data_dict in data["data_sample_time"].items():
             uts = np.array(data_dict["uts"])
@@ -382,8 +384,8 @@ def register_samples_callbacks(app: Dash) -> None:
                 name=sample,
                 hovertemplate=f"{sample}<br>Time: %{{x}}<br>{yvar}: %{{y}}<extra></extra>",
             )
-            fig.add_trace(trace)
-        return fig
+            go_fig.add_trace(trace)
+        return go_fig
 
     # Update the cycles graph
     @app.callback(
@@ -391,6 +393,7 @@ def register_samples_callbacks(app: Dash) -> None:
         State("cycles-graph", "figure"),
         Input("samples-data-store", "data"),
         Input("samples-cycles-y", "value"),
+        running=[(Output("loading-message-store", "data"), "Plotting cycles...", "")],
     )
     def update_cycles_graph(fig: dict, data: dict, yvar: str) -> dict:
         """When data or y variable changes, update the cycles graph."""
@@ -435,6 +438,7 @@ def register_samples_callbacks(app: Dash) -> None:
         Input("samples-data-store", "data"),
         Input("samples-cycle-x", "value"),
         Input("samples-cycle-y", "value"),
+        running=[(Output("loading-message-store", "data"), "Plotting one-cycle...", "")],
     )
     def update_cycle_graph(fig: dict, cycle: int, data: dict, xvar: str, yvar: str) -> dict:
         """When data or x/y variables change, update the one cycle graph."""

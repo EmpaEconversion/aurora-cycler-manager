@@ -14,6 +14,7 @@ import dash_bootstrap_components as dbc
 import paramiko
 from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
 from dash import callback_context as ctx
+from dash.exceptions import PreventUpdate
 from dash_mantine_components import TextInput
 
 from aurora_cycler_manager.analysis import update_sample_metadata
@@ -48,6 +49,42 @@ try:
 except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
     print(e)
     print("You cannot access any servers. Running in view-only mode.")
+
+# ----------------------------- Layout - tables ----------------------------- #
+
+# Different tables for each tab
+default_table_options = {
+    "dashGridOptions": {
+        "enableCellTextSelection": False,
+        "ensureDomOrder": True,
+        "tooltipShowDelay": 1000,
+        "rowSelection": "multiple",
+    },
+    "defaultColDef": {"filter": True, "sortable": True, "floatingFilter": True},
+    "style": {"height": "calc(100vh - 240px)", "width": "100%", "minHeight": "300px", "display": "none"},
+}
+TABLES = [
+    "samples-table",
+    "pipelines-table",
+    "jobs-table",
+    "results-table",
+]
+samples_table = dag.AgGrid(
+    id="samples-table",
+    **default_table_options,
+)
+pipelines_table = dag.AgGrid(
+    id="pipelines-table",
+    **default_table_options,
+)
+jobs_table = dag.AgGrid(
+    id="jobs-table",
+    **default_table_options,
+)
+results_table = dag.AgGrid(
+    id="results-table",
+    **default_table_options,
+)
 
 # ----------------------------- Layout - buttons ----------------------------- #
 
@@ -651,7 +688,6 @@ label_modal = dbc.Modal(
     is_open=False,
 )
 
-
 # ------------------------------- Main layout -------------------------------- #
 
 
@@ -683,17 +719,11 @@ db_view_layout = html.Div(
                     id="table-container",
                     children=[
                         dcc.Clipboard(id="clipboard", style={"display": "none"}),
-                        dag.AgGrid(
-                            id="table",
-                            dashGridOptions={
-                                "enableCellTextSelection": False,
-                                "ensureDomOrder": True,
-                                "tooltipShowDelay": 1000,
-                                "rowSelection": "multiple",
-                            },
-                            defaultColDef={"filter": True, "sortable": True, "floatingFilter": True},
-                            style={"height": "calc(100vh - 240px)", "width": "100%", "minHeight": "300px"},
-                        ),
+                        dcc.Store(id="selected-rows-store", data={}),
+                        samples_table,
+                        pipelines_table,
+                        jobs_table,
+                        results_table,
                         button_layout,  # Buttons along bottom of table
                     ],
                 ),
@@ -722,24 +752,72 @@ def register_db_view_callbacks(app: Dash) -> None:
     """Register callbacks for the database view layout."""
     register_batch_edit_callbacks(app, database_access)
 
+    # Update data in tables when it changes
+    @app.callback(
+        Output("samples-table", "rowData"),
+        Output("samples-table", "columnDefs"),
+        Output("pipelines-table", "rowData"),
+        Output("pipelines-table", "columnDefs"),
+        Output("jobs-table", "rowData"),
+        Output("jobs-table", "columnDefs"),
+        Output("results-table", "rowData"),
+        Output("results-table", "columnDefs"),
+        Input("table-data-store", "data"),
+        running=[(Output("loading-message-store", "data"), "Updating tables...", "")],
+    )
+    def update_data(data: dict[str, dict]):
+        return (
+            data["data"].get("samples", no_update),
+            data["column_defs"].get("samples", no_update),
+            data["data"].get("pipelines", no_update),
+            data["column_defs"].get("pipelines", no_update),
+            data["data"].get("jobs", no_update),
+            data["column_defs"].get("jobs", no_update),
+            data["data"].get("results", no_update),
+            data["column_defs"].get("results", no_update),
+        )
+
     # Update the buttons displayed depending on the table selected
     @app.callback(
-        Output("table", "rowData"),
-        Output("table", "columnDefs"),
         [Output(element, "style") for element in CONTAINERS + BUTTONS],
+        [Output(element, "style") for element in TABLES],
         Input("table-select", "active_tab"),
-        Input("table-data-store", "data"),
     )
-    def update_table(table, data):
+    def update_table(table):
         settings = visibility_settings.get(table, {})
         show = {}
         hide = {"display": "none"}
         visibilities = [show if element in settings else hide for element in CONTAINERS + BUTTONS]
+        table_style = default_table_options["style"]
+        show_table = default_table_options["style"].copy()
+        show_table["display"] = "block"
+        table_visibilities = [show_table if element == f"{table}-table" else table_style for element in TABLES]
         return (
-            data["data"].get(table, no_update),
-            data["column_defs"].get(table, no_update),
             *visibilities,
+            *table_visibilities,
         )
+
+    # Update the selected rows in the table
+    @app.callback(
+        Output("selected-rows-store", "data"),
+        Output("table-info", "children"),
+        Input("samples-table", "selectedRows"),
+        Input("pipelines-table", "selectedRows"),
+        Input("jobs-table", "selectedRows"),
+        Input("results-table", "selectedRows"),
+        Input("table-select", "active_tab"),
+        prevent_initial_call=True,
+    )
+    def update_selected_rows(samples, pipelines, jobs, results, table):
+        returns = {
+            "samples": (samples, f"{len(samples) if samples else 0}"),
+            "pipelines": (pipelines, f"{len(pipelines) if pipelines else 0}"),
+            "jobs": (jobs, f"{len(jobs) if jobs else 0}"),
+            "results": (results, f"{len(results) if results else 0}"),
+        }
+        thing_to_return = returns.get(table, ([], "..."))
+        print(thing_to_return[1])
+        return returns.get(table, ([], "..."))
 
     # Refresh the local data from the database
     @app.callback(
@@ -750,6 +828,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("batches-store", "data"),
         Input("refresh-database", "n_clicks"),
         Input("db-update-interval", "n_intervals"),
+        running=[(Output("loading-message-store", "data"), "Reading database...", "")],
     )
     def refresh_database(n_clicks, n_intervals):
         db_data = get_database()
@@ -769,11 +848,12 @@ def register_db_view_callbacks(app: Dash) -> None:
     @app.callback(
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("update-database", "n_clicks"),
+        running=[(Output("loading-message-store", "data"), "Updating databse - querying servers...", "")],
         prevent_initial_call=True,
     )
     def update_database(n_clicks):
         if n_clicks is None:
-            return no_update
+            raise PreventUpdate
         print("Updating database")
         sm.update_db()
         return 1
@@ -781,7 +861,7 @@ def register_db_view_callbacks(app: Dash) -> None:
     # Enable or disable buttons (load, eject, etc.) depending on what is selected in the table
     @app.callback(
         [Output(b, "disabled") for b in BUTTONS],
-        Input("table", "selectedRows"),
+        Input("selected-rows-store", "data"),
         State("table-select", "active_tab"),
     )
     def enable_buttons(selected_rows, table):
@@ -827,27 +907,12 @@ def register_db_view_callbacks(app: Dash) -> None:
         # False = enabled (not my choice), so this returns True if button is NOT in enabled set
         return tuple(b not in enabled for b in BUTTONS)
 
-    @app.callback(
-        Output("table-info", "children"),
-        Input("table", "selectedRows"),
-        Input("table", "rowData"),
-        Input("table", "virtualRowData"),
-    )
-    def update_table_info(selected_rows, row_data, filtered_row_data):
-        if not row_data:
-            return "..."
-        total_rows = len(row_data)
-        filtered_rows_count = len(filtered_row_data) if (filtered_row_data is not None) else total_rows
-        selected_rows_count = len(selected_rows) if selected_rows else 0
-
-        return f"Selected: {selected_rows_count}/{filtered_rows_count}"
-
     # Copy button copies current selected rows to clipboard
     @app.callback(
         Output("clipboard", "content"),
         Output("clipboard", "n_clicks"),
         Input("copy-button", "n_clicks"),
-        State("table", "selectedRows"),
+        State("selected-rows-store", "data"),
         State("clipboard", "n_clicks"),
     )
     def copy_button(n, selected_rows, nclip):
@@ -856,7 +921,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             tsv_data = "\n".join(["\t".join(str(value) for value in row.values()) for row in selected_rows])
             nclip = 1 if nclip is None else nclip + 1
             return f"{tsv_header}\n{tsv_data}", nclip
-        return no_update, no_update
+        raise PreventUpdate
 
     # Eject button pop up
     @app.callback(
@@ -882,7 +947,8 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("eject-yes-close", "n_clicks"),
         State("table-data-store", "data"),
-        State("table", "selectedRows"),
+        State("selected-rows-store", "data"),
+        running=[(Output("loading-message-store", "data"), "Ejecting samples...", "")],
         prevent_initial_call=True,
     )
     def eject_sample(yes_clicks, data, selected_rows):
@@ -902,7 +968,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         Input("load-yes-close", "n_clicks"),
         Input("load-no-close", "n_clicks"),
         State("load-modal", "is_open"),
-        State("table", "selectedRows"),
+        State("selected-rows-store", "data"),
         State("samples-store", "data"),
     )
     def load_sample_button(load_clicks, yes_clicks, no_clicks, is_open, selected_rows, possible_samples):
@@ -977,8 +1043,9 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("loading-database", "children", allow_duplicate=True),
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("load-yes-close", "n_clicks"),
-        State("table", "selectedRows"),
+        State("selected-rows-store", "data"),
         State({"type": "load-dropdown", "index": ALL}, "value"),
+        running=[(Output("loading-message-store", "data"), "Loading samples...", "")],
         prevent_initial_call=True,
     )
     def load_sample(yes_clicks, selected_rows, selected_samples):
@@ -1016,7 +1083,8 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("loading-database", "children", allow_duplicate=True),
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("ready-yes-close", "n_clicks"),
-        State("table", "selectedRows"),
+        State("selected-rows-store", "data"),
+        running=[(Output("loading-message-store", "data"), "Readying pipelines...", "")],
         prevent_initial_call=True,
     )
     def ready_pipeline(yes_clicks, selected_rows):
@@ -1050,7 +1118,8 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("loading-database", "children", allow_duplicate=True),
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("unready-yes-close", "n_clicks"),
-        State("table", "selectedRows"),
+        State("selected-rows-store", "data"),
+        running=[(Output("loading-message-store", "data"), "Unreadying pipelines...", "")],
         prevent_initial_call=True,
     )
     def unready_pipeline(yes_clicks, selected_rows):
@@ -1085,7 +1154,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("payload", "data"),
         Input("submit-upload", "contents"),
         State("submit-upload", "filename"),
-        State("table", "selectedRows"),
+        State("selected-rows-store", "data"),
         prevent_initial_call=True,
     )
     def check_payload(contents, filename, selected_rows):
@@ -1154,10 +1223,11 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("loading-database", "children", allow_duplicate=True),
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("submit-yes-close", "n_clicks"),
-        State("table", "selectedRows"),
+        State("selected-rows-store", "data"),
         State("payload", "data"),
         State("submit-crate", "value"),
         State("submit-capacity", "value"),
+        running=[(Output("loading-message-store", "data"), "Submitting protocols...", "")],
         prevent_initial_call=True,
     )
     def submit_pipeline(yes_clicks, selected_rows, payload, crate_calc, capacity):
@@ -1179,7 +1249,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("table-select", "active_tab"),
         Output("create-batch-store", "data", allow_duplicate=True),
         Input("create-batch-button", "n_clicks"),
-        State("table", "selectedRows"),
+        State("selected-rows-store", "data"),
         prevent_initial_call=True,
     )
     def create_batch(n_clicks, selected_rows):
@@ -1210,7 +1280,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("loading-database", "children", allow_duplicate=True),
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("cancel-yes-close", "n_clicks"),
-        State("table", "selectedRows"),
+        State("selected-rows-store", "data"),
         prevent_initial_call=True,
     )
     def cancel_job(yes_clicks, selected_rows):
@@ -1228,12 +1298,12 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("batch-samples-dropdown", "value"),
         Output("batch-yes-close", "n_clicks"),
         Input("view-button", "n_clicks"),
-        State("table", "selectedRows"),
+        State("selected-rows-store", "data"),
         prevent_initial_call=True,
     )
     def view_data(n_clicks, selected_rows):
         if not n_clicks or not selected_rows:
-            return no_update, no_update
+            raise PreventUpdate
         sample_id = [s["Sample ID"] for s in selected_rows]
         if len(sample_id) > 1:
             return "tab-2", no_update, sample_id, 1
@@ -1263,12 +1333,13 @@ def register_db_view_callbacks(app: Dash) -> None:
     @app.callback(
         Output("loading-database", "children", allow_duplicate=True),
         Input("snapshot-yes-close", "n_clicks"),
-        State("table", "selectedRows"),
+        State("selected-rows-store", "data"),
+        running=[(Output("loading-message-store", "data"), "Snapshotting data...", "")],
         prevent_initial_call=True,
     )
     def snapshot_sample(yes_clicks, selected_rows):
         if not yes_clicks:
-            return no_update
+            raise PreventUpdate
         for row in selected_rows:
             if row.get("Job ID"):
                 print(f"Snapshotting {row['Job ID']}")
@@ -1276,7 +1347,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             else:
                 print(f"Snapshotting {row['Sample ID']}")
                 sm.snapshot(row["Sample ID"])
-        return no_update
+        raise PreventUpdate
 
     # Delete button pop up
     @app.callback(
@@ -1303,7 +1374,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("loading-database", "children", allow_duplicate=True),
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("delete-yes-close", "n_clicks"),
-        State("table", "selectedRows"),
+        State("selected-rows-store", "data"),
         prevent_initial_call=True,
     )
     def delete_sample(yes_clicks, selected_rows):
@@ -1334,7 +1405,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                 if "already exist" in str(e):
                     return no_update, True  # Open confirm dialog
             return 1, no_update  # Refresh the database
-        return no_update, no_update
+        raise PreventUpdate
 
     @app.callback(
         Output("refresh-database", "n_clicks", allow_duplicate=True),
@@ -1351,7 +1422,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             print(f"Adding samples {filename}")
             add_samples_from_object(samples, overwrite=True)
             return 1
-        return no_update
+        raise PreventUpdate
 
     # Label button pop up
     @app.callback(
@@ -1378,7 +1449,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("loading-database", "children", allow_duplicate=True),
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("label-yes-close", "n_clicks"),
-        State("table", "selectedRows"),
+        State("selected-rows-store", "data"),
         State("label-input", "value"),
         prevent_initial_call=True,
     )

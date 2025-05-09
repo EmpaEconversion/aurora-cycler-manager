@@ -16,7 +16,7 @@ import webbrowser
 
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
-from dash import Dash, _dash_renderer, dcc, html
+from dash import ClientsideFunction, Dash, Input, Output, _dash_renderer, dcc, html
 from waitress import serve
 
 from aurora_cycler_manager.visualiser.batches import batches_layout, register_batches_callbacks
@@ -29,7 +29,14 @@ _dash_renderer._set_react_version("18.2.0")  # noqa: SLF001
 
 # Spinner
 custom_spinner = html.Div(
-    style={"position": "relative", "width": "50px", "height": "50px"},
+    style={
+        "position": "absolute",
+        "top": "50%",
+        "left": "50%",
+        "transform": "translate(-50%, -50%)",  # Shift spinner up
+        "width": "100px",
+        "height": "100px",
+    },
     children=[
         html.Img(
             src="/assets/spinner-spin.svg",
@@ -50,9 +57,32 @@ custom_spinner = html.Div(
     ],
 )
 
+# Loading messages
+loading_message = html.Div(
+    "This is some kind of text",
+    id="loading-message",
+    style={
+        "position": "absolute",
+        "left": "50%",
+        "top": "50%",
+        "transform": "translate(-50%, 50px)",  # Shift text down
+        "fontSize": "20px",
+        "color": "#000000",
+        "textAlign": "center",
+        "textGlow": "0 0 20px blue",  # Add white glow
+        "opacity": 1,
+        "transition": "opacity 0.5s ease-in-out",
+    },
+)
+
 # Define app and layout
 external_stylesheets = [dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP, dmc.styles.NOTIFICATIONS, "/assets/style.css"]
 app = Dash(__name__, external_stylesheets=external_stylesheets)
+app.clientside_callback(
+    ClientsideFunction(namespace="clients", function_name="animateMessage"),
+    Output("loading-message", "children"),
+    Input("loading-message-store", "data"),
+)
 app.title = "Aurora Visualiser"
 app.layout = dmc.MantineProvider(
     html.Div(
@@ -98,6 +128,8 @@ app.layout = dmc.MantineProvider(
                 ],
             ),
             notifications_layout,
+            dcc.Store(id="loading-message-store"),
+            loading_message,
         ],
     ),
 )

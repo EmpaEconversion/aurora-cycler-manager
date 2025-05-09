@@ -13,8 +13,9 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objs as go
-from dash import Dash, Input, Output, State, dcc, html, no_update
+from dash import Dash, Input, Output, State, dcc, html
 from dash import callback_context as ctx
+from dash.exceptions import PreventUpdate
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 from plotly.colors import hex_to_rgb, label_rgb, sample_colorscale
 
@@ -479,6 +480,7 @@ def register_batches_callbacks(app: Dash) -> None:
         State("batches-data-store", "data"),
         State("batches-store", "data"),
         State("batch-cycle-y", "value"),
+        running=[(Output("loading-message-store", "data"), "Loading data...", "")],
         prevent_initial_call=True,
     )
     def load_selected_samples(
@@ -491,7 +493,7 @@ def register_batches_callbacks(app: Dash) -> None:
     ):
         """Load the selected samples into the data store."""
         if not ctx.triggered:
-            return no_update, no_update, no_update, no_update, no_update, no_update
+            raise PreventUpdate
 
         # Add the samples from batches to samples
         sample_set = set(samples)
@@ -543,6 +545,7 @@ def register_batches_callbacks(app: Dash) -> None:
         Input("batch-cycle-colormap", "value"),
         Input("batch-cycle-discrete-colormap", "value"),
         Input("batch-cycle-style", "value"),
+        running=[(Output("loading-message-store", "data"), "Analysing data...", "")],
     )
     def update_color_style_store(
         data: dict,
@@ -653,6 +656,7 @@ def register_batches_callbacks(app: Dash) -> None:
         Input("plot-error-bars", "value"),
         Input("trace-style-store", "data"),
         Input("batch-cycle-y", "value"),
+        running=[(Output("loading-message-store", "data"), "Plotting data...", "")],
     )
     def update_batch_cycle_graph(
         fig: dict,
@@ -794,6 +798,7 @@ def register_batches_callbacks(app: Dash) -> None:
         Output("batch-correlation-y", "options"),
         State("batch-correlation-map", "figure"),
         Input("batches-data-store", "data"),
+        running=[(Output("loading-message-store", "data"), "Plotting correlations...", "")],
     )
     def update_correlation_map(fig: dict, data: dict) -> tuple[dict, list[dict], list[dict]]:
         """Update correlation map when new data is loaded."""
@@ -855,7 +860,7 @@ def register_batches_callbacks(app: Dash) -> None:
     def update_correlation_vars(click_data: dict) -> tuple[str, str]:
         """Update the x and y variables based on the clicked data."""
         if not click_data:
-            return no_update, no_update
+            raise PreventUpdate
         point = click_data["points"][0]
         xvar = point["x"].replace("<br>", " ")
         yvar = point["y"].replace("<br>", " ")
