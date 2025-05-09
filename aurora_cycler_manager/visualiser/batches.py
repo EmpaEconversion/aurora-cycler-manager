@@ -224,7 +224,7 @@ batch_cycle_graph = dcc.Graph(
     config={
         "scrollZoom": True,
         "displaylogo": False,
-        "toImageButtonOptions": {"format": "svg"},
+        "toImageButtonOptions": {"format": "svg", "width": None, "height": None},
     },
     style={"height": "100%"},
 )
@@ -370,7 +370,7 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict, plot_style: str) -> go.Figu
                 label = "<br>".join(textwrap.wrap(uval, width=24))
             else:
                 label = str(uval)
-            line = {"width": 3} if plot_style == "lines" else {"width": 1.5}
+            line = {"width": 3.0} if plot_style == "lines" else {"width": 1.5}
             fig.add_trace(
                 go.Scatter(
                     x=[None],
@@ -398,7 +398,7 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict, plot_style: str) -> go.Figu
                 label = "<br>".join(textwrap.wrap(ustyle, width=24))
             else:
                 label = str(ustyle)
-            line = {"width": 3} if plot_style == "lines" else {"width": 1.5}
+            line = {"width": 3.0} if plot_style == "lines" else {"width": 1.5}
             if sdata["symbols"]:
                 line["dash"] = sdata["lines"][uind]
             fig.add_trace(
@@ -424,6 +424,11 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict, plot_style: str) -> go.Figu
             "xanchor": "right",
             "yanchor": "top",
             "bgcolor": "rgba(255, 255, 255, 0.5)",
+            "font": {
+                "family": "Open Sans, sans-serif",
+                "size": 14,
+                "color": "black",
+            },
         },
         coloraxis_colorbar={
             "x": 1,
