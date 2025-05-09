@@ -720,6 +720,7 @@ db_view_layout = html.Div(
                     children=[
                         dcc.Clipboard(id="clipboard", style={"display": "none"}),
                         dcc.Store(id="selected-rows-store", data={}),
+                        dcc.Store(id="len-store", data={}),
                         samples_table,
                         pipelines_table,
                         jobs_table,
@@ -762,6 +763,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("jobs-table", "columnDefs"),
         Output("results-table", "rowData"),
         Output("results-table", "columnDefs"),
+        Output("len-store", "data"),
         Input("table-data-store", "data"),
         running=[(Output("loading-message-store", "data"), "Updating tables...", "")],
     )
@@ -775,6 +777,12 @@ def register_db_view_callbacks(app: Dash) -> None:
             data["column_defs"].get("jobs", no_update),
             data["data"].get("results", no_update),
             data["column_defs"].get("results", no_update),
+            {
+                "samples": len(data["data"].get("samples", [])),
+                "pipelines": len(data["data"].get("pipelines", [])),
+                "jobs": len(data["data"].get("jobs", [])),
+                "results": len(data["data"].get("results", [])),
+            },
         )
 
     # Update the buttons displayed depending on the table selected
@@ -806,18 +814,17 @@ def register_db_view_callbacks(app: Dash) -> None:
         Input("jobs-table", "selectedRows"),
         Input("results-table", "selectedRows"),
         Input("table-select", "active_tab"),
+        Input("len-store", "data"),
         prevent_initial_call=True,
     )
-    def update_selected_rows(samples, pipelines, jobs, results, table):
-        returns = {
-            "samples": (samples, f"{len(samples) if samples else 0}"),
-            "pipelines": (pipelines, f"{len(pipelines) if pipelines else 0}"),
-            "jobs": (jobs, f"{len(jobs) if jobs else 0}"),
-            "results": (results, f"{len(results) if results else 0}"),
+    def update_selected_rows(samples, pipelines, jobs, results, table, lens):
+        message_dict = {
+            "samples": (samples, f"{len(samples) if samples else 0}/{lens['samples'] if lens else 0}"),
+            "pipelines": (pipelines, f"{len(pipelines) if pipelines else 0}/{lens['pipelines'] if lens else 0}"),
+            "jobs": (jobs, f"{len(jobs) if jobs else 0}/{lens['jobs'] if lens else 0}"),
+            "results": (results, f"{len(results) if results else 0}/{lens['results'] if lens else 0}"),
         }
-        thing_to_return = returns.get(table, ([], "..."))
-        print(thing_to_return[1])
-        return returns.get(table, ([], "..."))
+        return message_dict.get(table, ([], "..."))
 
     # Refresh the local data from the database
     @app.callback(
@@ -854,7 +861,6 @@ def register_db_view_callbacks(app: Dash) -> None:
     def update_database(n_clicks):
         if n_clicks is None:
             raise PreventUpdate
-        print("Updating database")
         sm.update_db()
         return 1
 
