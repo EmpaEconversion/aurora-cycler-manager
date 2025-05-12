@@ -335,6 +335,7 @@ def register_samples_callbacks(app: Dash) -> None:
         time_y_vars = {"V (V)"}
         for data_dict in data["data_sample_time"].values():
             time_y_vars.update(data_dict.keys())
+        time_y_vars.discard("Shrunk")
 
         cycles_y_vars = {"Specific discharge capacity (mAh/g)", "Normalised discharge capacity (%)", "Efficiency (%)"}
         for data_dict in data["data_sample_cycle"].values():
