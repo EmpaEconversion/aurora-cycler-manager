@@ -21,59 +21,16 @@ from waitress import serve
 
 from aurora_cycler_manager.visualiser.batches import batches_layout, register_batches_callbacks
 from aurora_cycler_manager.visualiser.db_view import db_view_layout, register_db_view_callbacks
-from aurora_cycler_manager.visualiser.notifications import notifications_layout, register_notifications_callbacks
+from aurora_cycler_manager.visualiser.notifications import (
+    custom_spinner,
+    loading_message,
+    notifications_layout,
+    register_notifications_callbacks,
+)
 from aurora_cycler_manager.visualiser.samples import register_samples_callbacks, samples_layout
 
 # Need to set this for Mantine notifications to work
 _dash_renderer._set_react_version("18.2.0")  # noqa: SLF001
-
-# Spinner
-custom_spinner = html.Div(
-    style={
-        "position": "absolute",
-        "top": "50%",
-        "left": "50%",
-        "transform": "translate(-50%, -50%)",  # Shift spinner up
-        "width": "100px",
-        "height": "100px",
-    },
-    children=[
-        html.Img(
-            src="/assets/spinner-spin.svg",
-            className="spinner-spin",
-            style={"width": "100px", "height": "100px"},
-        ),
-        html.Img(
-            src="/assets/spinner-stationary.svg",
-            style={
-                "position": "absolute",
-                "top": "0",
-                "left": "0",
-                "width": "100px",
-                "height": "100px",
-                "color": "white",
-            },
-        ),
-    ],
-)
-
-# Loading messages
-loading_message = html.Div(
-    "This is some kind of text",
-    id="loading-message",
-    style={
-        "position": "absolute",
-        "left": "50%",
-        "top": "50%",
-        "transform": "translate(-50%, 50px)",  # Shift text down
-        "fontSize": "20px",
-        "color": "#000000",
-        "textAlign": "center",
-        "textGlow": "0 0 20px blue",  # Add white glow
-        "opacity": 1,
-        "transition": "opacity 0.5s ease-in-out",
-    },
-)
 
 # Define app and layout
 external_stylesheets = [dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP, dmc.styles.NOTIFICATIONS, "/assets/style.css"]
