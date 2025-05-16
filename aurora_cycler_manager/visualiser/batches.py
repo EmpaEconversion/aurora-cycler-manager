@@ -677,13 +677,6 @@ def register_batches_callbacks(app: Dash) -> None:
             fig["layout"]["title"] = "No data..."
             return fig
 
-        # Add 1/Formation C if Formation C is in the data
-        [
-            d.update({"1/Formation C": 1 / d["Formation C"] if d["Formation C"] != 0 else 0})
-            for d in data.values()
-            if "Formation C" in d
-        ]
-
         fig["layout"]["yaxis"]["title"] = yvar
         fig["layout"]["title"] = f"{yvar} vs cycle"
         always_show_legend = False
@@ -816,9 +809,6 @@ def register_batches_callbacks(app: Dash) -> None:
         if not dfs:
             return fig, [], []
         df = pd.concat(dfs, ignore_index=True)
-
-        if "Formation C" in df.columns:
-            df["1/Formation C"] = 1 / df["Formation C"]
 
         # remove columns where all values are the same
         df = df.loc[:, df.nunique() > 1]
