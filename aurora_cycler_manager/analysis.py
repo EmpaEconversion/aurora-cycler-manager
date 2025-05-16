@@ -228,6 +228,8 @@ def extract_voltage_crates(job_data: dict) -> dict:
             except ValueError:
                 capacity = 0
             for method in job.get("Payload", {}).get("method", []):
+                if not isinstance(method, dict):
+                    continue
                 if method.get("technique", None) == "constant_current":
                     try:
                         new_current = abs(c_to_float(method.get("current", None)))
@@ -282,6 +284,8 @@ def extract_voltage_crates(job_data: dict) -> dict:
             except ValueError:
                 capacity = 0
             for method in job["Payload"]:
+                if not isinstance(method, dict):
+                    continue
                 # Remember the last cycling current and voltage
                 if method.get("Step Name") == "CC Chg":
                     with contextlib.suppress(ValueError):
@@ -332,6 +336,8 @@ def extract_voltage_crates(job_data: dict) -> dict:
                 print(f"Unknown capacity units from ec-lab: {capacity_units}")
 
             for method in job.get("params", []):
+                if not isinstance(method, dict):
+                    continue
                 # Get C-rate
                 current_mode = method.get("set_I/C", None)
                 current = method.get("Is", None)
