@@ -824,7 +824,8 @@ def register_batches_callbacks(app: Dash) -> None:
 
         # sort columns reverse alphabetically
         df = df.reindex(sorted(df.columns), axis=1)
-        options = df.columns
+        options = list(df.columns)
+        options += ["Sample ID"]
         df.columns = ["<br>".join(textwrap.wrap(col, width=24)) for col in df.columns]
 
         # Calculate the correlation matrix
