@@ -16,6 +16,7 @@ dependencies = [
     "h5py",
     "NewareNDA",
     "numpy",
+    "orjson",
     "pandas",
     "paramiko",
     "python-calamine",
