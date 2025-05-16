@@ -56,14 +56,16 @@ samples_menu = html.Div(
         html.Label("X-axis:", htmlFor="samples-time-x"),
         dcc.Dropdown(
             id="samples-time-x",
-            options=["Unix time", "From start", "From formation", "From cycling"],
+            options=["Datetime", "Unix time", "From start", "From formation", "From cycling"],
             value="From start",
             multi=False,
+            clearable=False,
         ),
         dcc.Dropdown(
             id="samples-time-units",
             options=["Seconds", "Minutes", "Hours", "Days"],
             value="Hours",
+            clearable=False,
         ),
         html.Div(style={"margin-top": "10px"}),
         html.Label("Y-axis:", htmlFor="samples-time-y"),
@@ -72,6 +74,7 @@ samples_menu = html.Div(
             options=["V (V)"],
             value="V (V)",
             multi=False,
+            clearable=False,
         ),
         html.Div(style={"margin-top": "50px"}),
         html.H5("Cycles graph"),
@@ -85,6 +88,7 @@ samples_menu = html.Div(
             ],
             value="Specific discharge capacity (mAh/g)",
             multi=False,
+            clearable=False,
         ),
         html.Div(style={"margin-top": "50px"}),
         html.H5("One cycle graph"),
@@ -93,6 +97,7 @@ samples_menu = html.Div(
             id="samples-cycle-x",
             options=["Q (mAh)", "V (V)", "dQdV (mAh/V)"],
             value="Q (mAh)",
+            clearable=False,
         ),
         html.Div(style={"margin-top": "10px"}),
         html.Label("Y-axis:", htmlFor="samples-cycle-y"),
@@ -100,6 +105,7 @@ samples_menu = html.Div(
             id="samples-cycle-y",
             options=["Q (mAh)", "V (V)", "dQdV (mAh/V)"],
             value="V (V)",
+            clearable=False,
         ),
         html.Div(style={"margin-top": "10px"}),
         html.Label("Cycle number:", htmlFor="cycle-number"),
@@ -110,6 +116,7 @@ samples_menu = html.Div(
             min=1,
             value=1,
             style={"width": "100%"},
+            debounce=True,
         ),
         html.Div(style={"margin-top": "100px"}),
     ],
@@ -259,6 +266,7 @@ def register_samples_callbacks(app: Dash) -> None:
         Input("samples-dropdown", "value"),
         Input("compressed-files", "value"),
         State("samples-data-store", "data"),
+        running=[(Output("loading-message-store", "data"), "Loading data...", "")],
     )
     def update_sample_data(samples: list, compressed: list, data: dict) -> tuple[dict, list, list]:
         """Load data for selected samples and put in data store."""
@@ -334,6 +342,7 @@ def register_samples_callbacks(app: Dash) -> None:
         time_y_vars = {"V (V)"}
         for data_dict in data["data_sample_time"].values():
             time_y_vars.update(data_dict.keys())
+        time_y_vars.discard("Shrunk")
 
         cycles_y_vars = {"Specific discharge capacity (mAh/g)", "Normalised discharge capacity (%)", "Efficiency (%)"}
         for data_dict in data["data_sample_cycle"].values():
@@ -349,11 +358,12 @@ def register_samples_callbacks(app: Dash) -> None:
         Input("samples-time-x", "value"),
         Input("samples-time-units", "value"),
         Input("samples-time-y", "value"),
+        running=[(Output("loading-message-store", "data"), "Plotting time-series...", "")],
     )
     def update_time_graph(fig: dict, data: dict, xvar: str, xunits: str, yvar: str) -> dict:
         """When data or x/y variables change, update the time graph."""
         fig["data"] = []
-        fig["layout"]["xaxis"]["title"] = f"Time ({xunits.lower()})" if xunits else None
+        fig["layout"]["xaxis"]["title"] = f"Time ({xunits.lower()})" if xvar != "Datetime" else "Datetime (UTC)"
         fig["layout"]["yaxis"]["title"] = yvar
         if not data["data_sample_time"] or not xvar or not yvar or not xunits:
             if not data["data_sample_time"]:
@@ -362,8 +372,12 @@ def register_samples_callbacks(app: Dash) -> None:
                 fig["layout"]["title"] = "Select x and y variables"
             return fig
         fig["layout"]["title"] = f"{yvar} vs time"
-        fig = go.Figure(data=fig["data"], layout=fig["layout"])
-        multiplier = {"Seconds": 1, "Minutes": 60, "Hours": 3600, "Days": 86400}[xunits]
+        go_fig = go.Figure(layout=fig["layout"])
+        multiplier = (
+            {"Seconds": 1, "Minutes": 60, "Hours": 3600, "Days": 86400}[xunits]
+            if xvar != "Datetime"
+            else 0.001  # To get UTC datetime from unix time stamp in milliseconds
+        )
         for sample, data_dict in data["data_sample_time"].items():
             uts = np.array(data_dict["uts"])
             if xvar == "From start":
@@ -371,7 +385,9 @@ def register_samples_callbacks(app: Dash) -> None:
             elif xvar == "From formation":
                 offset = uts[next(i for i, x in enumerate(data_dict["Cycle"]) if x >= 1)]
             elif xvar == "From cycling":
-                offset = uts[next(i for i, x in enumerate(data_dict["Cycle"]) if x >= 4)]
+                # grab n formation
+                formation_cycle_count = data["data_sample_cycle"].get(sample, {}).get("Formation cycles", 3)
+                offset = uts[next(i for i, x in enumerate(data_dict["Cycle"]) if x > formation_cycle_count)]
             else:
                 offset = 0
 
@@ -382,8 +398,12 @@ def register_samples_callbacks(app: Dash) -> None:
                 name=sample,
                 hovertemplate=f"{sample}<br>Time: %{{x}}<br>{yvar}: %{{y}}<extra></extra>",
             )
-            fig.add_trace(trace)
-        return fig
+            go_fig.add_trace(trace)
+        if xvar == "Datetime":
+            go_fig.update_layout(xaxis={"type": "date", "tickformat": "%Y-%m-%d %H:%M:%S"})
+        else:
+            go_fig.update_layout(xaxis={"type": "linear"})
+        return go_fig
 
     # Update the cycles graph
     @app.callback(
@@ -391,6 +411,7 @@ def register_samples_callbacks(app: Dash) -> None:
         State("cycles-graph", "figure"),
         Input("samples-data-store", "data"),
         Input("samples-cycles-y", "value"),
+        running=[(Output("loading-message-store", "data"), "Plotting cycles...", "")],
     )
     def update_cycles_graph(fig: dict, data: dict, yvar: str) -> dict:
         """When data or y variable changes, update the cycles graph."""
@@ -435,6 +456,7 @@ def register_samples_callbacks(app: Dash) -> None:
         Input("samples-data-store", "data"),
         Input("samples-cycle-x", "value"),
         Input("samples-cycle-y", "value"),
+        running=[(Output("loading-message-store", "data"), "Plotting one-cycle...", "")],
     )
     def update_cycle_graph(fig: dict, cycle: int, data: dict, xvar: str, yvar: str) -> dict:
         """When data or x/y variables change, update the one cycle graph."""

@@ -13,7 +13,7 @@ html, body {
 /* Default style for narrow screens */
 .responsive-container {
     width: 100%;
-    height: calc(100vh - 30px);
+    height: 100vh;
     overflow: hidden;
 }
 
@@ -111,3 +111,22 @@ html, body {
 .spinner-spin {
     animation: spin 2s linear infinite;
 }
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-in-out;
+    animation-delay: 0.3s;
+    animation-fill-mode: both;
+    text-shadow:
+        0 0 5px white,
+        0 0 10px white,
+        0 0 20px white;
+  }

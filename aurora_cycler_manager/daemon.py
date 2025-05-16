@@ -14,28 +14,33 @@ import sys
 import traceback
 from datetime import datetime, timedelta
 from time import sleep
+from typing import Callable
 
 from aurora_cycler_manager import server_manager
 from aurora_cycler_manager.analysis import analyse_all_batches, analyse_all_samples
 from aurora_cycler_manager.eclab_harvester import main as harvest_eclab
 from aurora_cycler_manager.neware_harvester import main as harvest_neware
 
+# Set up logging
+# Get the root logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
-def handle_exceptions(func: callable) -> None:
+
+def handle_exceptions(func: Callable) -> None:
     """Log exceptions instead of raising."""
     try:
         func()
     except (KeyboardInterrupt, SystemExit):
         raise
     except Exception as e:
-        logging.critical("Error in %s: %s", func.__name__, e)
-        logging.debug(traceback.format_exc())
+        logger.critical("Error in %s: %s", func.__name__, e)
+        logger.debug(traceback.format_exc())
 
 
 def daemon_loop(
     update_time: float | None = 300,
     snapshot_times: list | None = None,
-    save_log: bool = False,
 ) -> None:
     """Run main loop for updating, snapshotting and plotting.
 
@@ -46,11 +51,6 @@ def daemon_loop(
             default ['02:00']
 
     """
-    # Set up logging
-    # Get the root logger
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
-
     # Add a stream handler to also log to the console
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)

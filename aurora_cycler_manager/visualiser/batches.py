@@ -13,8 +13,9 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objs as go
-from dash import Dash, Input, Output, State, dcc, html, no_update
+from dash import Dash, Input, Output, State, dcc, html
 from dash import callback_context as ctx
+from dash.exceptions import PreventUpdate
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 from plotly.colors import hex_to_rgb, label_rgb, sample_colorscale
 
@@ -76,6 +77,7 @@ batches_menu = html.Div(
             options=["Specific discharge capacity (mAh/g)"],
             value="Specific discharge capacity (mAh/g)",
             multi=False,
+            clearable=False,
         ),
         html.Div(style={"margin-top": "10px"}),
         html.Label("Color by:", htmlFor="batch-cycle-colormap"),
@@ -92,12 +94,14 @@ batches_menu = html.Div(
             id="batch-cycle-colormap",
             options=cont_color_options,
             value="Viridis",
+            clearable=False,
         ),
         html.Label("Discrete colors:", htmlFor="batch-cycle-discrete-colormap"),
         dcc.Dropdown(
             id="batch-cycle-discrete-colormap",
             options=discrete_color_options,
             value="Plotly",
+            clearable=False,
         ),
         html.Div(style={"margin-top": "10px"}),
         html.Label("Style by:", htmlFor="batch-cycle-style"),
@@ -223,7 +227,7 @@ batch_cycle_graph = dcc.Graph(
     config={
         "scrollZoom": True,
         "displaylogo": False,
-        "toImageButtonOptions": {"format": "svg"},
+        "toImageButtonOptions": {"format": "svg", "width": None, "height": None},
     },
     style={"height": "100%"},
 )
@@ -369,7 +373,7 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict, plot_style: str) -> go.Figu
                 label = "<br>".join(textwrap.wrap(uval, width=24))
             else:
                 label = str(uval)
-            line = {"width": 3} if plot_style == "lines" else {"width": 1.5}
+            line = {"width": 3.0} if plot_style == "lines" else {"width": 1.5}
             fig.add_trace(
                 go.Scatter(
                     x=[None],
@@ -397,7 +401,7 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict, plot_style: str) -> go.Figu
                 label = "<br>".join(textwrap.wrap(ustyle, width=24))
             else:
                 label = str(ustyle)
-            line = {"width": 3} if plot_style == "lines" else {"width": 1.5}
+            line = {"width": 3.0} if plot_style == "lines" else {"width": 1.5}
             if sdata["symbols"]:
                 line["dash"] = sdata["lines"][uind]
             fig.add_trace(
@@ -423,6 +427,11 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict, plot_style: str) -> go.Figu
             "xanchor": "right",
             "yanchor": "top",
             "bgcolor": "rgba(255, 255, 255, 0.5)",
+            "font": {
+                "family": "Open Sans, sans-serif",
+                "size": 14,
+                "color": "black",
+            },
         },
         coloraxis_colorbar={
             "x": 1,
@@ -479,6 +488,7 @@ def register_batches_callbacks(app: Dash) -> None:
         State("batches-data-store", "data"),
         State("batches-store", "data"),
         State("batch-cycle-y", "value"),
+        running=[(Output("loading-message-store", "data"), "Loading data...", "")],
         prevent_initial_call=True,
     )
     def load_selected_samples(
@@ -491,7 +501,7 @@ def register_batches_callbacks(app: Dash) -> None:
     ):
         """Load the selected samples into the data store."""
         if not ctx.triggered:
-            return no_update, no_update, no_update, no_update, no_update, no_update
+            raise PreventUpdate
 
         # Add the samples from batches to samples
         sample_set = set(samples)
@@ -543,6 +553,7 @@ def register_batches_callbacks(app: Dash) -> None:
         Input("batch-cycle-colormap", "value"),
         Input("batch-cycle-discrete-colormap", "value"),
         Input("batch-cycle-style", "value"),
+        running=[(Output("loading-message-store", "data"), "Analysing data...", "")],
     )
     def update_color_style_store(
         data: dict,
@@ -653,6 +664,7 @@ def register_batches_callbacks(app: Dash) -> None:
         Input("plot-error-bars", "value"),
         Input("trace-style-store", "data"),
         Input("batch-cycle-y", "value"),
+        running=[(Output("loading-message-store", "data"), "Plotting data...", "")],
     )
     def update_batch_cycle_graph(
         fig: dict,
@@ -667,13 +679,6 @@ def register_batches_callbacks(app: Dash) -> None:
         if not data:
             fig["layout"]["title"] = "No data..."
             return fig
-
-        # Add 1/Formation C if Formation C is in the data
-        [
-            d.update({"1/Formation C": 1 / d["Formation C"] if d["Formation C"] != 0 else 0})
-            for d in data.values()
-            if "Formation C" in d
-        ]
 
         fig["layout"]["yaxis"]["title"] = yvar
         fig["layout"]["title"] = f"{yvar} vs cycle"
@@ -794,6 +799,7 @@ def register_batches_callbacks(app: Dash) -> None:
         Output("batch-correlation-y", "options"),
         State("batch-correlation-map", "figure"),
         Input("batches-data-store", "data"),
+        running=[(Output("loading-message-store", "data"), "Plotting correlations...", "")],
     )
     def update_correlation_map(fig: dict, data: dict) -> tuple[dict, list[dict], list[dict]]:
         """Update correlation map when new data is loaded."""
@@ -806,9 +812,6 @@ def register_batches_callbacks(app: Dash) -> None:
         if not dfs:
             return fig, [], []
         df = pd.concat(dfs, ignore_index=True)
-
-        if "Formation C" in df.columns:
-            df["1/Formation C"] = 1 / df["Formation C"]
 
         # remove columns where all values are the same
         df = df.loc[:, df.nunique() > 1]
@@ -824,7 +827,8 @@ def register_batches_callbacks(app: Dash) -> None:
 
         # sort columns reverse alphabetically
         df = df.reindex(sorted(df.columns), axis=1)
-        options = df.columns
+        options = list(df.columns)
+        options += ["Sample ID"]
         df.columns = ["<br>".join(textwrap.wrap(col, width=24)) for col in df.columns]
 
         # Calculate the correlation matrix
@@ -855,7 +859,7 @@ def register_batches_callbacks(app: Dash) -> None:
     def update_correlation_vars(click_data: dict) -> tuple[str, str]:
         """Update the x and y variables based on the clicked data."""
         if not click_data:
-            return no_update, no_update
+            raise PreventUpdate
         point = click_data["points"][0]
         xvar = point["x"].replace("<br>", " ")
         yvar = point["y"].replace("<br>", " ")

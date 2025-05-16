@@ -14,6 +14,7 @@ from the sample database such as cathode active material mass.
 
 from __future__ import annotations
 
+import contextlib
 import gzip
 import json
 import sqlite3
@@ -31,7 +32,15 @@ from tsdownsample import MinMaxLTTBDownsampler
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_batch_details, get_sample_data
-from aurora_cycler_manager.utils import c_to_float, run_from_sample
+from aurora_cycler_manager.utils import (
+    c_to_float,
+    json_dump_compress_lists,
+    max_with_none,
+    min_with_none,
+    round_c_rate,
+    run_from_sample,
+    weighted_median,
+)
 from aurora_cycler_manager.version import __url__, __version__
 
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="All-NaN axis encountered")
@@ -187,6 +196,215 @@ def combine_jobs(
     return df, metadata
 
 
+def extract_voltage_crates(job_data: dict) -> dict:
+    """Extract min and max voltage, C-rate, and formation cycle count from job data."""
+    form_C = None
+    form_max_V = None
+    form_min_V = None
+    cycle_C = None
+    cycle_max_V = None
+    cycle_min_V = None
+    form_cycle_count = None
+
+    max_V = None
+    new_max_V = None
+    min_V = None
+    new_min_V = None
+    current = None
+    new_current = None
+    rate = None
+    new_rate = None
+    is_already_rate = False
+
+    # Iterate through jobs, behave differently depending on the job type
+    for job in job_data:
+        job_type = job.get("job_type", None)
+
+        # TOMATO 0.2.3 using biologic driver
+        if job_type == "tomato_0_2_biologic":
+            try:
+                capacity = float(job.get("Payload", {}).get("sample", {}).get("capacity", 0))  # in Ah
+            except ValueError:
+                capacity = 0
+            for method in job.get("Payload", {}).get("method", []):
+                if not isinstance(method, dict):
+                    continue
+                if method.get("technique", None) == "constant_current":
+                    try:
+                        new_current = abs(c_to_float(method.get("current", None)))
+                        is_already_rate = True
+                    except ValueError:
+                        with contextlib.suppress(ValueError, TypeError):
+                            new_current = float(method.get("current", None))
+                            is_already_rate = False
+                    if new_current:
+                        current = new_current
+
+                    with contextlib.suppress(ValueError, TypeError):
+                        new_max_V = float(method.get("limit_voltage_max", None))
+                    with contextlib.suppress(ValueError, TypeError):
+                        new_min_V = float(method.get("limit_voltage_min", None))
+                    min_V = min_with_none([min_V, new_min_V])
+                    max_V = max_with_none([max_V, new_max_V])
+                if method.get("technique", None) == "loop":
+                    if method.get("n_gotos", 9) < 9:
+                        if not form_C and current:
+                            if is_already_rate:
+                                form_C = round_c_rate(current, 10)
+                            elif capacity:
+                                form_C = round_c_rate(current / capacity, 10)
+                        if not form_max_V and max_V:
+                            form_max_V = max_V
+                        if not form_min_V and min_V:
+                            form_min_V = min_V
+                        if not form_cycle_count:
+                            form_cycle_count = method["n_gotos"] + 1  # Ec-lab ngotos is cycles-1
+
+                    elif method.get("n_gotos", 0) > 9:
+                        if not cycle_C and current:
+                            if is_already_rate:
+                                cycle_C = round_c_rate(current, 10)
+                            elif capacity:
+                                cycle_C = round_c_rate(current / capacity, 10)
+                        if not cycle_max_V and max_V:
+                            cycle_max_V = max_V
+                        if not cycle_min_V and min_V:
+                            cycle_min_V = min_V
+
+                    if (form_C and cycle_C) or (form_max_V and cycle_max_V):
+                        break
+                    max_V, new_max_V, min_V, new_min_V = None, None, None, None
+                    current, new_current = None, None
+
+        # Neware xlsx or ndax
+        elif job_type in ("neware_xlsx", "neware_ndax"):
+            try:
+                capacity = float(job.get("MultCap", 0))  # in mAs
+            except ValueError:
+                capacity = 0
+            for method in job["Payload"]:
+                if not isinstance(method, dict):
+                    continue
+                # Remember the last cycling current and voltage
+                if method.get("Step Name") == "CC Chg":
+                    with contextlib.suppress(ValueError):
+                        new_current = abs(float(method.get("Current (A)", 0)))
+                    if new_current:
+                        current = new_current
+                    with contextlib.suppress(ValueError):
+                        new_max_V = float(method.get("Cut-off voltage (V)", 0))
+                    max_V = max_with_none([max_V, new_max_V])
+                if method.get("Step Name") == "CC DChg":
+                    with contextlib.suppress(ValueError):
+                        new_current = abs(float(method.get("Current (A)", 0)))
+                    current = max_with_none([current, new_current])
+                    with contextlib.suppress(ValueError):
+                        new_min_V = float(method.get("Cut-off voltage (V)", 0))
+                    min_V = min_with_none([min_V, new_min_V])
+
+                # If there is a cycle step, assign formation or longterm C-rate and voltage
+                if method.get("Step Name") == "Cycle" and method.get("Cycle count"):
+                    try:
+                        cycle_count = int(method["Cycle count"])
+                    except ValueError:
+                        continue
+                    # First time less than 10 cycles, assume formation
+                    if cycle_count < 10 and not (form_C or form_max_V or form_min_V or form_cycle_count):
+                        form_C = round_c_rate(current / (capacity / 3.6e6), 10) if (current and capacity) else None
+                        form_max_V = max_V
+                        form_min_V = min_V
+                        form_cycle_count = cycle_count
+                    # First time more than 10 cycles, assume longterm
+                    elif cycle_count >= 10 and not (cycle_C or cycle_max_V or cycle_min_V):
+                        cycle_C = round_c_rate(current / (capacity / 3.6e6), 10) if (current and capacity) else None
+                        cycle_max_V = max_V if max_V else None
+                        cycle_min_V = min_V if min_V else None
+                    if (cycle_C and form_C) or (cycle_max_V and form_max_V):
+                        break
+                    # Reset current and voltage
+                    max_V, new_max_V, min_V, new_min_V = None, None, None, None
+                    current, new_current = None, None
+
+        # EC-lab mpr
+        elif job_type == "eclab_mpr":
+            capacity = 0
+            capacity_units = job.get("settings", {}).get("battery_capacity_unit", None)
+            if capacity_units == 1:  # mAh
+                capacity = job.get("settings", {}).get("battery_capacity", 0)  # in mAh
+            if capacity_units and capacity_units != 1:
+                print(f"Unknown capacity units from ec-lab: {capacity_units}")
+
+            for method in job.get("params", []):
+                if not isinstance(method, dict):
+                    continue
+                # Get C-rate
+                current_mode = method.get("set_I/C", None)
+                current = method.get("Is", None)
+                if current_mode == "C":
+                    new_rate = method.get("N", None)
+                    rate = 1 / new_rate if new_rate else None
+                elif current_mode == "I" and capacity:
+                    current_units = method.get("I_unit", None)
+                    if current and current_units:
+                        if current_units == "A":
+                            current = current * 1000
+                        elif current_units != "mA":
+                            print(f"EC-lab current unit unknown: {current_units}")
+                        rate = abs(current) / capacity
+                # Get voltage
+                discharging = None
+                Isign = method.get("I_sign", None)  # 1 = discharge, 0 = charge
+                if current_mode == "C":
+                    discharging = Isign
+                elif current_mode == "I" and current:
+                    if Isign:  # noqa: SIM108
+                        discharging = 1 if current * (1 - 2 * Isign) < 0 else 0
+                    else:
+                        discharging = 1 if current < 0 else 0
+                voltage = method.get("EM", None)
+                if voltage:
+                    if discharging == 1:
+                        new_min_V = voltage
+                        min_V = min_with_none([min_V, new_min_V])
+                    elif discharging == 0:
+                        new_max_V = voltage
+                        max_V = max_with_none([max_V, new_max_V])
+                # Get cycles and set values
+                cycles = method.get("nc_cycles", None)
+                if cycles and cycles >= 1:
+                    # Less than 10 cycles, assume formation
+                    if cycles and cycles < 9:
+                        if rate and not form_C:
+                            form_C = round_c_rate(rate, 10)
+                        if max_V and not form_max_V:
+                            form_max_V = round(max_V, 6)
+                        if min_V and not form_min_V:
+                            form_min_V = round(min_V, 6)
+                        if not form_cycle_count:
+                            form_cycle_count = cycles + 1
+                    # First time more than 10 cycles, assume longterm
+                    elif cycles and cycles > 9 and not (cycle_C or cycle_max_V or cycle_min_V):
+                        cycle_C = round_c_rate(rate, 10) if rate else None
+                        cycle_max_V = round(max_V, 6) if max_V else None
+                        cycle_min_V = round(min_V, 6) if min_V else None
+                    # If we have both formation and cycle values, stop
+                    if (cycle_C and form_C) or (cycle_max_V and form_max_V):
+                        break
+                    # Otherwise reset values and continue
+                    max_V, new_max_V, min_V, new_min_V = None, None, None, None
+                    current, new_current = None, None
+                    rate, new_rate = None, None
+    return {
+        "form_C": form_C,
+        "form_max_V": form_max_V,
+        "form_min_V": form_min_V,
+        "cycle_C": cycle_C,
+        "cycle_max_V": cycle_max_V,
+        "cycle_min_V": cycle_min_V,
+        "form_cycle_count": form_cycle_count,
+    }
+
+
 def analyse_cycles(
     job_files: list[Path],
     voltage_lower_cutoff: float = 0,
@@ -239,87 +457,22 @@ def analyse_cycles(
     # Extract useful information from the metadata
     mass_mg = sample_data.get("Cathode active material mass (mg)", np.nan)
 
-    max_V = 0.0
-    formation_C = 0.0
-    cycle_C = 0.0
-
-    # TODO: separate formation and cycling C-rates and voltages, get C-rates for mpr and neware
-
-    # TOMATO DATA
-    pipeline = None
-    status = None
+    # Get voltage and C-rates
     if job_data:
-        job_types = [j.get("job_type", None) for j in job_data]
-        job_type = job_types[0] if all(jt == job_types[0] for jt in job_types) else "mixture"
+        protocol_summary = extract_voltage_crates(job_data)
 
-        # tomato 0.2.3 using biologic driver
-        if job_type == "tomato_0_2_biologic":
-            payloads = [j.get("Payload", []) for j in job_data]
-            with sqlite3.connect(CONFIG["Database path"]) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
-                row = cursor.fetchone()
-                if row:
-                    pipeline = row[0]
-                    job_id = row[1]
-                    if job_id:
-                        cursor.execute("SELECT `Status` FROM jobs WHERE `Job ID` = ?", (f"{job_id}",))
-                        status = cursor.fetchone()[0]
-
-            for payload in payloads:
-                for method in payload.get("method", []):
-                    voltage = method.get("limit_voltage_max", 0)
-                    max_V = max(voltage, max_V)
-
-            for payload in payloads:
-                for method in payload.get("method", []):
-                    if method.get("technique", None) == "loop":
-                        if method["n_gotos"] < 4:  # it is probably formation
-                            for m in payload.get("method", []):
-                                if "current" in m and "C" in m["current"]:
-                                    try:
-                                        formation_C = c_to_float(m["current"])
-                                    except ValueError:
-                                        print(f"Not a valid C-rate: {m['current']}")
-                                        formation_C = 0
-                                    break
-                        if method.get("n_gotos", 0) > 10:  # it is probably cycling
-                            for m in payload.get("method", []):
-                                if "current" in m and "C" in m["current"]:
-                                    try:
-                                        cycle_C = c_to_float(m["current"])
-                                    except ValueError:
-                                        print(f"Not a valid C-rate: {m['current']}")
-                                        cycle_C = 0
-                                    break
-
-        # ec-lab mpr
-        elif job_type == "eclab_mpr":
-            for m in job_data:
-                params = m.get("params", [])
-                if isinstance(params, list):
-                    for param in params:
-                        if isinstance(param, dict):
-                            V = round(param.get("EM", 0), 3)
-                            max_V = max(V, max_V)
-
-        # Neware xlsx
-        elif job_type in ("neware_xlsx", "neware_ndax"):
-            for m in job_data:
-                V = max(float(step.get("Voltage (V)", 0)) for step in m["Payload"])
-                max_V = max(V, max_V)
-
-        # Mixture of jobs - give up
-        elif job_type == "mixture":
-            pass
-
-    # Fill some missing values
-    if not formation_C:
-        if not cycle_C:
-            print(f"No formation C or cycle C found for {sampleid}, using 0")
-        else:
-            print(f"No formation C found for {sampleid}, using cycle_C")
-            formation_C = cycle_C
+    # Check current status and pipeline (may be more recenty than snapshot)
+    pipeline, status = None, None
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
+        row = cursor.fetchone()
+        if row:
+            pipeline = row[0]
+            job_id = row[1]
+            if job_id:
+                cursor.execute("SELECT `Status` FROM jobs WHERE `Job ID` = ?", (f"{job_id}",))
+                status = cursor.fetchone()[0]
 
     # Analyse each cycle in the cycling data
     charge_capacity_mAh = []
@@ -330,6 +483,7 @@ def analyse_cycles(
     discharge_energy_mWh = []
     charge_avg_I = []
     discharge_avg_I = []
+    cycle_median_I = []
     started_charge = False
     started_discharge = False
     for _, group_df in df.groupby("Step"):
@@ -370,32 +524,42 @@ def analyse_cycles(
             discharge_avg_I.append(
                 (-discharge_data["Iavg (A)"] * discharge_data["dQ (mAh)"]).sum() / discharge_data["dQ (mAh)"].sum(),
             )
+            cycle_median_I.append(weighted_median(abs(charge_data["Iavg (A)"]), abs(charge_data["dQ (mAh)"])))
 
-    formation_cycle_count = 3
-    initial_cycle = formation_cycle_count + 2
+    # Try to guess the number of formation cycles if it was not found from the job data
+    form_cycle_count = protocol_summary.get("form_cycle_count", None)
+    if not form_cycle_count:
+        form_cycle_count = 3
+        # Check median current up to 10 cycles, if it changes assume that is the formation cycle
+        rounded_current = [f"{x:.2g}" for x in cycle_median_I[: min(10, len(cycle_median_I))]]
+        if len(rounded_current) > 2 and len(set(rounded_current)) > 1:
+            idx = next((i for i, x in enumerate(rounded_current) if x != rounded_current[0]), None)
+            if idx is not None:
+                form_cycle_count = idx
+    initial_cycle = form_cycle_count + 1
 
     formed = len(charge_capacity_mAh) >= initial_cycle
-    # A row is added if charge data is complete and discharge started
-    # Last dict may have incomplete discharge data
-    if snapshot_status in ["r", "cd", "ce"]:  # This only works for tomato, harvesters will assume last cycle complete
-        if started_charge and started_discharge:
-            # Probably recorded an incomplete discharge for last recorded cycle
-            discharge_capacity_mAh[-1] = np.nan
-            complete = 0
-        else:
-            # Last recorded cycle is complete
-            complete = 1
-    else:
-        complete = 1
+
+    # A row is added if charge data is complete and discharge started, but it may have incomplete discharge data
+    # If the job is not complete but a discharge has started, set the last discharge data to NaN
+    complete = 1
+    if snapshot_status in ["r", "cd", "ce"] and started_charge and started_discharge:
+        discharge_capacity_mAh[-1] = np.nan
+        complete = 0
 
     # Create a dictionary with the cycling data
-    # TODO: add datetime of every cycle
     cycle_dict = {
         "Sample ID": sampleid,
         "Cycle": list(range(1, len(charge_capacity_mAh) + 1)),
         "Charge capacity (mAh)": charge_capacity_mAh,
         "Discharge capacity (mAh)": discharge_capacity_mAh,
-        "Efficiency (%)": [100 * d / c for d, c in zip(discharge_capacity_mAh, charge_capacity_mAh)],
+        "Charge energy (mWh)": charge_energy_mWh,
+        "Discharge energy (mWh)": discharge_energy_mWh,
+        "Charge average voltage (V)": [e / c for e, c in zip(charge_energy_mWh, charge_capacity_mAh)],
+        "Discharge average voltage (V)": [e / c for e, c in zip(discharge_energy_mWh, discharge_capacity_mAh)],
+        "Coulombic efficiency (%)": [100 * d / c for d, c in zip(discharge_capacity_mAh, charge_capacity_mAh)],
+        "Energy efficiency (%)": [100 * d / c for d, c in zip(discharge_energy_mWh, charge_energy_mWh)],
+        "Voltage efficiency (%)": [100 * d / c for d, c in zip(discharge_avg_V, charge_avg_V)],
         "Specific charge capacity (mAh/g)": [c / (mass_mg * 1e-3) for c in charge_capacity_mAh] if mass_mg else None,
         "Specific discharge capacity (mAh/g)": [d / (mass_mg * 1e-3) for d in discharge_capacity_mAh]
         if mass_mg
@@ -410,16 +574,16 @@ def analyse_cycles(
         ]
         if formed
         else None,
-        "Charge average voltage (V)": charge_avg_V,
-        "Discharge average voltage (V)": discharge_avg_V,
         "Delta V (V)": [c - d for c, d in zip(charge_avg_V, discharge_avg_V)],
         "Charge average current (A)": charge_avg_I,
         "Discharge average current (A)": discharge_avg_I,
-        "Charge energy (mWh)": charge_energy_mWh,
-        "Discharge energy (mWh)": discharge_energy_mWh,
-        "Max voltage (V)": max_V,
-        "Formation C": formation_C,
-        "Cycle C": cycle_C,
+        "Formation max voltage (V)": protocol_summary["form_max_V"],
+        "Formation min voltage (V)": protocol_summary["form_min_V"],
+        "Cycle max voltage (V)": protocol_summary["cycle_max_V"],
+        "Cycle min voltage (V)": protocol_summary["cycle_min_V"],
+        "Formation C": protocol_summary["form_C"],
+        "Cycle C": protocol_summary["cycle_C"],
+        "Formation cycles": form_cycle_count,
     }
 
     # Add other columns from sample table to cycle_dict
@@ -434,21 +598,23 @@ def analyse_cycles(
     else:  # Analyse the cycling data
         last_idx = -1 if complete else -2
 
-        cycle_dict["First formation efficiency (%)"] = cycle_dict["Efficiency (%)"][0]
+        cycle_dict["First formation coulombic efficiency (%)"] = cycle_dict["Coulombic efficiency (%)"][0]
         cycle_dict["First formation specific discharge capacity (mAh/g)"] = cycle_dict[
             "Specific discharge capacity (mAh/g)"
         ][0]
         cycle_dict["Initial specific discharge capacity (mAh/g)"] = (
             cycle_dict["Specific discharge capacity (mAh/g)"][initial_cycle - 1] if formed else None
         )
-        cycle_dict["Initial efficiency (%)"] = cycle_dict["Efficiency (%)"][initial_cycle - 1] if formed else None
+        cycle_dict["Initial coulombic efficiency (%)"] = (
+            cycle_dict["Coulombic efficiency (%)"][initial_cycle - 1] if formed else None
+        )
         cycle_dict["Capacity loss (%)"] = (
             100 - cycle_dict["Normalised discharge capacity (%)"][last_idx] if formed else None
         )
         cycle_dict["Last specific discharge capacity (mAh/g)"] = cycle_dict["Specific discharge capacity (mAh/g)"][
             last_idx
         ]
-        cycle_dict["Last efficiency (%)"] = cycle_dict["Efficiency (%)"][last_idx]
+        cycle_dict["Last coulombic efficiency (%)"] = cycle_dict["Coulombic efficiency (%)"][last_idx]
         cycle_dict["Formation average voltage (V)"] = (
             np.mean(cycle_dict["Charge average voltage (V)"][: initial_cycle - 1]) if formed else None
         )
@@ -475,24 +641,18 @@ def analyse_cycles(
         pcents = [95, 90, 85, 80, 75, 70, 60, 50]
         norm = np.array(cycle_dict["Normalised discharge capacity (%)"])
         for pcent in pcents:
-            cycle_dict[f"Cycles to {pcent}% capacity"] = (
-                _find_first_element(
-                    norm < pcent,
-                    initial_cycle - 1,
-                )
-                if formed
-                else None
-            )
+            cycle_dict[f"Cycles to {pcent}% capacity"] = None
+            if formed:
+                abs_cycle = _find_first_element(norm < pcent, form_cycle_count)
+                if abs_cycle is not None:
+                    cycle_dict[f"Cycles to {pcent}% capacity"] = abs_cycle - form_cycle_count
         norm = np.array(cycle_dict["Normalised discharge energy (%)"])
         for pcent in pcents:
-            cycle_dict[f"Cycles to {pcent}% energy"] = (
-                _find_first_element(
-                    norm < pcent,
-                    initial_cycle - 1,
-                )
-                if formed
-                else None
-            )
+            cycle_dict[f"Cycles to {pcent}% energy"] = None
+            if formed:
+                abs_cycle = _find_first_element(norm < pcent, form_cycle_count)
+                if abs_cycle is not None:
+                    cycle_dict[f"Cycles to {pcent}% energy"] = abs_cycle - form_cycle_count
 
         cycle_dict["Run ID"] = run_from_sample(sampleid)
 
@@ -534,9 +694,9 @@ def analyse_cycles(
             if not job_complete:
                 if formed and cycle_dict["Capacity loss (%)"] > 20:
                     flag = "Cap loss"
-                if cycle_dict["First formation efficiency (%)"] < 60:
+                if cycle_dict["First formation coulombic efficiency (%)"] < 60:
                     flag = "Form eff"
-                if formed and cycle_dict["Initial efficiency (%)"] < 50:
+                if formed and cycle_dict["Initial coulombic efficiency (%)"] < 50:
                     flag = "Init eff"
                 if formed and cycle_dict["Initial specific discharge capacity (mAh/g)"] < 100:
                     flag = "Init cap"
@@ -548,14 +708,14 @@ def analyse_cycles(
             "Flag": flag,
             "Number of cycles": int(max(cycle_dict["Cycle"])),
             "Capacity loss (%)": cycle_dict["Capacity loss (%)"],
-            "Max voltage (V)": cycle_dict["Max voltage (V)"],
+            "Max voltage (V)": max_with_none([protocol_summary["form_max_V"], protocol_summary["cycle_max_V"]]),
             "Formation C": cycle_dict["Formation C"],
             "Cycling C": cycle_dict["Cycle C"],
-            "First formation efficiency (%)": cycle_dict["First formation efficiency (%)"],
+            "First formation efficiency (%)": cycle_dict["First formation coulombic efficiency (%)"],
             "Initial specific discharge capacity (mAh/g)": cycle_dict["Initial specific discharge capacity (mAh/g)"],
-            "Initial efficiency (%)": cycle_dict["Initial efficiency (%)"],
+            "Initial efficiency (%)": cycle_dict["Initial coulombic efficiency (%)"],
             "Last specific discharge capacity (mAh/g)": cycle_dict["Last specific discharge capacity (mAh/g)"],
-            "Last efficiency (%)": cycle_dict["Last efficiency (%)"],
+            "Last efficiency (%)": cycle_dict["Last coulombic efficiency (%)"],
             "Last analysis": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             # Only add the following keys if they are not None, otherwise they set to NULL in database
             **({"Last snapshot": last_snapshot} if last_snapshot else {}),
@@ -583,7 +743,7 @@ def analyse_cycles(
         save_folder = job_files[0].parent
         if save_cycle_dict:
             with (save_folder / f"cycles.{sampleid}.json").open("w", encoding="utf-8") as f:
-                json.dump({"data": cycle_dict, "metadata": metadata}, f)
+                json_dump_compress_lists({"data": cycle_dict, "metadata": metadata}, f, indent=4)
         if save_merged_hdf or save_merged_jsongz:
             df = df.drop(columns=["dt (s)", "Iavg (A)"])
         if save_merged_hdf:
@@ -777,6 +937,7 @@ def analyse_all_samples(
                     continue
                 try:
                     analyse_sample(sample.name)
+                    print(f"Analysed {sample.name}")
                 except KeyError as e:
                     print(f"No metadata found for {sample.name}: {e}")
                 except (ValueError, PermissionError, RuntimeError, FileNotFoundError) as e:

@@ -16,43 +16,30 @@ import webbrowser
 
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
-from dash import Dash, _dash_renderer, dcc, html
+from dash import ClientsideFunction, Dash, Input, Output, _dash_renderer, dcc, html
 from waitress import serve
 
 from aurora_cycler_manager.visualiser.batches import batches_layout, register_batches_callbacks
 from aurora_cycler_manager.visualiser.db_view import db_view_layout, register_db_view_callbacks
-from aurora_cycler_manager.visualiser.notifications import notifications_layout, register_notifications_callbacks
+from aurora_cycler_manager.visualiser.notifications import (
+    custom_spinner,
+    loading_message,
+    notifications_layout,
+    register_notifications_callbacks,
+)
 from aurora_cycler_manager.visualiser.samples import register_samples_callbacks, samples_layout
 
 # Need to set this for Mantine notifications to work
 _dash_renderer._set_react_version("18.2.0")  # noqa: SLF001
 
-# Spinner
-custom_spinner = html.Div(
-    style={"position": "relative", "width": "50px", "height": "50px"},
-    children=[
-        html.Img(
-            src="/assets/spinner-spin.svg",
-            className="spinner-spin",
-            style={"width": "100px", "height": "100px"},
-        ),
-        html.Img(
-            src="/assets/spinner-stationary.svg",
-            style={
-                "position": "absolute",
-                "top": "0",
-                "left": "0",
-                "width": "100px",
-                "height": "100px",
-                "color": "white",
-            },
-        ),
-    ],
-)
-
 # Define app and layout
 external_stylesheets = [dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP, dmc.styles.NOTIFICATIONS, "/assets/style.css"]
 app = Dash(__name__, external_stylesheets=external_stylesheets)
+app.clientside_callback(
+    ClientsideFunction(namespace="clients", function_name="animateMessage"),
+    Output("loading-message", "children"),
+    Input("loading-message-store", "data"),
+)
 app.title = "Aurora Visualiser"
 app.layout = dmc.MantineProvider(
     html.Div(
@@ -98,6 +85,8 @@ app.layout = dmc.MantineProvider(
                 ],
             ),
             notifications_layout,
+            dcc.Store(id="loading-message-store"),
+            loading_message,
         ],
     ),
 )

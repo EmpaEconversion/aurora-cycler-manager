@@ -1,6 +1,6 @@
 """Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
 
-Notification system for the Aurora cycler manager app.
+Notification system and loading messages for the Aurora cycler manager app.
 
 To send notification in a callback, Output to notifications-container.
 
@@ -15,6 +15,17 @@ multiple samples to upload), and it is 'idle' and set to 1 minute otherwise.
 An additional interval is used to check one last time after switching to 'idle'.
 This is because there is a race condition where the interval may switch to
 'idle' before the final notification is displayed.
+
+Use with a 'running' keyword in callback wrapper:
+    @app.callback(
+        ...
+        running=[
+            (Output("loading-message-store", "data"), "Some message...", ""),
+            (Output("notify-interval", "interval"), active_time, idle_time),
+        ],
+    )
+This shows a loading message and sets notifications to listening while the
+callback is running.
 
 """
 
@@ -34,13 +45,65 @@ def queue_notification(notification: Notification) -> None:
     notification_queue.append(notification)
 
 
+def success_notification(title: str, message: str) -> None:
+    """Create a success notification."""
+    notification = Notification(
+        id="notification",
+        title=title,
+        message=message,
+        color="green",
+        action="show",
+        icon=html.I(className="bi bi-check-circle"),
+    )
+    queue_notification(notification)
+
+
+def info_notification(title: str, message: str) -> None:
+    """Create an info notification."""
+    notification = Notification(
+        id="notification",
+        title=title,
+        message=message,
+        color="blue",
+        action="show",
+        icon=html.I(className="bi bi-info-circle"),
+    )
+    queue_notification(notification)
+
+
+def warning_notification(title: str, message: str) -> None:
+    """Create a warning notification."""
+    notification = Notification(
+        id="notification",
+        title=title,
+        message=message,
+        color="yellow",
+        action="show",
+        icon=html.I(className="bi bi-exclamation-triangle"),
+    )
+    queue_notification(notification)
+
+
+def error_notification(title: str, message: str) -> None:
+    """Create an error notification."""
+    notification = Notification(
+        id="notification",
+        title=title,
+        message=message,
+        color="red",
+        action="show",
+        icon=html.I(className="bi bi-x-circle"),
+    )
+    queue_notification(notification)
+
+
 notifications_layout = html.Div(
     [
         html.Div([], id="notifications-container"),
         NotificationProvider(),
         Interval(id="notify-interval", interval=idle_time),
         Interval(id="trigger-interval", interval=trigger_time, n_intervals=0, disabled=True),
-    ]
+    ],
 )
 
 
@@ -72,3 +135,52 @@ def register_notifications_callbacks(app: Dash) -> None:
         notifications = notification_queue
         notification_queue = []
         return notifications, bool(n_trigger)
+
+
+# Loading spinner
+custom_spinner = html.Div(
+    style={
+        "position": "absolute",
+        "top": "50%",
+        "left": "50%",
+        "transform": "translate(-50%, -50%)",
+        "width": "100px",
+        "height": "100px",
+    },
+    children=[
+        html.Img(
+            src="/assets/spinner-spin.svg",
+            className="spinner-spin",
+            style={"width": "100px", "height": "100px"},
+        ),
+        html.Img(
+            src="/assets/spinner-stationary.svg",
+            style={
+                "position": "absolute",
+                "top": "0",
+                "left": "0",
+                "width": "100px",
+                "height": "100px",
+                "color": "white",
+            },
+        ),
+    ],
+)
+
+# Loading messages
+loading_message = html.Div(
+    "This is some kind of text",
+    id="loading-message",
+    style={
+        "position": "absolute",
+        "left": "50%",
+        "top": "50%",
+        "transform": "translate(-50%, 50px)",
+        "fontSize": "20px",
+        "color": "#000000",
+        "textAlign": "center",
+        "textGlow": "0 0 20px blue",
+        "opacity": 1,
+        "transition": "opacity 0.5s ease-in-out",
+    },
+)

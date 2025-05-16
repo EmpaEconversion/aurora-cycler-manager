@@ -2,6 +2,7 @@
 
 import dash_bootstrap_components as dbc
 from dash import Dash, Input, Output, State, dcc, html, no_update
+from dash.exceptions import PreventUpdate
 from dash_mantine_components import MultiSelect, Select, Textarea, TextInput
 
 from aurora_cycler_manager.database_funcs import (
@@ -148,7 +149,7 @@ def register_batch_edit_callbacks(app: Dash, database_access: bool):
             if name in batch_def:
                 return no_update, True
             return True, no_update
-        return no_update, no_update
+        raise PreventUpdate
 
     # When save batch is confirmed, save the batch
     @app.callback(
@@ -174,7 +175,7 @@ def register_batch_edit_callbacks(app: Dash, database_access: bool):
     def delete_batch_button(n_clicks):
         if n_clicks:
             return True
-        return no_update
+        raise PreventUpdate
 
     # When delete batch is confirmed, delete the batch
     @app.callback(
