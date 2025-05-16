@@ -425,7 +425,7 @@ def get_sampleid_from_mpr(mpr_rel_path: str | Path) -> tuple[str, str]:
 
 
 def convert_all_mprs() -> None:
-    """Convert all raw .mpr files to gzipped json files.
+    """Convert all raw .mpr files to .h5.
 
     The config file needs a key "EC lab harvester" with the keys "Snapshots folder path".
 

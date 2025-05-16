@@ -558,7 +558,7 @@ def convert_neware_data(
     output_jsongz_file: bool = False,
     output_hdf5_file: bool = True,
 ) -> tuple[pd.DataFrame, dict]:
-    """Convert a neware file to a dataframe and save as a gzipped json file.
+    """Convert a neware file to a dataframe and save as .h5 or .gz.json.
 
     Args:
         file_path (Path): Path to the neware file

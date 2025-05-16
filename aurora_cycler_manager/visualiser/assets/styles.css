@@ -13,7 +13,7 @@ html, body {
 /* Default style for narrow screens */
 .responsive-container {
     width: 100%;
-    height: calc(100vh - 30px);
+    height: 100vh;
     overflow: hidden;
 }
 

@@ -24,7 +24,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-
 import h5py
 import numpy as np
 import pandas as pd
@@ -38,9 +37,9 @@ from aurora_cycler_manager.utils import (
     json_dump_compress_lists,
     max_with_none,
     min_with_none,
+    round_c_rate,
     run_from_sample,
     weighted_median,
-    round_c_rate,
 )
 from aurora_cycler_manager.version import __url__, __version__
 

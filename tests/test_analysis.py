@@ -39,7 +39,6 @@ class TestAnalysis:
         assert all(df["V (V)"] > 0)
         assert all(df["V (V)"] < 5)
 
-
         # cycle dict checks
         assert isinstance(cycle_dict, dict)
         assert isinstance(cycle_dict["Cycle"], list)
