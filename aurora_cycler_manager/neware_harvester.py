@@ -725,6 +725,7 @@ def main() -> None:
     new_files = harvest_all_neware_files()
     new_samples = set()
     known_samples = get_known_samples()
+    logger.info("Processing %d files", len(new_files))
     for file in new_files:
         logger.info("Processing %s", file)
         try:
@@ -737,12 +738,12 @@ def main() -> None:
                     logger.info("Converted %s", sampleid)
         except Exception:
             logger.exception("Error converting %s", file)
+    logger.info("Analysing %d samples", len(new_samples))
     for sample in new_samples:
-        logger.info("Analysing %d samples", len(new_samples))
         try:
             analyse_sample(sample)
             logger.info("Analysed %s", sample)
-        except Exception:
+        except Exception:  # noqa: PERF203
             logger.exception("Error analysing %s", sample)
 
 
