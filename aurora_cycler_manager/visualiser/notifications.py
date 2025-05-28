@@ -45,56 +45,60 @@ def queue_notification(notification: Notification) -> None:
     notification_queue.append(notification)
 
 
-def success_notification(title: str, message: str) -> None:
+def success_notification(title: str, message: str, queue: bool = False) -> Notification:
     """Create a success notification."""
     notification = Notification(
-        id="notification",
         title=title,
         message=message,
         color="green",
         action="show",
         icon=html.I(className="bi bi-check-circle"),
     )
-    queue_notification(notification)
+    if queue:
+        queue_notification(notification)
+    return notification
 
 
-def info_notification(title: str, message: str) -> None:
+def info_notification(title: str, message: str, queue: bool = False) -> Notification:
     """Create an info notification."""
     notification = Notification(
-        id="notification",
         title=title,
         message=message,
         color="blue",
         action="show",
         icon=html.I(className="bi bi-info-circle"),
     )
-    queue_notification(notification)
+    if queue:
+        queue_notification(notification)
+    return notification
 
 
-def warning_notification(title: str, message: str) -> None:
+def warning_notification(title: str, message: str, queue: bool = False) -> Notification:
     """Create a warning notification."""
     notification = Notification(
-        id="notification",
         title=title,
         message=message,
         color="yellow",
         action="show",
         icon=html.I(className="bi bi-exclamation-triangle"),
     )
-    queue_notification(notification)
+    if queue:
+        queue_notification(notification)
+    return notification
 
 
-def error_notification(title: str, message: str) -> None:
+def error_notification(title: str, message: str, queue: bool = False) -> Notification:
     """Create an error notification."""
     notification = Notification(
-        id="notification",
         title=title,
         message=message,
         color="red",
         action="show",
         icon=html.I(className="bi bi-x-circle"),
     )
-    queue_notification(notification)
+    if queue:
+        queue_notification(notification)
+    return notification
 
 
 notifications_layout = html.Div(
@@ -121,7 +125,7 @@ def register_notifications_callbacks(app: Dash) -> None:
 
     # Check for notifications whenever notify or trigger interval changes
     @app.callback(
-        Output("notifications-container", "children"),
+        Output("notifications-container", "children", allow_duplicate=True),
         Output("trigger-interval", "disabled", allow_duplicate=True),
         Input("notify-interval", "n_intervals"),
         Input("trigger-interval", "n_intervals"),
