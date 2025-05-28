@@ -21,10 +21,10 @@ Run the script to harvest and convert all mpr files.
 
 import gzip
 import json
+import logging
 import os
 import re
 import sqlite3
-import warnings
 from datetime import datetime
 from pathlib import Path
 
@@ -37,9 +37,11 @@ import yadg
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_sample_data
+from aurora_cycler_manager.setup_logging import setup_logging
 from aurora_cycler_manager.version import __url__, __version__
 
 CONFIG = get_config()
+logger = logging.getLogger(__name__)
 
 
 def get_snapshot_folder() -> Path:
@@ -95,7 +97,14 @@ def get_mprs(
     with paramiko.SSHClient() as ssh:
         ssh.load_system_host_keys()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        print(f"Connecting to host {server_hostname} user {server_username}")
+        logger.info(
+            "Connecting to server",
+            extra={
+                "server_label": server_label,
+                "server_hostname": server_hostname,
+                "server_username": server_username,
+            },
+        )
         ssh.connect(server_hostname, username=server_username, pkey=local_private_key)
 
         # Shell commands to find files modified since cutoff date
@@ -121,7 +130,7 @@ def get_mprs(
             msg = f"Error finding modified files: {error}"
             raise RuntimeError(msg)
         modified_files = output.splitlines()
-        print(f"Found {len(modified_files)} files modified since {cutoff_date_str}")
+        logger.info("Found %d modified files since %s", len(modified_files), cutoff_date_str)
 
         # Copy the files using SFTP
         current_datetime = datetime.now()  # Keep time of copying for database
@@ -134,7 +143,7 @@ def get_mprs(
                 local_dir = os.path.dirname(local_path)
                 if not os.path.exists(local_dir):
                     os.makedirs(local_dir)
-                print(f"Copying {file} to {local_path}")
+                logger.info("Copying %s to %s", file, local_path)
                 sftp.get(file, local_path)
                 new_files.append(local_path)
 
@@ -211,9 +220,9 @@ def get_mpr_data(
                     found_start_time = True
                     break
             if not found_start_time:
-                warnings.warn(f"Incorrect start time in {mpr_file} and no start time in found {mpl_file}", stacklevel=2)
+                logger.warning("Incorrect start time in %s and no start time in found %s", mpr_file, mpl_file)
         except FileNotFoundError:
-            warnings.warn(f"Incorrect start time in {mpr_file} and no mpl file found.", stacklevel=2)
+            logger.warning("Incorrect start time in %s and no mpl file found.", mpr_file)
 
     # Only keep certain columns in dataframe
     df["V (V)"] = data.data_vars["Ewe"].to_numpy()
@@ -288,9 +297,9 @@ def convert_mpr(
                     found_start_time = True
                     break
             if not found_start_time:
-                warnings.warn(f"Incorrect start time in {mpr_file} and no start time in found {mpl_file}", stacklevel=2)
+                logger.warning("Incorrect start time in %s and no start time in found %s", mpr_file, mpl_file)
         except FileNotFoundError:
-            warnings.warn(f"Incorrect start time in {mpr_file} and no mpl file found.", stacklevel=2)
+            logger.warning("Incorrect start time in %s and no mpl file found.", mpr_file)
 
     # Only keep certain columns in dataframe
     df["V (V)"] = data.data_vars["Ewe"].to_numpy()
@@ -313,6 +322,7 @@ def convert_mpr(
 
     # Metadata to add
     timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
+    technique_codes = {1: "Constant current", 2: "Constant voltage", 3: "Open circuit voltage"}
     metadata = {
         "provenance": {
             "snapshot_file": mpr_file,
@@ -328,11 +338,19 @@ def convert_mpr(
         },
         "job_data": mpr_metadata,
         "sample_data": sample_data,
+        "glossary": {
+            "uts": "Unix time stamp in seconds",
+            "V (V)": "Cell voltage in volts",
+            "I (A)": "Current across cell in amps",
+            "cycle_number": "Number of cycles based on EC-lab half cycles",
+            "technique": "code of technique using mpr conventions, see technique codes",
+            "technique codes": technique_codes,
+        },
     }
 
     if output_hdf5_file or output_jsongz_file:  # Save and update database
         if not sample_id:
-            print(f"Not saving {mpr_file}, no valid Sample ID found")
+            logger.warning("Not saving %s, no valid Sample ID found", mpr_file)
             return df, metadata
         folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample_id
         if not folder.exists():
@@ -343,7 +361,7 @@ def convert_mpr(
             jsongz_filepath = folder / ("snapshot." + mpr_filename.replace(".mpr", ".json.gz"))
             with gzip.open(jsongz_filepath, "wt") as f:
                 json.dump({"data": df.to_dict(orient="list"), "metadata": metadata}, f)
-            print(f"Saved {jsongz_filepath}")
+            logger.info("Saved %s", jsongz_filepath)
 
         if output_hdf5_file:  # Save as hdf5
             hdf5_filepath = folder / ("snapshot." + mpr_filename.replace(".mpr", ".h5"))
@@ -360,7 +378,7 @@ def convert_mpr(
             # create a dataset called metadata and json dump the metadata
             with h5py.File(hdf5_filepath, "a") as f:
                 f.create_dataset("metadata", data=json.dumps(metadata))
-            print(f"Saved {hdf5_filepath}")
+            logger.info("Saved %s", hdf5_filepath)
 
         # Update the database
         with sqlite3.connect(CONFIG["Database path"]) as conn:
@@ -444,13 +462,14 @@ def convert_all_mprs() -> None:
                         output_jsongz_file=False,
                         output_hdf5_file=True,
                     )
-                    print(f"Converted {full_path}")
-                except (ValueError, IndexError, KeyError, RuntimeError) as e:
-                    print(f"Error converting {full_path}: {e}")
+                    logger.info("Converted %s", full_path)
+                except (ValueError, IndexError, KeyError, RuntimeError):
+                    logger.exception("Error converting %s", full_path)
                     continue
 
 
 def main() -> None:
+    """Harverst and convert all new mpr files."""
     new_files = get_all_mprs()
     for mpr_path in new_files:
         try:
@@ -459,10 +478,11 @@ def main() -> None:
                 output_jsongz_file=False,
                 output_hdf5_file=True,
             )
-        except (ValueError, IndexError, KeyError, RuntimeError) as e:  # noqa: PERF203
-            print(f"Error converting {mpr_path}: {e}")
+        except (ValueError, IndexError, KeyError, RuntimeError):  # noqa: PERF203
+            logger.exception("Error converting %s", mpr_path)
             continue
 
 
 if __name__ == "__main__":
+    setup_logging()
     main()
