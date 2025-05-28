@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from datetime import datetime
 
 import dash_ag_grid as dag
@@ -29,16 +30,27 @@ from aurora_cycler_manager.visualiser.db_batch_edit import (
     batch_edit_layout,
     register_batch_edit_callbacks,
 )
+from aurora_cycler_manager.visualiser.db_protocol_edit import (
+    protocol_edit_layout,
+    register_protocol_edit_callbacks,
+)
 from aurora_cycler_manager.visualiser.funcs import (
     get_database,
     get_db_last_update,
     make_pipelines_comparable,
+)
+from aurora_cycler_manager.visualiser.notifications import (
+    active_time,
+    error_notification,
+    idle_time,
+    success_notification,
 )
 
 # ------------------------ Initialize server manager ------------------------- #
 
 
 # If user cannot ssh connect then disable features that require it
+logger = logging.getLogger(__name__)
 accessible_servers = []
 database_access = False
 sm: ServerManager | None = None
@@ -47,20 +59,24 @@ try:
     accessible_servers = list(sm.servers.keys())
     database_access = bool(accessible_servers)
 except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
-    print(e)
-    print("You cannot access any servers. Running in view-only mode.")
+    logger.warning(e)
+    logger.warning("You cannot access any servers. Running in view-only mode.")
 
 # ----------------------------- Layout - tables ----------------------------- #
 
-# Different tables for each tab
-default_table_options = {
+DEFAULT_TABLE_OPTIONS: dict[str, dict] = {
     "dashGridOptions": {
         "enableCellTextSelection": False,
         "ensureDomOrder": True,
         "tooltipShowDelay": 1000,
         "rowSelection": "multiple",
     },
-    "defaultColDef": {"filter": True, "sortable": True, "floatingFilter": True},
+    "defaultColDef": {
+        "filter": True,
+        "sortable": True,
+        "floatingFilter": True,
+        "cellRenderer": "agAnimateShowChangeCellRenderer",
+    },
     "style": {"height": "calc(100vh - 240px)", "width": "100%", "minHeight": "300px", "display": "none"},
 }
 TABLES = [
@@ -71,19 +87,23 @@ TABLES = [
 ]
 samples_table = dag.AgGrid(
     id="samples-table",
-    **default_table_options,
+    getRowId="params.data['Sample ID']",
+    **DEFAULT_TABLE_OPTIONS,
 )
 pipelines_table = dag.AgGrid(
     id="pipelines-table",
-    **default_table_options,
+    getRowId="params.data['Pipeline']",
+    **DEFAULT_TABLE_OPTIONS,
 )
 jobs_table = dag.AgGrid(
     id="jobs-table",
-    **default_table_options,
+    getRowId="params.data['Job ID']",
+    **DEFAULT_TABLE_OPTIONS,
 )
 results_table = dag.AgGrid(
     id="results-table",
-    **default_table_options,
+    getRowId="params.data['Sample ID']",
+    **DEFAULT_TABLE_OPTIONS,
 )
 
 # ----------------------------- Layout - buttons ----------------------------- #
@@ -93,6 +113,7 @@ results_table = dag.AgGrid(
 CONTAINERS = [
     "table-container",
     "batch-container",
+    "protocol-container",
 ]
 BUTTONS = [
     "load-button",
@@ -111,6 +132,9 @@ BUTTONS = [
 visibility_settings = {
     "batches": {
         "batch-container",
+    },
+    "protocols": {
+        "protocol-container",
     },
     "pipelines": {
         "table-container",
@@ -445,7 +469,7 @@ submit_modal = dbc.Modal(
                         [
                             "Drag and Drop or ",
                             html.A("Select Files"),
-                        ]
+                        ],
                     ),
                     style={
                         "width": "100%",
@@ -456,7 +480,7 @@ submit_modal = dbc.Modal(
                         "borderRadius": "8px",
                         "textAlign": "center",
                     },
-                    accept=[".json", ".xml"],
+                    accept=".json,.xml",
                     multiple=False,
                 ),
                 html.P(children="No file selected", id="validator"),
@@ -466,14 +490,14 @@ submit_modal = dbc.Modal(
                         html.Label("Calculate C-rate by:", htmlFor="submit-crate"),
                         dcc.Dropdown(
                             id="submit-crate",
-                            options=[
-                                {"value": "areal", "label": "areal capacity x area from db"},
-                                {"value": "mass", "label": "specific capacity x mass  from db"},
-                                {"value": "nominal", "label": "nominal capacity from db"},
-                                {"value": "custom", "label": "custom capacity value"},
-                            ],
+                            options={
+                                "areal": "areal capacity x area from db",
+                                "mass": "specific capacity x mass from db",
+                                "nominal": "nominal capacity from db",
+                                "custom": "custom capacity value",
+                            },
                         ),
-                    ]
+                    ],
                 ),
                 html.Div(
                     id="submit-capacity-div",
@@ -710,6 +734,7 @@ db_view_layout = html.Div(
                         dbc.Tab(label="Jobs", tab_id="jobs", activeTabClassName="fw-bold"),
                         dbc.Tab(label="Results", tab_id="results", activeTabClassName="fw-bold"),
                         dbc.Tab(label="Batches", tab_id="batches", activeTabClassName="fw-bold"),
+                        dbc.Tab(label="Protocols", tab_id="protocols", activeTabClassName="fw-bold"),
                     ],
                     id="table-select",
                     active_tab="samples",
@@ -729,6 +754,7 @@ db_view_layout = html.Div(
                     ],
                 ),
                 batch_edit_layout,  # When viewing 'batches' tab
+                protocol_edit_layout,  # When viewing 'protocols' tab
             ],
         ),
         # Pop ups after clicking buttons
@@ -749,9 +775,10 @@ db_view_layout = html.Div(
 # -------------------------------- Callbacks --------------------------------- #
 
 
-def register_db_view_callbacks(app: Dash) -> None:
+def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     """Register callbacks for the database view layout."""
     register_batch_edit_callbacks(app, database_access)
+    register_protocol_edit_callbacks(app)
 
     # Update data in tables when it changes
     @app.callback(
@@ -767,7 +794,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         Input("table-data-store", "data"),
         running=[(Output("loading-message-store", "data"), "Updating tables...", "")],
     )
-    def update_data(data: dict[str, dict]):
+    def update_data(data: dict[str, dict]) -> tuple:
         return (
             data["data"].get("samples", no_update),
             data["column_defs"].get("samples", no_update),
@@ -791,13 +818,13 @@ def register_db_view_callbacks(app: Dash) -> None:
         [Output(element, "style") for element in TABLES],
         Input("table-select", "active_tab"),
     )
-    def update_table(table):
-        settings = visibility_settings.get(table, {})
-        show = {}
+    def update_table(table: str) -> tuple:
+        settings: set = visibility_settings.get(table, set())
+        show: dict = {}
         hide = {"display": "none"}
         visibilities = [show if element in settings else hide for element in CONTAINERS + BUTTONS]
-        table_style = default_table_options["style"]
-        show_table = default_table_options["style"].copy()
+        table_style: dict = DEFAULT_TABLE_OPTIONS["style"]
+        show_table = DEFAULT_TABLE_OPTIONS["style"].copy()
         show_table["display"] = "block"
         table_visibilities = [show_table if element == f"{table}-table" else table_style for element in TABLES]
         return (
@@ -961,7 +988,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         if not yes_clicks:
             return no_update, 0
         for row in selected_rows:
-            print(f"Ejecting {row['Pipeline']}")
+            logger.info("Ejecting %s", row["Pipeline"])
             sm.eject(row["Pipeline"])
         return no_update, 1
 
@@ -1004,7 +1031,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             )
             for i, s in enumerate(selected_rows)
         ]
-        children = ["Select the samples you want to load"] + dropdowns
+        children = ["Select the samples you want to load", *dropdowns]
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         increment = {"display": "inline-block"} if len(selected_rows) > 1 else {"display": "none"}
         if button_id == "load-button":
@@ -1062,7 +1089,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         for sample, pipeline in zip(selected_samples, pipelines):
             if not sample:
                 continue
-            print(f"Loading {sample} to {pipeline}")
+            logger.info("Loading %s to %s", sample, pipeline)
             sm.load(sample, pipeline)
         return no_update, 1
 
@@ -1090,15 +1117,18 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("ready-yes-close", "n_clicks"),
         State("selected-rows-store", "data"),
-        running=[(Output("loading-message-store", "data"), "Readying pipelines...", "")],
+        running=[
+            (Output("loading-message-store", "data"), "Readying pipelines...", ""),
+            (Output("notify-interval", "interval"), active_time, idle_time),
+        ],
         prevent_initial_call=True,
     )
     def ready_pipeline(yes_clicks, selected_rows):
         if not yes_clicks:
             return no_update, 0
         for row in selected_rows:
-            print(f"Readying {row['Pipeline']}")
             sm.ready(row["Pipeline"])
+            success_notification("", f"Pipeline {row['Pipeline']} ready", queue=True)
         return no_update, 1
 
     # Unready button pop up
@@ -1132,7 +1162,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         if not yes_clicks:
             return no_update, 0
         for row in selected_rows:
-            print(f"Unreadying {row['Pipeline']}")
+            logger.info("Unreadying %s", row["Pipeline"])
             _output = sm.unready(row["Pipeline"])
         return no_update, 1
 
@@ -1233,7 +1263,10 @@ def register_db_view_callbacks(app: Dash) -> None:
         State("payload", "data"),
         State("submit-crate", "value"),
         State("submit-capacity", "value"),
-        running=[(Output("loading-message-store", "data"), "Submitting protocols...", "")],
+        running=[
+            (Output("loading-message-store", "data"), "Submitting protocols...", ""),
+            (Output("notify-interval", "interval"), active_time, idle_time),
+        ],
         prevent_initial_call=True,
     )
     def submit_pipeline(yes_clicks, selected_rows, payload, crate_calc, capacity):
@@ -1242,12 +1275,14 @@ def register_db_view_callbacks(app: Dash) -> None:
         # capacity_Ah: float | 'areal','mass','nominal'
         capacity_Ah = capacity / 1000 if crate_calc == "custom" else crate_calc
         if not isinstance(capacity_Ah, float) and capacity_Ah not in ["areal", "mass", "nominal"]:
-            print(f"Invalid capacity calculation method: {capacity_Ah}")
+            logger.error("Invalid capacity calculation method: %s", capacity_Ah)
             return no_update, 0
         for row in selected_rows:
-            print(f"Submitting payload {payload} to sample {row['Sample ID']} with capacity_Ah {capacity_Ah}")
-            # TODO gracefully handle errors here
-            sm.submit(row["Sample ID"], payload, capacity_Ah)
+            try:
+                sm.submit(row["Sample ID"], payload, capacity_Ah)
+                success_notification("", f"Sample {row['Sample ID']} submitted", queue=True)
+            except Exception as e:  # noqa: BLE001, PERF203
+                error_notification("", f"Error submitting sample {row['Sample ID']}: {e}", queue=True)
         return no_update, 1
 
     # When selecting create batch, switch to batch sub-tab with samples selected
@@ -1293,7 +1328,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         if not yes_clicks:
             return no_update, 0
         for row in selected_rows:
-            print(f"Cancelling job {row['Job ID']}")
+            logger.info("Cancelling job %s", row["Job ID"])
             sm.cancel(row["Job ID"])
         return no_update, 1
 
@@ -1348,10 +1383,10 @@ def register_db_view_callbacks(app: Dash) -> None:
             raise PreventUpdate
         for row in selected_rows:
             if row.get("Job ID"):
-                print(f"Snapshotting {row['Job ID']}")
+                logger.info("Snapshotting %s", row["Job ID"])
                 sm.snapshot(row["Job ID"])
             else:
-                print(f"Snapshotting {row['Sample ID']}")
+                logger.info("Snapshotting %s", row["Sample ID"])
                 sm.snapshot(row["Sample ID"])
         raise PreventUpdate
 
@@ -1387,7 +1422,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         if not yes_clicks:
             return no_update, 0
         sample_ids = [s["Sample ID"] for s in selected_rows]
-        print(f"Deleting {sample_ids}")
+        logger.info("Deleting [%s]", ", ".join(sample_ids))
         delete_samples(sample_ids)
         return no_update, 1
 
@@ -1404,11 +1439,12 @@ def register_db_view_callbacks(app: Dash) -> None:
             _content_type, content_string = contents.split(",")
             decoded = base64.b64decode(content_string).decode("utf-8")
             samples = json.loads(decoded)
-            print(f"Adding samples {filename}")
+            logger.info("Adding samples %s", filename)
             try:
                 add_samples_from_object(samples)
             except ValueError as e:
                 if "already exist" in str(e):
+                    logger.warning("Sample upload would overwrite existing samples")
                     return no_update, True  # Open confirm dialog
             return 1, no_update  # Refresh the database
         raise PreventUpdate
@@ -1425,7 +1461,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             _content_type, content_string = contents.split(",")
             decoded = base64.b64decode(content_string).decode("utf-8")
             samples = json.loads(decoded)
-            print(f"Adding samples {filename}")
+            logger.info("Adding samples %s", filename)
             add_samples_from_object(samples, overwrite=True)
             return 1
         raise PreventUpdate
@@ -1463,9 +1499,9 @@ def register_db_view_callbacks(app: Dash) -> None:
         if not yes_clicks:
             return no_update, 0
         sample_ids = [s["Sample ID"] for s in selected_rows]
-        print(f"Labelling {sample_ids} with '{label}'")
+        logger.info("Labelling [%s] with '%s'", ", ".join(sample_ids), label)
         update_sample_label(sample_ids, label)
-        print("Updating metadata in cycles.*.json and full.*.h5 files")
+        logger.info("Updating metadata in cycles.*.json and full.*.h5 files")
         update_sample_metadata(sample_ids)
         return no_update, 1
 
