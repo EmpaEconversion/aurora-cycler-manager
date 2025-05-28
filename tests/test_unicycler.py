@@ -7,6 +7,7 @@ from unittest import TestCase
 
 import pytest
 from defusedxml import ElementTree
+from pydantic import ValidationError
 
 from aurora_cycler_manager.unicycler import (
     ConstantCurrent,
@@ -17,6 +18,7 @@ from aurora_cycler_manager.unicycler import (
     Protocol,
     SafetyParams,
     SampleParams,
+    Tag,
     from_dict,
     from_json,
 )
@@ -66,26 +68,30 @@ class TestUnicycler(TestCase):
         missing_name_msg = (
             "If using blank sample name or $NAME placeholder, a sample name must be provided in this function."
         )
+        protocol = from_dict(self.example_protocol_data[1])
         with pytest.raises(ValueError) as context:
-            from_dict(self.example_protocol_data[1])
+            protocol.to_neware_xml()
         assert str(context.value) == missing_name_msg
+        protocol = from_dict(self.example_protocol_data[2])
         with pytest.raises(ValueError) as context:
-            from_dict(self.example_protocol_data[2])
+            protocol.to_neware_xml()
         assert str(context.value) == missing_name_msg
 
-        missing_cap_msg = (
-            "If using blank, 0, or $CAPACITY placeholder, a sample capacity must be provided in this function."
-        )
+        missing_cap_msg = "Sample capacity must be set if using C-rate steps."
+        protocol = from_dict(self.example_protocol_data[1], sample_name="test_sample")
         with pytest.raises(ValueError) as context:
-            from_dict(self.example_protocol_data[1], sample_name="test_sample")
+            protocol.to_neware_xml()
         assert str(context.value) == missing_cap_msg
+        protocol = from_dict(self.example_protocol_data[2], sample_name="test_sample")
         with pytest.raises(ValueError) as context:
-            from_dict(self.example_protocol_data[2], sample_name="test_sample")
+            protocol.to_neware_xml()
         assert str(context.value) == missing_cap_msg
 
         # should not raise error if both are provided
         protocol1 = from_dict(self.example_protocol_data[1], sample_name="test_sample", sample_capacity_mAh=123)
         protocol2 = from_dict(self.example_protocol_data[2], sample_name="test_sample", sample_capacity_mAh=123)
+        protocol1.to_neware_xml()
+        protocol2.to_neware_xml()
         assert protocol1.sample.name == "test_sample"
         assert protocol1.sample.capacity_mAh == Decimal("123")
         assert protocol1 == protocol2
@@ -260,3 +266,154 @@ class TestUnicycler(TestCase):
         protocol.to_neware_xml()
         protocol.to_tomato_mpg2()
         protocol.to_pybamm_experiment()
+
+    def test_tags(self) -> None:
+        """Test tags in Protocol."""
+        protocol = Protocol(
+            measurement=MeasurementParams(time_s=1),
+            safety=SafetyParams(),
+            method=[
+                OpenCircuitVoltage(until_time_s=1),
+                OpenCircuitVoltage(until_time_s=1),
+                OpenCircuitVoltage(until_time_s=1),
+                OpenCircuitVoltage(until_time_s=1),
+                Loop(start_step=2, cycle_count=3),
+            ],
+        )
+        protocol.tag_to_indices()
+        # this should not change the loop step
+        assert isinstance(protocol.method[4], Loop)
+        assert protocol.method[4].start_step == 2
+
+        protocol = Protocol(
+            measurement=MeasurementParams(time_s=1),
+            safety=SafetyParams(),
+            method=[
+                OpenCircuitVoltage(until_time_s=1),  # 0
+                OpenCircuitVoltage(until_time_s=1),  # 1
+                Tag(tag="tag1"),
+                OpenCircuitVoltage(until_time_s=1),  # 2
+                OpenCircuitVoltage(until_time_s=1),  # 3
+                Loop(start_step="tag1", cycle_count=3),  # 4
+                OpenCircuitVoltage(until_time_s=1),  # 5
+                Loop(start_step=3, cycle_count=3),  # 6
+            ],
+        )
+        # tag should be removed and replaced with the index
+        protocol.tag_to_indices()
+        assert isinstance(protocol.method[4], Loop)
+        assert protocol.method[4].start_step == 3
+        assert isinstance(protocol.method[6], Loop)
+        assert protocol.method[6].start_step == 3
+
+        protocol = Protocol(
+            measurement=MeasurementParams(time_s=1),
+            safety=SafetyParams(),
+            method=[
+                OpenCircuitVoltage(until_time_s=1),  # 0
+                OpenCircuitVoltage(until_time_s=1),  # 1
+                Tag(tag="tag1"),
+                OpenCircuitVoltage(until_time_s=1),  # 2
+                Tag(tag="tag2"),
+                OpenCircuitVoltage(until_time_s=1),  # 3
+                Loop(start_step="tag1", cycle_count=3),  # 4
+                OpenCircuitVoltage(until_time_s=1),  # 5
+                Loop(start_step=6, cycle_count=3),  # 6
+                Tag(tag="tag3"),
+                OpenCircuitVoltage(until_time_s=1),  # 7
+                Loop(start_step="tag2", cycle_count=3),  # 8
+                OpenCircuitVoltage(until_time_s=1),  # 9
+                OpenCircuitVoltage(until_time_s=1),  # 10
+                Loop(start_step="tag1", cycle_count=3),  # 11
+                Tag(tag="tag that doesnt do anything"),
+                Loop(start_step="tag3", cycle_count=3),  # 12
+            ],
+        )
+        protocol.tag_to_indices()
+        assert isinstance(protocol.method[4], Loop)
+        assert protocol.method[4].start_step == 3
+        assert isinstance(protocol.method[6], Loop)
+        assert protocol.method[6].start_step == 4
+        assert isinstance(protocol.method[8], Loop)
+        assert protocol.method[8].start_step == 4
+        assert isinstance(protocol.method[11], Loop)
+        assert protocol.method[11].start_step == 3
+        assert isinstance(protocol.method[12], Loop)
+        assert protocol.method[12].start_step == 8
+
+        # You should not be able to create a loop with a tag that does not exist
+        with pytest.raises(ValidationError):
+            protocol = Protocol(
+                measurement=MeasurementParams(time_s=1),
+                safety=SafetyParams(),
+                method=[
+                    OpenCircuitVoltage(until_time_s=1),
+                    OpenCircuitVoltage(until_time_s=1),
+                    OpenCircuitVoltage(until_time_s=1),
+                    OpenCircuitVoltage(until_time_s=1),
+                    Loop(start_step="this tag does not exist", cycle_count=3),
+                ],
+            )
+
+    def test_tag_neware(self) -> None:
+        """Test tags in Neware XML."""
+        protocol = Protocol(
+            measurement=MeasurementParams(time_s=1),
+            safety=SafetyParams(),
+            method=[
+                OpenCircuitVoltage(until_time_s=1),
+                OpenCircuitVoltage(until_time_s=1),
+                Tag(tag="tag1"),
+                OpenCircuitVoltage(until_time_s=1),
+                OpenCircuitVoltage(until_time_s=1),
+                Loop(start_step="tag1", cycle_count=3),
+            ],
+        )
+        xml_string = protocol.to_neware_xml(sample_name="test")
+        neware_ET = ElementTree.fromstring(xml_string)
+        loopstep = neware_ET.find("config/Step_Info/Step5")
+        assert loopstep.attrib["Step_Type"] == "5"
+        start_step = loopstep.find("Limit/Other/Start_Step")
+        assert start_step.attrib["Value"] == "3"
+
+        protocol1 = Protocol(
+            measurement=MeasurementParams(time_s=1),
+            safety=SafetyParams(),
+            method=[
+                OpenCircuitVoltage(until_time_s=1),
+                Tag(tag="tag1"),
+                OpenCircuitVoltage(until_time_s=2),
+                Tag(tag="tag2"),
+                OpenCircuitVoltage(until_time_s=3),
+                OpenCircuitVoltage(until_time_s=4),
+                OpenCircuitVoltage(until_time_s=5),
+                Loop(start_step="tag2", cycle_count=3),
+                OpenCircuitVoltage(until_time_s=6),
+                Loop(start_step="tag1", cycle_count=5),
+                OpenCircuitVoltage(until_time_s=7),
+            ],
+        )
+
+        protocol2 = Protocol(
+            measurement=MeasurementParams(time_s=1),
+            safety=SafetyParams(),
+            method=[
+                OpenCircuitVoltage(until_time_s=1),
+                OpenCircuitVoltage(until_time_s=2),
+                OpenCircuitVoltage(until_time_s=3),
+                OpenCircuitVoltage(until_time_s=4),
+                OpenCircuitVoltage(until_time_s=5),
+                Loop(start_step=3, cycle_count=3),
+                OpenCircuitVoltage(until_time_s=6),
+                Loop(start_step=2, cycle_count=5),
+                OpenCircuitVoltage(until_time_s=7),
+            ],
+        )
+        neware1 = protocol1.to_neware_xml(sample_name="test")
+        neware2 = protocol2.to_neware_xml(sample_name="test")
+        # remove the date and uuid from the xml, starts with Guid=" and ends with "
+        # use regex to remove it
+        idx = neware1.find("date=")
+        neware1 = neware1[:idx] + neware1[idx + 65 :]
+        neware2 = neware2[:idx] + neware2[idx + 65 :]
+        assert neware1 == neware2

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Annotated, Literal, Union
 from xml.dom import minidom
 
-from pydantic import BaseModel, BeforeValidator, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
 from typing_extensions import Self
 
 getcontext().prec = 10
@@ -71,7 +71,8 @@ class BaseTechnique(BaseModel):
     """Base class for all techniques."""
 
     name: str
-
+    # optional id field
+    id: str | None = Field(default=None, description="Optional ID for the technique step")
     model_config = {"extra": "forbid"}
 
 
@@ -137,11 +138,33 @@ class Loop(BaseTechnique):
     """Loop technique."""
 
     name: Literal["loop"] = "loop"
-    start_step: int = Field(gt=0)  # Steps are 1-indexed
+    start_step: Annotated[int | str, Field()] = Field(default=1)
     cycle_count: int = Field(gt=0)
+    model_config = {"extra": "forbid"}
+
+    @field_validator("start_step")
+    @classmethod
+    def validate_start_step(cls, v: int | str) -> int | str:
+        """Ensure start_step is a positive integer or a string."""
+        if isinstance(v, int) and v <= 0:
+            msg = "Start step must be positive integer or a string"
+            raise ValueError(msg)
+        if isinstance(v, str) and v.strip() == "":
+            msg = "Start step cannot be empty"
+            raise ValueError(msg)
+        return v
 
 
-AnyTechnique = Union[BaseTechnique, ConstantCurrent, ConstantVoltage, OpenCircuitVoltage, Loop]
+class Tag(BaseTechnique):
+    """Tag technique."""
+
+    name: str = Field(default="tag", frozen=True)
+    tag: str = Field(default="")
+
+    model_config = {"extra": "forbid"}
+
+
+AnyTechnique = Union[BaseTechnique, ConstantCurrent, ConstantVoltage, OpenCircuitVoltage, Loop, Tag]
 
 
 # --- Main Protocol Model ---
@@ -155,6 +178,7 @@ class Protocol(BaseModel):
 
     model_config = {"extra": "forbid"}
 
+    # Only checked when outputting
     def _validate_capacity_c_rates(self) -> None:
         """Ensure if using C-rate steps, a capacity is set."""
         if not self.sample.capacity_mAh and any(
@@ -162,6 +186,62 @@ class Protocol(BaseModel):
         ):
             msg = "Sample capacity must be set if using C-rate steps."
             raise ValueError(msg)
+
+    @model_validator(mode="after")
+    def _validate_no_duplicate_tags(self) -> Self:
+        """Ensure that tags are unique."""
+        tags = [step.tag for step in self.method if isinstance(step, Tag)]
+        if len(tags) != len(set(tags)):
+            duplicate_tags = {"'" + tag + "'" for tag in tags if tags.count(tag) > 1}
+            msg = "Duplicate tags: " + ", ".join(duplicate_tags)
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_loops_to_tags(self) -> Self:
+        """Ensure that if a loop uses a string, it is a valid tag."""
+        loop_tags = [
+            step.start_step for step in self.method if isinstance(step, Loop) and isinstance(step.start_step, str)
+        ]
+        tags = [step.tag for step in self.method if isinstance(step, Tag)]
+        for loop_tag in loop_tags:
+            if loop_tag not in tags:
+                msg = f"Tag '{loop_tag}' is missing."
+                raise ValueError(msg)
+        return self
+
+    def tag_to_indices(self) -> None:
+        """Convert tag steps into indices to be processed later."""
+        # In a protocol the steps are 1-indexed and tags should be ignored
+        # The loop function should point to the index of the step AFTER the corresponding tag
+        indices = [0] * len(self.method)
+        tags = {}
+        methods_to_remove = []
+        j = 0
+        for i, step in enumerate(self.method):
+            if isinstance(step, Tag):
+                indices[i] = j + 1
+                tags[step.tag] = j + 1
+                # drop this step from the list
+                methods_to_remove.append(i)
+            elif isinstance(step, BaseTechnique):
+                j += 1
+                indices[i] = j
+                if isinstance(step, Loop):
+                    if isinstance(step.start_step, str):
+                        # If the start step is a string, it should be a tag, go to the tag index
+                        try:
+                            step.start_step = tags[step.start_step]
+                        except KeyError as e:
+                            msg = f"Loop step with tag {step.start_step} does not have a corresponding tag step."
+                            raise ValueError(msg) from e
+                    else:
+                        # If the start step is an int, it should be the NEW index of the step
+                        step.start_step = indices[step.start_step - 1]
+            else:
+                methods_to_remove.append(i)
+        # Remove tags and other invalid steps
+        self.method = [step for i, step in enumerate(self.method) if i not in methods_to_remove]
 
     def to_neware_xml(
         self,
@@ -176,8 +256,16 @@ class Protocol(BaseModel):
         if capacity_mAh:
             self.sample.capacity_mAh = Decimal(capacity_mAh)
 
+        # Make sure sample name is set
+        if not self.sample.name or self.sample.name == "$NAME":
+            msg = "If using blank sample name or $NAME placeholder, a sample name must be provided in this function."
+            raise ValueError(msg)
+
         # Make sure capacity is set if using C-rate steps
         self._validate_capacity_c_rates()
+
+        # Remove tags and convert to indices
+        self.tag_to_indices()
 
         # Create XML structure
         root = ET.Element("root")
@@ -321,8 +409,16 @@ class Protocol(BaseModel):
         if capacity_mAh:
             self.sample.capacity_mAh = Decimal(capacity_mAh)
 
+        # Make sure sample name is set
+        if not self.sample.name or self.sample.name == "$NAME":
+            msg = "If using blank sample name or $NAME placeholder, a sample name must be provided in this function."
+            raise ValueError(msg)
+
         # Make sure capacity is set if using C-rate steps
         self._validate_capacity_c_rates()
+
+        # Remove tags and convert to indices
+        self.tag_to_indices()
 
         # Create JSON structure
         tomato_dict: dict = {
@@ -418,6 +514,10 @@ class Protocol(BaseModel):
         """Convert protocol to PyBaMM experiment format."""
         # A PyBaMM experiment doesn't need capacity or sample name
         # Don't need to validate capacity if using C-rate steps
+
+        # Remove tags and convert to indices
+        self.tag_to_indices()
+
         pybamm_experiment: list[str] = []
         loops: dict[int, dict] = {}
         for i, step in enumerate(self.method):
@@ -506,13 +606,6 @@ def from_dict(data: dict, sample_name: str | None = None, sample_capacity_mAh: f
         data["sample"]["name"] = sample_name
     if sample_capacity_mAh:
         data["sample"]["capacity_mAh"] = sample_capacity_mAh
-    if not isinstance(data["sample"].get("name"), str) or data["sample"].get("name") == "$NAME":
-        msg = "If using blank sample name or $NAME placeholder, a sample name must be provided in this function."
-        raise ValueError(msg)
-    cap = coerce_to_decimal(data["sample"].get("capacity_mAh"))
-    if cap == 0 or not isinstance(cap, (int, float, Decimal)) or data["sample"].get("capacity_mAh") == "$CAPACITY":
-        msg = "If using blank, 0, or $CAPACITY placeholder, a sample capacity must be provided in this function."
-        raise ValueError(msg)
     return Protocol(**data)
 
 
