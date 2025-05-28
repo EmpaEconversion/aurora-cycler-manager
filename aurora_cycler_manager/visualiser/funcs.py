@@ -42,7 +42,7 @@ def get_database() -> dict[str, Any]:
         samples_df = pd.read_sql_query("SELECT * FROM samples", conn)
         results_df = pd.read_sql_query("SELECT * FROM results", conn)
         jobs_df = pd.read_sql_query("SELECT * FROM jobs", conn)
-
+    pipelines_df["Ready"] = pipelines_df["Ready"].astype(bool)
     db_data = {
         "samples": samples_df.to_dict("records"),
         "results": results_df.to_dict("records"),
@@ -55,6 +55,13 @@ def get_database() -> dict[str, Any]:
         "jobs": [{"field": col, "filter": True, "tooltipField": col} for col in jobs_df.columns],
         "pipelines": [{"field": col, "filter": True, "tooltipField": col} for col in pipelines_df.columns],
     }
+
+    # Ready is boolean
+    try:
+        ready_field = next(col for col in db_columns["pipelines"] if col["field"] == "Ready")
+        ready_field["cellDataType"] = "boolean"
+    except StopIteration:
+        pass
 
     # Use custom comparator for pipeline column
     with suppress(StopIteration):
