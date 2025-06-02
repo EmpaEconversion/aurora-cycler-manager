@@ -101,16 +101,16 @@ def describe_row(technique: dict) -> str:
         description = "Select technique"
     elif name == "constant_current":
         conditions = []
-        if voltage := technique.get("until_voltage_V") is not None:
+        if (voltage := technique.get("until_voltage_V")) is not None:
             conditions.append(f"until {voltage} V")
         if (time := technique.get("until_time_s")) is not None and time > 0:
             conditions.append(f"until {seconds_to_time(time)}")
         description = f"{technique.get('rate_C')} C " + " or ".join(conditions)
     elif name == "constant_voltage":
         conditions = []
-        if c_rate := technique["until_rate_C"] is not None:
+        if (c_rate := technique["until_rate_C"]) is not None:
             conditions.append(f"until {c_rate} C")
-        elif current := technique.get("until_current_mA") is not None:
+        elif (current := technique.get("until_current_mA")) is not None:
             conditions.append(f"until {current} mA")
         if (time := technique.get("until_time_s")) is not None and time > 0:
             conditions.append(f"until {seconds_to_time(time)}")
