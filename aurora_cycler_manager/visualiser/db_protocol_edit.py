@@ -6,7 +6,7 @@ import logging
 import uuid
 from decimal import Decimal
 
-import dash_bootstrap_components as dbc
+import dash_mantine_components as dmc
 from dash import Dash, Input, Output, State, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 from dash_ag_grid import AgGrid
@@ -161,335 +161,359 @@ protocol_edit_grid = AgGrid(
         "rowDragMultiRow": True,
     },
     style={"height": "calc(100vh - 300px)", "width": "100%", "minHeight": "300px"},
+    className="ag-theme-quartz",
 )
 
-protocol_edit_buttons = html.Div(
-    style={"display": "flex", "alignItems": "left", "width": "100%"},
+protocol_edit_buttons = dmc.Group(
+    justify="flex-start",
+    align="center",
+    gap="xs",
+    pt="xs",
     children=[
-        dbc.Button(
-            html.I(className="bi bi-plus-circle", style={"fontSize": "1.5em"}),
+        dmc.ActionIcon(
+            html.I(className="bi bi-plus-circle"),
             id="add-row-button",
-            color="success",
-            size="sm",
-            className="me-1",
-            style={
-                "display": "flex",
-                "alignItems": "center",
-                "justifyContent": "center",
-                "width": "40px",
-                "height": "40px",
-            },
+            color="green",
+            size="lg",
         ),
-        dbc.Button(
-            html.I(className="bi bi-dash-circle", style={"fontSize": "1.5em"}),
+        dmc.ActionIcon(
+            html.I(className="bi bi-dash-circle"),
             id="remove-row-button",
-            color="danger",
-            size="sm",
-            className="me-1",
-            style={
-                "display": "flex",
-                "alignItems": "center",
-                "justifyContent": "center",
-                "width": "40px",
-                "height": "40px",
-            },
+            color="red",
+            size="lg",
         ),
-        # copy button
-        dbc.Button(
-            html.I(className="bi bi-copy", style={"fontSize": "1.5em"}),
+        dmc.ActionIcon(
+            html.I(className="bi bi-copy"),
             id="copy-rows-button",
-            color="primary",
-            size="sm",
-            className="me-1",
-            style={
-                "display": "flex",
-                "alignItems": "center",
-                "justifyContent": "center",
-                "width": "40px",
-                "height": "40px",
-            },
+            size="lg",
         ),
-        # paste button
-        dbc.Button(
-            html.I(className="bi bi-clipboard-plus", style={"fontSize": "1.5em"}),
+        dmc.ActionIcon(
+            html.I(className="bi bi-clipboard-plus"),
             id="paste-rows-button",
-            color="primary",
-            size="sm",
-            className="me-1",
-            style={
-                "display": "flex",
-                "alignItems": "center",
-                "justifyContent": "center",
-                "width": "40px",
-                "height": "40px",
-            },
+            size="lg",
         ),
     ],
 )
 
-protocol_header = html.Div(
+protocol_header = dmc.Flex(
     [
-        dbc.Input(
+        dmc.TextInput(
+            label="Protocol name",
             id="protocol-name",
-            type="text",
-            placeholder="Protocol name",
+            style={"width": "100%"},
         ),
-        html.Div(
+        dmc.Popover(
             [
-                dbc.Button(
-                    html.I(className="bi bi-exclamation-triangle-fill", style={"fontSize": "1.5em"}),
-                    id="protocol-warning",
-                    color="danger",
-                    size="sm",
-                    className="me-1",
+                dmc.PopoverTarget(
+                    dmc.ActionIcon(
+                        html.I(className="bi bi-exclamation-triangle-fill"),
+                        color="red",
+                        id="protocol-warning",
+                        style={"visibility": "hidden"},
+                        size="input-sm",
+                    ),
                 ),
-                dbc.Popover(
-                    "This explains why your thing is wrong!",
-                    id="protocol-warning-message",
-                    target="protocol-warning",
-                    body=True,
-                    trigger="focus",
-                    placement="bottom",
+                dmc.PopoverDropdown(
+                    dmc.Text(
+                        "This explains why your thing is wrong!",
+                        id="protocol-warning-message",
+                    ),
                 ),
             ],
-            id="protocol-warning-group",
-            style={"visibility": "hidden"},
         ),
     ],
-    style={"display": "flex", "alignItems": "left", "width": "100%"},
+    align="flex-end",
 )
 
 # Load/save protocol buttons
-load_protocol_button = dcc.Upload(
-    dbc.Button(
-        [html.I(className="bi bi-folder2-open me-2"), "Load protocol"],
-        id="load-protocol-button-element",
-        color="primary",
-        className="me-1",
-    ),
-    id="load-protocol-button",
-    accept=".json",
-    max_size=2 * 1024 * 1024,
-    multiple=False,
-    style_disabled={"opacity": "1"},
+load_save_protocol_buttons = dmc.Group(
+    pt="md",
+    children=[
+        dcc.Upload(
+            dmc.Button(
+                "Load protocol",
+                leftSection=html.I(className="bi bi-folder2-open"),
+                id="load-protocol-button-element",
+            ),
+            id="load-protocol-button",
+            accept=".json",
+            max_size=2 * 1024 * 1024,
+            multiple=False,
+            style_disabled={"opacity": "1"},
+        ),
+        dmc.Button(
+            "Save protocol",
+            leftSection=html.I(className="bi bi-save"),
+            id="protocol-save-button",
+        ),
+    ],
 )
-
 # Input fields must have the same id as the inputs in ALL_TECHNIQUE_INPUTS
 # and be inside a div with the id "{input_name}-group", used to hide inputs
-step_edit_menu = html.Div(
+step_edit_menu = dmc.Stack(
     id="step-edit-menu",
     children=[
-        html.Div(
-            dbc.InputGroup(
-                [
-                    dbc.InputGroupText("Technqiue"),
-                    dbc.Select(
-                        id="technique-select",
-                        options=[{"label": k, "value": k} for k in ALL_TECHNIQUES],
-                        placeholder="Select technique",
-                    ),
-                ],
-                className="mb-3",
-            ),
-            id="technique-select-group",
+        load_save_protocol_buttons,
+        dmc.Select(
+            id="technique-select",
+            label="Select technique",
+            data=[{"label": k, "value": k} for k in ALL_TECHNIQUES],
+            placeholder="Select technique",
+            checkIconPosition="right",
+            comboboxProps={"offset": 0},
         ),
-        html.Div(
-            dbc.InputGroup(
-                [
-                    dbc.InputGroupText("Rate"),
-                    dbc.Input(
+        dmc.Fieldset(
+            legend="Technique settings",
+            id="technique-settings",
+            children=[
+                html.Div(
+                    dmc.NumberInput(
                         id="rate_C",
-                        type="number",
+                        label="Rate (C)",
+                        suffix=" C",
+                        hideControls=True,
                     ),
-                    dbc.InputGroupText("C"),
-                ],
-                className="mb-3",
-            ),
-            id="rate_C-group",
-            style={"display": "none"},
-        ),
-        html.Div(
-            dbc.InputGroup(
-                [
-                    dbc.InputGroupText("Current"),
-                    dbc.Input(
-                        id="current_mA",
-                        type="number",
-                        style={"width": "100px"},
-                    ),
-                    dbc.InputGroupText("mA"),
-                ],
-                className="mb-3",
-            ),
-            id="current_mA-group",
-            style={"display": "none"},
-        ),
-        html.Div(
-            dbc.InputGroup(
-                [
-                    dbc.InputGroupText("Voltage"),
-                    dbc.Input(
-                        id="voltage_V",
-                        type="number",
-                    ),
-                    dbc.InputGroupText("V"),
-                ],
-                className="mb-3",
-            ),
-            id="voltage_V-group",
-            style={"display": "none"},
-        ),
-        html.Div(
-            [
-                dbc.InputGroup(
-                    [
-                        dbc.InputGroupText("Until time"),
-                        dbc.Input(
-                            id="input_time_h",
-                            type="number",
-                            debounce=True,
-                        ),
-                        dbc.InputGroupText("h"),
-                        dbc.Input(
-                            id="input_time_m",
-                            type="number",
-                            debounce=True,
-                        ),
-                        dbc.InputGroupText("min"),
-                        dbc.Input(
-                            id="input_time_s",
-                            type="number",
-                            debounce=True,
-                        ),
-                        dbc.InputGroupText("s"),
-                    ],
-                    className="mb-3",
-                ),
-                dbc.Input(  # for storing the actual time
-                    id="until_time_s",
-                    type="number",
+                    id="rate_C-group",
                     style={"display": "none"},
                 ),
-            ],
-            id="until_time_s-group",
-            style={"display": "none"},
-        ),
-        html.Div(
-            dbc.InputGroup(
-                [
-                    dbc.InputGroupText("Until voltage"),
-                    dbc.Input(
+                html.Div(
+                    dmc.NumberInput(
+                        id="current_mA",
+                        label="Current (mA)",
+                        suffix=" mA",
+                        hideControls=True,
+                    ),
+                    id="current_mA-group",
+                    style={"display": "none"},
+                ),
+                html.Div(
+                    dmc.NumberInput(
+                        id="voltage_V",
+                        label="Voltage (V)",
+                        suffix=" V",
+                        hideControls=True,
+                    ),
+                    id="voltage_V-group",
+                    style={"display": "none"},
+                ),
+                dmc.NumberInput(
+                    id="until_time_s",
+                    label="Until time (s)",
+                    suffix=" s",
+                    style={"display": "none"},
+                    hideControls=True,
+                ),
+                # 3 number inputs side by side
+                html.Div(
+                    dmc.Flex(
+                        gap="xs",
+                        justify="flex-start",
+                        wrap="nowrap",
+                        align="center",
+                        children=[
+                            dmc.NumberInput(
+                                id="input_time_h",
+                                label="Until time",
+                                suffix=" h",
+                                placeholder="0 h",
+                                hideControls=True,
+                                debounce=True,
+                            ),
+                            dmc.NumberInput(
+                                id="input_time_m",
+                                label=" ",
+                                suffix=" min",
+                                placeholder="0 min",
+                                hideControls=True,
+                                debounce=True,
+                            ),
+                            dmc.NumberInput(
+                                id="input_time_s",
+                                label=" ",
+                                suffix=" s",
+                                placeholder="0 s",
+                                hideControls=True,
+                                debounce=True,
+                            ),
+                        ],
+                    ),
+                    id="until_time_s-group",
+                    style={"display": "none"},
+                ),
+                html.Div(
+                    dmc.NumberInput(
                         id="until_voltage_V",
-                        type="number",
+                        label="Until voltage (V)",
+                        suffix=" V",
+                        hideControls=True,
                     ),
-                    dbc.InputGroupText("V"),
-                ],
-                className="mb-3",
-            ),
-            id="until_voltage_V-group",
-            style={"display": "none"},
-        ),
-        html.Div(
-            dbc.InputGroup(
-                [
-                    dbc.InputGroupText("Until rate"),
-                    dbc.Input(
+                    id="until_voltage_V-group",
+                    style={"display": "none"},
+                ),
+                html.Div(
+                    dmc.NumberInput(
                         id="until_rate_C",
-                        type="number",
+                        label="Until rate (C)",
+                        suffix=" C",
+                        hideControls=True,
                     ),
-                    dbc.InputGroupText("C"),
-                ],
-                className="mb-3",
-            ),
-            id="until_rate_C-group",
-            style={"display": "none"},
-        ),
-        html.Div(
-            dbc.InputGroup(
-                [
-                    dbc.InputGroupText("Until current"),
-                    dbc.Input(
+                    id="until_rate_C-group",
+                    style={"display": "none"},
+                ),
+                html.Div(
+                    dmc.NumberInput(
                         id="until_current_mA",
-                        type="number",
+                        label="Until current (mA)",
+                        suffix=" mA",
+                        hideControls=True,
                     ),
-                    dbc.InputGroupText("mA"),
-                ],
-                className="mb-3",
-            ),
-            id="until_current_mA-group",
-            style={"display": "none"},
-        ),
-        html.Div(
-            dbc.InputGroup(
-                [
-                    dbc.InputGroupText("Go to step"),
-                    dbc.Input(
+                    id="until_current_mA-group",
+                    style={"display": "none"},
+                ),
+                html.Div(
+                    dmc.TextInput(
                         id="start_step",
-                        type="text",
-                        placeholder="Start step",
+                        label="Start step",
+                        placeholder="Tag string or start step (1-indexed)",
                     ),
-                ],
-                className="mb-3",
-            ),
-            id="start_step-group",
-            style={"display": "none"},
-        ),
-        html.Div(
-            dbc.InputGroup(
-                [
-                    dbc.InputGroupText("For"),
-                    dbc.Input(
+                    id="start_step-group",
+                    style={"display": "none"},
+                ),
+                html.Div(
+                    dmc.NumberInput(
                         id="cycle_count",
-                        type="number",
+                        label="Cycle count",
                         placeholder="Cycle count",
                     ),
-                    dbc.InputGroupText("cycles"),
-                ],
-                className="mb-3",
-            ),
-            id="cycle_count-group",
-            style={"display": "none"},
-        ),
-        html.Div(
-            dbc.InputGroup(
-                [
-                    dbc.InputGroupText("Tag"),
-                    dbc.Input(
-                        id="tag",
-                        type="text",
-                    ),
-                ],
-                className="mb-3",
-            ),
-            id="tag-group",
-            style={"display": "none"},
-        ),
-        html.Div(
-            [
-                dbc.Button("Update", id="submit", className="me-1"),
-                html.Div(
-                    [
-                        dbc.Button(
-                            html.I(className="bi bi-exclamation-triangle-fill", style={"fontSize": "1.5em"}),
-                            id="step-warning",
-                            color="danger",
-                            size="sm",
-                            className="me-1",
-                        ),
-                        dbc.Popover(
-                            "This explains why your thing is wrong!",
-                            id="step-warning-message",
-                            target="step-warning",
-                            body=True,
-                            trigger="focus",
-                            placement="bottom",
-                        ),
-                    ],
-                    id="step-warning-group",
+                    id="cycle_count-group",
                     style={"display": "none"},
                 ),
+                html.Div(
+                    dmc.TextInput(
+                        id="tag",
+                        label="Tag",
+                        placeholder="Tag",
+                    ),
+                    id="tag-group",
+                    style={"display": "none"},
+                ),
+                dmc.Group(
+                    pt="sm",
+                    children=[
+                        dmc.Button(
+                            "Update",
+                            leftSection=html.I(className="bi bi-check2", style={"fontSize": "1.5em"}),
+                            id="submit",
+                        ),
+                        dmc.Popover(
+                            [
+                                dmc.PopoverTarget(
+                                    dmc.ActionIcon(
+                                        html.I(className="bi bi-exclamation-triangle-fill"),
+                                        color="red",
+                                        id="step-warning",
+                                        style={"display": "none"},
+                                        size="input-sm",
+                                    ),
+                                ),
+                                dmc.PopoverDropdown(
+                                    dmc.Text(
+                                        "This explains why your thing is wrong!",
+                                        id="step-warning-message",
+                                    ),
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
             ],
-            style={"display": "flex", "alignItems": "left"},
+        ),
+    ],
+)
+
+# Menu for editing measurement and safety parameters
+global_edit_menu = dmc.Stack(
+    id="global-edit-menu",
+    children=[
+        dmc.Fieldset(
+            legend="Measurement parameters",
+            children=[
+                dmc.NumberInput(
+                    id="measurement_interval_s",
+                    placeholder="Time interval (s)",
+                    style={"width": "100%"},
+                    suffix=" s",
+                    hideControls=True,
+                    debounce=True,
+                ),
+                dmc.NumberInput(
+                    id="measurement_interval_v",
+                    placeholder="Voltage interval (V)",
+                    style={"width": "100%"},
+                    suffix=" V",
+                    hideControls=True,
+                    debounce=True,
+                ),
+                dmc.NumberInput(
+                    id="measurement_interval_mA",
+                    placeholder="Current interval (mA)",
+                    style={"width": "100%"},
+                    suffix=" mA",
+                    hideControls=True,
+                    debounce=True,
+                ),
+            ],
+        ),
+        dmc.Fieldset(
+            legend="Safety limits",
+            children=[
+                dmc.Flex(
+                    gap="xs",
+                    justify="flex-start",
+                    wrap="nowrap",
+                    align="center",
+                    children=[
+                        dmc.NumberInput(
+                            id="min_voltage_V",
+                            placeholder="Minimum voltage (V)",
+                            suffix=" V",
+                            hideControls=True,
+                            debounce=True,
+                        ),
+                        dmc.Text("to"),
+                        dmc.NumberInput(
+                            id="max_voltage_V",
+                            placeholder="Maximum voltage (V)",
+                            suffix=" V",
+                            hideControls=True,
+                            debounce=True,
+                        ),
+                    ],
+                ),
+                dmc.Flex(
+                    gap="xs",
+                    justify="flex-start",
+                    wrap="nowrap",
+                    align="center",
+                    children=[
+                        dmc.NumberInput(
+                            id="min_current_mA",
+                            placeholder="Minimum current (mA)",
+                            suffix=" mA",
+                            hideControls=True,
+                            debounce=True,
+                        ),
+                        dmc.Text("to"),
+                        dmc.NumberInput(
+                            id="max_current_mA",
+                            placeholder="Maximum current (mA)",
+                            suffix=" mA",
+                            hideControls=True,
+                            debounce=True,
+                        ),
+                    ],
+                ),
+            ],
         ),
     ],
 )
@@ -497,18 +521,22 @@ step_edit_menu = html.Div(
 protocol_edit_layout = html.Div(
     id="protocol-container",
     children=[
-        dcc.Store(id="protocol-store", data={"protocol": {"method": []}, "selected": []}),
+        dcc.Store(id="protocol-store", data={"method": [], "measurement": {}, "safety": {}}),
+        dcc.Store(id="protocol-store-selected", data=[]),  # For selected rows
         dcc.Store(id="protocol-edit-clipboard", data=[]),  # For copy/paste functionality
         html.Div(
             style={"display": "flex", "height": "100%"},
             children=[
                 html.Div(
                     style={"width": "800px", "padding": "10px"},
-                    children=[
-                        load_protocol_button,
-                        html.Div(style={"height": "20px"}),
-                        step_edit_menu,
-                    ],
+                    children=dmc.Stack(
+                        [
+                            step_edit_menu,
+                            global_edit_menu,
+                        ],
+                        justify="space-between",
+                        style={"height": "100%", "overflowY": "scroll"},
+                    ),
                 ),
                 html.Div(
                     style={"width": "100%", "padding": "10px"},
@@ -533,22 +561,47 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     @app.callback(
         Output("protocol-edit-grid", "selectedRows"),
         Output("protocol-edit-grid", "rowData"),
+        Output("measurement_interval_s", "value"),
+        Output("measurement_interval_v", "value"),
+        Output("measurement_interval_mA", "value"),
+        Output("min_voltage_V", "value"),
+        Output("max_voltage_V", "value"),
+        Output("min_current_mA", "value"),
+        Output("max_current_mA", "value"),
         Input("protocol-store", "data"),
+        State("protocol-store-selected", "data"),
         prevent_initial_call=True,
     )
-    def update_grid(protocol_store: dict) -> tuple[list[dict], list[dict]]:
+    def update_grid(protocol_dict: dict, selected_indices: list) -> tuple:
         """Update the grid with the new data."""
-        protocol_dict = protocol_store.get("protocol")
-        selected_indices = protocol_store.get("selected", [])
         if protocol_dict is None or not protocol_dict:  # return empty grid data
             return [], []
         row_data = protocol_dict_to_row_data(protocol_dict)
         new_selected_rows = [row_data[i] for i in selected_indices] if selected_indices else []
-        return new_selected_rows, row_data
+        # Update the measurement and safety parameters
+        measurement_interval_s = protocol_dict.get("measurement", {}).get("time_s")
+        measurement_interval_v = protocol_dict.get("measurement", {}).get("voltage_V")
+        measurement_interval_mA = protocol_dict.get("measurement", {}).get("current_mA")
+        safety_max_V = protocol_dict.get("safety", {}).get("max_voltage_V")
+        safety_min_V = protocol_dict.get("safety", {}).get("min_voltage_V")
+        safety_max_mA = protocol_dict.get("safety", {}).get("max_current_mA")
+        safety_min_mA = protocol_dict.get("safety", {}).get("min_current_mA")
+        return (
+            new_selected_rows,
+            row_data,
+            measurement_interval_s,
+            measurement_interval_v,
+            measurement_interval_mA,
+            safety_min_V,
+            safety_max_V,
+            safety_min_mA,
+            safety_max_mA,
+        )
 
     # Load a protocol button
     @app.callback(
         Output("protocol-store", "data", allow_duplicate=True),
+        Output("protocol-store-selected", "data", allow_duplicate=True),
         Output("protocol-name", "value"),
         Output("notifications-container", "children", allow_duplicate=True),
         Input("load-protocol-button", "contents"),
@@ -565,14 +618,20 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
                 # add an id to each technique
                 for technique in protocol["method"]:
                     technique["id"] = uuid.uuid4()
-                return {"protocol": protocol, "selected": []}, filename[:-5], no_update
+                return protocol, [], filename[:-5], no_update
             except ValidationError:
-                return no_update, no_update, error_notification("Oh no", "This is not a valid protocol file!")
+                return (
+                    no_update,
+                    no_update,
+                    no_update,
+                    error_notification("Oh no", "This is not a valid protocol file!"),
+                )
         raise PreventUpdate
 
     # Remove rows button
     @app.callback(
         Output("protocol-store", "data", allow_duplicate=True),
+        Output("protocol-store-selected", "data", allow_duplicate=True),
         Input("remove-row-button", "n_clicks"),
         State("protocol-store", "data"),
         State("protocol-edit-grid", "virtualRowData"),
@@ -581,10 +640,10 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     )
     def remove_rows(
         n_clicks: int,
-        protocol_store: dict,
+        protocol_dict: dict,
         grid_data: list[dict],
         selected_rows: list[dict],
-    ) -> dict:
+    ) -> tuple[dict, list[int]]:
         """Remove the selected rows from the data store."""
         if n_clicks is None or n_clicks == 0:
             raise PreventUpdate
@@ -593,27 +652,28 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         # Get the new indices, remove if the index is in the selected indices
         selected_indices = [row["index"] for row in selected_rows]
         indices = [row["index"] for row in grid_data if row["index"] not in selected_indices]
-        protocol_dict = protocol_store.get("protocol", {})
         protocol_dict["method"][:] = [protocol_dict["method"][i] for i in indices]
         # update the store with the new data
-        return {"protocol": protocol_dict, "selected": []}
+        return protocol_dict, []
 
     # Add rows button
     @app.callback(
         Output("protocol-store", "data", allow_duplicate=True),
+        Output("protocol-store-selected", "data", allow_duplicate=True),
         Input("add-row-button", "n_clicks"),
         State("protocol-store", "data"),
         State("protocol-edit-grid", "virtualRowData"),
         State("protocol-edit-grid", "selectedRows"),
         prevent_initial_call=True,
     )
-    def add_row(n_clicks: int, protocol_store: dict, grid_data: list[dict], selected_rows: list[dict]) -> dict:
+    def add_row(
+        n_clicks: int, protocol_dict: dict, grid_data: list[dict], selected_rows: list[dict]
+    ) -> tuple[dict, list[int]]:
         """Add a new row to the data store."""
         if n_clicks is None or n_clicks == 0:
             raise PreventUpdate
         # reorder the techniques if the user has dragged rows around
         indices = [row["index"] for row in grid_data]
-        protocol_dict = protocol_store.get("protocol", {})
         protocol_dict["method"][:] = [protocol_dict["method"][i] for i in indices]
         # get the largest selected index
         index = None
@@ -630,7 +690,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             protocol_dict["method"].append(new_row)
             index = len(protocol_dict["method"]) - 1
         # update the store with the new data
-        return {"protocol": protocol_dict, "selected": [index]}
+        return protocol_dict, [index]
 
     # On 'copy', store the corresponding data rows in the clipboard
     @app.callback(
@@ -641,7 +701,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("protocol-edit-grid", "virtualRowData"),
         prevent_initial_call=True,
     )
-    def copy_rows(n_clicks: int, selected_rows: list[dict], protocol_store: dict, grid_data: list) -> list[dict]:
+    def copy_rows(n_clicks: int, selected_rows: list[dict], protocol_dict: dict, grid_data: list) -> list[dict]:
         """Copy the selected rows to the clipboard."""
         if n_clicks is None or n_clicks == 0:
             raise PreventUpdate
@@ -657,12 +717,12 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         # Reorder the original selected indices so they copy paste in the correct order
         indices = [selected_indices[i] for i in ordering]
         # Get the actual list of techniques from the protocol store, store this
-        protocol_dict = protocol_store.get("protocol", {})
         return [protocol_dict["method"][i] for i in indices]
 
     # On 'paste', add the rows from the clipboard to the protocol
     @app.callback(
         Output("protocol-store", "data", allow_duplicate=True),
+        Output("protocol-store-selected", "data", allow_duplicate=True),
         Input("paste-rows-button", "n_clicks"),
         State("protocol-edit-clipboard", "data"),
         State("protocol-store", "data"),
@@ -673,10 +733,10 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     def paste_rows(
         n_clicks: int,
         clipboard_data: list[dict],
-        protocol_store: dict,
+        protocol_dict: dict,
         grid_data: list[dict],
         selected_rows: list[dict],
-    ) -> dict:
+    ) -> tuple[dict, list[int]]:
         """Paste the rows from the clipboard to the protocol."""
         if n_clicks is None or n_clicks == 0:
             raise PreventUpdate
@@ -684,7 +744,6 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             raise PreventUpdate
         # reorder the techniques if the user has dragged rows around
         indices = [row["index"] for row in grid_data]
-        protocol_dict = protocol_store.get("protocol", {})
         protocol_dict["method"][:] = [protocol_dict["method"][i] for i in indices]
         # get the largest selected index
         index = None
@@ -705,7 +764,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
                 row["id"] = uuid.uuid4()
                 protocol_dict["method"].append(row)
                 selected_indices.append(len(protocol_dict["method"]) - 1)
-        return {"protocol": protocol_dict, "selected": selected_indices}
+        return protocol_dict, selected_indices
 
     # If user selects a row, show it in the step edit menu
     @app.callback(
@@ -715,13 +774,12 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("protocol-store", "data"),
         prevent_initial_call=True,
     )
-    def update_step_edit_menu(selected_rows: list[dict], protocol_store: dict) -> tuple[str, ...]:
+    def update_step_edit_menu(selected_rows: list[dict], protocol_dict: dict) -> tuple[str | None, ...]:
         """Update the step edit menu with the selected row data."""
         if selected_rows is None or not selected_rows:
-            raise PreventUpdate
+            return None, *([None] * len(ALL_TECHNIQUE_INPUTS))
         selected_row = selected_rows[0]
         index = selected_row["index"]
-        protocol_dict = protocol_store.get("protocol", {})
         technique = protocol_dict["method"][index]
         input_values = [technique.get(x, None) for x in ALL_TECHNIQUE_INPUTS]
         return selected_row["technique"], *input_values
@@ -729,6 +787,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     # If user selects a technique, show the inputs for that technique
     @app.callback(
         [Output(x + "-group", "style") for x in ALL_TECHNIQUE_INPUTS],
+        Output("technique-settings", "style"),
         Input("technique-select", "value"),
     )
     def update_technique_inputs(technique: str) -> list[dict]:
@@ -736,8 +795,8 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         show = {"display": "block"}
         hide = {"display": "none"}
         if technique not in ALL_TECHNIQUES:
-            return [hide for _ in ALL_TECHNIQUE_INPUTS]
-        return [show if x in ALL_TECHNIQUES[technique].model_fields else hide for x in ALL_TECHNIQUE_INPUTS]
+            return [hide for _ in ALL_TECHNIQUE_INPUTS] + [hide]
+        return [show if x in ALL_TECHNIQUES[technique].model_fields else hide for x in ALL_TECHNIQUE_INPUTS] + [show]
 
     # If user changes time, update the 'real' total time in seconds
     @app.callback(
@@ -749,9 +808,12 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     )
     def update_until_time_s(hours: float, mins: float, secs: float) -> float:
         """Update the total time in seconds based on the input fields. Ensure no nones or negatives."""
-        hours = max(hours or 0, 0)
-        mins = max(mins or 0, 0)
-        secs = max(secs or 0, 0)
+        hours = hours or 0
+        mins = mins or 0
+        secs = secs or 0
+        hours = max(int(hours), 0)
+        mins = max(int(mins), 0)
+        secs = max(int(secs), 0)
         return hours * 3600 + mins * 60 + secs
 
     # If the real time input changes, update the hour/min/sec inputs
@@ -762,18 +824,18 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("until_time_s", "value"),
         prevent_initial_call=True,
     )
-    def update_time_inputs(until_time_s: float) -> tuple[float, float, float]:
+    def update_time_inputs(until_time_s: float) -> tuple[int | str, int | str, int | str]:
         """Update the time inputs based on the until_time_s value."""
         if until_time_s is None:
             return 0, 0, 0
-        hours = int(until_time_s // 3600)
-        minutes = int((until_time_s % 3600) // 60)
-        seconds = int(until_time_s % 60)
+        hours = int(until_time_s) // 3600
+        minutes = (int(until_time_s) % 3600) // 60
+        seconds = int(until_time_s) % 60
         return hours, minutes, seconds
 
     # if you change a value in the step edit menu, check if the technique is valid
     @app.callback(
-        Output("step-warning-group", "style"),
+        Output("step-warning", "style"),
         Output("step-warning-message", "children"),
         Output("submit", "disabled"),
         Input("technique-select", "value"),
@@ -804,6 +866,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     # If user changes value in the step edit menu and presses submit, update the protocol store
     @app.callback(
         Output("protocol-store", "data", allow_duplicate=True),
+        Output("protocol-store-selected", "data", allow_duplicate=True),
         Input("submit", "n_clicks"),
         State("protocol-edit-grid", "selectedRows"),
         State("protocol-edit-grid", "virtualRowData"),
@@ -816,10 +879,10 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         n_clicks: int,
         selected_rows: list[dict],
         grid_data: list[dict],
-        protocol_store: dict,
+        protocol_dict: dict,
         technique: str,
         *input_values: list[str | float | None],
-    ) -> dict:
+    ) -> tuple[dict, list[int]]:
         """Update the protocol store with the new data."""
         if n_clicks is None or n_clicks == 0:
             raise PreventUpdate
@@ -837,7 +900,6 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         ).model_dump()
         new_technique["id"] = technique_id if technique_id else uuid.uuid4()
 
-        protocol_dict = protocol_store.get("protocol", {})
         # If a technique is selected (index not None), update that technique
         if index is not None:
             protocol_dict["method"][index] = new_technique
@@ -854,19 +916,19 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             elif not protocol_dict["method"]:
                 protocol_dict["method"] = [new_technique]
 
-        return {"protocol": protocol_dict, "selected": new_selected_indicies}
+        return protocol_dict, new_selected_indicies
 
-    # If the virtual data changes (dragging, updating data), check if protocol is valid
+    # If the virtual data changes (dragging, updating data) or global settings change, check if protocol is valid
     @app.callback(
         Output("protocol-warning-message", "children"),
-        Output("protocol-warning-group", "style"),
+        Output("protocol-warning", "style"),
+        Output("protocol-save-button", "disabled"),
         Input("protocol-edit-grid", "virtualRowData"),
-        State("protocol-store", "data"),
+        Input("protocol-store", "data"),
         prevent_initial_call=True,
     )
-    def validate_protocol(grid_data: list[dict], protocol_store: dict) -> tuple[str, dict]:
+    def validate_protocol(grid_data: list[dict], protocol_dict: dict) -> tuple[str, dict, bool]:
         """Validate the protocol and update the grid data."""
-        protocol_dict = protocol_store.get("protocol", {})
         # Reorder the techniques in case the user has dragged rows around
         indices = [row["index"] for row in grid_data] if grid_data else []
         protocol_dict["method"][:] = [protocol_dict["method"][i] for i in indices]
@@ -877,5 +939,38 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             logger.error("Pydantic validation error for whole protocol: %s", e)  # noqa: TRY400
             friendly_error = str(e).split("\n", 1)[1] if "\n" in str(e) else str(e)
             friendly_error = friendly_error.split("[", 1)[0].strip()
-            return friendly_error, {"visibility": "visible"}
-        return "", {"visibility": "hidden"}
+            return friendly_error, {"visibility": "visible"}, True
+        return "", {"visibility": "hidden"}, False
+
+    # If any safety or measurement parameters change, update the protocol store
+    @app.callback(
+        Output("protocol-store", "data", allow_duplicate=True),
+        Input("measurement_interval_s", "value"),
+        Input("measurement_interval_v", "value"),
+        Input("measurement_interval_mA", "value"),
+        Input("min_voltage_V", "value"),
+        Input("max_voltage_V", "value"),
+        Input("min_current_mA", "value"),
+        Input("max_current_mA", "value"),
+        State("protocol-store", "data"),
+        prevent_initial_call=True,
+    )
+    def update_global_parameters(
+        measurement_interval_s: float,
+        measurement_interval_v: float,
+        measurement_interval_mA: float,
+        min_voltage_V: float,
+        max_voltage_V: float,
+        min_current_mA: float,
+        max_current_mA: float,
+        protocol_dict: dict,
+    ) -> dict:
+        """Update the global parameters in the protocol store."""
+        protocol_dict["measurement"]["time_s"] = measurement_interval_s
+        protocol_dict["measurement"]["voltage_V"] = measurement_interval_v
+        protocol_dict["measurement"]["current_mA"] = measurement_interval_mA
+        protocol_dict["safety"]["min_voltage_V"] = min_voltage_V
+        protocol_dict["safety"]["max_voltage_V"] = max_voltage_V
+        protocol_dict["safety"]["min_current_mA"] = min_current_mA
+        protocol_dict["safety"]["max_current_mA"] = max_current_mA
+        return protocol_dict
