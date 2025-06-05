@@ -20,6 +20,7 @@ import paramiko
 from scp import SCPClient
 
 from aurora_cycler_manager import unicycler
+from aurora_cycler_manager.tomato_converter import puree_tomato
 
 
 class CyclerServer:
@@ -357,6 +358,8 @@ class TomatoServer(CyclerServer):
                     )
         finally:
             ssh.close()
+        # Compress the local snapshot file
+        puree_tomato(f"{local_save_location}/snapshot.{jobid}.json")
 
         return snapshot_status
 

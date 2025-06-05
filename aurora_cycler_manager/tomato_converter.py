@@ -46,6 +46,43 @@ def get_snapshot_folder() -> Path:
     return Path(snapshot_parent) / "tomato_snapshots"
 
 
+def puree_tomato(
+    snapshot_file_path: Path | str,
+) -> None:
+    """Reduce raw tomato size by removing unneeded fields and indents.
+
+    Args:
+        snapshot_file_path (Path or str): path to the raw json file
+
+    """
+    snapshot_file_path = Path(snapshot_file_path)
+    with snapshot_file_path.open("r") as f:
+        input_dict = json.load(f)
+    # Remove unneeded fields
+    for step in input_dict.get("steps", []):
+        for data in step.get("data", []):
+            if "fn" in data:
+                del data["fn"]
+    # Write the reduced json back to the file
+    with snapshot_file_path.open("w") as f:
+        json.dump(input_dict, f, indent=None)
+
+
+def puree_all_tomatos() -> None:
+    """Reduce all raw tomato json files in the snapshot folder."""
+    snapshot_folder = get_snapshot_folder()
+    for batch_folder in snapshot_folder.iterdir():
+        for sample_folder in batch_folder.iterdir():
+            for snapshot_file in sample_folder.iterdir():
+                snapshot_filename = snapshot_file.name
+                if snapshot_filename.startswith("snapshot") and snapshot_filename.endswith(".json"):
+                    try:
+                        puree_tomato(snapshot_file)
+                        logger.info("Pureed %s", snapshot_file)
+                    except Exception:
+                        logger.exception("Failed to puree %s", snapshot_file)
+
+
 def convert_tomato_json(
     snapshot_file_path: Path | str,
     output_hdf_file: bool = True,
