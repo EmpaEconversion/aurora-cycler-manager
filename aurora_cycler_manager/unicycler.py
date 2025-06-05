@@ -21,9 +21,9 @@ from typing_extensions import Self
 getcontext().prec = 10
 
 
-def coerce_to_decimal(v: Decimal | float | str) -> Decimal:
+def coerce_to_decimal(v: Decimal | float | str) -> Decimal | None:
     """Coerces input (int, float, str) to Decimal."""
-    if v is None:
+    if v is None or v == "":
         return None
     if isinstance(v, float):
         return Decimal(str(v))  # Avoids float precision issues
