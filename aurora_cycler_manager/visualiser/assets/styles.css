@@ -1,15 +1,3 @@
-/* ===== GENERAL STYLES ===== */
-body {
-    margin: 0;
-    font-family: sans-serif;
-    color: rgb(61, 61, 61);
-}
-html, body {
-    height: 100%;
-}
-#app {
-    height: 100%;
-}
 /* Default style for narrow screens */
 .responsive-container {
     width: 100%;
@@ -35,35 +23,6 @@ html, body {
         margin: 0px auto;
         box-shadow: #c0c0c0 20px 10px 80px;
     }
-}
-
-/* ===== TABS ===== */
-.tab {
-    font-family: 'Arial', sans-serif; /* Change to your desired font */
-    font-size: 16px; /* Adjust the font size */
-    color: #444; /* Adjust the font color */
-    height: 50px;
-    display: flex !important;
-    align-items: center;
-    justify-content: center;
-}
-/* Customize the font of the selected tab */
-.tab--selected {
-    font-weight: bold; /* Adjust the font weight */
-}
-/* tab content */
-.tab-content {
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 10px;
-}
-
-/* ===== MENUS ===== */
-.menu-panel {
-    padding: 8px;
-    font-size: 16px;
-    background-color: rgb(241, 241, 247);
-    border: white 8px solid;
 }
 
 /* ===== RESIZE HANDLES ===== */
@@ -130,12 +89,3 @@ html, body {
         0 0 10px white,
         0 0 20px white;
   }
-
-input[type=number]::-webkit-inner-spin-button, 
-input[type=number]::-webkit-outer-spin-button { 
-  -webkit-appearance: none; 
-  margin: 0; 
-}
-input[type=number] {
-    -moz-appearance:textfield; /* Firefox */
-}

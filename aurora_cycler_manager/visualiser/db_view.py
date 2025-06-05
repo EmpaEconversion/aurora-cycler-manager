@@ -12,11 +12,11 @@ from datetime import datetime
 
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
+import dash_mantine_components as dmc
 import paramiko
 from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
 from dash import callback_context as ctx
 from dash.exceptions import PreventUpdate
-from dash_mantine_components import TextInput
 
 from aurora_cycler_manager.analysis import update_sample_metadata
 from aurora_cycler_manager.database_funcs import (
@@ -64,7 +64,7 @@ except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
 
 # ----------------------------- Layout - tables ----------------------------- #
 
-DEFAULT_TABLE_OPTIONS: dict[str, dict] = {
+DEFAULT_TABLE_OPTIONS: dict[str, str | dict] = {
     "dashGridOptions": {
         "enableCellTextSelection": False,
         "ensureDomOrder": True,
@@ -78,6 +78,7 @@ DEFAULT_TABLE_OPTIONS: dict[str, dict] = {
         "cellRenderer": "agAnimateShowChangeCellRenderer",
     },
     "style": {"height": "calc(100vh - 240px)", "width": "100%", "minHeight": "300px", "display": "none"},
+    "className": "ag-theme-quartz",
 }
 TABLES = [
     "samples-table",
@@ -171,79 +172,84 @@ visibility_settings = {
     },
 }
 
-button_layout = html.Div(
-    style={
-        "display": "flex",
-        "justify-content": "space-between",
-        "flex-wrap": "wrap",
-        "margin-top": "5px",
-        "margin-bottom": "20px",
-    },
+button_layout = dmc.Flex(
+    pt="xs",
+    justify="space-between",
+    align="center",
     children=[
         # Left aligned buttons
-        html.Div(
-            style={"display": "flex", "flex-wrap": "wrap"},
+        dmc.Group(
+            justify="flex-start",
+            gap="xs",
             children=[
-                dbc.Button(
-                    [html.I(className="bi bi-clipboard me-2"), "Copy"],
+                dmc.Button(
+                    "Copy",
+                    leftSection=html.I(className="bi bi-clipboard"),
                     id="copy-button",
-                    color="primary",
-                    className="me-1",
                 ),
-                dbc.Button(
-                    [html.I(className="bi bi-arrow-90deg-down me-2"), "Load"],
+                dmc.Button(
+                    "Load",
+                    leftSection=html.I(className="bi bi-arrow-90deg-down"),
                     id="load-button",
-                    color="primary",
-                    className="me-1",
                 ),
-                dbc.Button(
-                    [html.I(className="bi bi-arrow-90deg-right me-2"), "Eject"],
+                dmc.Button(
+                    "Eject",
+                    leftSection=html.I(className="bi bi-arrow-90deg-right"),
                     id="eject-button",
-                    color="primary",
-                    className="me-1",
                 ),
-                dbc.Button(
-                    [html.I(className="bi bi-play me-2"), "Ready"],
+                dmc.Button(
+                    "Ready",
+                    leftSection=html.I(className="bi bi-play"),
                     id="ready-button",
-                    color="primary",
-                    className="me-1",
                 ),
-                dbc.Button(
-                    [html.I(className="bi bi-slash-circle me-2"), "Unready"],
+                dmc.Button(
+                    "Unready",
+                    leftSection=html.I(className="bi bi-slash-circle"),
                     id="unready-button",
-                    color="primary",
-                    className="me-1",
                 ),
-                dbc.Button(
-                    [html.I(className="bi bi-upload me-2"), "Submit"],
+                dmc.Button(
+                    "Submit",
+                    leftSection=html.I(className="bi bi-upload"),
                     id="submit-button",
-                    color="primary",
-                    className="me-1",
                 ),
-                dbc.Button(
-                    [html.I(className="bi bi-x-circle me-2"), "Cancel"],
+                dmc.Button(
+                    "Cancel",
+                    leftSection=html.I(className="bi bi-x-circle"),
                     id="cancel-button",
-                    color="danger",
-                    className="me-1",
+                    color="red",
                 ),
-                dbc.Button(
-                    [html.I(className="bi bi-graph-down me-2"), "View data"],
+                dmc.Button(
+                    "View",
+                    leftSection=html.I(className="bi bi-graph-down"),
                     id="view-button",
-                    color="primary",
+                ),
+                dmc.Button(
+                    "Snapshot",
+                    leftSection=html.I(className="bi bi-camera"),
+                    id="snapshot-button",
+                ),
+                dmc.Button(
+                    "Label",
+                    leftSection=html.I(className="bi bi-tag"),
+                    id="label-button",
                     className="me-1",
                 ),
-                dbc.Button(
-                    [html.I(className="bi bi-camera me-2"), "Snapshot"],
-                    id="snapshot-button",
-                    color="primary",
-                    className="me-1",
+                dmc.Button(
+                    "Batch",
+                    leftSection=html.I(className="bi bi-grid-3x2-gap-fill"),
+                    id="create-batch-button",
+                ),
+                dmc.Button(
+                    "Delete",
+                    leftSection=html.I(className="bi bi-trash3"),
+                    id="delete-button",
+                    color="red",
                 ),
                 dcc.Upload(
-                    dbc.Button(
-                        [html.I(className="bi bi-database-add me-2"), "Add samples"],
+                    dmc.Button(
+                        "Add samples",
+                        leftSection=html.I(className="bi bi-database-add"),
                         id="add-samples-button-element",
-                        color="primary",
-                        className="me-1",
                     ),
                     id="add-samples-button",
                     accept=".json",
@@ -251,29 +257,12 @@ button_layout = html.Div(
                     multiple=False,
                     style_disabled={"opacity": "1"},
                 ),
-                dbc.Button(
-                    [html.I(className="bi bi-tag me-2"), "Add label"],
-                    id="label-button",
-                    color="primary",
-                    className="me-1",
-                ),
-                dbc.Button(
-                    [html.I(className="bi bi-grid-3x2-gap-fill me-2"), "Create batch"],
-                    id="create-batch-button",
-                    color="primary",
-                    className="me-1",
-                ),
-                dbc.Button(
-                    [html.I(className="bi bi-trash3 me-2"), "Delete"],
-                    id="delete-button",
-                    color="danger",
-                    className="me-1",
-                ),
             ],
         ),
         # Right aligned buttons
-        html.Div(
-            style={"display": "flex", "flex-wrap": "wrap", "align-items": "center"},
+        dmc.Group(
+            justify="flex-end",
+            gap="xs",
             children=[
                 html.Div(
                     "Loading...",
@@ -281,16 +270,16 @@ button_layout = html.Div(
                     className="me-1",
                     style={"display": "inline-block", "opacity": "0.5"},
                 ),
-                dbc.Button(
-                    className="bi bi-arrow-clockwise me-2 large-icon",
+                dmc.ActionIcon(
+                    html.I(className="bi bi-arrow-clockwise"),
                     id="refresh-database",
-                    color="primary",
+                    size="lg",
                 ),
-                dbc.Button(
-                    className="bi bi-database-down me-2 large-icon",
+                dmc.ActionIcon(
+                    html.I(className="bi bi-database-down"),
                     id="update-database",
-                    color="warning",
                     disabled=not accessible_servers,
+                    size="lg",
                 ),
                 dbc.Tooltip(
                     children="Refresh database",
@@ -315,70 +304,42 @@ button_layout = html.Div(
 # ------------------------------ Layout - modals ----------------------------- #
 
 
-eject_modal = dbc.Modal(
-    [
-        dbc.ModalHeader(dbc.ModalTitle("Eject")),
-        dbc.ModalBody(id="eject-modal-body", children="Are you sure you want eject the selected samples?"),
-        dbc.ModalFooter(
-            [
-                dbc.Button(
-                    "Eject",
-                    id="eject-yes-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="primary",
-                ),
-                dbc.Button(
-                    "Go back",
-                    id="eject-no-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="secondary",
-                ),
-            ],
+eject_modal = dmc.Modal(
+    title="Eject",
+    children=[
+        dmc.Text("Are you sure you want eject the selected samples?"),
+        dmc.Button(
+            "Eject",
+            id="eject-yes-close",
         ),
     ],
     id="eject-modal",
     centered=True,
-    is_open=False,
 )
 
-load_modal = dbc.Modal(
-    [
-        dbc.ModalHeader(dbc.ModalTitle("Load")),
-        dbc.ModalBody(
-            id="load-modal-body",
-            children=[],
+load_modal = dmc.Modal(
+    title="Load",
+    children=[
+        dmc.Text(
+            "Load samples?",
+            id="load-modal-text",
         ),
-        dbc.ModalFooter(
+        dmc.Space(h="md"),
+        dmc.Group(
             [
-                dbc.Button(
+                dmc.Button(
                     "Load",
                     id="load-yes-close",
-                    className="ms-auto",
-                    color="primary",
-                    n_clicks=0,
                 ),
-                dbc.Button(
+                dmc.Button(
                     "Auto-increment",
                     id="load-incrememt",
-                    className="ms-auto",
-                    color="light",
-                    n_clicks=0,
+                    color="gray",
                 ),
-                dbc.Button(
+                dmc.Button(
                     "Clear all",
                     id="load-clear",
-                    className="ms-auto",
-                    color="light",
-                    n_clicks=0,
-                ),
-                dbc.Button(
-                    "Go back",
-                    id="load-no-close",
-                    className="ms-auto",
-                    color="secondary",
-                    n_clicks=0,
+                    color="gray",
                 ),
             ],
         ),
@@ -386,330 +347,188 @@ load_modal = dbc.Modal(
     ],
     id="load-modal",
     centered=True,
-    is_open=False,
 )
 
-ready_modal = dbc.Modal(
-    [
-        dbc.ModalHeader(dbc.ModalTitle("Ready")),
-        dbc.ModalBody(
-            id="ready-modal-body",
-            children="""
-                Are you sure you want ready the selected pipelines?
-                You must force update the database afterwards to check if tomato has started the job(s).
-            """,
-        ),
-        dbc.ModalFooter(
-            [
-                dbc.Button(
-                    "Ready",
-                    id="ready-yes-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="primary",
-                ),
-                dbc.Button(
-                    "Go back",
-                    id="ready-no-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="secondary",
-                ),
-            ],
-        ),
-    ],
+ready_modal = dmc.Modal(
+    title="Ready",
+    children=dmc.Stack(
+        [
+            dmc.Text("Are you sure you want to ready the selected pipelines?"),
+            dmc.Text("You may need to update the database afterwards to check if jobs have started."),
+            dmc.Button(
+                "Ready",
+                id="ready-yes-close",
+            ),
+        ]
+    ),
     id="ready-modal",
     centered=True,
-    is_open=False,
 )
 
-unready_modal = dbc.Modal(
-    [
-        dbc.ModalHeader(dbc.ModalTitle("Unready")),
-        dbc.ModalBody(
-            id="unready-modal-body",
-            children="Are you sure you want un-ready the selected pipelines?",
-        ),
-        dbc.ModalFooter(
-            [
-                dbc.Button(
-                    "Unready",
-                    id="unready-yes-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="primary",
-                ),
-                dbc.Button(
-                    "Go back",
-                    id="unready-no-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="secondary",
-                ),
-            ],
-        ),
-    ],
+unready_modal = dmc.Modal(
+    title="Unready",
+    children=dmc.Stack(
+        [
+            dmc.Text("Are you sure you want to un-ready the selected pipelines?"),
+            dmc.Button(
+                "Unready",
+                id="unready-yes-close",
+            ),
+        ]
+    ),
     id="unready-modal",
     centered=True,
-    is_open=False,
 )
 
-submit_modal = dbc.Modal(
-    [
-        dcc.Store(id="payload", data={}),
-        dbc.ModalHeader(dbc.ModalTitle("Submit")),
-        dbc.ModalBody(
-            id="submit-modal-body",
-            style={"width": "100%"},
-            children=[
-                "Select a payload to submit",
-                dcc.Upload(
-                    id="submit-upload",
-                    children=html.Div(
-                        [
-                            "Drag and Drop or ",
-                            html.A("Select Files"),
-                        ],
-                    ),
-                    style={
-                        "width": "100%",
-                        "height": "60px",
-                        "lineHeight": "60px",
-                        "borderWidth": "1px",
-                        "borderStyle": "dashed",
-                        "borderRadius": "8px",
-                        "textAlign": "center",
-                    },
-                    accept=".json,.xml",
-                    multiple=False,
-                ),
-                html.P(children="No file selected", id="validator"),
-                html.Div(style={"margin-top": "10px"}),
-                html.Div(
-                    [
-                        html.Label("Calculate C-rate by:", htmlFor="submit-crate"),
-                        dcc.Dropdown(
-                            id="submit-crate",
-                            options={
-                                "areal": "areal capacity x area from db",
-                                "mass": "specific capacity x mass from db",
-                                "nominal": "nominal capacity from db",
-                                "custom": "custom capacity value",
-                            },
-                        ),
-                    ],
-                ),
-                html.Div(
-                    id="submit-capacity-div",
-                    children=[
-                        "Capacity = ",
-                        dcc.Input(id="submit-capacity", type="number", min=0, max=10),
-                        " mAh",
-                    ],
-                    style={"display": "none"},
-                ),
-            ],
-        ),
-        dbc.ModalFooter(
-            [
-                dbc.Button(
-                    "Submit",
-                    id="submit-yes-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="primary",
-                    disabled=True,
-                ),
-                dbc.Button(
-                    "Go back",
-                    id="submit-no-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="secondary",
-                ),
-            ],
-        ),
-    ],
+submit_modal = dmc.Modal(
+    title="Submit",
     id="submit-modal",
     centered=True,
-    is_open=False,
+    children=dmc.Stack(
+        [
+            dcc.Store(id="payload", data={}),
+            dmc.Text("Select a payload to submit"),
+            dcc.Upload(
+                id="submit-upload",
+                children=html.Div(
+                    [
+                        "Drag and Drop or ",
+                        html.A("Select Files"),
+                    ],
+                ),
+                style={
+                    "width": "100%",
+                    "height": "60px",
+                    "lineHeight": "60px",
+                    "borderWidth": "1px",
+                    "borderStyle": "dashed",
+                    "borderRadius": "8px",
+                    "textAlign": "center",
+                },
+                accept=".json,.xml",
+                multiple=False,
+            ),
+            dmc.Text("No file selected", id="validator"),
+            dmc.Select(
+                label="Calculate C-rate by:",
+                id="submit-crate",
+                data=[
+                    {"value": "areal", "label": "areal capacity x area from db"},
+                    {"value": "mass", "label": "specific capacity x mass from db"},
+                    {"value": "nominal", "label": "nominal capacity from db"},
+                    {"value": "custom", "label": "custom capacity value"},
+                ],
+                value="mass",
+            ),
+            dmc.NumberInput(
+                id="submit-capacity",
+                label="Custom capacity value",
+                placeholder="Enter capacity in mAh",
+                min=0,
+                max=10,
+                suffix=" mAh",
+                style={"display": "none"},  # Hidden by default, shown when custom is selected
+            ),
+            dmc.Button(
+                "Submit",
+                id="submit-yes-close",
+                disabled=True,
+            ),
+        ]
+    ),
 )
 
-cancel_modal = dbc.Modal(
-    [
-        dbc.ModalHeader(dbc.ModalTitle("Cancel")),
-        dbc.ModalBody(
-            id="cancel-modal-body",
-            children="Are you sure you want to cancel the selected jobs?",
-        ),
-        dbc.ModalFooter(
-            [
-                dbc.Button(
-                    "Cancel",
-                    id="cancel-yes-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="danger",
-                ),
-                dbc.Button(
-                    "Go back",
-                    id="cancel-no-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="secondary",
-                ),
-            ],
-        ),
-    ],
+cancel_modal = dmc.Modal(
+    title="Cancel",
+    children=dmc.Stack(
+        [
+            dmc.Text("Are you sure you want to cancel the selected jobs?"),
+            dmc.Button(
+                "Cancel",
+                id="cancel-yes-close",
+                color="red",
+            ),
+        ]
+    ),
     id="cancel-modal",
     centered=True,
-    is_open=False,
 )
 
-snapshot_modal = dbc.Modal(
-    [
-        dbc.ModalHeader(dbc.ModalTitle("Snapshot")),
-        dbc.ModalBody(
-            id="snapshot-modal-body",
-            children="""
-                Do you want to snapshot the selected samples?
-                This could take minutes per sample depending on data size.
-            """,
-        ),
-        dbc.ModalFooter(
-            [
-                dbc.Button(
-                    "Snapshot",
-                    id="snapshot-yes-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="warning",
-                ),
-                dbc.Button(
-                    "Go back",
-                    id="snapshot-no-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="secondary",
-                ),
-            ],
-        ),
-    ],
+snapshot_modal = dmc.Modal(
+    title="Snapshot",
+    children=dmc.Stack(
+        [
+            dmc.Text("Do you want to snapshot the selected samples?"),
+            dmc.Text("This could take minutes per sample depending on data size."),
+            dmc.Button(
+                "Snapshot",
+                id="snapshot-yes-close",
+                color="orange",
+            ),
+        ]
+    ),
     id="snapshot-modal",
     centered=True,
-    is_open=False,
 )
 
-create_batch_modal = dbc.Modal(
-    [
-        dbc.ModalHeader(dbc.ModalTitle("Create batch")),
-        dbc.ModalBody(
-            id="batch-save-modal-body",
-            children=[
-                "Create a batch from the selected samples?",
-                html.Div(style={"margin-top": "10px"}),
-                dcc.Input(id="batch-name", type="text", placeholder="Batch name"),
-                html.Div(style={"margin-top": "10px"}),
-                dcc.Textarea(
-                    id="batch-description",
-                    placeholder="Batch description",
-                    style={"width": "100%", "height": "200px"},
-                ),
-            ],
-        ),
-        dbc.ModalFooter(
-            [
-                dbc.Button(
-                    "Create",
-                    id="batch-save-yes-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    disabled=True,
-                    color="primary",
-                ),
-                dbc.Button(
-                    "Go back",
-                    id="batch-save-no-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="secondary",
-                ),
-            ],
-        ),
-    ],
+create_batch_modal = dmc.Modal(
+    title="Create batch",
+    children=dmc.Stack(
+        [
+            dmc.Text("Create a batch from the selected samples?"),
+            dmc.TextInput(
+                id="batch-name",
+                placeholder="Batch name",
+            ),
+            dmc.Textarea(
+                id="batch-description",
+                placeholder="Batch description",
+            ),
+            dmc.Button(
+                "Create",
+                id="batch-save-yes-close",
+            ),
+        ]
+    ),
     id="batch-save-modal",
     centered=True,
-    is_open=False,
 )
 
-delete_modal = dbc.Modal(
-    [
-        dbc.ModalHeader(dbc.ModalTitle("Delete")),
-        dbc.ModalBody(
-            id="delete-modal-body",
-            children="""
-                Are you sure you want to delete the selected samples?
-                Samples will only stay deleted if the .csv files in
-                the data folder are also deleted.
-            """,
-        ),
-        dbc.ModalFooter(
-            [
-                dbc.Button(
-                    "Delete",
-                    id="delete-yes-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="danger",
-                ),
-                dbc.Button(
-                    "Go back",
-                    id="delete-no-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="secondary",
-                ),
-            ],
-        ),
-    ],
+delete_modal = dmc.Modal(
+    title="Delete samples",
+    children=dmc.Stack(
+        [
+            dmc.Text("Are you sure you want to remove the selected samples from the database?"),
+            dmc.Text("This will not delete the same files or any experimental data."),
+            dmc.Button(
+                "Delete",
+                id="delete-yes-close",
+                color="red",
+            ),
+        ]
+    ),
     id="delete-modal",
     centered=True,
-    is_open=False,
 )
 
-label_modal = dbc.Modal(
-    [
-        dbc.ModalHeader(dbc.ModalTitle("Label samples:")),
-        dbc.ModalBody(
-            id="label-modal-body",
-            children=TextInput(
+label_modal = dmc.Modal(
+    title="Label samples",
+    children=dmc.Stack(
+        [
+            dmc.Text("Add a label to the selected samples."),
+            dmc.TextInput(
                 id="label-input",
                 placeholder="This overwrites any existing label",
                 label="Label",
             ),
-        ),
-        dbc.ModalFooter(
-            [
-                dbc.Button(
-                    "Add label",
-                    id="label-yes-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="primary",
-                ),
-                dbc.Button(
-                    "Go back",
-                    id="label-no-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="secondary",
-                ),
-            ],
-        ),
-    ],
+            dmc.Button(
+                "Label",
+                id="label-yes-close",
+            ),
+        ]
+    ),
     id="label-modal",
     centered=True,
-    is_open=False,
 )
 
 # ------------------------------- Main layout -------------------------------- #
@@ -727,17 +546,21 @@ db_view_layout = html.Div(
             style={"height": "100%", "overflow": "scroll"},
             children=[
                 # Buttons to select which table to display
-                dbc.Tabs(
+                dmc.Tabs(
                     [
-                        dbc.Tab(label="Samples", tab_id="samples", activeTabClassName="fw-bold"),
-                        dbc.Tab(label="Pipelines", tab_id="pipelines", activeTabClassName="fw-bold"),
-                        dbc.Tab(label="Jobs", tab_id="jobs", activeTabClassName="fw-bold"),
-                        dbc.Tab(label="Results", tab_id="results", activeTabClassName="fw-bold"),
-                        dbc.Tab(label="Batches", tab_id="batches", activeTabClassName="fw-bold"),
-                        dbc.Tab(label="Protocols", tab_id="protocols", activeTabClassName="fw-bold"),
+                        dmc.TabsList(
+                            [
+                                dmc.TabsTab("Samples", value="samples"),
+                                dmc.TabsTab("Pipelines", value="pipelines"),
+                                dmc.TabsTab("Jobs", value="jobs"),
+                                dmc.TabsTab("Results", value="results"),
+                                dmc.TabsTab("Batches", value="batches"),
+                                dmc.TabsTab("Protocols", value="protocols"),
+                            ],
+                        ),
                     ],
                     id="table-select",
-                    active_tab="samples",
+                    value="samples",
                 ),
                 # Main table for displaying info from database
                 html.Div(
@@ -816,7 +639,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     @app.callback(
         [Output(element, "style") for element in CONTAINERS + BUTTONS],
         [Output(element, "style") for element in TABLES],
-        Input("table-select", "active_tab"),
+        Input("table-select", "value"),
     )
     def update_table(table: str) -> tuple:
         settings: set = visibility_settings.get(table, set())
@@ -840,7 +663,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("pipelines-table", "selectedRows"),
         Input("jobs-table", "selectedRows"),
         Input("results-table", "selectedRows"),
-        Input("table-select", "active_tab"),
+        Input("table-select", "value"),
         Input("len-store", "data"),
         prevent_initial_call=True,
     )
@@ -895,7 +718,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     @app.callback(
         [Output(b, "disabled") for b in BUTTONS],
         Input("selected-rows-store", "data"),
-        State("table-select", "active_tab"),
+        State("table-select", "value"),
     )
     def enable_buttons(selected_rows, table):
         enabled = set()
@@ -958,19 +781,18 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
 
     # Eject button pop up
     @app.callback(
-        Output("eject-modal", "is_open"),
+        Output("eject-modal", "opened"),
         Input("eject-button", "n_clicks"),
         Input("eject-yes-close", "n_clicks"),
-        Input("eject-no-close", "n_clicks"),
-        State("eject-modal", "is_open"),
+        State("eject-modal", "opened"),
     )
-    def eject_sample_button(eject_clicks, yes_clicks, no_clicks, is_open):
+    def eject_sample_button(eject_clicks, yes_clicks, is_open):
         if not ctx.triggered:
             return is_open
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "eject-button":
             return not is_open
-        if (button_id == "eject-yes-close" and yes_clicks) or (button_id == "eject-no-close" and no_clicks):
+        if button_id == "eject-yes-close" and yes_clicks:
             return False
         return is_open, no_update, no_update, no_update
 
@@ -994,17 +816,16 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
 
     # Load button pop up, includes dynamic dropdowns for selecting samples to load
     @app.callback(
-        Output("load-modal", "is_open"),
-        Output("load-modal-body", "children"),
+        Output("load-modal", "opened"),
+        Output("load-modal-text", "children"),
         Output("load-incrememt", "style"),
         Input("load-button", "n_clicks"),
         Input("load-yes-close", "n_clicks"),
-        Input("load-no-close", "n_clicks"),
-        State("load-modal", "is_open"),
+        State("load-modal", "opened"),
         State("selected-rows-store", "data"),
         State("samples-store", "data"),
     )
-    def load_sample_button(load_clicks, yes_clicks, no_clicks, is_open, selected_rows, possible_samples):
+    def load_sample_button(load_clicks, yes_clicks, is_open, selected_rows, possible_samples):
         if not selected_rows or not ctx.triggered:
             return is_open, no_update, no_update
         options = [{"label": s, "value": s} for s in possible_samples if s]
@@ -1012,22 +833,13 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         pipelines = [s["Pipeline"] for s in selected_rows]
         selected_rows = [s for _, s in sorted(zip(make_pipelines_comparable(pipelines), selected_rows))]
         dropdowns = [
-            html.Div(
-                children=[
-                    html.Label(
-                        f"{s['Pipeline']}",
-                        htmlFor=f"dropdown-{s['Pipeline']}",
-                        style={"margin-right": "10px"},
-                    ),
-                    dcc.Dropdown(
-                        id={"type": "load-dropdown", "index": i},
-                        options=options,
-                        value=[],
-                        multi=False,
-                        style={"width": "100%"},
-                    ),
-                ],
-                style={"display": "flex", "align-items": "center", "padding": "5px"},
+            dmc.Select(
+                label=f"{s['Pipeline']}",
+                id={"type": "load-dropdown", "index": i},
+                data=options,
+                searchable=True,
+                clearable=True,
+                placeholder="Select sample",
             )
             for i, s in enumerate(selected_rows)
         ]
@@ -1036,7 +848,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         increment = {"display": "inline-block"} if len(selected_rows) > 1 else {"display": "none"}
         if button_id == "load-button":
             return not is_open, children, increment
-        if (button_id == "load-yes-close" and yes_clicks) or (button_id == "load-no-close" and no_clicks):
+        if button_id == "load-yes-close" and yes_clicks:
             return False, no_update, increment
         return is_open, no_update, increment
 
@@ -1055,7 +867,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
 
         # If clear, clear all selected samples
         if button_id == "load-clear":
-            return [[] for _ in selected_samples]
+            return [None for _ in selected_samples]
 
         # If auto-increment, go through the list, if the sample is empty increment the previous sample
         if button_id == "load-incrememt":
@@ -1095,19 +907,18 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
 
     # Ready button pop up
     @app.callback(
-        Output("ready-modal", "is_open"),
+        Output("ready-modal", "opened"),
         Input("ready-button", "n_clicks"),
         Input("ready-yes-close", "n_clicks"),
-        Input("ready-no-close", "n_clicks"),
-        State("ready-modal", "is_open"),
+        State("ready-modal", "opened"),
     )
-    def ready_pipeline_button(ready_clicks, yes_clicks, no_clicks, is_open):
+    def ready_pipeline_button(ready_clicks, yes_clicks, is_open):
         if not ctx.triggered:
             return is_open
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "ready-button":
-            return not is_open
-        if (button_id == "ready-yes-close" and yes_clicks) or (button_id == "ready-no-close" and no_clicks):
+            return True
+        if button_id == "ready-yes-close" and yes_clicks:
             return False
         return is_open, no_update, no_update, no_update
 
@@ -1133,19 +944,18 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
 
     # Unready button pop up
     @app.callback(
-        Output("unready-modal", "is_open"),
+        Output("unready-modal", "opened"),
         Input("unready-button", "n_clicks"),
         Input("unready-yes-close", "n_clicks"),
-        Input("unready-no-close", "n_clicks"),
-        State("unready-modal", "is_open"),
+        State("unready-modal", "opened"),
     )
-    def unready_pipeline_button(unready_clicks, yes_clicks, no_clicks, is_open):
+    def unready_pipeline_button(unready_clicks, yes_clicks, is_open):
         if not ctx.triggered:
             return is_open
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "unready-button":
-            return not is_open
-        if (button_id == "unready-yes-close" and yes_clicks) or (button_id == "unready-no-close" and no_clicks):
+            return True
+        if button_id == "unready-yes-close" and yes_clicks:
             return False
         return is_open, no_update, no_update, no_update
 
@@ -1168,21 +978,21 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
 
     # Submit button pop up
     @app.callback(
-        Output("submit-modal", "is_open"),
+        Output("submit-modal", "opened"),
         Input("submit-button", "n_clicks"),
         Input("submit-yes-close", "n_clicks"),
-        Input("submit-no-close", "n_clicks"),
-        State("submit-modal", "is_open"),
+        State("submit-modal", "opened"),
+        prevent_initial_call=True,
     )
-    def submit_pipeline_button(submit_clicks, yes_clicks, no_clicks, is_open):
+    def submit_pipeline_button(submit_clicks, yes_clicks, is_open):
         if not ctx.triggered:
-            return is_open
+            return no_update
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "submit-button":
-            return not is_open
-        if (button_id == "submit-yes-close" and yes_clicks) or (button_id == "submit-no-close" and no_clicks):
+            return True
+        if button_id == "submit-yes-close" and yes_clicks:
             return False
-        return is_open, no_update, no_update, no_update
+        return no_update
 
     # Submit pop up - check that the json file is valid
     @app.callback(
@@ -1230,13 +1040,13 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
 
     # Submit pop up - show custom capacity input if custom capacity is selected
     @app.callback(
-        Output("submit-capacity-div", "style"),
+        Output("submit-capacity", "style"),
         Input("submit-crate", "value"),
         prevent_initial_call=True,
     )
     def submit_custom_crate(crate):
         if crate == "custom":
-            return {"display": "block"}
+            return {}
         return {"display": "none"}
 
     # Submit pop up - enable submit button if json valid and a capacity is given
@@ -1287,7 +1097,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
 
     # When selecting create batch, switch to batch sub-tab with samples selected
     @app.callback(
-        Output("table-select", "active_tab"),
+        Output("table-select", "value"),
         Output("create-batch-store", "data", allow_duplicate=True),
         Input("create-batch-button", "n_clicks"),
         State("selected-rows-store", "data"),
@@ -1298,21 +1108,18 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
 
     # Cancel button pop up
     @app.callback(
-        Output("cancel-modal", "is_open"),
+        Output("cancel-modal", "opened"),
         Input("cancel-button", "n_clicks"),
         Input("cancel-yes-close", "n_clicks"),
-        Input("cancel-no-close", "n_clicks"),
-        State("cancel-modal", "is_open"),
+        State("cancel-modal", "opened"),
     )
-    def cancel_job_button(cancel_clicks, yes_clicks, no_clicks, is_open):
+    def cancel_job_button(cancel_clicks, yes_clicks, is_open):
         if not ctx.triggered:
             return is_open
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "cancel-button":
             return not is_open
         if button_id == "cancel-yes-close" and yes_clicks:
-            return False
-        if button_id == "cancel-no-close" and no_clicks:
             return False
         return is_open, no_update, no_update, no_update
 
@@ -1352,21 +1159,18 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
 
     # Snapshot button pop up
     @app.callback(
-        Output("snapshot-modal", "is_open"),
+        Output("snapshot-modal", "opened"),
         Input("snapshot-button", "n_clicks"),
         Input("snapshot-yes-close", "n_clicks"),
-        Input("snapshot-no-close", "n_clicks"),
-        State("snapshot-modal", "is_open"),
+        State("snapshot-modal", "opened"),
     )
-    def snapshot_sample_button(snapshot_clicks, yes_clicks, no_clicks, is_open):
+    def snapshot_sample_button(snapshot_clicks, yes_clicks, is_open):
         if not ctx.triggered:
             return is_open
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "snapshot-button":
             return not is_open
         if button_id == "snapshot-yes-close" and yes_clicks:
-            return False
-        if button_id == "snapshot-no-close" and no_clicks:
             return False
         return is_open, no_update, no_update, no_update
 
@@ -1392,21 +1196,18 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
 
     # Delete button pop up
     @app.callback(
-        Output("delete-modal", "is_open"),
+        Output("delete-modal", "opened"),
         Input("delete-button", "n_clicks"),
         Input("delete-yes-close", "n_clicks"),
-        Input("delete-no-close", "n_clicks"),
-        State("delete-modal", "is_open"),
+        State("delete-modal", "opened"),
     )
-    def delete_sample_button(delete_clicks, yes_clicks, no_clicks, is_open):
+    def delete_sample_button(delete_clicks, yes_clicks, is_open):
         if not ctx.triggered:
             return is_open
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "delete-button":
             return not is_open
         if button_id == "delete-yes-close" and yes_clicks:
-            return False
-        if button_id == "delete-no-close" and no_clicks:
             return False
         return is_open, no_update, no_update, no_update
 
@@ -1468,21 +1269,18 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
 
     # Label button pop up
     @app.callback(
-        Output("label-modal", "is_open"),
+        Output("label-modal", "opened"),
         Input("label-button", "n_clicks"),
         Input("label-yes-close", "n_clicks"),
-        Input("label-no-close", "n_clicks"),
-        State("label-modal", "is_open"),
+        State("label-modal", "opened"),
     )
-    def label_sample_button(label_clicks, yes_clicks, no_clicks, is_open):
+    def label_sample_button(label_clicks, yes_clicks, is_open):
         if not ctx.triggered:
             return is_open
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "label-button":
             return not is_open
         if button_id == "label-yes-close" and yes_clicks:
-            return False
-        if button_id == "label-no-close" and no_clicks:
             return False
         return is_open, no_update, no_update, no_update
 

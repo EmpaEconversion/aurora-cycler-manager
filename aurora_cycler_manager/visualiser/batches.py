@@ -7,7 +7,6 @@ import json
 import textwrap
 from pathlib import Path
 
-import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 import numpy as np
 import pandas as pd
@@ -26,7 +25,7 @@ from aurora_cycler_manager.visualiser.funcs import correlation_matrix
 CONFIG = get_config()
 
 graph_template = "seaborn"
-graph_margin = {"l": 50, "r": 10, "t": 50, "b": 75}
+graph_margin = {"l": 75, "r": 20, "t": 50, "b": 75}
 
 # Define available color scales
 cont_color_dict = {}
@@ -61,148 +60,167 @@ def to_rgba(color_str: str, alpha: float = 0.2) -> str:
 
 batches_menu = html.Div(
     style={"overflow": "scroll", "height": "100%"},
-    children=[
-        html.Div(style={"margin-top": "10px"}),
-        dbc.Button(
-            [html.I(className="bi bi-plus-circle-fill me-2"), "Select samples to plot"],
-            id="batch-samples-button",
-            color="primary",
-            style={"width": "100%", "margin-top": "50 px", "margin-bottom": "50px"},
-        ),
-        html.H5("Cycles graph"),
-        html.P("X-axis: Cycle"),
-        html.Label("Y-axis:", htmlFor="batch-cycle-y"),
-        dcc.Dropdown(
-            id="batch-cycle-y",
-            options=["Specific discharge capacity (mAh/g)"],
-            value="Specific discharge capacity (mAh/g)",
-            multi=False,
-            clearable=False,
-        ),
-        html.Div(style={"margin-top": "10px"}),
-        html.Label("Color by:", htmlFor="batch-cycle-colormap"),
-        dcc.Dropdown(
-            id="batch-cycle-color",
-            options=[
-                "Run ID",
-            ],
-            value="Run ID",
-            multi=False,
-        ),
-        html.Label("Continuous colorscale:", htmlFor="batch-cycle-colormap"),
-        dcc.Dropdown(
-            id="batch-cycle-colormap",
-            options=cont_color_options,
-            value="Viridis",
-            clearable=False,
-        ),
-        html.Label("Discrete colors:", htmlFor="batch-cycle-discrete-colormap"),
-        dcc.Dropdown(
-            id="batch-cycle-discrete-colormap",
-            options=discrete_color_options,
-            value="Plotly",
-            clearable=False,
-        ),
-        html.Div(style={"margin-top": "10px"}),
-        html.Label("Style by:", htmlFor="batch-cycle-style"),
-        dcc.Dropdown(
-            id="batch-cycle-style",
-            options=[],
-        ),
-        html.Div(style={"margin-top": "10px"}),
-        html.Label("Plot style:", htmlFor="plot-style"),
-        dcc.Dropdown(
-            id="plot-style",
-            options=[
-                {"label": "Lines+markers", "value": "lines+markers"},
-                {"label": "Lines", "value": "lines"},
-                {"label": "Markers", "value": "markers"},
-            ],
-            value="lines+markers",
-            clearable=False,
-        ),
-        html.Div(style={"margin-top": "10px"}),
-        html.Label("Error bars:", htmlFor="plot-error-bars"),
-        dcc.Dropdown(
-            id="plot-error-bars",
-            options=[
-                {"label": "Plot all traces", "value": "none"},
-                {"label": "Aggregate, fill error", "value": "fill"},
-                {"label": "Aggregate, bar error", "value": "bar"},
-                {"label": "Aggregate, fill+bar error", "value": "fill+bar"},
-                {"label": "Aggregate, hide error", "value": "hide"},
-            ],
-            value="none",
-            clearable=False,
-        ),
-        html.Div(style={"margin-top": "50px"}),
-        html.H5("Correlation graph"),
-        html.Label("X-axis:", htmlFor="batch-correlation-x"),
-        dcc.Dropdown(
-            id="batch-correlation-x",
-        ),
-        html.Div(style={"margin-top": "10px"}),
-        html.Label("Y-axis:", htmlFor="batch-correlation-y"),
-        dcc.Dropdown(
-            id="batch-correlation-y",
-        ),
-        html.Div(style={"margin-top": "10px"}),
-        dcc.Checklist(
-            id="batch-correlation-legend",
-            options=[{"label": " Show legend", "value": True}],
-            value=[True],
-        ),
-    ],
+    children=dmc.Stack(
+        p="xs",
+        children=[
+            dmc.Button(
+                "Select samples",
+                id="batch-samples-button",
+                leftSection=html.I(className="bi bi-plus-circle-fill"),
+                style={"width": "100%", "margin-top": "50 px"},
+            ),
+            dmc.Fieldset(
+                legend="Cycle graph",
+                variant="default",
+                children=[
+                    dmc.Select(
+                        label="X-axis",
+                        id="batch-cycle-x",
+                        data=["Cycle"],
+                        value="Cycle",
+                        disabled=True,  # X-axis is always cycle
+                        checkIconPosition="right",
+                        comboboxProps={"offset": 0},
+                    ),
+                    dmc.Select(
+                        label="Y-axis",
+                        id="batch-cycle-y",
+                        data=["Specific discharge capacity (mAh/g)"],
+                        value="Specific discharge capacity (mAh/g)",
+                        searchable=True,
+                        checkIconPosition="right",
+                        comboboxProps={"offset": 0},
+                    ),
+                    dmc.Select(
+                        label="Color by",
+                        id="batch-cycle-color",
+                        data=["Run ID"],
+                        value="Run ID",
+                        searchable=True,
+                        clearable=True,
+                        checkIconPosition="right",
+                        comboboxProps={"offset": 0},
+                    ),
+                    dmc.Select(
+                        label="Colormap",
+                        id="batch-cycle-colormap",
+                        data=cont_color_options,
+                        value="Turbo",
+                        searchable=True,
+                        checkIconPosition="right",
+                        comboboxProps={"offset": 0},
+                    ),
+                    dmc.Select(
+                        label="Discrete colors",
+                        id="batch-cycle-discrete-colormap",
+                        data=discrete_color_options,
+                        value="Plotly",
+                        searchable=True,
+                        checkIconPosition="right",
+                        comboboxProps={"offset": 0},
+                    ),
+                    dmc.Select(
+                        label="Style by",
+                        id="batch-cycle-style",
+                        data=[],
+                        value=None,
+                        clearable=True,
+                        searchable=True,
+                        checkIconPosition="right",
+                        comboboxProps={"offset": 0},
+                    ),
+                    dmc.Select(
+                        id="plot-style",
+                        label="Plot style",
+                        data=[
+                            {"label": "Lines+markers", "value": "lines+markers"},
+                            {"label": "Lines", "value": "lines"},
+                            {"label": "Markers", "value": "markers"},
+                        ],
+                        value="lines+markers",
+                        checkIconPosition="right",
+                        comboboxProps={"offset": 0},
+                    ),
+                    dmc.Select(
+                        id="plot-error-bars",
+                        label="Error bars",
+                        data=[
+                            {"label": "Plot all", "value": "none"},
+                            {"label": "Avg, fill err", "value": "fill"},
+                            {"label": "Avg, bar err", "value": "bar"},
+                            {"label": "Avg, fill+bar err", "value": "fill+bar"},
+                            {"label": "Avg, hide error", "value": "hide"},
+                        ],
+                        value="none",
+                        checkIconPosition="right",
+                        comboboxProps={"offset": 0},
+                    ),
+                ],
+            ),
+            dmc.Fieldset(
+                legend="Correlation graph",
+                children=[
+                    dmc.Select(
+                        label="X-axis",
+                        id="batch-correlation-x",
+                        data=[],
+                        value=None,
+                        searchable=True,
+                        clearable=True,
+                        checkIconPosition="right",
+                        comboboxProps={"offset": 0},
+                    ),
+                    dmc.Select(
+                        label="Y-axis",
+                        id="batch-correlation-y",
+                        data=[],
+                        value=None,
+                        searchable=True,
+                        clearable=True,
+                        checkIconPosition="right",
+                        comboboxProps={"offset": 0},
+                    ),
+                    dmc.Checkbox(
+                        id="batch-correlation-legend",
+                        label="Show legend",
+                        value=True,
+                        checked=True,
+                        style={"margin-top": "5px", "margin-bottom": "5px"},
+                    ),
+                ],
+            ),
+        ],
+    ),
 )
 
 samples_modal = dmc.Modal(
     children=[
-        dmc.MultiSelect(
-            id="batch-batch-dropdown",
-            label="Select batches",
-            data=[],  # Updated by callback
-            value=[],
-            clearable=True,
-            searchable=True,
-            checkIconPosition="right",
-        ),
-        html.Div(style={"margin-top": "10px"}),
-        dmc.MultiSelect(
-            id="batch-samples-dropdown",
-            label="Select individual samples",
-            data=[],  # Updated by callback
-            value=[],
-            clearable=True,
-            searchable=True,
-            checkIconPosition="right",
-        ),
-        html.Div(style={"margin-top": "10px"}),
-        dbc.Alert(
-            [
-                html.I(className="bi bi-info-circle me-2"),
-                "You can also load samples from Database > Samples > View data",
-            ],
-            color="light",
-            dismissable=True,
-        ),
-        html.Div(
+        dmc.Stack(
             children=[
-                dbc.Button(
+                dmc.MultiSelect(
+                    id="batch-batch-dropdown",
+                    label="Select batches",
+                    data=[],  # Updated by callback
+                    value=[],
+                    clearable=True,
+                    searchable=True,
+                    checkIconPosition="right",
+                ),
+                dmc.MultiSelect(
+                    id="batch-samples-dropdown",
+                    label="Select individual samples",
+                    data=[],  # Updated by callback
+                    value=[],
+                    clearable=True,
+                    searchable=True,
+                    checkIconPosition="right",
+                ),
+                dmc.Button(
                     "Load",
                     id="batch-yes-close",
-                    className="ms-auto",
                     n_clicks=0,
-                    color="primary",
-                ),
-                dbc.Button(
-                    "Go back",
-                    id="batch-no-close",
-                    className="ms-auto",
-                    n_clicks=0,
-                    color="secondary",
                 ),
             ],
-            style={"flex": "1 1 auto", "display": "flex", "justify-content": "space-between"},
         ),
     ],
     id="batch-modal",
@@ -239,8 +257,8 @@ batch_correlation_map = dcc.Graph(
         margin=graph_margin,
         title="Correlation matrix",
         coloraxis_colorbar={"title": "Correlation", "tickvals": [-1, 0, 1], "ticktext": ["-1", "0", "1"]},
-        xaxis={"tickfont": {"size": 8}, "title": ""},
-        yaxis={"tickfont": {"size": 8}, "title": ""},
+        xaxis={"tickfont": {"size": 8}, "title": "", "showticklabels": False},
+        yaxis={"tickfont": {"size": 8}, "title": "", "showticklabels": False},
     ),
     config={
         "scrollZoom": False,
@@ -283,7 +301,6 @@ batches_layout = html.Div(
             children=[
                 Panel(
                     id="batches-menu",
-                    className="menu-panel",
                     children=batches_menu,
                     defaultSizePercentage=16,
                     collapsible=True,
@@ -465,10 +482,9 @@ def register_batches_callbacks(app: Dash) -> None:
         Output("batch-modal", "opened", allow_duplicate=True),
         Input("batch-samples-button", "n_clicks"),
         Input("batch-yes-close", "n_clicks"),
-        Input("batch-no-close", "n_clicks"),
         prevent_initial_call=True,
     )
-    def open_samples_modal(select_clicks: int, yes: int, no: int) -> bool:
+    def open_samples_modal(select_clicks: int, yes: int) -> bool:
         if not ctx.triggered:
             return False
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
@@ -477,10 +493,10 @@ def register_batches_callbacks(app: Dash) -> None:
     # When the user hits yes close, load the selected samples
     @app.callback(
         Output("batches-data-store", "data"),
-        Output("batch-cycle-y", "options"),
+        Output("batch-cycle-y", "data"),
         Output("batch-cycle-y", "value"),
-        Output("batch-cycle-color", "options"),
-        Output("batch-cycle-style", "options"),
+        Output("batch-cycle-color", "data"),
+        Output("batch-cycle-style", "data"),
         Output("batch-modal", "opened", allow_duplicate=True),
         Input("batch-yes-close", "n_clicks"),
         State("batch-samples-dropdown", "value"),
@@ -750,7 +766,7 @@ def register_batches_callbacks(app: Dash) -> None:
                     [
                         f"<b>{key_str}</b>",
                         "Cycle: %{x}",
-                        f"{yvar}: %{{y}} ± %{{customdata[0]}}",
+                        f"{yvar}: %{{y:.5g}} ± %{{customdata[0]:.2g}}",
                         "Number of samples: %{customdata[1]}",
                         "<extra></extra>",
                     ],
@@ -795,8 +811,8 @@ def register_batches_callbacks(app: Dash) -> None:
     # Update the correlation map
     @app.callback(
         Output("batch-correlation-map", "figure"),
-        Output("batch-correlation-x", "options"),
-        Output("batch-correlation-y", "options"),
+        Output("batch-correlation-x", "data"),
+        Output("batch-correlation-y", "data"),
         State("batch-correlation-map", "figure"),
         Input("batches-data-store", "data"),
         running=[(Output("loading-message-store", "data"), "Plotting correlations...", "")],
@@ -873,7 +889,7 @@ def register_batches_callbacks(app: Dash) -> None:
         Input("trace-style-store", "data"),
         Input("batch-correlation-x", "value"),
         Input("batch-correlation-y", "value"),
-        Input("batch-correlation-legend", "value"),
+        Input("batch-correlation-legend", "checked"),
     )
     def update_correlation_graph(
         fig: dict,
