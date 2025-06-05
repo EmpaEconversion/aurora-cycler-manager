@@ -922,12 +922,11 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     @app.callback(
         Output("protocol-warning-message", "children"),
         Output("protocol-warning", "style"),
-        Output("protocol-save-button", "disabled"),
         Input("protocol-edit-grid", "virtualRowData"),
         Input("protocol-store", "data"),
         prevent_initial_call=True,
     )
-    def validate_protocol(grid_data: list[dict], protocol_dict: dict) -> tuple[str, dict, bool]:
+    def validate_protocol(grid_data: list[dict], protocol_dict: dict) -> tuple[str, dict]:
         """Validate the protocol and update the grid data."""
         # Reorder the techniques in case the user has dragged rows around
         indices = [row["index"] for row in grid_data] if grid_data else []
@@ -939,8 +938,18 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             logger.error("Pydantic validation error for whole protocol: %s", e)  # noqa: TRY400
             friendly_error = str(e).split("\n", 1)[1] if "\n" in str(e) else str(e)
             friendly_error = friendly_error.split("[", 1)[0].strip()
-            return friendly_error, {"visibility": "visible"}, True
-        return "", {"visibility": "hidden"}, False
+            return friendly_error, {"visibility": "visible"}
+        return "", {"visibility": "hidden"}
+
+    # If name or validity of protocol changes, change save button
+    @app.callback(
+        Output("protocol-save-button", "disabled"),
+        Input("protocol-warning", "style"),
+        Input("protocol-name", "value"),
+    )
+    def update_save_button(warning: dict, name: str) -> bool:
+        """Update the save button based on the protocol validity and name."""
+        return not name or name.strip() == "" or warning.get("visibility") == "visible"
 
     # If any safety or measurement parameters change, update the protocol store
     @app.callback(
