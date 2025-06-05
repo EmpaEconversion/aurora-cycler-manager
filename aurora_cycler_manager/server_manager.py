@@ -34,7 +34,7 @@ import paramiko
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.cycler_servers import CyclerServer, NewareServer, TomatoServer
-from aurora_cycler_manager.tomato_converter import convert_tomato_json
+from aurora_cycler_manager.tomato_converter import convert_tomato_json, get_snapshot_folder
 from aurora_cycler_manager.utils import run_from_sample
 
 CONFIG = get_config()
@@ -639,7 +639,7 @@ class ServerManager:
 
         for sample_id, status, jobid_on_server, server_label, snapshot_status in result:
             jobid = f"{server_label}-{jobid_on_server}"
-            if not sample_id:  # TODO: should this update the db as well?
+            if not sample_id:
                 print(f"Job {server_label}-{jobid_on_server} has no sample, skipping.")
                 continue
             # Check that sample is known
@@ -667,9 +667,7 @@ class ServerManager:
             # Otherwise snapshot the job
             server = self.find_server(server_label)
             if server.server_type == "tomato":
-                local_save_location = (
-                    Path(self.config["Snapshots folder path"]) / "tomato_snapshots" / run_id / sample_id
-                )
+                local_save_location = get_snapshot_folder() / run_id / sample_id
             else:
                 msg = f"Server type {server.server_type} not supported for snapshotting."
                 raise NotImplementedError(msg)
