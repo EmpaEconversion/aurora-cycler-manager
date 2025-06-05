@@ -893,7 +893,7 @@ def update_sample_metadata(sample_ids: str | list[str]) -> None:
             for col in SAMPLE_METADATA_TO_DATA:
                 data["data"][col] = sample_data.get(col, None)
         with json_file.open("w", encoding="utf-8") as f:
-            json.dump(data, f)
+            json_dump_compress_lists(data, f, indent=4)
 
 
 def shrink_sample(sample_id: str) -> None:
