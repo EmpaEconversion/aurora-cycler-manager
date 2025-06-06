@@ -728,11 +728,12 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     def enable_buttons(selected_rows, table):
         enabled = set()
         # Add buttons to enabled set with union operator |=
+        if database_access and table == "samples":
+            enabled |= {"add-samples-button"}
         if selected_rows:
             enabled |= {"copy-button"}
             if accessible_servers:  # Need cycler permissions to do anything except copy, view or upload
                 if table == "samples":
-                    enabled |= {"add-samples-button"}
                     if all(s.get("Sample ID") is not None for s in selected_rows):
                         enabled |= {"delete-button", "label-button", "create-batch-button"}
                 elif table == "pipelines":
