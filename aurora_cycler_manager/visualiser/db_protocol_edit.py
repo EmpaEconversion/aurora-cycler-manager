@@ -516,6 +516,21 @@ global_edit_menu = dmc.Stack(
                         ),
                     ],
                 ),
+                dmc.Flex(
+                    gap="xs",
+                    justify="flex-start",
+                    wrap="nowrap",
+                    align="center",
+                    children=[
+                        dmc.NumberInput(
+                            id="delay_s",
+                            placeholder="Delay before safety stop (s)",
+                            suffix=" s",
+                            hideControls=True,
+                            debounce=True,
+                        ),
+                    ],
+                )
             ],
         ),
     ],
@@ -580,6 +595,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Output("max_voltage_V", "value"),
         Output("min_current_mA", "value"),
         Output("max_current_mA", "value"),
+        Output("delay_s", "value"),
         Input("protocol-store", "data"),
         State("protocol-store-selected", "data"),
         prevent_initial_call=True,
@@ -598,6 +614,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         safety_min_V = protocol_dict.get("safety", {}).get("min_voltage_V")
         safety_max_mA = protocol_dict.get("safety", {}).get("max_current_mA")
         safety_min_mA = protocol_dict.get("safety", {}).get("min_current_mA")
+        safety_delay_s = protocol_dict.get("safety", {}).get("delay_s")
         return (
             new_selected_rows,
             row_data,
@@ -608,6 +625,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             safety_max_V,
             safety_min_mA,
             safety_max_mA,
+            safety_delay_s,
         )
 
     # Load a protocol button
@@ -973,6 +991,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("max_voltage_V", "value"),
         Input("min_current_mA", "value"),
         Input("max_current_mA", "value"),
+        Input("delay_s", "value"),
         State("protocol-store", "data"),
         prevent_initial_call=True,
     )
@@ -984,6 +1003,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         max_voltage_V: float,
         min_current_mA: float,
         max_current_mA: float,
+        delay_s: float,
         protocol_dict: dict,
     ) -> dict:
         """Update the global parameters in the protocol store."""
@@ -994,6 +1014,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         protocol_dict["safety"]["max_voltage_V"] = max_voltage_V
         protocol_dict["safety"]["min_current_mA"] = min_current_mA
         protocol_dict["safety"]["max_current_mA"] = max_current_mA
+        protocol_dict["safety"]["delay_s"] = delay_s
         return protocol_dict
 
     # Pressing save opens a confirm dialog
