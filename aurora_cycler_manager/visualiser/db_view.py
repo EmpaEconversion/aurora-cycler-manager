@@ -11,7 +11,6 @@ import logging
 from datetime import datetime
 
 import dash_ag_grid as dag
-import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 import paramiko
 from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
@@ -275,30 +274,28 @@ button_layout = dmc.Flex(
                     className="me-1",
                     style={"display": "inline-block", "opacity": "0.5"},
                 ),
-                dmc.ActionIcon(
-                    html.I(className="bi bi-arrow-clockwise"),
-                    id="refresh-database",
-                    size="lg",
-                ),
-                dmc.ActionIcon(
-                    html.I(className="bi bi-database-down"),
-                    id="update-database",
-                    disabled=not accessible_servers,
-                    size="lg",
-                ),
-                dbc.Tooltip(
-                    children="Refresh database",
+                dmc.Tooltip(
+                    dmc.ActionIcon(
+                        html.I(className="bi bi-arrow-clockwise"),
+                        id="refresh-database",
+                        size="lg",
+                    ),
+                    label="Refresh database",
                     id="last-refreshed",
-                    target="refresh-database",
-                    style={"whiteSpace": "pre-wrap"},
-                    placement="top",
+                    multiline=True,
+                    openDelay=500,
                 ),
-                dbc.Tooltip(
-                    children="Update database from cyclers",
+                dmc.Tooltip(
+                    dmc.ActionIcon(
+                        html.I(className="bi bi-database-down"),
+                        id="update-database",
+                        disabled=not accessible_servers,
+                        size="lg",
+                    ),
+                    label="Update database by querying cyclers",
                     id="last-updated",
-                    target="update-database",
-                    style={"whiteSpace": "pre-wrap"},
-                    placement="top",
+                    multiline=True,
+                    openDelay=500,
                 ),
             ],
         ),
@@ -684,8 +681,8 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     # Refresh the local data from the database
     @app.callback(
         Output("table-data-store", "data"),
-        Output("last-refreshed", "children"),
-        Output("last-updated", "children"),
+        Output("last-refreshed", "label"),
+        Output("last-updated", "label"),
         Output("samples-store", "data"),
         Output("batches-store", "data"),
         Input("refresh-database", "n_clicks"),
@@ -700,8 +697,8 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         batches = get_batch_details()
         return (
             db_data,
-            f"Refresh database\nLast refreshed: {dt_string}",
-            f"Update database\nLast updated: {last_checked}",
+            f"Refresh database, last refreshed: {dt_string}",
+            f"Update database, last updated: {last_checked}",
             samples,
             batches,
         )

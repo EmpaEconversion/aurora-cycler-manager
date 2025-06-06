@@ -14,7 +14,6 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objs as go
 from dash import Dash, Input, Output, State, dcc, html
-from dash_bootstrap_components import Tooltip
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
 from aurora_cycler_manager.analysis import combine_jobs
@@ -41,15 +40,15 @@ samples_menu = html.Div(
                 checkIconPosition="right",
                 comboboxProps={"offset": 0},
             ),
-            dmc.Checkbox(
-                id="compressed-files",
-                label="Use compressed files",
-                checked=True,
-            ),
-            Tooltip(
-                "Use compressed time-series data where available - better performance, less accurate.",
-                target="compressed-files",
-                delay={"show": 1000},
+            dmc.Tooltip(
+                dmc.Checkbox(
+                    id="compressed-files",
+                    label="Use compressed files",
+                    checked=True,
+                ),
+                label="Use compressed time-series data where available - better performance, less accurate.",
+                multiline=True,
+                openDelay=1000,
             ),
             dmc.Fieldset(
                 legend="Time graph",

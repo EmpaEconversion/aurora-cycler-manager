@@ -530,7 +530,7 @@ global_edit_menu = dmc.Stack(
                             debounce=True,
                         ),
                     ],
-                )
+                ),
             ],
         ),
     ],
