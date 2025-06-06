@@ -5,6 +5,7 @@ import json
 import logging
 import uuid
 from decimal import Decimal
+from pathlib import Path
 
 import dash_mantine_components as dmc
 from dash import Dash, Input, Output, State, dcc, html, no_update
@@ -12,6 +13,7 @@ from dash.exceptions import PreventUpdate
 from dash_ag_grid import AgGrid
 from pydantic import ValidationError
 
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.unicycler import (
     BaseTechnique,
     ConstantCurrent,
@@ -21,9 +23,10 @@ from aurora_cycler_manager.unicycler import (
     Tag,
     from_dict,
 )
-from aurora_cycler_manager.visualiser.notifications import error_notification
+from aurora_cycler_manager.visualiser.notifications import error_notification, success_notification
 
 logger = logging.getLogger(__name__)
+CONFIG = get_config()
 
 TECHNIQUE_NAMES = {
     "constant_current": "Constant current",
@@ -160,7 +163,7 @@ protocol_edit_grid = AgGrid(
         "animateRows": True,
         "rowDragMultiRow": True,
     },
-    style={"height": "calc(100vh - 300px)", "width": "100%", "minHeight": "300px"},
+    style={"height": "calc(100vh - 255px)", "width": "100%", "minHeight": "300px"},
     className="ag-theme-quartz",
 )
 
@@ -518,6 +521,7 @@ global_edit_menu = dmc.Stack(
     ],
 )
 
+
 protocol_edit_layout = html.Div(
     id="protocol-container",
     children=[
@@ -548,6 +552,14 @@ protocol_edit_layout = html.Div(
                     ],
                 ),
             ],
+        ),
+        dcc.ConfirmDialog(
+            id="save-protocol-confirm",
+            message="Save as new protocol?",
+        ),
+        dcc.ConfirmDialog(
+            id="overwrite-protocol-confirm",
+            message="Warning: This will overwrite an existing protocol. Are you sure?",
         ),
     ],
 )
@@ -680,7 +692,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         if selected_rows is not None and selected_rows:
             selected_indices = [s["index"] for s in selected_rows]
             reordered_indices = [i for i, row in enumerate(indices) if row in selected_indices]
-            index = min(reordered_indices) if reordered_indices else None
+            index = max(reordered_indices) + 1 if reordered_indices else None
         # add a new row to the data store
         new_row = BaseTechnique(name="Select technique").model_dump()
         new_row["id"] = uuid.uuid4()
@@ -983,3 +995,68 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         protocol_dict["safety"]["min_current_mA"] = min_current_mA
         protocol_dict["safety"]["max_current_mA"] = max_current_mA
         return protocol_dict
+
+    # Pressing save opens a confirm dialog
+    @app.callback(
+        Output("notifications-container", "children", allow_duplicate=True),
+        Output("save-protocol-confirm", "displayed"),
+        Output("overwrite-protocol-confirm", "displayed"),
+        Input("protocol-save-button", "n_clicks"),
+        State("protocol-name", "value"),
+        prevent_initial_call=True,
+    )
+    def save_protocol_button(n_clicks: int, name: str) -> tuple:
+        """Open the confirm dialog for saving the protocol."""
+        # Check if the protocol name exists in protocols folder
+        folder = CONFIG.get("Protocols folder path")
+        if not folder:
+            return (
+                error_notification("No protocols folder", "Please check config"),
+                no_update,
+                no_update,
+            )
+        if n_clicks:
+            file_path = Path(folder) / f"{name}.json"
+            if file_path.exists():
+                return no_update, no_update, True
+            return no_update, True, no_update
+        raise PreventUpdate
+
+    # If the user confirms saving, save the protocol to the protocols folder
+    @app.callback(
+        Output("notifications-container", "children", allow_duplicate=True),
+        Input("save-protocol-confirm", "submit_n_clicks"),
+        Input("overwrite-protocol-confirm", "submit_n_clicks"),
+        State("protocol-store", "data"),
+        State("protocol-name", "value"),
+        prevent_initial_call=True,
+    )
+    def save_protocol(
+        save_clicks: int,
+        overwrite_clicks: int,
+        protocol_dict: dict,
+        name: str,
+    ) -> list:
+        """Save the protocol to the protocols folder."""
+        folder = CONFIG.get("Protocols folder path")
+        if not folder:
+            return error_notification("Error", "No protocols folder path set in config!")
+        file_path = Path(folder) / f"{name}.json"
+        if file_path.exists() and overwrite_clicks is None:
+            return error_notification(
+                "Cannot save",
+                "Protocol with this name already exists! Please choose another name.",
+            )
+        try:
+            protocol_copy = protocol_dict.copy()
+            for technique in protocol_copy.get("method", []):
+                if "id" in technique:
+                    del technique["id"]
+            protocol = from_dict(protocol_copy)
+            folder.mkdir(parents=True, exist_ok=True)
+            with file_path.open("w") as f:
+                f.write(protocol.model_dump_json(exclude_none=True, indent=4))
+            return success_notification("Success", f"'{name}' saved to protocols folder")
+        except Exception as e:
+            logger.exception("Error saving protocol")
+            return error_notification("Error", f"Could not save protocol: {e}")
