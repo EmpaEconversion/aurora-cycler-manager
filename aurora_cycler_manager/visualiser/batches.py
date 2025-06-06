@@ -302,7 +302,7 @@ batches_layout = html.Div(
                 Panel(
                     id="batches-menu",
                     children=batches_menu,
-                    defaultSizePercentage=16,
+                    defaultSizePercentage=20,
                     collapsible=True,
                 ),
                 PanelResizeHandle(html.Div(className="resize-handle-horizontal")),

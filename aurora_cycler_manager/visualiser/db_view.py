@@ -68,7 +68,6 @@ DEFAULT_TABLE_OPTIONS: dict[str, str | dict] = {
     "dashGridOptions": {
         "enableCellTextSelection": False,
         "ensureDomOrder": True,
-        "tooltipShowDelay": 1000,
         "rowSelection": "multiple",
     },
     "defaultColDef": {
@@ -77,7 +76,13 @@ DEFAULT_TABLE_OPTIONS: dict[str, str | dict] = {
         "floatingFilter": True,
         "cellRenderer": "agAnimateShowChangeCellRenderer",
     },
-    "style": {"height": "calc(100vh - 240px)", "width": "100%", "minHeight": "300px", "display": "none"},
+    "style": {
+        "height": "calc(100vh - 195px)",
+        "width": "100%",
+        "minHeight": "300px",
+        "display": "none",
+        "padding-top": "10px",
+    },
     "className": "ag-theme-quartz",
 }
 TABLES = [

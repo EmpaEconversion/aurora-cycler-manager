@@ -206,7 +206,7 @@ samples_layout = html.Div(
                 Panel(
                     id="samples-menu",
                     children=samples_menu,
-                    defaultSizePercentage=16,
+                    defaultSizePercentage=20,
                     collapsible=True,
                 ),
                 PanelResizeHandle(
