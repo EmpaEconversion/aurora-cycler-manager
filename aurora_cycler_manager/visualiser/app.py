@@ -11,6 +11,7 @@ remotely, loading, ejecting, and submitting jobs to samples.
 
 from __future__ import annotations
 
+import logging
 import socket
 import webbrowser
 
@@ -19,6 +20,7 @@ import dash_mantine_components as dmc
 from dash import ClientsideFunction, Dash, Input, Output, _dash_renderer, dcc, html
 from waitress import serve
 
+from aurora_cycler_manager.setup_logging import setup_logging
 from aurora_cycler_manager.visualiser.batches import batches_layout, register_batches_callbacks
 from aurora_cycler_manager.visualiser.db_view import db_view_layout, register_db_view_callbacks
 from aurora_cycler_manager.visualiser.notifications import (
@@ -29,11 +31,15 @@ from aurora_cycler_manager.visualiser.notifications import (
 )
 from aurora_cycler_manager.visualiser.samples import register_samples_callbacks, samples_layout
 
+setup_logging()
+logger = logging.getLogger(__name__)
+
 # Need to set this for Mantine notifications to work
 _dash_renderer._set_react_version("18.2.0")  # noqa: SLF001
 
 # Define app and layout
-external_stylesheets = [dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP, dmc.styles.NOTIFICATIONS, "/assets/style.css"]
+external_stylesheets = [dbc.icons.BOOTSTRAP, dmc.styles.NOTIFICATIONS, "/assets/style.css"]
+dmc.add_figure_templates()
 app = Dash(__name__, external_stylesheets=external_stylesheets)
 app.clientside_callback(
     ClientsideFunction(namespace="clients", function_name="animateMessage"),
@@ -42,7 +48,8 @@ app.clientside_callback(
 )
 app.title = "Aurora Visualiser"
 app.layout = dmc.MantineProvider(
-    html.Div(
+    id="mantine-provider",
+    children=html.Div(
         className="responsive-container",
         children=[
             dcc.Loading(
@@ -52,31 +59,37 @@ app.layout = dmc.MantineProvider(
                 delay_show=300,
                 delay_hide=100,
                 children=[
-                    dcc.Tabs(
-                        id="tabs",
-                        value="tab-1",
-                        content_style={"height": "100%", "overflow": "hidden"},
-                        parent_style={"height": "100vh", "overflow": "hidden"},
-                        children=[
-                            # Samples tab
-                            dcc.Tab(
-                                label="Sample Plotting",
+                    dmc.Tabs(
+                        [
+                            dmc.TabsList(
+                                [
+                                    dmc.TabsTab("Sample Plotting", value="tab-1", fz="md", pt="md"),
+                                    dmc.TabsTab("Batch Plotting", value="tab-2", fz="md", pt="md"),
+                                    dmc.TabsTab("Database", value="tab-3", fz="md", pt="md"),
+                                ],
+                                grow=True,
+                            ),
+                            dmc.TabsPanel(
+                                samples_layout,
                                 value="tab-1",
-                                children=samples_layout,
+                                p="xs",
+                                style={"height": "calc(100vh - 30px)"},
                             ),
-                            # Batches tab
-                            dcc.Tab(
-                                label="Batch Plotting",
+                            dmc.TabsPanel(
+                                batches_layout,
                                 value="tab-2",
-                                children=batches_layout,
+                                p="xs",
+                                style={"height": "calc(100vh - 30px)"},
                             ),
-                            # Database tab
-                            dcc.Tab(
-                                label="Database",
+                            dmc.TabsPanel(
+                                db_view_layout,
                                 value="tab-3",
-                                children=db_view_layout,
+                                p="xs",
+                                style={"height": "calc(100vh - 30px)"},
                             ),
                         ],
+                        id="tabs",
+                        value="tab-1",
                     ),
                     dcc.Interval(id="db-update-interval", interval=1000 * 60 * 60),  # Auto-refresh database every hour
                     dcc.Store(id="table-data-store", data={"data": {}, "column_defs": {}}),
@@ -111,7 +124,7 @@ def find_free_port(start_port: int = 8050, end_port: int = 8100) -> int:
 def main() -> None:
     """Open a web browser and run the app."""
     port = find_free_port()
-    print(f"Running aurora-app on http://localhost:{port}")
+    logger.info("Running aurora-app on http://localhost:%s", port)
     webbrowser.open_new(f"http://localhost:{port}")
     serve(app.server, host="127.0.0.1", port=port)
 

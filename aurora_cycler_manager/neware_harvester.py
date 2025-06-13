@@ -24,11 +24,10 @@ from __future__ import annotations
 
 import gzip
 import json
+import logging
 import os
 import re
 import sqlite3
-import traceback
-import warnings
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -43,12 +42,14 @@ import xmltodict
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_sample_data
+from aurora_cycler_manager.setup_logging import setup_logging
 from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
 CONFIG = get_config()
 tz = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
+logger = logging.getLogger(__name__)
 
 
 def get_snapshot_folder() -> Path:
@@ -107,7 +108,7 @@ def harvest_neware_files(
     with paramiko.SSHClient() as ssh:
         ssh.load_system_host_keys()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        print(f"Connecting to host {server_hostname} user {server_username}")
+        logger.info("Connecting to host %s user %s", server_hostname, server_username)
         ssh.connect(server_hostname, username=server_username, key_filename=local_private_key_path)
 
         # Shell commands to find files modified since cutoff date
@@ -133,7 +134,7 @@ def harvest_neware_files(
             msg = f"Error finding modified files: {error}"
             raise RuntimeError(msg)
         modified_files = output.splitlines()
-        print(f"Found {len(modified_files)} files modified since {cutoff_date_str}")
+        logger.info("Found %d files modified since %s", len(modified_files), cutoff_date_str)
 
         # Copy the files using SFTP
         current_datetime = datetime.now()  # Keep time of copying for database
@@ -148,7 +149,7 @@ def harvest_neware_files(
                 local_path = local_path.with_name(
                     f"{server_label}-{local_path.name.replace('_', '-').replace(' ', '-')}"
                 )
-                print(f"Copying {file} to {local_path}")
+                logger.info("Copying '%s' to '%s'", file, local_path)
                 sftp.get(file, local_path)
                 new_files.append(local_path)
 
@@ -381,11 +382,11 @@ def get_neware_ndax_metadata(file_path: Path) -> dict:
     # get the step info from step.xml
     zf = zipfile.PyZipFile(str(file_path))
     step = zf.read("Step.xml")
-    step_parsed = xmltodict.parse(step.decode(), attr_prefix="")
+    step_parsed = xmltodict.parse(step.decode(errors="replace"), attr_prefix="")
     metadata = _clean_ndax_step(step_parsed)
 
     # add test info
-    testinfo = xmltodict.parse(zf.read("TestInfo.xml").decode(), attr_prefix="")
+    testinfo = xmltodict.parse(zf.read("TestInfo.xml").decode(errors="replace"), attr_prefix="")
     testinfo = testinfo.get("root", {}).get("config", {}).get("TestInfo", {})
     metadata["Barcode"] = testinfo.get("Barcode")
     metadata["Start time"] = testinfo.get("StartTime")
@@ -400,48 +401,62 @@ def get_neware_ndax_metadata(file_path: Path) -> dict:
     return metadata
 
 
-def get_sampleid_from_metadata(metadata: dict) -> str | None:
+def get_known_samples() -> list[str]:
+    """Get a list of Sample IDs from the database."""
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT `Sample ID` FROM samples")
+        rows = cursor.fetchall()
+        cursor.close()
+    return [row[0] for row in rows]
+
+
+def get_sampleid_from_metadata(metadata: dict, known_samples: list[str] | None = None) -> str | None:
     """Get sample ID from Remarks or Barcode in the Neware metadata."""
     # Get sampleid from test_info
     barcode_sampleid = metadata.get("Barcode", "")
     remark_sampleid = metadata.get("Remarks", "")
     sampleid = None
 
-    # Check against known samples
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT `Sample ID` FROM samples")
-        rows = cursor.fetchall()
-        cursor.close()
-    known_samples = [row[0] for row in rows]
-    for possible_sampleid in [remark_sampleid, barcode_sampleid]:
-        if possible_sampleid not in known_samples:
-            # If sampleid is not known, it might be using the convention 'date-number-other'
-            # Extract date and number
+    if not known_samples:
+        known_samples = get_known_samples()
+    for possible_sampleid in [barcode_sampleid, remark_sampleid]:
+        if possible_sampleid in known_samples:
+            sampleid = possible_sampleid
+            break
+    if sampleid is None:  # May be user error, try some common fixes
+        logger.info(
+            "Could not find Sample ID '%s' or '%s' in database, trying to infer it", barcode_sampleid, remark_sampleid
+        )
+        for possible_sampleid in [remark_sampleid, barcode_sampleid]:
+            # Should be YYMMDD-otherstuff-XX, where XX is a number
             sampleid_parts = re.split("_|-", possible_sampleid)
             if len(sampleid_parts) > 1:
-                sampleid_date = sampleid_parts[0]
-                sampleid_number = sampleid_parts[1].zfill(2)  # pad with zeros
+                if len(sampleid_parts[0]) == 8:  # YYYYMMDD -> YYMMDD
+                    sampleid_parts[0] = sampleid_parts[0][2:]
+                sampleid_parts[-1] = sampleid_parts[-1].zfill(2)  # pad with zeros
                 # Check if this is consistent with any known samples
-                possible_samples = [
-                    s for s in known_samples if s.startswith(sampleid_date) and s.endswith(sampleid_number)
-                ]
+                possible_samples = [s for s in known_samples if all(parts in s for parts in sampleid_parts)]
+                if len(possible_samples) > 1:
+                    possible_samples = [s for s in possible_samples if "_".join(sampleid_parts) in s]
                 if len(possible_samples) == 1:
                     sampleid = possible_samples[0]
-                    print(f"Barcode {possible_sampleid} inferred as Sample ID {sampleid}")
+                    logger.info("Barcode '%s' inferred as Sample ID '%s'", possible_sampleid, sampleid)
                     break
-        else:
-            sampleid = possible_sampleid
-            print("Sample ID found:", sampleid)
-            break
     if not sampleid:
-        print(f"Barcode: '{barcode_sampleid}', or Remark: '{remark_sampleid}' not recognised as a Sample ID")
+        logger.warning(
+            "Barcode: '%s', or Remark: '%s' not recognised as a Sample ID", barcode_sampleid, remark_sampleid
+        )
     return sampleid
 
 
 def get_neware_xlsx_data(file_path: Path) -> pd.DataFrame:
     """Convert Neware xlsx file to dictionary."""
     df = pd.read_excel(file_path, sheet_name="record", header=0, engine="calamine")
+    required_columns = ["Voltage(V)", "Current(A)", "Step Type", "Date", "Time"]
+    if not all(col in df.columns for col in required_columns):
+        msg = f"Missing required columns in {file_path}: {required_columns}"
+        raise ValueError(msg)
     output_df = pd.DataFrame()
     output_df["V (V)"] = df["Voltage(V)"]
     output_df["I (A)"] = df["Current(A)"]
@@ -478,11 +493,15 @@ def get_neware_ndax_data(file_path: Path) -> pd.DataFrame:
 
 def update_database_job(
     filepath: Path,
+    sampleid: str | None = None,
+    known_samples: list[str] | None = None,
 ) -> None:
     """Update the database with job information.
 
     Args:
         filepath (Path): Path to the file
+        sampleid (str, optional): Sample ID to use, otherwise find from metadata
+        known_samples (list[str], optional): List of known Sample IDs to check against
 
     """
     # Check that filename is in the format text_*_*_*_* where * is a number e.g. tt4_120_5_3_24.ndax
@@ -502,7 +521,8 @@ def update_database_job(
     else:
         msg = f"File type {filepath.suffix} not supported"
         raise ValueError(msg)
-    sampleid = get_sampleid_from_metadata(metadata)
+    if sampleid is None:
+        sampleid = get_sampleid_from_metadata(metadata, known_samples)
     if not sampleid:
         msg = f"Sample ID not found in metadata for file {filepath}"
         raise ValueError(msg)
@@ -555,6 +575,8 @@ def update_database_job(
 
 def convert_neware_data(
     file_path: Path | str,
+    sampleid: str | None = None,
+    known_samples: list[str] | None = None,
     output_jsongz_file: bool = False,
     output_hdf5_file: bool = True,
 ) -> tuple[pd.DataFrame, dict]:
@@ -564,6 +586,7 @@ def convert_neware_data(
         file_path (Path): Path to the neware file
         output_jsongz_file (bool): Whether to save the file as a gzipped json
         output_hdf5_file (bool): Whether to save the file as a hdf5
+        known_samples (list[str], optional): List of known Sample IDs to check against
 
     Returns:
         tuple[pd.DataFrame, dict]: DataFrame containing the cycling data and metadata
@@ -582,7 +605,8 @@ def convert_neware_data(
     else:
         msg = f"File type {file_path.suffix} not supported"
         raise ValueError(msg)
-    sampleid = get_sampleid_from_metadata(job_data)
+    if sampleid is None:
+        sampleid = get_sampleid_from_metadata(job_data, known_samples)
 
     # If there is a valid Sample ID, get sample metadata from database
     sample_data = None
@@ -606,11 +630,19 @@ def convert_neware_data(
         },
         "job_data": job_data,
         "sample_data": sample_data,
+        "glossary": {
+            "uts": "Unix time stamp in seconds",
+            "V (V)": "Cell voltage in volts",
+            "I (A)": "Current across cell in amps",
+            "cycle_number": "Number of cycles, increments when changing from discharge or rest to charge",
+            "technique": "Code of technique using Neware convention, see technique codes",
+            "technique codes": state_dict,
+        },
     }
 
     if output_jsongz_file or output_hdf5_file:
         if not sampleid:
-            print(f"Not saving {file_path}, no valid Sample ID found")
+            logger.warning("Not saving %s, no valid Sample ID found", file_path)
             return data, metadata
         run_id = run_from_sample(sampleid)
         folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sampleid
@@ -665,40 +697,56 @@ def convert_all_neware_data() -> None:
     # Get all xlsx and ndax files in the raw folder recursively
     snapshots_folder = get_snapshot_folder()
     neware_files = [file for file in snapshots_folder.rglob("*") if file.suffix in [".xlsx", ".ndax"]]
+    new_samples = set()
+    known_samples = get_known_samples()
     for file in neware_files:
+        logger.info("Converting %s", file)
         try:
-            convert_neware_data(file, output_hdf5_file=True)
-        except ValueError as e:
-            print(f"Error converting {file}: {e}")
+            _data, metadata = convert_neware_data(file, output_hdf5_file=True, known_samples=known_samples)
+            if metadata is not None:
+                sampleid = metadata.get("sample_data", {}).get("Sample ID") if metadata.get("sample_data") else None
+                if sampleid:
+                    update_database_job(file, sampleid=sampleid, known_samples=known_samples)
+                    new_samples.add(sampleid)
+                    logger.info("Converted %s", sampleid)
+        except (ValueError, AttributeError):
+            logger.exception("Error converting %s", file)
+    for sample in new_samples:
+        logger.info("Analysing %d samples", len(new_samples))
         try:
-            update_database_job(file)
-        except ValueError as e:
-            print(f"Error updating database for {file}: {e}")
+            analyse_sample(sample)
+            logger.info("Analysed %s", sample)
+        except (ValueError, PermissionError, RuntimeError, FileNotFoundError, KeyError):
+            logger.exception("Error analysing %s", sample)
 
 
 def main() -> None:
     """Harvest and convert files that have changed."""
     new_files = harvest_all_neware_files()
     new_samples = set()
+    known_samples = get_known_samples()
+    logger.info("Processing %d files", len(new_files))
     for file in new_files:
-        print(f"Processing {file}")
+        logger.info("Processing %s", file)
         try:
-            _data, metadata = convert_neware_data(file, output_hdf5_file=True)
-            update_database_job(file)
-            sampleid = metadata.get("sample_data", {}).get("Sample ID")
-            if sampleid:
-                new_samples.add(sampleid)
-        except ValueError as e:
-            warnings.warn(f"Error updating database for {file}: {e}", UserWarning, stacklevel=2)
+            _data, metadata = convert_neware_data(file, output_hdf5_file=True, known_samples=known_samples)
+            update_database_job(file, known_samples=known_samples)
+            if metadata is not None:
+                sampleid = metadata.get("sample_data", {}).get("Sample ID")
+                if sampleid:
+                    new_samples.add(sampleid)
+                    logger.info("Converted %s", sampleid)
+        except Exception:
+            logger.exception("Error converting %s", file)
+    logger.info("Analysing %d samples", len(new_samples))
     for sample in new_samples:
         try:
             analyse_sample(sample)
-        except KeyError as e:  # noqa: PERF203
-            warnings.warn(f"No metadata found for {sample}: {e}", UserWarning, stacklevel=2)
-        except (ValueError, PermissionError, RuntimeError, FileNotFoundError) as e:
-            tb = traceback.format_exc()
-            warnings.warn(f"Failed to analyse {sample.name} with error {e}\n{tb}", UserWarning, stacklevel=2)
+            logger.info("Analysed %s", sample)
+        except Exception:  # noqa: PERF203
+            logger.exception("Error analysing %s", sample)
 
 
 if __name__ == "__main__":
+    setup_logging()
     main()

@@ -2,7 +2,7 @@
 
 import pytest
 
-from aurora_cycler_manager.utils import c_to_float, run_from_sample
+from aurora_cycler_manager.utils import c_to_float, run_from_sample, weighted_median
 
 
 class TestRunFromSample:
@@ -72,3 +72,27 @@ class TestCToFloat:
             c_to_float({"C": 1, "/": 2})
         with pytest.raises(ValueError):
             c_to_float(["C/2"])
+
+
+class TestWeightedMedian:
+    """Test the weighted_median function."""
+
+    def test_valid_input(self) -> None:
+        """Valid inputs."""
+        values = [1.0, 2.0, 3.0, 4.0, 5.0]
+        weights = [1.0, 1.0, 1.0, 1.0, 1.0]
+        assert weighted_median(values, weights) == 3.0
+
+        values = [1.0, 2.0, 3.0, 4.0, 5.0]
+        weights = [0.0, 0.0, 1.0, 1.0, 1.0]
+        assert weighted_median(values, weights) == 4.0
+
+    def test_empty_input(self) -> None:
+        """Empty input."""
+        with pytest.raises(ValueError):
+            weighted_median([], [])
+
+    def test_different_length(self) -> None:
+        """Different length of values and weights."""
+        with pytest.raises(ValueError):
+            weighted_median([1.0, 2.0], [1.0])

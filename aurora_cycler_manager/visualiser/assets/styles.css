@@ -1,15 +1,3 @@
-/* ===== GENERAL STYLES ===== */
-body {
-    margin: 0;
-    font-family: sans-serif;
-    color: rgb(61, 61, 61);
-}
-html, body {
-    height: 100%;
-}
-#app {
-    height: 100%;
-}
 /* Default style for narrow screens */
 .responsive-container {
     width: 100%;
@@ -37,41 +25,12 @@ html, body {
     }
 }
 
-/* ===== TABS ===== */
-.tab {
-    font-family: 'Arial', sans-serif; /* Change to your desired font */
-    font-size: 16px; /* Adjust the font size */
-    color: #444; /* Adjust the font color */
-    height: 50px;
-    display: flex !important;
-    align-items: center;
-    justify-content: center;
-}
-/* Customize the font of the selected tab */
-.tab--selected {
-    font-weight: bold; /* Adjust the font weight */
-}
-/* tab content */
-.tab-content {
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 10px;
-}
-
-/* ===== MENUS ===== */
-.menu-panel {
-    padding: 8px;
-    font-size: 16px;
-    background-color: rgb(241, 241, 247);
-    border: white 8px solid;
-}
-
 /* ===== RESIZE HANDLES ===== */
 .resize-handle-horizontal {
     width: 3px;
     padding: 2px;
     height: 100%;
-    background-color: rgb(240, 240, 240);
+    background-color: rgba(125, 125, 125, 0.15);
     position: relative;
 }
 .resize-handle-horizontal::before {
@@ -87,7 +46,7 @@ html, body {
     width: 100%;
     height: 3px;
     padding: 2px;
-    background-color: rgb(240, 240, 240);
+    background-color: rgba(125, 125, 125, 0.15);
     position: relative; 
 }
 .resize-handle-vertical::before {
@@ -100,7 +59,7 @@ html, body {
     cursor: ns-resize; /* Change cursor to indicate vertical resizing */
 }
 .resize-handle-horizontal:hover,.resize-handle-vertical:hover {
-    background-color: rgb(120, 120, 120);
+    background-color: rgba(125, 125, 125, 0.3);
 }
 
 /* ===== SPINNER ===== */

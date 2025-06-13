@@ -1,65 +1,67 @@
 """Batch edit sub-layout for the database tab."""
 
-import dash_bootstrap_components as dbc
+import logging
+
+import dash_mantine_components as dmc
 from dash import Dash, Input, Output, State, dcc, html, no_update
 from dash.exceptions import PreventUpdate
-from dash_mantine_components import MultiSelect, Select, Textarea, TextInput
 
 from aurora_cycler_manager.database_funcs import (
     remove_batch,
     save_or_overwrite_batch,
 )
 
-batch_edit_layout = html.Div(
+logger = logging.getLogger(__name__)
+
+batch_edit_layout = dmc.Stack(
     id="batch-container",
     children=[
         ### Main layout ###
-        Select(
+        dmc.Select(
             id="batch-edit-batch",
             label="Select batch to view",
             data=[],  # Filled in by callback
             searchable=True,
-            style={"margin-top": "10px"},
+            pt="md",
         ),
-        TextInput(
+        dmc.TextInput(
             id="batch-edit-name",
             label="Batch name",
             placeholder="Enter batch name",
-            style={"margin-top": "10px"},
             value="",
         ),
-        Textarea(
+        dmc.Textarea(
             id="batch-edit-description",
             label="Description",
             minRows=4,
             placeholder="Write something about this batch",
-            style={"width": "100%", "margin-top": "10px"},
             value="",
         ),
-        MultiSelect(
+        dmc.MultiSelect(
             id="batch-edit-samples",
             label="Samples",
             data=[],  # Filled in by callback
             searchable=True,
             clearable=True,
             placeholder="Select samples",
-            style={"width": "100%", "margin-top": "10px"},
         ),
-        html.Div(style={"margin-top": "20px"}),
         ### Buttons ###
-        dbc.Button(
-            [html.I(className="bi-save me-2"), "Save"],
-            id="batch-edit-save-button",
-            color="primary",
-            className="me-1",
-            disabled=True,
-        ),
-        dbc.Button(
-            [html.I(className="bi-trash3 me-2"), "Delete"],
-            id="batch-edit-delete-button",
-            color="danger",
-            className="me-1",
-            disabled=True,
+        dmc.Group(
+            children=[
+                dmc.Button(
+                    "Save",
+                    leftSection=html.I(className="bi-save"),
+                    id="batch-edit-save-button",
+                    disabled=True,
+                ),
+                dmc.Button(
+                    "Delete",
+                    leftSection=html.I(className="bi-trash3"),
+                    id="batch-edit-delete-button",
+                    color="red",
+                    disabled=True,
+                ),
+            ],
         ),
         ### Confirmation dialogs ###
         # Add sample confirmation
@@ -162,7 +164,7 @@ def register_batch_edit_callbacks(app: Dash, database_access: bool):
         prevent_initial_call=True,
     )
     def save_batch(save_click, overwrite_click, name, description, samples):
-        print(f"Saving batch '{name}'")
+        logger.info("Saving batch %s", name)
         save_or_overwrite_batch(name, description, samples, overwrite=True)
         return 1
 
@@ -186,6 +188,6 @@ def register_batch_edit_callbacks(app: Dash, database_access: bool):
         prevent_initial_call=True,
     )
     def delete_batch(delete_click, name: str):
-        print(f"Deleting batch '{name}'")
+        logger.info("Deleting batch %s", name)
         remove_batch(name)
         return 1, ""

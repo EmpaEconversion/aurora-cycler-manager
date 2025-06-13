@@ -5,14 +5,15 @@ Samples tab layout and callbacks for the visualiser app.
 
 import gzip
 import json
+import logging
 import os
 from pathlib import Path
 
+import dash_mantine_components as dmc
 import numpy as np
 import pandas as pd
 import plotly.graph_objs as go
 from dash import Dash, Input, Output, State, dcc, html
-from dash_bootstrap_components import Checklist, Tooltip
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
 from aurora_cycler_manager.analysis import combine_jobs
@@ -21,105 +22,121 @@ from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.visualiser.funcs import smoothed_derivative
 
 CONFIG = get_config()
-
+logger = logging.getLogger(__name__)
 graph_template = "seaborn"
-graph_margin = {"l": 50, "r": 10, "t": 50, "b": 75}
+graph_margin = {"l": 75, "r": 20, "t": 50, "b": 75}
 
 # Side menu for the samples tab
 samples_menu = html.Div(
     style={"overflow": "scroll", "height": "100%"},
-    children=[
-        html.H5("Select samples to plot:"),
-        dcc.Dropdown(
-            id="samples-dropdown",
-            options=[],  # updated by callback
-            value=[],
-            multi=True,
-        ),
-        Checklist(
-            options=[
-                {
-                    "label": "Use compressed files",
-                    "value": 1,
-                },
-            ],
-            value=[1],
-            id="compressed-files",
-        ),
-        Tooltip(
-            "Use compressed time-series data where available - better performance, less accurate.",
-            target="compressed-files",
-            delay={"show": 1000},
-        ),
-        html.Div(style={"margin-top": "50px"}),
-        html.H5("Time graph"),
-        html.Label("X-axis:", htmlFor="samples-time-x"),
-        dcc.Dropdown(
-            id="samples-time-x",
-            options=["Datetime", "Unix time", "From start", "From formation", "From cycling"],
-            value="From start",
-            multi=False,
-            clearable=False,
-        ),
-        dcc.Dropdown(
-            id="samples-time-units",
-            options=["Seconds", "Minutes", "Hours", "Days"],
-            value="Hours",
-            clearable=False,
-        ),
-        html.Div(style={"margin-top": "10px"}),
-        html.Label("Y-axis:", htmlFor="samples-time-y"),
-        dcc.Dropdown(
-            id="samples-time-y",
-            options=["V (V)"],
-            value="V (V)",
-            multi=False,
-            clearable=False,
-        ),
-        html.Div(style={"margin-top": "50px"}),
-        html.H5("Cycles graph"),
-        html.P("X-axis: Cycle"),
-        html.Label("Y-axis:", htmlFor="samples-cycles-y"),
-        dcc.Dropdown(
-            id="samples-cycles-y",
-            options=[
-                "Specific discharge capacity (mAh/g)",
-                "Efficiency (%)",
-            ],
-            value="Specific discharge capacity (mAh/g)",
-            multi=False,
-            clearable=False,
-        ),
-        html.Div(style={"margin-top": "50px"}),
-        html.H5("One cycle graph"),
-        html.Label("X-axis:", htmlFor="samples-cycle-x"),
-        dcc.Dropdown(
-            id="samples-cycle-x",
-            options=["Q (mAh)", "V (V)", "dQdV (mAh/V)"],
-            value="Q (mAh)",
-            clearable=False,
-        ),
-        html.Div(style={"margin-top": "10px"}),
-        html.Label("Y-axis:", htmlFor="samples-cycle-y"),
-        dcc.Dropdown(
-            id="samples-cycle-y",
-            options=["Q (mAh)", "V (V)", "dQdV (mAh/V)"],
-            value="V (V)",
-            clearable=False,
-        ),
-        html.Div(style={"margin-top": "10px"}),
-        html.Label("Cycle number:", htmlFor="cycle-number"),
-        dcc.Input(
-            id="cycle-number",
-            type="number",
-            placeholder="Cycle number",
-            min=1,
-            value=1,
-            style={"width": "100%"},
-            debounce=True,
-        ),
-        html.Div(style={"margin-top": "100px"}),
-    ],
+    children=dmc.Stack(
+        p="xs",
+        children=[
+            dmc.MultiSelect(
+                id="samples-dropdown",
+                label="Select samples",
+                searchable=True,
+                clearable=True,
+                checkIconPosition="right",
+                comboboxProps={"offset": 0},
+            ),
+            dmc.Tooltip(
+                dmc.Checkbox(
+                    id="compressed-files",
+                    label="Use compressed files",
+                    checked=True,
+                ),
+                label="Use compressed time-series data where available - better performance, less accurate.",
+                multiline=True,
+                openDelay=1000,
+            ),
+            dmc.Fieldset(
+                legend="Time graph",
+                children=[
+                    dmc.Select(
+                        id="samples-time-x",
+                        label="X-axis:",
+                        data=[
+                            "Datetime",
+                            "Unix time",
+                            "From start",
+                            "From formation",
+                            "From cycling",
+                        ],
+                        value="From start",
+                        checkIconPosition="right",
+                        comboboxProps={"offset": 0},
+                    ),
+                    dmc.Select(
+                        id="samples-time-units",
+                        label="X-axis units:",
+                        data=["Seconds", "Minutes", "Hours", "Days"],
+                        value="Hours",
+                        checkIconPosition="right",
+                        comboboxProps={"offset": 0},
+                    ),
+                    dmc.Select(
+                        id="samples-time-y",
+                        label="Y-axis:",
+                        data=["V (V)"],
+                        value="V (V)",
+                        searchable=True,
+                        checkIconPosition="right",
+                        comboboxProps={"offset": 0},
+                    ),
+                ],
+            ),
+            dmc.Fieldset(
+                legend="Cycles graph",
+                children=[
+                    dmc.Text("X-axis: Cycle"),
+                    dmc.Select(
+                        id="samples-cycles-y",
+                        label="Y-axis:",
+                        data=[
+                            "Specific discharge capacity (mAh/g)",
+                            "Normalised discharge capacity (%)",
+                            "Efficiency (%)",
+                        ],
+                        value="Specific discharge capacity (mAh/g)",
+                        searchable=True,
+                        checkIconPosition="right",
+                        comboboxProps={"offset": 0},
+                    ),
+                ],
+            ),
+            dmc.Fieldset(
+                legend="One cycle graph",
+                children=[
+                    dmc.Select(
+                        id="samples-cycle-x",
+                        label="X-axis:",
+                        data=["Q (mAh)", "V (V)", "dQdV (mAh/V)"],
+                        value="Q (mAh)",
+                        searchable=True,
+                        checkIconPosition="right",
+                        comboboxProps={"offset": 0},
+                    ),
+                    dmc.Select(
+                        id="samples-cycle-y",
+                        label="Y-axis:",
+                        data=["Q (mAh)", "V (V)", "dQdV (mAh/V)"],
+                        value="V (V)",
+                        searchable=True,
+                        checkIconPosition="right",
+                        comboboxProps={"offset": 0},
+                    ),
+                    dmc.NumberInput(
+                        id="cycle-number",
+                        label="Cycle number:",
+                        placeholder="Cycle number",
+                        min=1,
+                        value=1,
+                    ),
+                ],
+            ),
+        ],
+    ),
 )
 
 time_graph = dcc.Graph(
@@ -187,9 +204,8 @@ samples_layout = html.Div(
             children=[
                 Panel(
                     id="samples-menu",
-                    className="menu-panel",
                     children=samples_menu,
-                    defaultSizePercentage=16,
+                    defaultSizePercentage=20,
                     collapsible=True,
                 ),
                 PanelResizeHandle(
@@ -248,7 +264,7 @@ def register_samples_callbacks(app: Dash) -> None:
 
     # Sample list has updated, update dropdowns
     @app.callback(
-        Output("samples-dropdown", "options"),
+        Output("samples-dropdown", "data"),
         Output("batch-samples-dropdown", "data"),
         Output("batch-edit-samples", "data"),
         Input("samples-store", "data"),
@@ -261,14 +277,14 @@ def register_samples_callbacks(app: Dash) -> None:
     # Update the samples data store
     @app.callback(
         Output("samples-data-store", "data"),
-        Output("samples-time-y", "options"),
-        Output("samples-cycles-y", "options"),
+        Output("samples-time-y", "data"),
+        Output("samples-cycles-y", "data"),
         Input("samples-dropdown", "value"),
-        Input("compressed-files", "value"),
+        Input("compressed-files", "checked"),
         State("samples-data-store", "data"),
         running=[(Output("loading-message-store", "data"), "Loading data...", "")],
     )
-    def update_sample_data(samples: list, compressed: list, data: dict) -> tuple[dict, list, list]:
+    def update_sample_data(samples: list, compressed: bool, data: dict) -> tuple[dict, list, list]:
         """Load data for selected samples and put in data store."""
         # Get rid of samples that are no longer selected
         for sample in list(data["data_sample_time"].keys()):
@@ -277,13 +293,13 @@ def register_samples_callbacks(app: Dash) -> None:
                 if sample in data["data_sample_cycle"]:
                     data["data_sample_cycle"].pop(sample)
 
-        for sample in samples:
+        for sample in samples or []:
             # Check if already in data store
             if sample in data["data_sample_time"]:
                 # Check if it's already the correct format
-                if 1 not in compressed and not data["data_sample_time"][sample].get("Shrunk", False):
+                if not compressed and not data["data_sample_time"][sample].get("Shrunk"):
                     continue
-                if 1 in compressed and data["data_sample_time"][sample].get("Shrunk", False):
+                if compressed and data["data_sample_time"][sample].get("Shrunk"):
                     continue
 
             # Otherwise import the data
@@ -296,7 +312,7 @@ def register_samples_callbacks(app: Dash) -> None:
                 files = os.listdir(file_location)
             except FileNotFoundError:
                 continue
-            if 1 in compressed and any(f.startswith("shrunk") and f.endswith(".h5") for f in files):
+            if compressed and any(f.startswith("shrunk") and f.endswith(".h5") for f in files):
                 filepath = next(f for f in files if f.startswith("shrunk") and f.endswith(".h5"))
                 df = pd.read_hdf(f"{file_location}/{filepath}")
                 data_dict = df.to_dict(orient="list")
@@ -322,7 +338,7 @@ def register_samples_callbacks(app: Dash) -> None:
                         if (f.startswith("snapshot") and f.endswith(".json.gz"))
                     ]
                     if not cycling_files:
-                        print(f"No cycling files found in {file_location}")
+                        logger.info("No cycling files found in %s", file_location)
                         continue
                 df, metadata = combine_jobs([Path(f) for f in cycling_files])
                 data["data_sample_time"][sample] = df.to_dict(orient="list")

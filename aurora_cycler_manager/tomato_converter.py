@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -30,6 +31,7 @@ from aurora_cycler_manager.version import __url__, __version__
 
 CONFIG = get_config()
 tz = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
+logger = logging.getLogger(__name__)
 
 
 def get_snapshot_folder() -> Path:
@@ -42,6 +44,43 @@ def get_snapshot_folder() -> Path:
         )
         raise ValueError(msg)
     return Path(snapshot_parent) / "tomato_snapshots"
+
+
+def puree_tomato(
+    snapshot_file_path: Path | str,
+) -> None:
+    """Reduce raw tomato size by removing unneeded fields and indents.
+
+    Args:
+        snapshot_file_path (Path or str): path to the raw json file
+
+    """
+    snapshot_file_path = Path(snapshot_file_path)
+    with snapshot_file_path.open("r") as f:
+        input_dict = json.load(f)
+    # Remove unneeded fields
+    for step in input_dict.get("steps", []):
+        for data in step.get("data", []):
+            if "fn" in data:
+                del data["fn"]
+    # Write the reduced json back to the file
+    with snapshot_file_path.open("w") as f:
+        json.dump(input_dict, f, indent=None)
+
+
+def puree_all_tomatos() -> None:
+    """Reduce all raw tomato json files in the snapshot folder."""
+    snapshot_folder = get_snapshot_folder()
+    for batch_folder in snapshot_folder.iterdir():
+        for sample_folder in batch_folder.iterdir():
+            for snapshot_file in sample_folder.iterdir():
+                snapshot_filename = snapshot_file.name
+                if snapshot_filename.startswith("snapshot") and snapshot_filename.endswith(".json"):
+                    try:
+                        puree_tomato(snapshot_file)
+                        logger.info("Pureed %s", snapshot_file)
+                    except Exception:
+                        logger.exception("Failed to puree %s", snapshot_file)
 
 
 def convert_tomato_json(
@@ -179,9 +218,12 @@ def convert_all_tomato_jsons(sampleid_contains: str = "") -> None:
             for snapshot_file in sample_folder.iterdir():
                 snapshot_filename = snapshot_file.name
                 if snapshot_filename.startswith("snapshot") and snapshot_filename.endswith(".json"):
-                    convert_tomato_json(
-                        snapshot_file,
-                        output_hdf_file=True,
-                        output_jsongz_file=False,
-                    )
-                    print(f"Converted {snapshot_file}")
+                    try:
+                        convert_tomato_json(
+                            snapshot_file,
+                            output_hdf_file=True,
+                            output_jsongz_file=False,
+                        )
+                        logger.info("Converted %s", snapshot_file)
+                    except Exception:
+                        logger.exception("Failed to convert %s", snapshot_file)

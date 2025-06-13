@@ -24,6 +24,7 @@ def default_config(base_dir: Path) -> dict:
         "Database path": str(base_dir / "database" / "database.db"),
         "Database backup folder path": str(base_dir / "database" / "backup"),
         "Samples folder path": str(base_dir / "samples"),
+        "Protocols folder path": str(base_dir / "protocols"),
         "Processed snapshots folder path": str(base_dir / "snapshots"),
         "Servers": [
             {
