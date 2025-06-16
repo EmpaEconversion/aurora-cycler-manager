@@ -403,7 +403,10 @@ def register_samples_callbacks(app: Dash) -> None:
             elif xvar == "From cycling":
                 # grab n formation
                 formation_cycle_count = data["data_sample_cycle"].get(sample, {}).get("Formation cycles", 3)
-                offset = uts[next(i for i, x in enumerate(data_dict["Cycle"]) if x > formation_cycle_count)]
+                try:
+                    offset = uts[next(i for i, x in enumerate(data_dict["Cycle"]) if x > formation_cycle_count)]
+                except StopIteration:
+                    offset = uts[-1]
             else:
                 offset = 0
 
