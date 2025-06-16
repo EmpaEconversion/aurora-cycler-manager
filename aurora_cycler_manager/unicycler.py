@@ -342,9 +342,9 @@ class Protocol(BaseModel):
 
             elif isinstance(step, ConstantVoltage):
                 if step.until_rate_C is not None and step.until_rate_C != 0:
-                    step_type = "3" if step.until_rate_C > 0 else "4"
+                    step_type = "3" if step.until_rate_C > 0 else "19"
                 elif step.until_current_mA is not None and step.until_current_mA != 0:
-                    step_type = "3" if step.until_current_mA > 0 else "4"
+                    step_type = "3" if step.until_current_mA > 0 else "19"
                 else:
                     step_type = "3"  # If it can't be figured out, default to charge
                 step_element = ET.SubElement(parent, f"Step{step_num}", Step_ID=str(step_num), Step_Type=step_type)
