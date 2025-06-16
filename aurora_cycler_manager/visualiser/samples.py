@@ -16,10 +16,9 @@ import plotly.graph_objs as go
 from dash import Dash, Input, Output, State, dcc, html
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
-from aurora_cycler_manager.analysis import combine_jobs
+from aurora_cycler_manager.analysis import calc_dqdv, combine_jobs
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.utils import run_from_sample
-from aurora_cycler_manager.visualiser.funcs import smoothed_derivative
 
 CONFIG = get_config()
 logger = logging.getLogger(__name__)
@@ -111,7 +110,7 @@ samples_menu = html.Div(
                     dmc.Select(
                         id="samples-cycle-x",
                         label="X-axis:",
-                        data=["Q (mAh)", "V (V)", "dQdV (mAh/V)"],
+                        data=["Q (mAh)", "V (V)", "dQ/dV (mAh/V)"],
                         value="Q (mAh)",
                         searchable=True,
                         checkIconPosition="right",
@@ -120,7 +119,7 @@ samples_menu = html.Div(
                     dmc.Select(
                         id="samples-cycle-y",
                         label="Y-axis:",
-                        data=["Q (mAh)", "V (V)", "dQdV (mAh/V)"],
+                        data=["Q (mAh)", "V (V)", "dQ/dV (mAh/V)"],
                         value="V (V)",
                         searchable=True,
                         checkIconPosition="right",
@@ -497,7 +496,16 @@ def register_samples_callbacks(app: Dash) -> None:
             mask_dict = {}
             mask_dict["V (V)"] = np.array(data_dict["V (V)"])[mask]
             mask_dict["Q (mAh)"] = np.array(data_dict["dQ (mAh)"])[mask].cumsum()
-            mask_dict["dQdV (mAh/V)"] = smoothed_derivative(mask_dict["V (V)"], mask_dict["Q (mAh)"])
+            mask_dict["dQ (mAh)"] = np.array(data_dict["dQ (mAh)"])[mask]
+            if "dQ/dV (mAh/V)" in [xvar, yvar]:
+                if "dQ/dV (mAh/V)" in data_dict:
+                    mask_dict["dQ/dV (mAh/V)"] = np.array(data_dict["dQ/dV (mAh/V)"])[mask]
+                else:
+                    mask_dict["dQ/dV (mAh/V)"] = calc_dqdv(
+                        mask_dict["V (V)"],
+                        mask_dict["Q (mAh)"],
+                        mask_dict["dQ (mAh)"],
+                    )
             trace = go.Scattergl(
                 x=mask_dict[xvar],
                 y=mask_dict[yvar],
