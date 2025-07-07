@@ -94,8 +94,6 @@ samples_menu = html.Div(
                         label="Y-axis:",
                         data=[
                             "Specific discharge capacity (mAh/g)",
-                            "Normalised discharge capacity (%)",
-                            "Efficiency (%)",
                         ],
                         value="Specific discharge capacity (mAh/g)",
                         searchable=True,
@@ -110,7 +108,7 @@ samples_menu = html.Div(
                     dmc.Select(
                         id="samples-cycle-x",
                         label="X-axis:",
-                        data=["Q (mAh)", "V (V)", "dQ/dV (mAh/V)"],
+                        data=["Q (mAh)", "V (V)", "dQ/dV (mAh/V)", "Q (mAh/g)", "dQ/dV (mAh/gV)"],
                         value="Q (mAh)",
                         searchable=True,
                         checkIconPosition="right",
@@ -119,7 +117,7 @@ samples_menu = html.Div(
                     dmc.Select(
                         id="samples-cycle-y",
                         label="Y-axis:",
-                        data=["Q (mAh)", "V (V)", "dQ/dV (mAh/V)"],
+                        data=["Q (mAh)", "V (V)", "dQ/dV (mAh/V)", "Q (mAh/g)", "dQ/dV (mAh/gV)"],
                         value="V (V)",
                         searchable=True,
                         checkIconPosition="right",
@@ -359,7 +357,7 @@ def register_samples_callbacks(app: Dash) -> None:
             time_y_vars.update(data_dict.keys())
         time_y_vars.discard("Shrunk")
 
-        cycles_y_vars = {"Specific discharge capacity (mAh/g)", "Normalised discharge capacity (%)", "Efficiency (%)"}
+        cycles_y_vars = {"Specific discharge capacity (mAh/g)"}
         for data_dict in data["data_sample_cycle"].values():
             cycles_y_vars.update([k for k, v in data_dict.items() if isinstance(v, list)])
 
@@ -497,18 +495,26 @@ def register_samples_callbacks(app: Dash) -> None:
             mask_dict["V (V)"] = np.array(data_dict["V (V)"])[mask]
             mask_dict["Q (mAh)"] = np.array(data_dict["dQ (mAh)"])[mask].cumsum()
             mask_dict["dQ (mAh)"] = np.array(data_dict["dQ (mAh)"])[mask]
-            if "dQ/dV (mAh/V)" in [xvar, yvar]:
+            if "dQ/dV (mAh/V)" in [xvar, yvar] or "dQ/dV (mAh/gV)" in [xvar, yvar]:
                 if "dQ/dV (mAh/V)" in data_dict:
-                    mask_dict["dQ/dV (mAh/V)"] = np.array(data_dict["dQ/dV (mAh/V)"])[mask]
+                    mask_dict["dQ/dV (mAh/V)"] = np.array(data_dict["dQ/dV (mAh/V)"], dtype=float)[mask]
                 else:
                     mask_dict["dQ/dV (mAh/V)"] = calc_dqdv(
                         mask_dict["V (V)"],
                         mask_dict["Q (mAh)"],
                         mask_dict["dQ (mAh)"],
                     )
+            m_mg = None
+            if "Q (mAh/g)" in [xvar, yvar] or "dQ/dV (mAh/gV)" in [xvar, yvar]:
+                m_mg = data["data_sample_cycle"][sample].get("Cathode active material mass (mg)")
+                if "Q (mAh/g)" in [xvar, yvar]:
+                    mask_dict["Q (mAh/g)"] = mask_dict["Q (mAh)"] / m_mg * 1000 if m_mg else None
+                if "dQ/dV (mAh/gV)" in [xvar, yvar]:
+                    mask_dict["dQ/dV (mAh/gV)"] = mask_dict["dQ/dV (mAh/V)"] / m_mg * 1000 if m_mg else None
+
             trace = go.Scattergl(
-                x=mask_dict[xvar],
-                y=mask_dict[yvar],
+                x=mask_dict.get(xvar),
+                y=mask_dict.get(yvar),
                 mode="lines",
                 name=sample,
                 hovertemplate=f"{sample}<br>{xvar}: %{{x}}<br>{yvar}: %{{y}}<extra></extra>",

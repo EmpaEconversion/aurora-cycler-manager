@@ -1135,7 +1135,7 @@ def smoothed_derivative(
 def calc_dqdv(v: np.ndarray, q: np.ndarray, dq: np.ndarray) -> np.ndarray:
     """Calculate dQ/dV from V, Q, and dQ."""
     # Preallocate output array
-    dvdq = np.full_like(v, np.nan)
+    dvdq = np.full_like(v, np.nan, dtype=float)
 
     # Split into positive and negative dq, work on slices
     pos_mask = dq >= 0
