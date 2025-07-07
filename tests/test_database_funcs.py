@@ -284,7 +284,6 @@ class TestSampleFunctions:
     def test_get_job_data(self) -> None:
         """Test getting job data from database."""
         job_data = get_job_data("nw4-120-1-1-48")
-        print(job_data)
         assert job_data["Job ID"] == "nw4-120-1-1-48"
         assert job_data["Server label"] == "nw4"
         assert isinstance(job_data["Payload"], list)

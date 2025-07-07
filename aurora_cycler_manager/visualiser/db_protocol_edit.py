@@ -739,15 +739,12 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             raise PreventUpdate
         # Get the indices of the selected rows
         selected_indices = [row["index"] for row in selected_rows]
+        # All rows after dragging
         virtual_indices = [row["index"] for row in grid_data]
-        # Get the new indicies of those rows, in case user has dragged rows around
-        reordered_indices = [i for i, row in enumerate(virtual_indices) if row in selected_indices]
-        # Get the order of these new indices
-        ordering = [index for index, _ in sorted(enumerate(reordered_indices), key=lambda x: x[1])]
-        # Reorder the original selected indices so they copy paste in the correct order
-        indices = [selected_indices[i] for i in ordering]
+        # Reorder the selected indices so they are in the same order as the virtual indices
+        reordered_indices = [row for row in virtual_indices if row in selected_indices]
         # Get the actual list of techniques from the protocol store, store this
-        return [protocol_dict["method"][i] for i in indices]
+        return [protocol_dict["method"][i] for i in reordered_indices]
 
     # On 'paste', add the rows from the clipboard to the protocol
     @app.callback(

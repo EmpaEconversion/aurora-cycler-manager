@@ -179,39 +179,3 @@ def correlation_matrix(df: pd.DataFrame) -> pd.DataFrame:
             elif pd.api.types.is_object_dtype(df[col1]) and pd.api.types.is_object_dtype(df[col2]):
                 corr.loc[col1, col2] = cramers_v(df[col1], df[col2])
     return corr
-
-
-def moving_average(x: ArrayLike, npoints: int = 11) -> np.ndarray:
-    if npoints % 2 == 0:
-        npoints += 1  # Ensure npoints is odd for a symmetric window
-    window = np.ones(npoints) / npoints
-    xav = np.convolve(x, window, mode="same")
-    xav[: npoints // 2] = np.nan
-    xav[-npoints // 2 :] = np.nan
-    return xav
-
-
-def deriv(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    with np.errstate(divide="ignore"):
-        dydx = np.zeros(len(y))
-        dydx[0] = (y[1] - y[0]) / (x[1] - x[0])
-        dydx[-1] = (y[-1] - y[-2]) / (x[-1] - x[-2])
-        dydx[1:-1] = (y[2:] - y[:-2]) / (x[2:] - x[:-2])
-
-    # for any 3 points where x direction changes sign set to nan
-    mask = (x[1:-1] - x[:-2]) * (x[2:] - x[1:-1]) < 0
-    dydx[1:-1][mask] = np.nan
-    return dydx
-
-
-def smoothed_derivative(
-    x: np.ndarray,
-    y: np.ndarray,
-    npoints: int = 21,
-) -> np.ndarray:
-    x_smooth = moving_average(x, npoints)
-    y_smooth = moving_average(y, npoints)
-    dydx_smooth = deriv(x_smooth, y_smooth)
-    dydx_smooth[deriv(x_smooth, np.arange(len(x_smooth))) < 0] *= -1
-    dydx_smooth[abs(dydx_smooth) > 100] = np.nan
-    return dydx_smooth

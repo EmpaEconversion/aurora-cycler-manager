@@ -188,25 +188,47 @@ class Protocol(BaseModel):
             raise ValueError(msg)
 
     @model_validator(mode="after")
-    def _validate_no_duplicate_tags(self) -> Self:
-        """Ensure that tags are unique."""
-        tags = [step.tag for step in self.method if isinstance(step, Tag)]
-        if len(tags) != len(set(tags)):
-            duplicate_tags = {"'" + tag + "'" for tag in tags if tags.count(tag) > 1}
+    def _validate_loops_and_tags(self) -> Self:
+        """Ensure that if a loop uses a string, it is a valid tag."""
+        loop_tags = {
+            i: step.start_step
+            for i, step in enumerate(self.method)
+            if isinstance(step, Loop) and isinstance(step.start_step, str)
+        }
+        loop_idx = {
+            i: step.start_step
+            for i, step in enumerate(self.method)
+            if isinstance(step, Loop) and isinstance(step.start_step, int)
+        }
+        tags = {i: step.tag for i, step in enumerate(self.method) if isinstance(step, Tag)}
+
+        # Cannot have duplicate tags
+        tag_list = list(tags.values())
+        if len(tag_list) != len(set(tag_list)):
+            duplicate_tags = {"'" + tag + "'" for tag in tag_list if tag_list.count(tag) > 1}
             msg = "Duplicate tags: " + ", ".join(duplicate_tags)
             raise ValueError(msg)
-        return self
 
-    @model_validator(mode="after")
-    def _validate_loops_to_tags(self) -> Self:
-        """Ensure that if a loop uses a string, it is a valid tag."""
-        loop_tags = [
-            step.start_step for step in self.method if isinstance(step, Loop) and isinstance(step.start_step, str)
-        ]
-        tags = [step.tag for step in self.method if isinstance(step, Tag)]
-        for loop_tag in loop_tags:
-            if loop_tag not in tags:
+        tags_rev = {v: k for k, v in tags.items()}  # to map from tag to index
+
+        # indexed loops cannot go on itself or forwards
+        for i, loop_start in loop_idx.items():
+            if loop_start >= i:
+                msg = f"Loop start index {loop_start} cannot be on or after the loop index {i}."
+                raise ValueError(msg)
+
+        # Loops cannot go forwards to tags, or back one index to a tag
+        for i, loop_tag in loop_tags.items():
+            if loop_tag not in tags_rev:
                 msg = f"Tag '{loop_tag}' is missing."
+                raise ValueError(msg)
+            # loop_tag is in tags, ensure i is larger than the tag index
+            tag_i = tags_rev[loop_tag]
+            if i <= tag_i:
+                msg = f"Loops must go backwards, '{loop_tag}' goes forwards ({i}->{tag_i})."
+                raise ValueError(msg)
+            if i == tag_i + 1:
+                msg = f"Loop '{loop_tag}' cannot start immediately after its tag."
                 raise ValueError(msg)
         return self
 
@@ -342,9 +364,9 @@ class Protocol(BaseModel):
 
             elif isinstance(step, ConstantVoltage):
                 if step.until_rate_C is not None and step.until_rate_C != 0:
-                    step_type = "3" if step.until_rate_C > 0 else "4"
+                    step_type = "3" if step.until_rate_C > 0 else "19"
                 elif step.until_current_mA is not None and step.until_current_mA != 0:
-                    step_type = "3" if step.until_current_mA > 0 else "4"
+                    step_type = "3" if step.until_current_mA > 0 else "19"
                 else:
                     step_type = "3"  # If it can't be figured out, default to charge
                 step_element = ET.SubElement(parent, f"Step{step_num}", Step_ID=str(step_num), Step_Type=step_type)

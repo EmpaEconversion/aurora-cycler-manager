@@ -476,8 +476,9 @@ def get_neware_xlsx_data(file_path: Path) -> pd.DataFrame:
 def get_neware_ndax_data(file_path: Path) -> pd.DataFrame:
     """Convert Neware ndax file to dictionary."""
     df = NewareNDA.read(file_path)
-    # where Time is 0, add 1e-6 to Timestamp - negligible and avoids errors when sorting
-    df["Timestamp"] = df["Timestamp"] + pd.to_timedelta((df["Time"] == 0) * 1e-6, unit="s")
+    # convert time to 64bit, add 1e-6 at new steps - negligible and avoids errors when sorting
+    df["Time"] = df["Time"].astype("float64") + (df["Time"] == 0) * 1e-6
+
     output_df = pd.DataFrame()
     output_df["V (V)"] = df["Voltage"]
     output_df["I (A)"] = df["Current(mA)"] / 1000
@@ -486,8 +487,15 @@ def get_neware_ndax_data(file_path: Path) -> pd.DataFrame:
         df["Status"].str.contains(r"_DChg|_DCHg|Rest", regex=True).shift(1)
         & df["Status"].str.contains(r"_Chg", regex=True)
     ).cumsum()
-    # convert datetime timestamp to uts timestamp in seconds
-    output_df["uts"] = df["Timestamp"].apply(lambda x: x.timestamp())
+    # "Date" from df is not reliable, instead calc from "Time" and add first date to get uts timestamp
+    # Get last time for each step and add to next steps
+    last_times = df.groupby("Step")["Time"].last()
+    offsets = last_times.shift(fill_value=0).cumsum()
+    total_time = df["Time"] + df["Step"].map(offsets)
+    # Get first datetime, add the total time to get uts
+    start_uts = float(df["Timestamp"].iloc[0].timestamp())
+    output_df["uts"] = start_uts + total_time
+
     return output_df
 
 
