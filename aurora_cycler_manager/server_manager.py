@@ -371,18 +371,22 @@ class ServerManager:
             raise ValueError(msg)
         if mode == "mass":
             an_cap_mAh_g, an_mass_mg, an_diam_mm, cat_cap_mAh_g, cat_mass_mg, cat_diam_mm = result[0]
-            an_frac_used = min(1, cat_diam_mm**2 / an_diam_mm**2)
             cat_frac_used = min(1, an_diam_mm**2 / cat_diam_mm**2)
-            an_cap_Ah = an_frac_used * (an_cap_mAh_g * an_mass_mg * 1e-6)
             cat_cap_Ah = cat_frac_used * (cat_cap_mAh_g * cat_mass_mg * 1e-6)
-            capacity_Ah = cat_cap_Ah if ignore_anode else min(an_cap_Ah, cat_cap_Ah)
+            capacity_Ah = cat_cap_Ah
+            if not ignore_anode:
+                an_frac_used = min(1, cat_diam_mm**2 / an_diam_mm**2)
+                an_cap_Ah = an_frac_used * (an_cap_mAh_g * an_mass_mg * 1e-6)
+                capacity_Ah = min(an_cap_Ah, cat_cap_Ah)
         elif mode == "areal":
             an_cap_mAh_cm2, an_diam_mm, cat_cap_mAh_cm2, cat_diam_mm = result[0]
-            an_frac_used = min(1, cat_diam_mm**2 / an_diam_mm**2)
             cat_frac_used = min(1, an_diam_mm**2 / cat_diam_mm**2)
-            an_cap_Ah = an_frac_used * an_cap_mAh_cm2 * (an_diam_mm / 2) ** 2 * 3.14159 * 1e-5
             cat_cap_Ah = cat_frac_used * cat_cap_mAh_cm2 * (cat_diam_mm / 2) ** 2 * 3.14159 * 1e-5
-            capacity_Ah = cat_cap_Ah if ignore_anode else min(an_cap_Ah, cat_cap_Ah)
+            capacity_Ah = cat_cap_Ah
+            if not ignore_anode:
+                an_frac_used = min(1, cat_diam_mm**2 / an_diam_mm**2)
+                an_cap_Ah = an_frac_used * an_cap_mAh_cm2 * (an_diam_mm / 2) ** 2 * 3.14159 * 1e-5
+                capacity_Ah = min(an_cap_Ah, cat_cap_Ah)
         elif mode == "nominal":
             capacity_Ah = result[0][0] * 1e-3
         return capacity_Ah
