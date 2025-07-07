@@ -20,6 +20,7 @@ automatically.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import traceback
 import warnings
@@ -38,6 +39,7 @@ from aurora_cycler_manager.tomato_converter import convert_tomato_json, get_snap
 from aurora_cycler_manager.utils import run_from_sample
 
 CONFIG = get_config()
+logger = logging.getLogger(__name__)
 
 
 class ServerManager:
@@ -68,7 +70,7 @@ class ServerManager:
 
     def __init__(self) -> None:
         """Initialize the server manager object."""
-        print("Creating cycler server objects")
+        logger.info("Creating cycler server objects")
         self.config = CONFIG
         if not self.config.get("SSH private key path"):
             msg = "'SSH private key path' not found in config file. Cannot connect to servers."
@@ -80,7 +82,7 @@ class ServerManager:
         if not self.servers:
             msg = "No servers found in config file, please check the config file."
             raise ValueError(msg)
-        print("Server manager initialised, consider updating database with update_db()")
+        logger.info("Server manager initialised, consider updating database with update_db()")
 
     def get_servers(self) -> dict[str, CyclerServer]:
         """Create the cycler server objects from the config file."""
@@ -93,17 +95,15 @@ class ServerManager:
             if server_config["server_type"] == "tomato":
                 try:
                     servers[server_config["label"]] = TomatoServer(server_config, pkey_path)
-                except (OSError, ValueError, TimeoutError, paramiko.SSHException) as exc:
-                    print(f"CRITICAL: Server {server_config['label']} could not be created, skipping")
-                    print(f"Error: {exc}")
+                except (OSError, ValueError, TimeoutError, paramiko.SSHException):
+                    logger.exception("Server %s could not be created, skipping", server_config["label"])
             elif server_config["server_type"] == "neware":
                 try:
                     servers[server_config["label"]] = NewareServer(server_config, pkey_path)
-                except (OSError, ValueError, TimeoutError, paramiko.SSHException) as exc:
-                    print(f"CRITICAL: Server {server_config['label']} could not be created, skipping")
-                    print(f"Error: {exc}")
+                except (OSError, ValueError, TimeoutError, paramiko.SSHException):
+                    logger.exception("Server %s could not be created, skipping", server_config["label"])
             else:
-                print(f"Server type {server_config['server_type']} not recognized, skipping")
+                logger.error("Server type %s not recognized, skipping", server_config["server_type"])
         return servers
 
     def update_jobs(self) -> None:
@@ -411,15 +411,15 @@ class ServerManager:
         # Get pipeline and load
         result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
         server = self.find_server(result[0][0])
-        print(f"Loading {sample} on server: {server.label}")
+        logger.info("Loading sample %s on server %s", sample, server.label)
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             output = server.load(sample, pipeline)
             if w:
                 for warning in w:
-                    print(f"Warning raised: {warning.message}")
+                    logger.warning(warning.message)
             else:
-                # Update database preemtively
+                # Update database preemtively if no warnings were caught
                 self.execute_sql(
                     "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
                     (sample, pipeline),
@@ -440,15 +440,15 @@ class ServerManager:
         # Find server associated with pipeline
         result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
         server = self.find_server(result[0][0])
-        print(f"Ejecting {pipeline} on server: {server.label}")
+        logger.info("Ejecting %s on server: %s", pipeline, server.label)
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             output = server.eject(pipeline)
             if w:
                 for warning in w:
-                    print(f"Warning raised: {warning.message}")
+                    logger.warning(warning.message)
             else:
-                # Update database preemtively
+                # Update database preemtively if no warnings were caught
                 self.execute_sql(
                     "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = 0 WHERE `Pipeline` = ?",
                     (pipeline,),
@@ -469,15 +469,15 @@ class ServerManager:
         # find server with pipeline, if there is more than one throw an error
         result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
         server = self.find_server(result[0][0])
-        print(f"Readying {pipeline} on server: {server.label}")
+        logger.info("Readying %s on server: %s", pipeline, server.label)
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             output = server.ready(pipeline)
             if w:
                 for warning in w:
-                    print(f"Warning raised: {warning.message}")
+                    logger.warning(warning.message)
             else:
-                # Update database preemtively
+                # Update database preemtively if no warnings caught
                 self.execute_sql(
                     "UPDATE pipelines SET `Ready` = 1 WHERE `Pipeline` = ?",
                     (pipeline,),
@@ -498,15 +498,15 @@ class ServerManager:
         # Find server with pipeline, if there is more than one throw an error
         result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
         server = self.find_server(result[0][0])
-        print(f"Unreadying {pipeline} on server: {server.label}")
+        logger.info("Unreadying %s on server: %s", pipeline, server.label)
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             output = server.unready(pipeline)
             if w:
                 for warning in w:
-                    print(f"Warning raised: {warning.message}")
+                    logger.warning(warning.message)
             else:
-                # Update database preemtively
+                # Update database preemtively if no warnings caught
                 self.execute_sql(
                     "UPDATE pipelines SET `Ready` = 0 WHERE `Pipeline` = ?",
                     (pipeline,),
@@ -553,7 +553,7 @@ class ServerManager:
         server = self.find_server(result[0][0])
         pipeline = result[0][1]
 
-        print(f"Submitting job to {sample} with capacity {capacity_Ah:.5f} Ah")
+        logger.info("Submitting job to %s with capacity %.5f Ah", sample, capacity_Ah)
         full_jobid, jobid, json_string = server.submit(sample, capacity_Ah, payload, pipeline)
         dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -644,11 +644,11 @@ class ServerManager:
         for sample_id, status, jobid_on_server, server_label, snapshot_status in result:
             jobid = f"{server_label}-{jobid_on_server}"
             if not sample_id:
-                print(f"Job {server_label}-{jobid_on_server} has no sample, skipping.")
+                logger.warning("Job %s has no sample, skipping.", jobid)
                 continue
             # Check that sample is known
             if sample_id == "Unknown":
-                print(f"Job {server_label}-{jobid_on_server} has no sample name or payload, skipping.")
+                logger.warning("Job %s has no sample name or payload, skipping.", jobid)
                 continue
             run_id = run_from_sample(sample_id)
 
@@ -657,15 +657,15 @@ class ServerManager:
             files_exist = (local_save_location_processed / "snapshot.jobid.h5").exists()
             if files_exist and mode != "always":
                 if mode == "if_not_exists":
-                    print(f"Snapshot {jobid} already exists, skipping.")
+                    logger.info("Snapshot for %s already exists, skipping.", jobid)
                     continue
                 if mode == "new_data" and snapshot_status is not None and snapshot_status.startswith("c"):
-                    print(f"Snapshot {jobid} already complete.")
+                    logger.info("Snapshot for %s already complete, skipping.", jobid)
                     continue
 
             # Check that the job has started
             if status in ["q", "qw"]:
-                print(f"Job {jobid} is still queued, skipping snapshot.")
+                logger.warning("Job %s is still queued, skipping snapshot.", jobid)
                 continue
 
             # Otherwise snapshot the job
@@ -676,7 +676,7 @@ class ServerManager:
                 msg = f"Server type {server.server_type} not supported for snapshotting."
                 raise NotImplementedError(msg)
             try:
-                print(f"Snapshotting sample {sample_id} job {jobid}")
+                logger.info("Snapshotting sample %s job %s", sample_id, jobid)
                 new_snapshot_status = server.snapshot(jobid, jobid_on_server, local_save_location, get_raw)
             except FileNotFoundError as e:
                 msg = (
@@ -747,8 +747,7 @@ class ServerManager:
         else:
             result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE " + where)  # noqa: S608
         total_jobs = len(result)
-        print(f"Snapshotting {total_jobs} jobs:")
-        print([jobid for (jobid,) in result])
+        logger.info("Snapshotting %d jobs with mode '%s'", total_jobs, mode)
         t0 = time()
         # Snapshot each job, ignore errors and continue
         # Sleeps are added after each to not overload the server
@@ -758,25 +757,20 @@ class ServerManager:
             try:
                 self.snapshot(jobid, mode=mode)
             except (KeyError, NotImplementedError, FileNotFoundError) as e:
-                print(f"Skipping job {jobid} with error: {type(e).__name__} - {e}")
+                logger.exception("Error snapshotting job %s", jobid)
                 if isinstance(e, FileNotFoundError):  # Something ran on server, so sleep
                     sleep(10)
                 continue
             except Exception as e:  # noqa: BLE001
                 tb = traceback.format_exc()
                 error_message = str(e) if str(e) else "An error occurred but no message was provided."
-                warnings.warn(
-                    f"Unexpected error snapshotting {jobid}: {error_message}\n{tb}",
-                    RuntimeWarning,
-                    stacklevel=2,
-                )
+                logger.warning("Unexpected error snapshotting %s: %s\n%s", jobid, error_message, tb)
                 sleep(10)  # to not overload the server
                 continue
-            percent_done = (i + 1) / total_jobs * 100
             time_elapsed = time() - t0
             time_remaining = time_elapsed / (i + 1) * (total_jobs - i - 1)
             sleep(10)  # to not overload the server
-            print(f"{percent_done:.2f}% done, {int(time_remaining / 60)} minutes remaining")
+            logger.info("%d/%d jobs done. Approx %d minutes remaining", i + 1, total_jobs, int(time_remaining / 60))
 
     def get_last_data(self, samp_or_jobid: str) -> dict:
         """Get the last data from a sample or job.
@@ -819,7 +813,7 @@ class ServerManager:
         try:
             jobdata = server.get_job_data(jobid_on_server)
         except FileNotFoundError:
-            print(f"Job data not found on remote PC for {jobid}")
+            logger.exception("Job data not found on remote PC for %s", jobid)
             self.execute_sql(
                 "UPDATE jobs SET `Payload` = ?, `Sample ID` = ? WHERE `Job ID` = ?",
                 (json.dumps("Unknown"), "Unknown", jobid),

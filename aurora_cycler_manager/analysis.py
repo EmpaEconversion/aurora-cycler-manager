@@ -17,8 +17,8 @@ from __future__ import annotations
 import contextlib
 import gzip
 import json
+import logging
 import sqlite3
-import traceback
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -44,6 +44,7 @@ from aurora_cycler_manager.utils import (
 from aurora_cycler_manager.version import __url__, __version__
 
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="All-NaN axis encountered")
+logger = logging.getLogger(__name__)
 
 CONFIG = get_config()
 # Metadata that gets copied in the json data file for more convenient access
@@ -334,7 +335,7 @@ def extract_voltage_crates(job_data: dict) -> dict:
             if capacity_units == 1:  # mAh
                 capacity = job.get("settings", {}).get("battery_capacity", 0)  # in mAh
             if capacity_units and capacity_units != 1:
-                print(f"Unknown capacity units from ec-lab: {capacity_units}")
+                logger.warning("Unknown capacity units from ec-lab: %s", capacity_units)
 
             if isinstance(job.get("params", []), dict):  # it may be a dict of lists instead of a list of dicts
                 try:
@@ -342,7 +343,7 @@ def extract_voltage_crates(job_data: dict) -> dict:
                         {k: l[i] for k, l in job["params"].items()} for i in range(len(job["params"]["Is"]))
                     ]
                 except (ValueError, TypeError, KeyError, AttributeError):
-                    print("EC-lab params not in expected format, should be list of dicts or dict of lists")
+                    logger.exception("EC-lab params not in expected format, should be list of dicts or dict of lists")
 
             for method in job.get("params", []):
                 if not isinstance(method, dict):
@@ -358,7 +359,7 @@ def extract_voltage_crates(job_data: dict) -> dict:
                         if current_units == "A":
                             current = current * 1000
                         elif current_units != "mA":
-                            print(f"EC-lab current unit unknown: {current_units}")
+                            logger.warning("EC-lab current unit unknown: %s", current_units)
                         rate = abs(current) / capacity
                 # Get voltage
                 discharging = None
@@ -604,9 +605,9 @@ def analyse_cycles(
 
     # Calculate additional quantities from cycling data and add to cycle_dict
     if not cycle_dict or not cycle_dict["Cycle"]:
-        print(f"No cycles found for {sampleid}")
+        logger.info("No cycles found for %s", sampleid)
     elif len(cycle_dict["Cycle"]) == 1 and not complete:
-        print(f"No complete cycles found for {sampleid}")
+        logger.info("No complete cycles found for %s", sampleid)
     else:  # Analyse the cycling data
         last_idx = -1 if complete else -2
 
@@ -867,12 +868,12 @@ def update_sample_metadata(sample_ids: str | list[str]) -> None:
         # HDF5 full file
         hdf5_file = sample_folder / f"full.{sample_id}.h5"
         if not hdf5_file.exists():
-            print(f"File {hdf5_file} not found")
+            logger.warning("File %s not found", hdf5_file)
             continue
         with h5py.File(hdf5_file, "a") as f:
             # check the keys data and metadata exist
             if "data" not in f or "metadata" not in f:
-                print(f"File {hdf5_file} has incorrect format")
+                logger.warning("File %s has incorrect format", hdf5_file)
                 continue
             metadata = json.loads(f["metadata"][()])
             sample_data = get_sample_data(sample_id)
@@ -881,13 +882,13 @@ def update_sample_metadata(sample_ids: str | list[str]) -> None:
         # JSON cycles file
         json_file = sample_folder / f"cycles.{sample_id}.json"
         if not json_file.exists():
-            print(f"File {json_file} not found")
+            logger.warning("File %s not found", json_file)
             continue
         with json_file.open("r", encoding="utf-8") as f:
             data = json.load(f)
             # check it has keys data and metadata
             if "data" not in data or "metadata" not in data:
-                print(f"File {json_file} has incorrect format")
+                logger.warning("File %s has incorrect format", json_file)
                 continue
             data["metadata"]["sample_data"] = sample_data
             for col in SAMPLE_METADATA_TO_DATA:
@@ -956,12 +957,9 @@ def shrink_all_samples(sampleid_contains: str = "") -> None:
                     continue
                 try:
                     shrink_sample(sample.name)
-                    print(f"Shrunk {sample.name}")
-                except KeyError as e:
-                    print(f"No metadata found for {sample.name}: {e}")
-                except (ValueError, PermissionError, RuntimeError, FileNotFoundError) as e:
-                    tb = traceback.format_exc()
-                    print(f"Failed to analyse {sample.name} with error {e}\n{tb}")
+                    logger.info("Shrunk %s", sample.name)
+                except (KeyError, ValueError, PermissionError, RuntimeError, FileNotFoundError):
+                    logger.exception("Failed to shrink %s", sample.name)
 
 
 def analyse_all_samples(
@@ -1001,12 +999,9 @@ def analyse_all_samples(
                     continue
                 try:
                     analyse_sample(sample.name)
-                    print(f"Analysed {sample.name}")
-                except KeyError as e:
-                    print(f"No metadata found for {sample.name}: {e}")
-                except (ValueError, PermissionError, RuntimeError, FileNotFoundError, TypeError) as e:
-                    tb = traceback.format_exc()
-                    print(f"Failed to analyse {sample.name} with error {e}\n{tb}")
+                    logger.info("Analysed %s", sample.name)
+                except (KeyError, ValueError, PermissionError, RuntimeError, FileNotFoundError, TypeError):
+                    logger.exception("Failed to analyse %s", sample.name)
 
 
 def analyse_batch(plot_name: str, batch: dict) -> None:
@@ -1022,7 +1017,7 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
         run_id = run_from_sample(sample)
         sample_folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample
         if not sample_folder.exists():
-            print(f"Folder {sample_folder} does not exist")
+            logger.warning("Folder %s does not exist", sample_folder)
             continue
         try:
             analysed_file = next(
@@ -1035,11 +1030,11 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
             if cycle_dict.get("Cycle") and cycle_dict["Cycle"]:
                 cycle_dicts.append(cycle_dict)
             else:
-                print(f"No cycling data for {sample}")
+                logger.warning("No cycling data found for %s", sample)
                 continue
         except StopIteration:
             # Handle the case where no file starts with 'cycles'
-            print(f"No files starting with 'cycles' found in {sample_folder}.")
+            logger.warning("No files starting with 'cycles' found in %s", sample_folder)
             continue
     cycle_dicts = [d for d in cycle_dicts if d.get("Cycle") and d["Cycle"]]
     if len(cycle_dicts) == 0:
@@ -1092,8 +1087,8 @@ def analyse_all_batches() -> None:
     for plot_name, batch in batches.items():
         try:
             analyse_batch(plot_name, batch)
-        except (ValueError, KeyError, PermissionError, RuntimeError, FileNotFoundError) as e:
-            print(f"Failed to analyse {plot_name} with error {e}")
+        except (ValueError, KeyError, PermissionError, RuntimeError, FileNotFoundError):  # noqa: PERF203
+            logger.exception("Failed to analyse %s", plot_name)
 
 
 def moving_average(x, npoints: int = 11) -> np.ndarray:

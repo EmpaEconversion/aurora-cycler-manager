@@ -491,7 +491,7 @@ def get_neware_ndax_data(file_path: Path) -> pd.DataFrame:
     # Get last time for each step and add to next steps
     last_times = df.groupby("Step")["Time"].last()
     offsets = last_times.shift(fill_value=0).cumsum()
-    total_time = df["Time"]+ df["Step"].map(offsets)
+    total_time = df["Time"] + df["Step"].map(offsets)
     # Get first datetime, add the total time to get uts
     start_uts = float(df["Timestamp"].iloc[0].timestamp())
     output_df["uts"] = start_uts + total_time

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +22,8 @@ from scp import SCPClient
 
 from aurora_cycler_manager import unicycler
 from aurora_cycler_manager.tomato_converter import puree_tomato
+
+logger = logging.getLogger(__name__)
 
 
 class CyclerServer:
@@ -57,13 +60,10 @@ class CyclerServer:
             output = stdout.read().decode("utf-8")
             error = stderr.read().decode("utf-8")
         if error:
-            if "Error" in error:
-                print(f"Error running '{command}' on {self.label}")
-                raise ValueError(error)
             if error.startswith("WARNING"):
-                warnings.warn(error, RuntimeWarning, stacklevel=2)
+                logger.warning("Warning running '%s' on %s: %s", command, self.label, error)
             else:
-                print(f"Error running '{command}' on {self.label}")
+                logger.error("Error running '%s' on %s: %s", command, self.label, error)
                 raise ValueError(error)
         return output
 
@@ -82,7 +82,7 @@ class CyclerServer:
         if output != test_phrase:
             msg = f"Connection error, expected output '{test_phrase}', got '{output}'"
             raise ValueError(msg)
-        print(f"Succesfully connected to {self.label}")
+        logger.info("Succesfully connected to %s", self.label)
         return True
 
     def eject(self, pipeline: str) -> str:
@@ -239,9 +239,9 @@ class TomatoServer(CyclerServer):
             output = self.command(f"{self.tomato_scripts_path}ketchup submit -J {encoded_json_string}")
         if "jobid: " in output:
             jobid = output.split("jobid: ")[1].splitlines()[0]
-            print(f"Sample {sample} submitted on server {self.label} with jobid {jobid}")
+            logger.info("Sample %s submitted on server %s with jobid %s", sample, self.label, jobid)
             full_jobid = f"{self.label}-{jobid}"
-            print(f"Full jobid: {full_jobid}")
+            logger.info("Full jobid: %s", full_jobid)
             return full_jobid, jobid, json_string
 
         msg = f"Error submitting job: {output}"
@@ -306,7 +306,7 @@ class TomatoServer(CyclerServer):
             msg = "Shell type not recognised, must be 'powershell' or 'cmd', check config.json"
             raise ValueError(msg)
         output = self.command(f"{self.tomato_scripts_path}ketchup status -J {jobid_on_server}")
-        print(f"Got job status on remote server {self.label}")
+        logger.info("Got job status on remote server %s", self.label)
         json_output = json.loads(output)
         snapshot_status = json_output["status"][0]
         # Catch errors
@@ -323,13 +323,13 @@ class TomatoServer(CyclerServer):
                 for warning in w:
                     if "out-of-date version" in str(warning.message) or "has been completed" in str(warning.message):
                         continue  # Ignore these warnings
-                    print(f"Warning: {warning.message}")
+                    logger.warning("Warning: %s", warning.message)
         except ValueError as e:
             emsg = str(e)
             if "AssertionError" in emsg and "os.path.isdir(jobdir)" in emsg:
                 raise FileNotFoundError from e
             raise
-        print(f"Snapshotted file on remote server {self.label}")
+        logger.info("Snapshotted file on remote server %s", self.label)
         # Get local directory to save the snapshot data
         if not Path(local_save_location).exists():
             Path(local_save_location).mkdir(parents=True)
@@ -338,12 +338,15 @@ class TomatoServer(CyclerServer):
         ssh = paramiko.SSHClient()
         ssh.load_system_host_keys()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        print(f"Connecting to {self.label}: host {self.hostname} user {self.username}")
+        logger.info("Connecting to %s: host %s user %s", self.label, self.hostname, self.username)
         ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
         try:
-            print(
-                f"Downloading file {remote_save_location}/snapshot.{jobid_on_server}.json to "
-                f"{local_save_location}/snapshot.{jobid}.json",
+            logger.info(
+                "Downloading file %s/snapshot.%s.json to %s/snapshot.%s.json",
+                remote_save_location,
+                jobid_on_server,
+                local_save_location,
+                jobid,
             )
             with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
                 scp.get(
@@ -351,7 +354,7 @@ class TomatoServer(CyclerServer):
                     f"{local_save_location}/snapshot.{jobid}.json",
                 )
                 if get_raw:
-                    print("Downloading snapshot raw data")
+                    logger.info("Downloading shapshot raw data to %s/snapshot.%s.zip", local_save_location, jobid)
                     scp.get(
                         f"{remote_save_location}/snapshot.{jobid_on_server}.zip",
                         f"{local_save_location}/snapshot.{jobid}.zip",
@@ -536,7 +539,7 @@ class NewareServer(CyclerServer):
 
             # Submit the file on the remote PC
             output = self.command(f"neware start {pipeline} {sample} {remote_xml_path}")
-            # Expect the output to be empty if successful, otherwise print error
+            # Expect the output to be empty if successful, otherwise raise error
             if output:
                 msg = (
                     f"Command 'neware stop {pipeline}' failed with response:\n{output}\n"
@@ -544,11 +547,11 @@ class NewareServer(CyclerServer):
                     "You must check the Neware client logs for more information."
                 )
                 raise ValueError(msg)
-            print("Successfully started job on Neware")
-
+            logger.info("Submitted job to Neware server %s", self.label)
             # Then ask for the jobid
             jobid_on_server = self._get_job_id(pipeline)
             jobid = f"{self.label}-{jobid_on_server}"
+            logger.info("Job started on Neware server with ID %s", jobid)
         finally:
             Path("temp.xml").unlink()  # Remove the file on local machine
         return jobid, jobid_on_server, xml_string
@@ -577,7 +580,7 @@ class NewareServer(CyclerServer):
             raise ValueError(msg)
         # Stop the pipeline
         output = self.command(f"neware stop {pipeline}")
-        # Expect the output to be empty if successful, otherwise print error
+        # Expect the output to be empty if successful, otherwise raise error
         if output:
             msg = (
                 f"Command 'neware stop {pipeline}' failed with response:\n{output}\n"
