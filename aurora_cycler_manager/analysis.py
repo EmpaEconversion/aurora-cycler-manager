@@ -1104,15 +1104,15 @@ def moving_average(x, npoints: int = 11) -> np.ndarray:
 
 def deriv(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     """Calculate dy/dx for 1D arrays, ignore division by zero errors."""
-    with np.errstate(divide="ignore"):
+    with np.errstate(divide="ignore", invalid="ignore"):
         dydx = np.zeros(len(y))
         dydx[0] = (y[1] - y[0]) / (x[1] - x[0])
         dydx[-1] = (y[-1] - y[-2]) / (x[-1] - x[-2])
         dydx[1:-1] = (y[2:] - y[:-2]) / (x[2:] - x[:-2])
 
-    # for any 3 points where x direction changes sign set to nan
-    mask = (x[1:-1] - x[:-2]) * (x[2:] - x[1:-1]) < 0
-    dydx[1:-1][mask] = np.nan
+        # for any 3 points where x direction changes sign set to nan
+        mask = (x[1:-1] - x[:-2]) * (x[2:] - x[1:-1]) < 0
+        dydx[1:-1][mask] = np.nan
     return dydx
 
 
