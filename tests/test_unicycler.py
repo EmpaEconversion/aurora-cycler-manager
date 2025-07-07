@@ -355,6 +355,49 @@ class TestUnicycler(TestCase):
                 ],
             )
 
+        # Loops cannot go forwards
+        with pytest.raises(ValidationError):
+            protocol = Protocol(
+                measurement=MeasurementParams(time_s=1),
+                safety=SafetyParams(),
+                method=[
+                    OpenCircuitVoltage(until_time_s=1),
+                    Loop(start_step="tag1", cycle_count=3),
+                    OpenCircuitVoltage(until_time_s=1),
+                    Tag(tag="tag1"),
+                ],
+            )
+
+        # Loops cannot go forwards or land on themselves
+        for i in [4, 5]:
+            with pytest.raises(ValidationError):
+                protocol = Protocol(
+                    measurement=MeasurementParams(time_s=1),
+                    safety=SafetyParams(),
+                    method=[
+                        OpenCircuitVoltage(until_time_s=1),
+                        OpenCircuitVoltage(until_time_s=1),
+                        OpenCircuitVoltage(until_time_s=1),
+                        Loop(start_step=i, cycle_count=3),
+                        OpenCircuitVoltage(until_time_s=1),
+                        OpenCircuitVoltage(until_time_s=1),
+                        OpenCircuitVoltage(until_time_s=1),
+                    ],
+                )
+
+        # Loops cannot go back to one index to a tag
+        with pytest.raises(ValidationError):
+            protocol = Protocol(
+                measurement=MeasurementParams(time_s=1),
+                safety=SafetyParams(),
+                method=[
+                    OpenCircuitVoltage(until_time_s=1),
+                    Tag(tag="tag1"),
+                    Loop(start_step="tag1", cycle_count=3),
+                    OpenCircuitVoltage(until_time_s=1),
+                ],
+            )
+
     def test_tag_neware(self) -> None:
         """Test tags in Neware XML."""
         protocol = Protocol(
