@@ -378,26 +378,69 @@ def get_neware_ndax_metadata(file_path: Path) -> dict:
         dict: Metadata from the file
 
     """
-    # Get step.xml and testinfo.xml from the .ndax file
-    # get the step info from step.xml
-    zf = zipfile.PyZipFile(str(file_path))
-    step = zf.read("Step.xml")
-    step_parsed = xmltodict.parse(step.decode(errors="replace"), attr_prefix="")
-    metadata = _clean_ndax_step(step_parsed)
+    # Get step.xml and testinfo.xml from the .ndax file, if not present check database for metadata
 
-    # add test info
-    testinfo = xmltodict.parse(zf.read("TestInfo.xml").decode(errors="replace"), attr_prefix="")
-    testinfo = testinfo.get("root", {}).get("config", {}).get("TestInfo", {})
-    metadata["Barcode"] = testinfo.get("Barcode")
-    metadata["Start time"] = testinfo.get("StartTime")
-    metadata["Step name"] = testinfo.get("StepName")
-    metadata["Device type"] = testinfo.get("DevType")
-    metadata["Device ID"] = testinfo.get("DevID")
-    metadata["Subdevice ID"] = testinfo.get("UnitID")  # Seems like this doesn't work from Neware's side
-    metadata["Channel ID"] = testinfo.get("ChlID")
-    metadata["Test ID"] = testinfo.get("TestID")
-    metadata["Voltage range (V)"] = float(testinfo.get("VoltRange", 0))
-    metadata["Current range (mA)"] = float(testinfo.get("CurrRange", 0))
+    zf = zipfile.PyZipFile(str(file_path))
+
+    if "Step.xml" in zf.namelist() and "TestInfo.xml" in zf.namelist():
+        # Get the step info from step.xml
+        step = zf.read("Step.xml")
+        step_parsed = xmltodict.parse(step.decode(errors="replace"), attr_prefix="")
+        metadata = _clean_ndax_step(step_parsed)
+
+        # Add test info
+        testinfo = xmltodict.parse(zf.read("TestInfo.xml").decode(errors="replace"), attr_prefix="")
+        testinfo = testinfo.get("root", {}).get("config", {}).get("TestInfo", {})
+        metadata["Barcode"] = testinfo.get("Barcode")
+        metadata["Start time"] = testinfo.get("StartTime")
+        metadata["Step name"] = testinfo.get("StepName")
+        metadata["Device type"] = testinfo.get("DevType")
+        metadata["Device ID"] = testinfo.get("DevID")
+        metadata["Subdevice ID"] = testinfo.get("UnitID")  # Seems like this doesn't work from Neware's side
+        metadata["Channel ID"] = testinfo.get("ChlID")
+        metadata["Test ID"] = testinfo.get("TestID")
+        metadata["Voltage range (V)"] = float(testinfo.get("VoltRange", 0))
+        metadata["Current range (mA)"] = float(testinfo.get("CurrRange", 0))
+
+    else:
+        metadata = get_neware_metadata_from_db(file_path.stem)
+
+    return metadata
+
+
+def get_neware_metadata_from_db(job_id: str) -> dict:
+    """Get metadata from the database for a Neware file.
+
+    Args:
+        job_id (str): Name of Job ID, (should be filename without extension)
+
+    Returns:
+        dict: Metadata from the database
+
+    """
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM jobs WHERE `Job ID` = ?",
+            (job_id,),
+        )
+        row = cursor.fetchone()
+        cursor.close()
+    if not row:
+        msg = f"No metadata found for Job ID '{job_id}' in database."
+        raise ValueError(msg)
+    row = dict(row)
+    # convert string to xml then to dict
+
+    xml_payload = xmltodict.parse(row["Payload"], attr_prefix="")
+    metadata = _clean_ndax_step(xml_payload)
+    server_label, Device_ID, Subdevice_ID, Channel_ID, Test_ID = job_id.split("-")
+    metadata["Device ID"] = Device_ID
+    metadata["Subdevice ID"] = Subdevice_ID
+    metadata["Channel ID"] = Channel_ID
+    metadata["Test ID"] = Test_ID
+    metadata["Barcode"] = row["Sample ID"]
     return metadata
 
 
