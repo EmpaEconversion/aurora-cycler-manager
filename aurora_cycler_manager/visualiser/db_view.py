@@ -391,19 +391,20 @@ unready_modal = dmc.Modal(
 submit_modal = dmc.Modal(
     title="Submit",
     id="submit-modal",
+    opened=False,
     centered=True,
     children=dmc.Stack(
         [
             dcc.Store(id="payload", data={}),
-            dmc.Text("Select a payload to submit"),
             dmc.Select(
+                label="Select protocol to submit",
                 id="submit-select-payload",
                 data=[],
-                placeholder="Select payload",
+                placeholder="Select protocol",
                 searchable=True,
                 clearable=True,
             ),
-            dmc.Text("No file selected", id="validator"),
+            dmc.Text("No file selected", id="validator", size="sm"),
             dmc.Select(
                 label="Calculate C-rate by:",
                 id="submit-crate",
@@ -742,10 +743,9 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
                     if all_samples:
                         enabled |= {"label-button", "create-batch-button"}
                         if all_servers:
-                            if len({s.get("Server type") for s in selected_rows}) == 1:
-                                enabled |= {"submit-button"}
-                                if all_tomato:
-                                    enabled |= {"snapshot-button"}
+                            enabled |= {"submit-button"}
+                            if all_tomato:
+                                enabled |= {"snapshot-button"}
                             if all(s["Job ID"] is None for s in selected_rows):
                                 enabled |= {"eject-button"}
                                 if all_tomato:
@@ -1020,11 +1020,14 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     @app.callback(
         Output("validator", "children"),
         Output("payload", "data"),
+        Input("submit-modal", "opened"),
         Input("submit-select-payload", "value"),
         State("selected-rows-store", "data"),
         prevent_initial_call=True,
     )
-    def check_payload(filename, selected_rows):
+    def check_payload(opened, filename, selected_rows):
+        if not opened:
+            return no_update, no_update
         if not filename:
             return "No file selected", {}
         folder = CONFIG.get("Protocols folder path")
@@ -1043,18 +1046,17 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
                 with (folder / filename).open("r", encoding="utf-8") as f:
                     payload = f.read()  # Store XML as string
             except Exception as e:
-                return f"ERROR: {filename} couldn't be read as xml file: {e}", {}
+                return f"❌ {filename} couldn't be read as xml file: {e}", {}
         else:
-            return f"ERROR: {filename} is not a valid file type", {}
+            return f"❌ {filename} is not a valid file type", {}
 
         if any(s["Server type"] == "tomato" for s in selected_rows):
             # Should be a tomato JSON or unicycler JSON
             if not isinstance(payload, dict):
-                return "ERROR: cannot submit .xml to tomato!", {}
+                return "❌ cannot submit .xml to tomato", {}
             if any(k not in payload for k in tomato_keys) and any(k not in payload for k in unicycler_keys):
-                msg = f"ERROR: {filename} is not a tomato json or unicycler json"
+                msg = f"❌ {filename} is not a tomato json or unicycler json"
                 return msg, {}
-            return f"{filename} loaded", payload
 
         if any(s["Server type"] == "neware" for s in selected_rows):
             # Should be an XML file or universal JSON file
@@ -1065,14 +1067,15 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
                     and 'config type="Step File"' in payload
                 ):
                     return f"{filename} loaded", payload
-                return f"ERROR: {filename} is not a Neware xml file", {}
+                return f"❌ {filename} is not a Neware xml file", {}
 
             # It's a json dict
             if any(k not in payload for k in unicycler_keys):
-                msg = f"ERROR: {filename} is not a unicycler json file"
-            return f"{filename} loaded", payload
+                msg = f"❌ {filename} is not a unicycler json file"
+                return msg, {}
 
-        return "Huh, how did you even do this?", {}
+        # Passed all the checks, should be a valid payload
+        return f"✅ {filename} loaded", payload
 
     # Submit pop up - show custom capacity input if custom capacity is selected
     @app.callback(
