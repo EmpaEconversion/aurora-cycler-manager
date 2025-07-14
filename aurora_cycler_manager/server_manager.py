@@ -391,6 +391,18 @@ class ServerManager:
             capacity_Ah = result[0][0] * 1e-3
         return capacity_Ah
 
+    def safe_get_sample_capacity(
+        self,
+        sample: str,
+        mode: Literal["areal", "mass", "nominal"],
+        ignore_anode: bool = True,
+    ) -> float | None:
+        """Get the capacity of a sample in Ah based on the mode. Returns None if failed."""
+        try:
+            return self.get_sample_capacity(sample, mode, ignore_anode)
+        except (ValueError, TypeError):
+            return None
+
     def load(self, sample: str, pipeline: str) -> str:
         """Load a sample on a pipeline.
 

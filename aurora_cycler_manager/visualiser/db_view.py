@@ -18,6 +18,7 @@ from dash import callback_context as ctx
 from dash.exceptions import PreventUpdate
 
 from aurora_cycler_manager.analysis import update_sample_metadata
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import (
     add_samples_from_object,
     delete_samples,
@@ -50,6 +51,7 @@ from aurora_cycler_manager.visualiser.notifications import (
 
 # If user cannot ssh connect then disable features that require it
 logger = logging.getLogger(__name__)
+CONFIG = get_config()
 accessible_servers = []
 database_access = False
 sm: ServerManager | None = None
@@ -394,25 +396,12 @@ submit_modal = dmc.Modal(
         [
             dcc.Store(id="payload", data={}),
             dmc.Text("Select a payload to submit"),
-            dcc.Upload(
-                id="submit-upload",
-                children=html.Div(
-                    [
-                        "Drag and Drop or ",
-                        html.A("Select Files"),
-                    ],
-                ),
-                style={
-                    "width": "100%",
-                    "height": "60px",
-                    "lineHeight": "60px",
-                    "borderWidth": "1px",
-                    "borderStyle": "dashed",
-                    "borderRadius": "8px",
-                    "textAlign": "center",
-                },
-                accept=".json,.xml",
-                multiple=False,
+            dmc.Select(
+                id="submit-select-payload",
+                data=[],
+                placeholder="Select payload",
+                searchable=True,
+                clearable=True,
             ),
             dmc.Text("No file selected", id="validator"),
             dmc.Select(
@@ -426,6 +415,7 @@ submit_modal = dmc.Modal(
                 ],
                 value="mass",
             ),
+            dcc.Store("submit-crate-vals", data={}),
             dmc.NumberInput(
                 id="submit-capacity",
                 label="Custom capacity value",
@@ -434,6 +424,11 @@ submit_modal = dmc.Modal(
                 max=10,
                 suffix=" mAh",
                 style={"display": "none"},  # Hidden by default, shown when custom is selected
+            ),
+            dmc.Text(
+                id="submit-capacity-display",
+                size="sm",
+                style={"whiteSpace": "pre-line"},
             ),
             dmc.Button(
                 "Submit",
@@ -994,75 +989,107 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     # Submit button pop up
     @app.callback(
         Output("submit-modal", "opened"),
+        Output("submit-select-payload", "data"),
+        Output("submit-crate-vals", "data"),
         Input("submit-button", "n_clicks"),
         Input("submit-yes-close", "n_clicks"),
         State("submit-modal", "opened"),
+        State("selected-rows-store", "data"),
         prevent_initial_call=True,
     )
-    def submit_pipeline_button(submit_clicks, yes_clicks, is_open):
+    def submit_pipeline_button(submit_clicks, yes_clicks, is_open, selected_rows):
         if not ctx.triggered:
-            return no_update
+            return no_update, no_update, no_update
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "submit-button":
-            return True
+            samples = [s.get("Sample ID") for s in selected_rows]
+            capacities = {
+                mode: {s: sm.safe_get_sample_capacity(s, mode) for s in samples}
+                for mode in ["areal", "mass", "nominal"]
+            }
+            folder = CONFIG.get("Protocols folder path")
+            if folder:
+                filenames = [p.name for p in folder.glob("*.json")] + [p.name for p in folder.glob("*.xml")]
+                return True, filenames, capacities
+            return True, [], no_update
         if button_id == "submit-yes-close" and yes_clicks:
-            return False
-        return no_update
+            return False, no_update, no_update
+        return no_update, no_update, no_update
 
     # Submit pop up - check that the json file is valid
     @app.callback(
         Output("validator", "children"),
         Output("payload", "data"),
-        Input("submit-upload", "contents"),
-        State("submit-upload", "filename"),
+        Input("submit-select-payload", "value"),
         State("selected-rows-store", "data"),
         prevent_initial_call=True,
     )
-    def check_payload(contents, filename, selected_rows):
-        if not contents:
+    def check_payload(filename, selected_rows):
+        if not filename:
             return "No file selected", {}
-        content_type, content_string = contents.split(",")
-        try:
-            decoded = base64.b64decode(content_string).decode("utf-8")
-        except UnicodeDecodeError:
-            return f"ERROR: {filename} had decoding error", {}
-        if all(s["Server type"] == "tomato" for s in selected_rows):
-            # Should be a JSON file
+        folder = CONFIG.get("Protocols folder path")
+
+        tomato_keys = ["version", "method", "tomato"]
+        unicycler_keys = ["measurement", "safety", "method"]
+
+        if filename.endswith(".json"):
             try:
-                payload = json.loads(decoded)
+                with (folder / filename).open(encoding="utf-8") as f:
+                    payload = json.load(f)
             except json.JSONDecodeError:
                 return f"ERROR: {filename} is invalid json file", {}
-            missing_keys = [key for key in ["version", "method", "tomato"] if key not in payload]
-            if missing_keys:
-                msg = f"ERROR: {filename} is missing keys: {', '.join(missing_keys)}"
+        elif filename.endswith(".xml"):
+            try:
+                with (folder / filename).open("r", encoding="utf-8") as f:
+                    payload = f.read()  # Store XML as string
+            except Exception as e:
+                return f"ERROR: {filename} couldn't be read as xml file: {e}", {}
+        else:
+            return f"ERROR: {filename} is not a valid file type", {}
+
+        if any(s["Server type"] == "tomato" for s in selected_rows):
+            # Should be a tomato JSON or unicycler JSON
+            if not isinstance(payload, dict):
+                return "ERROR: cannot submit .xml to tomato!", {}
+            if any(k not in payload for k in tomato_keys) and any(k not in payload for k in unicycler_keys):
+                msg = f"ERROR: {filename} is not a tomato json or unicycler json"
                 return msg, {}
             return f"{filename} loaded", payload
-        if all(s["Server type"] == "neware" for s in selected_rows):
+
+        if any(s["Server type"] == "neware" for s in selected_rows):
             # Should be an XML file or universal JSON file
-            if decoded.startswith('<?xml version="1.0"'):  # It's an XML file
-                if "BTS Client" in decoded and 'config type="Step File"' in decoded:
-                    return f"{filename} loaded", decoded
-                return f"ERROR: {filename} is not a Neware xml file", {}
-            try:  # It might be json
-                payload = json.loads(decoded)
-                required_keys = ["measurement", "safety", "method"]
-                if all(k in payload for k in required_keys) and isinstance(payload["method"], list):
+            if isinstance(payload, str):
+                if (
+                    payload.startswith('<?xml version="1.0"')
+                    and "BTS Client" in payload
+                    and 'config type="Step File"' in payload
+                ):
                     return f"{filename} loaded", payload
-                return f"ERROR: {filename} is not a unicycler json file", {}  # noqa: TRY300
-            except json.JSONDecodeError:
-                return f"ERROR: {filename} couldn't be parsed as xml or json", {}
+                return f"ERROR: {filename} is not a Neware xml file", {}
+
+            # It's a json dict
+            if any(k not in payload for k in unicycler_keys):
+                msg = f"ERROR: {filename} is not a unicycler json file"
+            return f"{filename} loaded", payload
+
         return "Huh, how did you even do this?", {}
 
     # Submit pop up - show custom capacity input if custom capacity is selected
     @app.callback(
         Output("submit-capacity", "style"),
+        Output("submit-capacity-display", "children"),
         Input("submit-crate", "value"),
+        Input("submit-crate-vals", "data"),
         prevent_initial_call=True,
     )
-    def submit_custom_crate(crate):
+    def submit_custom_crate(crate, capacities):
         if crate == "custom":
-            return {}
-        return {"display": "none"}
+            return {}, ""
+        capacity_vals = capacities.get(crate, {})  # sample: capacity
+        capacity_text = "\n".join(
+            f"✅ {s}: {c * 1000:.3f} mAh" if c is not None else f"❌ {s}: N/A " for s, c in capacity_vals.items()
+        )
+        return {"display": "none"}, capacity_text
 
     # Submit pop up - enable submit button if json valid and a capacity is given
     @app.callback(
@@ -1070,14 +1097,17 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("payload", "data"),
         Input("submit-crate", "value"),
         Input("submit-capacity", "value"),
+        Input("submit-crate-vals", "data"),
         prevent_initial_call=True,
     )
-    def enable_submit(payload, crate, capacity):
+    def enable_submit(payload, crate, capacity, capacity_vals):
         if not payload or not crate:
-            return True  # disabled
-        if crate == "custom" and (not capacity or capacity < 0 or capacity > 10):  # noqa: SIM103
-            return True  # disabled
-        return False  # enabled
+            return True  # Disable
+        if crate == "custom":
+            # Disable (True) if custom capacity is None or not a valid number
+            return not capacity or capacity < 0 or capacity > 10
+        # Disable (True) if any capacities are not valid
+        return any(c is None or c < 0 or c > 10 for c in capacity_vals[crate].values())
 
     # When submit button confirmed, submit the payload with sample and capacity, refresh database
     @app.callback(
