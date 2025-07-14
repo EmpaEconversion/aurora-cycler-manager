@@ -461,9 +461,10 @@ class ServerManager:
                     logger.warning(warning.message)
             else:
                 # Update database preemtively if no warnings were caught
+                ready = server.server_type == "neware"  # Neware behaves differently - ready if no sample
                 self.execute_sql(
-                    "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = 0 WHERE `Pipeline` = ?",
-                    (pipeline,),
+                    "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = ? WHERE `Pipeline` = ?",
+                    (ready, pipeline),
                 )
         return output
 
@@ -585,7 +586,7 @@ class ServerManager:
                 full_jobid = f"{server.label}-{jobid}"
                 if jobid_on_server:
                     self.execute_sql(
-                        "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ? WHERE `Pipeline` = ?",
+                        "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ?, `Ready` = 0 WHERE `Pipeline` = ?",
                         (full_jobid, jobid_on_server, pipeline),
                     )
 
@@ -865,6 +866,7 @@ class ServerManager:
         pipelines = [row[0] for row in result]
         serverids = [row[1] for row in result]
         for serverid, pipeline in zip(serverids, pipelines):
+            logger.info("Updating job ID for %s on server %s", pipeline, serverid)
             server = self.find_server(serverid)
             assert isinstance(server, NewareServer)  # noqa: S101
             jobid_on_server = server._get_job_id(pipeline)  # noqa: SLF001
