@@ -304,7 +304,7 @@ class Protocol(BaseModel):
         ET.SubElement(head_info, "Operate", Value="66")
         ET.SubElement(head_info, "Scale", Value="1")
         ET.SubElement(head_info, "Start_Step", Value="1", Hide_Ctrl_Step="0")
-        ET.SubElement(head_info, "Creator", Value="aurora_cycler_manager.protocol")
+        ET.SubElement(head_info, "Creator", Value="aurora_cycler_manager.unicycler")
         ET.SubElement(head_info, "Remark", Value=self.sample.name)
         # 103, non C-rate mode, seems to give more precise values vs 105
         ET.SubElement(head_info, "RateType", Value="103")
