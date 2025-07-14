@@ -173,7 +173,7 @@ custom_spinner = html.Div(
 
 # Loading messages
 loading_message = html.Div(
-    "This is some kind of text",
+    "",
     id="loading-message",
     style={
         "position": "absolute",

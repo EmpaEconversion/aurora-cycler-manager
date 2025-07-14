@@ -92,21 +92,25 @@ TABLES = [
 ]
 samples_table = dag.AgGrid(
     id="samples-table",
+    selectedRows=[],
     getRowId="params.data['Sample ID']",
     **DEFAULT_TABLE_OPTIONS,
 )
 pipelines_table = dag.AgGrid(
     id="pipelines-table",
+    selectedRows=[],
     getRowId="params.data['Pipeline']",
     **DEFAULT_TABLE_OPTIONS,
 )
 jobs_table = dag.AgGrid(
     id="jobs-table",
+    selectedRows=[],
     getRowId="params.data['Job ID']",
     **DEFAULT_TABLE_OPTIONS,
 )
 results_table = dag.AgGrid(
     id="results-table",
+    selectedRows=[],
     getRowId="params.data['Sample ID']",
     **DEFAULT_TABLE_OPTIONS,
 )
@@ -618,6 +622,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Output("len-store", "data"),
         Input("table-data-store", "data"),
         running=[(Output("loading-message-store", "data"), "Updating tables...", "")],
+        prevent_initial_call=True,
     )
     def update_data(data: dict[str, dict]) -> tuple:
         return (
@@ -721,6 +726,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         [Output(b, "disabled") for b in BUTTONS],
         Input("selected-rows-store", "data"),
         State("table-select", "value"),
+        prevent_initial_call=True,
     )
     def enable_buttons(selected_rows, table):
         enabled = set()
@@ -773,6 +779,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("copy-button", "n_clicks"),
         State("selected-rows-store", "data"),
         State("clipboard", "n_clicks"),
+        prevent_initial_call=True,
     )
     def copy_button(n, selected_rows, nclip):
         if selected_rows:
@@ -788,6 +795,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("eject-button", "n_clicks"),
         Input("eject-yes-close", "n_clicks"),
         State("eject-modal", "opened"),
+        prevent_initial_call=True,
     )
     def eject_sample_button(eject_clicks, yes_clicks, is_open):
         if not ctx.triggered:
@@ -827,6 +835,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("load-modal", "opened"),
         State("selected-rows-store", "data"),
         State("samples-store", "data"),
+        prevent_initial_call=True,
     )
     def load_sample_button(load_clicks, yes_clicks, is_open, selected_rows, possible_samples):
         if not selected_rows or not ctx.triggered:
@@ -862,6 +871,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("load-clear", "n_clicks"),
         State({"type": "load-dropdown", "index": ALL}, "value"),
         State("samples-store", "data"),
+        prevent_initial_call=True,
     )
     def update_load_selection(inc_clicks, clear_clicks, selected_samples, possible_samples):
         if not ctx.triggered:
@@ -914,6 +924,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("ready-button", "n_clicks"),
         Input("ready-yes-close", "n_clicks"),
         State("ready-modal", "opened"),
+        prevent_initial_call=True,
     )
     def ready_pipeline_button(ready_clicks, yes_clicks, is_open):
         if not ctx.triggered:
@@ -951,6 +962,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("unready-button", "n_clicks"),
         Input("unready-yes-close", "n_clicks"),
         State("unready-modal", "opened"),
+        prevent_initial_call=True,
     )
     def unready_pipeline_button(unready_clicks, yes_clicks, is_open):
         if not ctx.triggered:
@@ -1115,6 +1127,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("cancel-button", "n_clicks"),
         Input("cancel-yes-close", "n_clicks"),
         State("cancel-modal", "opened"),
+        prevent_initial_call=True,
     )
     def cancel_job_button(cancel_clicks, yes_clicks, is_open):
         if not ctx.triggered:
@@ -1166,6 +1179,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("snapshot-button", "n_clicks"),
         Input("snapshot-yes-close", "n_clicks"),
         State("snapshot-modal", "opened"),
+        prevent_initial_call=True,
     )
     def snapshot_sample_button(snapshot_clicks, yes_clicks, is_open):
         if not ctx.triggered:
@@ -1203,6 +1217,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("delete-button", "n_clicks"),
         Input("delete-yes-close", "n_clicks"),
         State("delete-modal", "opened"),
+        prevent_initial_call=True,
     )
     def delete_sample_button(delete_clicks, yes_clicks, is_open):
         if not ctx.triggered:
@@ -1276,6 +1291,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("label-button", "n_clicks"),
         Input("label-yes-close", "n_clicks"),
         State("label-modal", "opened"),
+        prevent_initial_call=True,
     )
     def label_sample_button(label_clicks, yes_clicks, is_open):
         if not ctx.triggered:
@@ -1310,6 +1326,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     @app.callback(
         Output("add-samples-button-element", "disabled"),
         Input("add-samples-button", "disabled"),
+        prevent_initial_call=True,
     )
     def disabled_sync(disabled):
         return disabled

@@ -237,7 +237,7 @@ batch_cycle_graph = dcc.Graph(
         "layout": go.Layout(
             template=graph_template,
             margin=graph_margin,
-            title="vs cycle",
+            title="",
             xaxis={"title": "Cycle"},
             yaxis={"title": ""},
         ),
@@ -472,6 +472,7 @@ def register_batches_callbacks(app: Dash) -> None:
         Output("batch-batch-dropdown", "data"),
         Output("batch-edit-batch", "data"),
         Input("batches-store", "data"),
+        prevent_initial_call=True,
     )
     def update_batches_dropdown(batches: dict[str, dict]) -> tuple[list[dict], list[dict]]:
         data = [{"label": b, "value": b} for b in batches]
@@ -570,6 +571,7 @@ def register_batches_callbacks(app: Dash) -> None:
         Input("batch-cycle-discrete-colormap", "value"),
         Input("batch-cycle-style", "value"),
         running=[(Output("loading-message-store", "data"), "Analysing data...", "")],
+        prevent_initial_call=True,
     )
     def update_color_style_store(
         data: dict,
@@ -684,6 +686,7 @@ def register_batches_callbacks(app: Dash) -> None:
         Input("trace-style-store", "data"),
         Input("batch-cycle-y", "value"),
         running=[(Output("loading-message-store", "data"), "Plotting data...", "")],
+        prevent_initial_call=True,
     )
     def update_batch_cycle_graph(
         fig: dict,
@@ -819,6 +822,7 @@ def register_batches_callbacks(app: Dash) -> None:
         State("batch-correlation-map", "figure"),
         Input("batches-data-store", "data"),
         running=[(Output("loading-message-store", "data"), "Plotting correlations...", "")],
+        prevent_initial_call=True,
     )
     def update_correlation_map(fig: dict, data: dict) -> tuple[dict, list[dict], list[dict]]:
         """Update correlation map when new data is loaded."""
@@ -874,6 +878,7 @@ def register_batches_callbacks(app: Dash) -> None:
         Output("batch-correlation-x", "value"),
         Output("batch-correlation-y", "value"),
         Input("batch-correlation-map", "clickData"),
+        prevent_initial_call=True,
     )
     def update_correlation_vars(click_data: dict) -> tuple[str, str]:
         """Update the x and y variables based on the clicked data."""
@@ -893,6 +898,7 @@ def register_batches_callbacks(app: Dash) -> None:
         Input("batch-correlation-x", "value"),
         Input("batch-correlation-y", "value"),
         Input("batch-correlation-legend", "checked"),
+        prevent_initial_call=True,
     )
     def update_correlation_graph(
         fig: dict,
@@ -919,6 +925,7 @@ def register_batches_callbacks(app: Dash) -> None:
         if x_categorical:
             fig["layout"]["xaxis"]["type"] = "category"
             x = [s.get(xvar, "None") for s in data.values()]
+            x = [v if v is not None else "None" for v in x]
             x_categories = sorted(set(x))
             fig["layout"]["xaxis"]["categoryorder"] = "array"
             fig["layout"]["xaxis"]["categoryarray"] = x_categories
@@ -932,6 +939,7 @@ def register_batches_callbacks(app: Dash) -> None:
         if y_categorical:
             fig["layout"]["yaxis"]["type"] = "category"
             y = [s.get(yvar, "None") for s in data.values()]
+            y = [v if v is not None else "None" for v in y]
             y_categories = sorted(set(y))
             fig["layout"]["yaxis"]["categoryorder"] = "array"
             fig["layout"]["yaxis"]["categoryarray"] = y_categories

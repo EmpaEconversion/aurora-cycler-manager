@@ -38,6 +38,8 @@ samples_menu = html.Div(
                 clearable=True,
                 checkIconPosition="right",
                 comboboxProps={"offset": 0},
+                value=[],
+                data=[],
             ),
             dmc.Tooltip(
                 dmc.Checkbox(
@@ -145,7 +147,7 @@ time_graph = dcc.Graph(
         "layout": go.Layout(
             template=graph_template,
             margin=graph_margin,
-            title="vs time",
+            title="",
             xaxis={"title": "Time"},
             yaxis={"title": ""},
             showlegend=False,
@@ -162,7 +164,7 @@ cycles_graph = dcc.Graph(
         "layout": go.Layout(
             template=graph_template,
             margin=graph_margin,
-            title="vs cycle",
+            title="",
             xaxis={"title": "Cycle"},
             yaxis={"title": ""},
             showlegend=False,
@@ -179,7 +181,7 @@ one_cycle_graph = dcc.Graph(
         "layout": go.Layout(
             template=graph_template,
             margin=graph_margin,
-            title="One cycle",
+            title="",
             xaxis={"title": ""},
             yaxis={"title": ""},
             showlegend=False,
@@ -265,11 +267,11 @@ def register_samples_callbacks(app: Dash) -> None:
         Output("batch-samples-dropdown", "data"),
         Output("batch-edit-samples", "data"),
         Input("samples-store", "data"),
+        prevent_initial_call=True,
     )
     def update_samples_dropdown(samples: list):
         """Update available samples in the dropdown."""
-        options = [{"label": s, "value": s} for s in samples]
-        return options, options, options
+        return samples, samples, samples
 
     # Update the samples data store
     @app.callback(
@@ -280,6 +282,7 @@ def register_samples_callbacks(app: Dash) -> None:
         Input("compressed-files", "checked"),
         State("samples-data-store", "data"),
         running=[(Output("loading-message-store", "data"), "Loading data...", "")],
+        prevent_initial_call=True,
     )
     def update_sample_data(samples: list, compressed: bool, data: dict) -> tuple[dict, list, list]:
         """Load data for selected samples and put in data store."""
@@ -372,6 +375,7 @@ def register_samples_callbacks(app: Dash) -> None:
         Input("samples-time-units", "value"),
         Input("samples-time-y", "value"),
         running=[(Output("loading-message-store", "data"), "Plotting time-series...", "")],
+        prevent_initial_call=True,
     )
     def update_time_graph(fig: dict, data: dict, xvar: str, xunits: str, yvar: str) -> dict:
         """When data or x/y variables change, update the time graph."""
@@ -428,6 +432,7 @@ def register_samples_callbacks(app: Dash) -> None:
         Input("samples-data-store", "data"),
         Input("samples-cycles-y", "value"),
         running=[(Output("loading-message-store", "data"), "Plotting cycles...", "")],
+        prevent_initial_call=True,
     )
     def update_cycles_graph(fig: dict, data: dict, yvar: str) -> dict:
         """When data or y variable changes, update the cycles graph."""
@@ -456,6 +461,7 @@ def register_samples_callbacks(app: Dash) -> None:
     @app.callback(
         Output("cycle-number", "value"),
         Input("cycles-graph", "clickData"),
+        prevent_initial_call=True,
     )
     def update_cycle_number(click_data: dict) -> int:
         """When the user clicks on a point, update the cycle number input."""
@@ -473,6 +479,7 @@ def register_samples_callbacks(app: Dash) -> None:
         Input("samples-cycle-x", "value"),
         Input("samples-cycle-y", "value"),
         running=[(Output("loading-message-store", "data"), "Plotting one-cycle...", "")],
+        prevent_initial_call=True,
     )
     def update_cycle_graph(fig: dict, cycle: int, data: dict, xvar: str, yvar: str) -> dict:
         """When data or x/y variables change, update the one cycle graph."""
