@@ -173,13 +173,16 @@ def harvest_neware_files(
     return new_files
 
 
-def snapshot_raw_data(job_id: str) -> None:
+def snapshot_raw_data(job_id: str) -> Path | None:
     """Copy latest data from server into local .ndax file.
 
     Connects to server, searches for the raw .ndc files, copies into local .ndax file.
 
     Args:
         job_id (str): full job ID from database with server label e.g. nw4-22-6-4-26
+
+    Returns:
+        Path to the .ndax file created or modified, or None if no files updated.
 
     """
     # Job ID has form {server_label}-{device_id}-{subdevice_id}-{channel_id}-{test_id}
@@ -275,6 +278,7 @@ def snapshot_raw_data(job_id: str) -> None:
         found_files = json.loads(output)
 
         # Create or update the ndax file with new raw data
+        ndax_path = None
         if any(file is not None for file in found_files.values()):
             ndax_path = get_snapshot_folder() / f"{job_id}.ndax"
             logger.info("Updating ndax file at '%s'", ndax_path)
@@ -298,6 +302,7 @@ def snapshot_raw_data(job_id: str) -> None:
                     for file in tmp_path.rglob("*"):
                         if file.is_file():
                             zf.write(file, arcname=file.relative_to(tmp_path))
+    return ndax_path
 
 
 def harvest_all_neware_files(force_copy: bool = False) -> list[Path]:
