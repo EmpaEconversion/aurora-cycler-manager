@@ -22,12 +22,14 @@ Run the script to harvest and convert all neware files.
 
 from __future__ import annotations
 
+import base64
 import gzip
 import json
 import logging
 import os
 import re
 import sqlite3
+import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -169,6 +171,133 @@ def harvest_neware_files(
         cursor.close()
 
     return new_files
+
+
+def snapshot_raw_data(job_id: str) -> None:
+    """Copy latest data from server into local .ndax file.
+
+    Connects to server, searches for the raw .ndc files, copies into local .ndax file.
+
+    Args:
+        job_id (str): full job ID from database with server label e.g. nw4-22-6-4-26
+
+    """
+    # Job ID has form {server_label}-{device_id}-{subdevice_id}-{channel_id}-{test_id}
+    server_label, dev_id, subdev_id, channel_id, test_id = job_id.split("-")
+    # Neware has a different format for raw data. Folder is raw_data_folder/YYYYMMDD/,
+    # file is YYYYMMDD_HHMMSS_27{len(4) 0 padded device_id}_0_{(subdevid-1)*8 + channel_id}_{test_id} + file type .ndc
+
+    # Get the job server label and submit date from the database
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT `Submitted`, `Server label` FROM jobs WHERE `Job ID` = ?",
+            (job_id,),
+        )
+        row = cursor.fetchone()
+        cursor.close()
+    if not row:
+        msg = f"No job found with ID '{job_id}' in database."
+        raise ValueError(msg)
+    submitted = row[0].split(" ")[0].replace("-", "")  # Get YYYYMMDD format
+    server_label = row[1]
+
+    # Get the server from the config
+    server = next((server for server in CONFIG["Neware harvester"]["Servers"] if server["label"] == server_label), None)
+    if not server:
+        msg = f"No server found with label '{server_label}' in config."
+        raise ValueError(msg)
+    server_hostname = server["hostname"]
+    server_username = server["username"]
+    server_shell_type = server["shell_type"]
+    raw_data_folder = server.get("Neware raw folder location", "C:/Program Files (x86)/NEWARE/BTSServer80/NdcFile/")
+
+    # Build the paths to check - assumes device type 27
+    full_folder = raw_data_folder + submitted
+    full_folder_alt = full_folder + "_NoTestInfoData"
+    file_middle = (
+        "27" + str(dev_id).zfill(4) + "_0_" + str((int(subdev_id) - 1) * 8 + int(channel_id)) + "_" + str(test_id)
+    )
+
+    # Powershell command to return paths of files matching the pattern
+    powershell_command = f"""
+        $ProgressPreference = 'SilentlyContinue'
+
+        $searchFolders = @("{full_folder}", "{full_folder_alt}")
+        $file_middle = "{file_middle}"
+        $file_endings = @(".ndc", "_step.ndc", "_runInfo.ndc", "_log.ndc", "_es.ndc")
+
+        $foundFiles = [ordered]@{{}}
+        foreach ($ending in $file_endings) {{
+            $matchedFile = $null
+            foreach ($folder in $searchFolders) {{
+                if (Test-Path $folder) {{
+                    $pattern = "*$file_middle$ending"
+                    $match = Get-ChildItem -Path $folder -Recurse -File -ErrorAction SilentlyContinue |
+                        Where-Object {{ $_.Name -like $pattern }} | Select-Object -First 1
+
+                    if ($match) {{
+                        $matchedFile = $match.FullName
+                        break
+                    }}
+                }}
+            }}
+            $foundFiles[$ending] = $matchedFile
+        }}
+        $foundFiles | ConvertTo-Json -Compress
+    """
+
+    # Connect to the server
+    with paramiko.SSHClient() as ssh:
+        ssh.load_system_host_keys()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        logger.info("Connecting to host %s user %s", server_hostname, server_username)
+        ssh.connect(server_hostname, username=server_username, key_filename=str(CONFIG.get("SSH private key path")))
+
+        # Use powershell command to search for the files on the server
+        if server_shell_type == "powershell":
+            command = powershell_command
+        elif server_shell_type == "cmd":
+            # Base64 encode the command to avoid quote/semicolon issues
+            encoded_script = base64.b64encode(powershell_command.encode("utf-16le")).decode("ascii")
+            command = f"powershell.exe -EncodedCommand {encoded_script}"
+        else:
+            msg = f"Unsupported shell type '{server_shell_type}' for server {server_label}."
+            raise ValueError(msg)
+        _stdin, stdout, stderr = ssh.exec_command(command)
+
+        # Parse the output
+        output = stdout.read().decode("utf-8").strip()
+        error = stderr.read().decode("utf-8").strip()
+        if error:
+            msg = f"Error finding raw files: {error}"
+            raise RuntimeError(msg)
+        found_files = json.loads(output)
+
+        # Create or update the ndax file with new raw data
+        if any(file is not None for file in found_files.values()):
+            ndax_path = get_snapshot_folder() / f"{job_id}.ndax"
+            logger.info("Updating ndax file at '%s'", ndax_path)
+
+            # Create a temporary directory to store the files
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_path = Path(tmp)
+
+                # If ndax already exists, extract it to the temporary directory
+                if ndax_path.exists():
+                    with zipfile.ZipFile(ndax_path, "r") as zf:
+                        zf.extractall(tmp_path)
+
+                # Copy the new files over, replacing any existing ones
+                with ssh.open_sftp() as sftp:
+                    for ending, file in found_files.items():
+                        sftp.get(file, tmp_path / ("data" + ending))
+
+                # Write a new zip
+                with zipfile.ZipFile(ndax_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for file in tmp_path.rglob("*"):
+                        if file.is_file():
+                            zf.write(file, arcname=file.relative_to(tmp_path))
 
 
 def harvest_all_neware_files(force_copy: bool = False) -> list[Path]:
