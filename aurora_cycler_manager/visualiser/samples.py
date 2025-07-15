@@ -27,7 +27,7 @@ graph_margin = {"l": 75, "r": 20, "t": 50, "b": 75}
 
 # Side menu for the samples tab
 samples_menu = html.Div(
-    style={"overflow": "scroll", "height": "100%"},
+    style={"overflow": "auto", "height": "100%"},
     children=dmc.Stack(
         p="xs",
         children=[

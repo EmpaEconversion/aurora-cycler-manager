@@ -59,7 +59,7 @@ def to_rgba(color_str: str, alpha: float = 0.2) -> str:
 
 
 batches_menu = html.Div(
-    style={"overflow": "scroll", "height": "100%"},
+    style={"overflow": "auto", "height": "100%"},
     children=dmc.Stack(
         p="xs",
         children=[

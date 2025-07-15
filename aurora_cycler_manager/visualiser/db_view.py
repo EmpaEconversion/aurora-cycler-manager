@@ -78,7 +78,7 @@ DEFAULT_TABLE_OPTIONS: dict[str, str | dict] = {
         "cellRenderer": "agAnimateShowChangeCellRenderer",
     },
     "style": {
-        "height": "calc(100vh - 195px)",
+        "height": "calc(100vh - 200px)",
         "width": "100%",
         "minHeight": "300px",
         "display": "none",
@@ -545,7 +545,7 @@ db_view_layout = html.Div(
             style={"display": "none"},
         ),
         html.Div(
-            style={"height": "100%", "overflow": "scroll"},
+            style={"height": "100%", "overflow": "auto"},
             children=[
                 # Buttons to select which table to display
                 dmc.Tabs(
