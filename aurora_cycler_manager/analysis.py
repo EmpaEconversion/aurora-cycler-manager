@@ -557,8 +557,9 @@ def analyse_cycles(
     # If the job is not complete but a discharge has started, set the last discharge data to NaN
     complete = 1
     if (
-        (snapshot_status in ["r", "cd", "ce"] and started_charge and started_discharge)  # tomato
-        or (finished is False)  # Neware
+        started_charge
+        and started_discharge
+        and (snapshot_status in ["r", "cd", "ce"] or finished is False)  # job is still running
     ):
         discharge_capacity_mAh[-1] = np.nan
         complete = 0
