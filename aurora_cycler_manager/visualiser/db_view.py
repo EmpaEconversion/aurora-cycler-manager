@@ -743,9 +743,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
                     if all_samples:
                         enabled |= {"label-button", "create-batch-button"}
                         if all_servers:
-                            enabled |= {"submit-button"}
-                            if all_tomato:
-                                enabled |= {"snapshot-button"}
+                            enabled |= {"submit-button", "snapshot-button"}
                             if all(s["Job ID"] is None for s in selected_rows):
                                 enabled |= {"eject-button"}
                                 if all_tomato:
