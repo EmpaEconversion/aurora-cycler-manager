@@ -567,7 +567,6 @@ def get_neware_metadata_from_db(job_id: str) -> dict:
             (job_id,),
         )
         row = cursor.fetchone()
-        cursor.close()
 
         # Check if the job is still running with pipelines table
         cursor.execute(
@@ -575,6 +574,7 @@ def get_neware_metadata_from_db(job_id: str) -> dict:
             (job_id,),
         )
         finished = cursor.fetchone() is None
+
     if not row:
         msg = f"No metadata found for Job ID '{job_id}' in database."
         raise ValueError(msg)
