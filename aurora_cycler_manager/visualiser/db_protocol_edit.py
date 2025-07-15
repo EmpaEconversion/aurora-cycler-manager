@@ -149,6 +149,8 @@ protocol_edit_grid = AgGrid(
     id="protocol-edit-grid",
     columnDefs=column_defs,
     rowData=[],
+    virtualRowData=[],
+    selectedRows=[],
     getRowId="params.data.id",
     defaultColDef={
         "editable": False,
@@ -816,6 +818,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         [Output(x + "-group", "style") for x in ALL_TECHNIQUE_INPUTS],
         Output("technique-settings", "style"),
         Input("technique-select", "value"),
+        prevent_initial_call=True,
     )
     def update_technique_inputs(technique: str) -> list[dict]:
         """Update the input fields based on the selected technique."""
@@ -867,6 +870,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Output("submit", "disabled"),
         Input("technique-select", "value"),
         [Input(x, "value") for x in ALL_TECHNIQUE_INPUTS],
+        prevent_initial_call=True,
     )
     def validate_step(technique: str, *input_values: list[str | float | None]) -> tuple[dict, str, bool]:
         # If no valid technique, don't validate
@@ -973,6 +977,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Output("protocol-save-button", "disabled"),
         Input("protocol-warning", "style"),
         Input("protocol-name", "value"),
+        prevent_initial_call=True,
     )
     def update_save_button(warning: dict, name: str) -> bool:
         """Update the save button based on the protocol validity and name."""
