@@ -35,7 +35,6 @@ import paramiko
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.cycler_servers import CyclerServer, NewareServer, TomatoServer
-from aurora_cycler_manager.tomato_converter import convert_tomato_json, get_snapshot_folder
 from aurora_cycler_manager.utils import run_from_sample
 
 CONFIG = get_config()
@@ -640,13 +639,13 @@ class ServerManager:
         result = self.execute_sql("SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?", (samp_or_jobid,))
         if result:  # it's a sample
             result = self.execute_sql(
-                "SELECT `Sample ID`, `Status`, `Job ID on server`, `Server label`, `Snapshot Status` "
+                "SELECT `Sample ID`, `Status`, `Job ID`, `Job ID on server`, `Server label`, `Snapshot Status` "
                 "FROM jobs WHERE `Sample ID` = ? ",
                 (samp_or_jobid,),
             )
         else:  # it's a job ID
             result = self.execute_sql(
-                "SELECT `Sample ID`, `Status`, `Job ID on server`, `Server label`, `Snapshot Status` "
+                "SELECT `Sample ID`, `Status`, `Job ID`, `Job ID on server`, `Server label`, `Snapshot Status` "
                 "FROM jobs WHERE `Job ID` = ?",
                 (samp_or_jobid,),
             )
@@ -654,8 +653,7 @@ class ServerManager:
             msg = f"Sample or job ID '{samp_or_jobid}' not found in the database."
             raise ValueError(msg)
 
-        for sample_id, status, jobid_on_server, server_label, snapshot_status in result:
-            jobid = f"{server_label}-{jobid_on_server}"
+        for sample_id, status, jobid, jobid_on_server, server_label, snapshot_status in result:
             if not sample_id:
                 logger.warning("Job %s has no sample, skipping.", jobid)
                 continue
@@ -667,7 +665,7 @@ class ServerManager:
 
             local_save_location_processed = Path(self.config["Processed snapshots folder path"]) / run_id / sample_id
 
-            files_exist = (local_save_location_processed / "snapshot.jobid.h5").exists()
+            files_exist = (local_save_location_processed / f"snapshot.{jobid}.h5").exists()
             if files_exist and mode != "always":
                 if mode == "if_not_exists":
                     logger.info("Snapshot for %s already exists, skipping.", jobid)
@@ -683,14 +681,8 @@ class ServerManager:
 
             # Otherwise snapshot the job
             server = self.find_server(server_label)
-            if server.server_type == "tomato":
-                local_save_location = get_snapshot_folder() / run_id / sample_id
-            else:
-                msg = f"Server type {server.server_type} not supported for snapshotting."
-                raise NotImplementedError(msg)
             try:
-                logger.info("Snapshotting sample %s job %s", sample_id, jobid)
-                new_snapshot_status = server.snapshot(jobid, jobid_on_server, local_save_location, get_raw)
+                new_snapshot_status = server.snapshot(sample_id, jobid, jobid_on_server, get_raw=get_raw)
             except FileNotFoundError as e:
                 msg = (
                     f"Error snapshotting {jobid}: {e}\n"
@@ -717,14 +709,10 @@ class ServerManager:
                 "UPDATE jobs SET `Snapshot status` = ?, `Last snapshot` = ? WHERE `Job ID` = ?",
                 (new_snapshot_status, dt, jobid),
             )
-            # Process the file and save to processed snapshots folder
-            convert_tomato_json(
-                f"{local_save_location}/snapshot.{jobid}.json",
-                output_hdf_file=True,
-                output_jsongz_file=False,
-            )
-            # Analyse the new data
-            analyse_sample(sample_id)
+
+        # Analyse the new data (only once per sample)
+        for unique_sample_id in {sample_id for sample_id, *_ in result}:
+            analyse_sample(unique_sample_id)
 
     def snapshot_all(
         self,

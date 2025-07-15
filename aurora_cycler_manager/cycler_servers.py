@@ -21,7 +21,9 @@ import paramiko
 from scp import SCPClient
 
 from aurora_cycler_manager import unicycler
-from aurora_cycler_manager.tomato_converter import puree_tomato
+from aurora_cycler_manager.neware_harvester import convert_neware_data, snapshot_raw_data
+from aurora_cycler_manager.tomato_converter import convert_tomato_json, get_snapshot_folder, puree_tomato
+from aurora_cycler_manager.utils import run_from_sample
 
 logger = logging.getLogger(__name__)
 
@@ -119,11 +121,11 @@ class CyclerServer:
 
     def snapshot(
         self,
+        sample_id: str,
         jobid: str,
         jobid_on_server: str,
-        local_save_location: str,
-        get_raw: bool,
-    ) -> str:
+        get_raw: bool = False,
+    ) -> str | None:
         """Save a snapshot of a job on the server and download it to the local machine."""
         raise NotImplementedError
 
@@ -274,11 +276,11 @@ class TomatoServer(CyclerServer):
 
     def snapshot(
         self,
+        sample_id: str,
         jobid: str,
         jobid_on_server: str,
-        local_save_location: str,
         get_raw: bool = False,
-    ) -> str:
+    ) -> str | None:
         """Save a snapshot of a job on the server and download it to the local machine.
 
         Args:
@@ -293,6 +295,9 @@ class TomatoServer(CyclerServer):
         """
         # Save a snapshot on the remote machine
         remote_save_location = f"{self.save_location}/{jobid_on_server}"
+        run_id = run_from_sample(sample_id)
+        local_save_location = get_snapshot_folder() / run_id / sample_id
+
         if self.shell_type == "powershell":
             self.command(
                 f'if (!(Test-Path "{remote_save_location}")) '
@@ -327,7 +332,7 @@ class TomatoServer(CyclerServer):
         except ValueError as e:
             emsg = str(e)
             if "AssertionError" in emsg and "os.path.isdir(jobdir)" in emsg:
-                raise FileNotFoundError from e
+                raise FileNotFoundError from e  # TODO make this error more deterministic up the chain
             raise
         logger.info("Snapshotted file on remote server %s", self.label)
         # Get local directory to save the snapshot data
@@ -361,8 +366,15 @@ class TomatoServer(CyclerServer):
                     )
         finally:
             ssh.close()
+
         # Compress the local snapshot file
         puree_tomato(f"{local_save_location}/snapshot.{jobid}.json")
+
+        # Convert the snapshot file to hdf5
+        convert_tomato_json(
+            f"{local_save_location}/snapshot.{jobid}.json",
+            output_hdf_file=True,
+        )
 
         return snapshot_status
 
@@ -614,13 +626,17 @@ class NewareServer(CyclerServer):
 
     def snapshot(
         self,
+        sample_id: str,
         jobid: str,
-        jobid_on_server: str,
-        local_save_location: str,
-        get_raw: bool,
-    ) -> str:
+        jobid_on_server: str,  # noqa: ARG002
+        get_raw: bool = False,  # noqa: ARG002
+    ) -> str | None:
         """Save a snapshot of a job on the server and download it to the local machine."""
-        raise NotImplementedError
+        ndax_path = snapshot_raw_data(jobid)
+        if ndax_path:
+            convert_neware_data(ndax_path, sample_id, output_hdf5_file=True)
+
+        return None  # Neware does not have a snapshot status like tomato
 
     def get_job_data(self, jobid_on_server: str) -> dict:
         """Get the jobdata dict for a job."""
