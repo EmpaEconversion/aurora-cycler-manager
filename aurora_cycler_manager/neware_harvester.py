@@ -251,6 +251,15 @@ def get_neware_xlsx_metadata(file_path: Path) -> dict:
 
     # Add to test_info
     test_info["Payload"] = payload_dict
+
+    # Check if test is finished
+    df = pd.read_excel(file_path, sheet_name="log", header=None, engine="calamine")
+    if df["Event"].iloc[-1] == "Finished test":
+        test_info["End time"] = df["Time"].iloc[-1]
+        test_info["Finished"] = True
+    else:
+        test_info["Finished"] = False
+
     return test_info
 
 
@@ -393,6 +402,9 @@ def get_neware_ndax_metadata(file_path: Path) -> dict:
         testinfo = testinfo.get("root", {}).get("config", {}).get("TestInfo", {})
         metadata["Barcode"] = testinfo.get("Barcode")
         metadata["Start time"] = testinfo.get("StartTime")
+        endtime = testinfo.get("EndTime")
+        metadata["End time"] = endtime if endtime else None
+        metadata["Finished"] = bool(endtime)
         metadata["Step name"] = testinfo.get("StepName")
         metadata["Device type"] = testinfo.get("DevType")
         metadata["Device ID"] = testinfo.get("DevID")
@@ -427,6 +439,13 @@ def get_neware_metadata_from_db(job_id: str) -> dict:
         )
         row = cursor.fetchone()
         cursor.close()
+
+        # Check if the job is still running with pipelines table
+        cursor.execute(
+            "SELECT 1 FROM pipelines WHERE `Job ID` = ? LIMIT 1",
+            (job_id,),
+        )
+        finished = cursor.fetchone() is None
     if not row:
         msg = f"No metadata found for Job ID '{job_id}' in database."
         raise ValueError(msg)
@@ -441,6 +460,7 @@ def get_neware_metadata_from_db(job_id: str) -> dict:
     metadata["Channel ID"] = Channel_ID
     metadata["Test ID"] = Test_ID
     metadata["Barcode"] = row["Sample ID"]
+    metadata["Finished"] = finished
     return metadata
 
 

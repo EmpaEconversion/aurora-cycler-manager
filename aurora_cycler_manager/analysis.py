@@ -462,7 +462,8 @@ def analyse_cycles(
     sample_data = metadata.get("sample_data", {})
     sampleid = sample_data.get("Sample ID", None)
     job_data = metadata.get("job_data", None)
-    snapshot_status = job_data[-1].get("Snapshot status", None) if job_data else None
+    snapshot_status = job_data[-1].get("Snapshot status", None) if job_data else None  # Used in tomato
+    finished = job_data[-1].get("Finished", None) if job_data else None  # Used in Newares
     snapshot_pipeline = job_data[-1].get("Pipeline", None) if job_data else None
     last_snapshot = job_data[-1].get("Last snapshot", None) if job_data else None
 
@@ -555,7 +556,10 @@ def analyse_cycles(
     # A row is added if charge data is complete and discharge started, but it may have incomplete discharge data
     # If the job is not complete but a discharge has started, set the last discharge data to NaN
     complete = 1
-    if snapshot_status in ["r", "cd", "ce"] and started_charge and started_discharge:
+    if (
+        (snapshot_status in ["r", "cd", "ce"] and started_charge and started_discharge)  # tomato
+        or (finished is False)  # Neware
+    ):
         discharge_capacity_mAh[-1] = np.nan
         complete = 0
 
