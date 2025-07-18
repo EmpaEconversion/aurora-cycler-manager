@@ -59,8 +59,8 @@ class CyclerServer:
                 self.command_prefix + command + self.command_suffix,
                 timeout=timeout,
             )
-            output = stdout.read().decode("utf-8")
-            error = stderr.read().decode("utf-8")
+            output = stdout.read().decode("utf-8").strip()
+            error = stderr.read().decode("utf-8").strip()
         if error:
             if error.startswith("WARNING"):
                 logger.warning("Warning running '%s' on %s: %s", command, self.label, error)
@@ -654,4 +654,190 @@ class NewareServer(CyclerServer):
     def _get_job_id(self, pipeline: str) -> str:
         """Get the testid for a pipeline."""
         output = self.command(f"neware get-job-id {pipeline} --full-id")
+        return json.loads(output).get(pipeline)
+
+
+class BiologicServer(CyclerServer):
+    """Server class for Biologic servers, implements all the methods in CyclerServer.
+
+    Used by server_manager to interact with Biologic servers, should not be instantiated directly.
+
+    A Biologic server is a PC running EC-lab (11.52) with OLE-COM registered and the aurora-biologic
+    CLI installed. The 'biologic' CLI command should be accessible in the PATH. If it is not by
+    default, use the 'command_prefix' in the shared config to add it to the PATH.
+    """
+
+    def __init__(self, server_config: dict, local_private_key_path: str | Path) -> None:
+        """Initialise server object."""
+        super().__init__(server_config, local_private_key_path)
+        self.biologic_protocols_path = server_config.get("biologic_protocols_path", "C:/aurora/protocols/")
+        self.biologic_data_path = server_config.get("biologic_data_path", "C:/aurora/data/")
+
+    def eject(self, pipeline: str) -> str:
+        """Remove a sample from a pipeline.
+
+        Do not need to actually change anything on Biologic client, just update the database.
+        """
+        return f"Ejecting {pipeline}"
+
+    def load(self, sample: str, pipeline: str) -> str:
+        """Load a sample onto a pipeline.
+
+        Do not need to actually change anything on Biologic client, just update the database.
+        """
+        return f"Loading {sample} onto {pipeline}"
+
+    def ready(self, pipeline: str) -> str:
+        """Readying and unreadying does not exist on Biologic."""
+        raise NotImplementedError
+
+    def submit(
+        self, sample: str, capacity_Ah: float, payload: str | dict | Path, pipeline: str
+    ) -> tuple[str, str, str]:
+        """Submit a job to the server.
+
+        Uses the start command on the aurora-biologic CLI.
+        """
+        # Parse the input into an xml string
+        if not isinstance(payload, str | Path | dict):
+            msg = "For Biologic, payload must be a unicycler protocol, either a dict, or path to a JSON file."
+            raise TypeError(msg)
+        if isinstance(payload, dict):  # assume unicycler dict
+            mps_string = unicycler.from_dict(payload, sample, capacity_Ah * 1000).to_eclab_settings()
+        elif isinstance(payload, (Path, str)):  # it is a file path
+            payload = Path(payload)
+            if not payload.exists():
+                raise FileNotFoundError
+            if payload.suffix == ".json":
+                with payload.open(encoding="utf-8") as f:
+                    mps_string = unicycler.from_dict(json.load(f), sample, capacity_Ah * 1000).to_eclab_settings()
+            else:
+                msg = "Payload must be a path to a unicycler json file or dict."
+                raise TypeError(msg)
+
+        # Check the mps string is valid
+        if not mps_string.startswith("EC-LAB SETTING FILE"):
+            msg = "Payload does not look like EC-lab settings file."
+            raise ValueError(msg)
+
+        # If it still exists, change $NAME to appropriate values
+        mps_string = mps_string.replace("$NAME", sample)
+
+        # Write the mps string to a temporary file
+        # EC-lab has no concept of job IDs - we use the folder as the job ID
+        # Job ID is sample ID + unix timestamp in seconds
+        jobid_on_server = f"{sample}__{int(datetime.now().timestamp())}"
+        try:
+            with Path("./temp.mps").open("w", encoding="utf-8") as f:
+                f.write(mps_string)
+            # Transfer the file to the remote PC and start the job
+            with paramiko.SSHClient() as ssh:
+                ssh.load_system_host_keys()
+                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+                with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
+                    remote_mps_path = self.biologic_protocols_path + f"{jobid_on_server}.mps"
+                    # One folder per job, ec-lab generates multiple files per job
+                    remote_output_path = self.biologic_data_path + f"{jobid_on_server}/{jobid_on_server}.mpr"
+                    # Create the directory if it doesn't exist - data directory must also exist
+                    if self.shell_type == "cmd":
+                        ssh.exec_command(f'mkdir "{self.biologic_protocols_path!s}"')
+                        ssh.exec_command(f'mkdir "{self.biologic_data_path!s}"')
+                    elif self.shell_type == "powershell":
+                        ssh.exec_command(f'New-Item -ItemType Directory -Path "{self.biologic_protocols_path!s}"')
+                        ssh.exec_command(f'New-Item -ItemType Directory -Path "{self.biologic_data_path!s}"')
+                    scp.put("./temp.mps", remote_mps_path)
+
+            # Submit the file on the remote PC
+            output = self.command(f"biologic start {pipeline} {remote_mps_path} {remote_output_path} --ssh")
+            # Expect the output to be empty if successful, otherwise raise error
+            if output:
+                msg = (
+                    f"Command 'biologic start' failed with response:\n{output}\n"
+                    "Probably an issue with the mps input file. "
+                    "You must check on the server for more information. "
+                    f"Try manually loading the mps file at {remote_mps_path}."
+                )
+                raise ValueError(msg)
+            jobid = f"{self.label}-{jobid_on_server}"
+            logger.info("Job started on Biologic server with ID %s", jobid)
+        finally:
+            Path("temp.mps").unlink()  # Remove the file on local machine
+        return jobid, jobid_on_server, mps_string
+
+    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
+        """Cancel a job on the server.
+
+        Use the STOP command on the Neware-api.
+        """
+        # Check that sample ID matches
+        output = self.command(f"biologic get-job-id {pipeline} --ssh")
+        job_id_on_biologic = json.loads(output).get(pipeline, {})
+        # Check that a job is running
+        if not job_id_on_biologic:
+            msg = "No job is running on the server, cannot cancel job"
+            raise ValueError(msg)
+        # Check that a job_id matches
+        if job_id_on_server != job_id_on_biologic:
+            msg = "Job ID on server does not match job ID being cancelled"
+            raise ValueError(msg)
+        # Stop the pipeline
+        output = self.command(f"biologic stop {pipeline} --ssh")
+        # Expect the output to be empty if successful, otherwise raise error
+        if output:
+            msg = f"Command 'biologic stop {pipeline}' failed with response:\n{output}\n"
+            raise ValueError(output)
+        return f"Stopped pipeline {pipeline} on Biologic"
+
+    def get_pipelines(self) -> dict:
+        """Get the status of all pipelines on the server."""
+        result = json.loads(self.command("biologic status --ssh"))
+        # Result is a dict with keys=pipeline and value a dict of stuff
+        # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
+        # Biologic does not give sample ID or job IDs from status
+        # The Nones are handled in server_manager.update_pipelines()
+        pipelines, readys = [], []
+        for pip, data in result.items():
+            pipelines.append(pip)
+            if data["Status"] in ["Run", "Pause", "Sync"]:  # working\stop\finish\protect\pause
+                readys.append(False)  # Job is running - not ready
+            else:
+                readys.append(True)  # Job is not running - ready
+        return {
+            "pipeline": pipelines,
+            "sampleid": [None] * len(pipelines),
+            "jobid": [None] * len(pipelines),
+            "ready": readys,
+        }
+
+    def get_jobs(self) -> dict:
+        """Get all jobs from server.
+
+        Not implemented, could use get-job-id but very slow. Return empty dict for now.
+        """
+        return {}
+
+    def snapshot(
+        self,
+        sample_id: str,
+        jobid: str,
+        jobid_on_server: str,  # noqa: ARG002
+        get_raw: bool = False,  # noqa: ARG002
+    ) -> str | None:
+        """Save a snapshot of a job on the server and download it to the local machine."""
+        # TODO: Implement snapshot saving and downloading
+        return None
+
+    def get_job_data(self, jobid_on_server: str) -> dict:
+        """Get the jobdata dict for a job."""
+        # TODO: Implement getting job data from mps file
+        raise NotImplementedError
+
+    def get_last_data(self, job_id_on_server: str) -> dict:
+        """Get the last data from a job snapshot."""
+        raise NotImplementedError
+
+    def _get_job_id(self, pipeline: str) -> str:
+        """Get the testid for a pipeline."""
+        output = self.command(f"biologic get-job-id {pipeline} --ssh")
         return json.loads(output).get(pipeline)
