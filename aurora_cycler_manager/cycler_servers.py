@@ -460,8 +460,9 @@ class NewareServer(CyclerServer):
 
     Used by server_manager to interact with Neware servers, should not be instantiated directly.
 
-    Attributes:
-        save_location (str): The location on the server where snapshots are saved.
+    A Neware server is a PC running Neware BTS 8.0 with the API enabled and aurora-neware CLI
+    installed. The 'neware' CLI command should be accessible in the PATH. If it is not by default,
+    use the 'command_prefix' in the shared config to add it to the PATH.
 
     """
 
@@ -488,11 +489,14 @@ class NewareServer(CyclerServer):
     ) -> tuple[str, str, str]:
         """Submit a job to the server.
 
-        Use the START command on the Neware-api.
+        Use the start command on the aurora-neware CLI installed on Neware machine.
         """
         # Parse the input into an xml string
         if not isinstance(payload, str | Path | dict):
-            msg = "For Neware, payload must be a path to an xml file or xml string."
+            msg = (
+                "For Neware, payload must be a unicycler protocol (dict, or path to JSON file) "
+                "or a Neware XML (XML string, or path to XML file)."
+            )
             raise TypeError(msg)
         if isinstance(payload, dict):  # assume unicycler dict
             xml_string = unicycler.from_dict(payload, sample, capacity_Ah * 1000).to_neware_xml()
