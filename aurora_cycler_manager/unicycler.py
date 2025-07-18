@@ -619,12 +619,11 @@ class Protocol(BaseModel):
         # change from list of indices to list of strings
         return [pybamm_experiment[i] for i in cleaned_exploded_steps]
 
-
     def to_eclab_settings(
-            self,
-            save_path: Path | None = None,
-            sample_name: str | None = None,
-            capacity_mAh: Decimal | float | None = None,
+        self,
+        save_path: Path | None = None,
+        sample_name: str | None = None,
+        capacity_mAh: Decimal | float | None = None,
     ) -> str:
         """Make one giant technique for the entire protocol."""
         # Allow overwriting name and capacity
@@ -730,25 +729,29 @@ class Protocol(BaseModel):
         step_dicts = []
         for i, step in enumerate(self.method):
             step_dict = default_step.copy()
-            step_dict.update({
-                "Ns": str(i),
-                "lim1_seq": str(i+1),
-                "lim2_seq": str(i+1),
-            })
+            step_dict.update(
+                {
+                    "Ns": str(i),
+                    "lim1_seq": str(i + 1),
+                    "lim2_seq": str(i + 1),
+                },
+            )
             match step:
                 case OpenCircuitVoltage():
-                    step_dict.update({
-                        "ctrl_type": "Rest",
-                        "lim_nb": "1",
-                        "lim1_type": "Time",
-                        "lim1_comp": ">",
-                        "lim1_value": f"{step.until_time_s:.3f}",
-                        "lim1_value_unit": "s",
-                        "rec_nb": "1",
-                        "rec1_type": "Time",
-                        "rec1_value": f"{self.measurement.time_s or 0:.3f}",
-                        "rec1_value_unit": "s",
-                    })
+                    step_dict.update(
+                        {
+                            "ctrl_type": "Rest",
+                            "lim_nb": "1",
+                            "lim1_type": "Time",
+                            "lim1_comp": ">",
+                            "lim1_value": f"{step.until_time_s:.3f}",
+                            "lim1_value_unit": "s",
+                            "rec_nb": "1",
+                            "rec1_type": "Time",
+                            "rec1_value": f"{self.measurement.time_s or 0:.3f}",
+                            "rec1_value_unit": "s",
+                        },
+                    )
 
                 case ConstantCurrent():
                     if step.rate_C and self.sample.capacity_mAh:
@@ -759,74 +762,92 @@ class Protocol(BaseModel):
                         msg = "Either rate_C or current_mA must be set for ConstantCurrent step."
                         raise ValueError(msg)
 
-                    step_dict.update({
-                        "ctrl_type": "CC",
-                        "ctrl1_val": f"{current_mA:.3f}",
-                        "ctrl1_val_unit": "mA",
-                        "ctrl1_val_vs": "<None>",
-                    })
+                    step_dict.update(
+                        {
+                            "ctrl_type": "CC",
+                            "ctrl1_val": f"{current_mA:.3f}",
+                            "ctrl1_val_unit": "mA",
+                            "ctrl1_val_vs": "<None>",
+                        },
+                    )
 
                     # Add limit details
                     lim_num = 0
                     if step.until_time_s:
                         lim_num += 1
-                        step_dict.update({
-                            f"lim{lim_num}_type": "Time",
-                            f"lim{lim_num}_comp": ">",
-                            f"lim{lim_num}_value": f"{step.until_time_s:.3f}",
-                            f"lim{lim_num}_value_unit": "s",
-                        })
+                        step_dict.update(
+                            {
+                                f"lim{lim_num}_type": "Time",
+                                f"lim{lim_num}_comp": ">",
+                                f"lim{lim_num}_value": f"{step.until_time_s:.3f}",
+                                f"lim{lim_num}_value_unit": "s",
+                            },
+                        )
                     if step.until_voltage_V:
                         lim_num += 1
-                        comp = "<" if current_mA > 0 else ">"
-                        step_dict.update({
-                            f"lim{lim_num}_type": "Ewe",
-                            f"lim{lim_num}_comp": comp,
-                            f"lim{lim_num}_value": f"{step.until_voltage_V:.3f}",
-                            f"lim{lim_num}_value_unit": "V",
-                        })
-                    step_dict.update({
-                        "lim_nb": str(lim_num),
-                    })
+                        comp = ">" if current_mA > 0 else "<"
+                        step_dict.update(
+                            {
+                                f"lim{lim_num}_type": "Ewe",
+                                f"lim{lim_num}_comp": comp,
+                                f"lim{lim_num}_value": f"{step.until_voltage_V:.3f}",
+                                f"lim{lim_num}_value_unit": "V",
+                            },
+                        )
+                    step_dict.update(
+                        {
+                            "lim_nb": str(lim_num),
+                        },
+                    )
 
                     # Add record details
                     rec_num = 0
                     if self.measurement.time_s:
                         rec_num += 1
-                        step_dict.update({
-                            f"rec{rec_num}_type": "Time",
-                            f"rec{rec_num}_value": f"{self.measurement.time_s:.3f}",
-                            f"rec{rec_num}_value_unit": "s",
-                        })
+                        step_dict.update(
+                            {
+                                f"rec{rec_num}_type": "Time",
+                                f"rec{rec_num}_value": f"{self.measurement.time_s:.3f}",
+                                f"rec{rec_num}_value_unit": "s",
+                            },
+                        )
                     if self.measurement.voltage_V:
                         rec_num += 1
-                        step_dict.update({
-                            f"rec{rec_num}_type": "Ewe",
-                            f"rec{rec_num}_value": f"{self.measurement.voltage_V:.3f}",
-                            f"rec{rec_num}_value_unit": "V",
-                        })
-                    step_dict.update({
-                        "rec_nb": str(rec_num),
-                    })
+                        step_dict.update(
+                            {
+                                f"rec{rec_num}_type": "Ewe",
+                                f"rec{rec_num}_value": f"{self.measurement.voltage_V:.3f}",
+                                f"rec{rec_num}_value_unit": "V",
+                            },
+                        )
+                    step_dict.update(
+                        {
+                            "rec_nb": str(rec_num),
+                        },
+                    )
 
                 case ConstantVoltage():
-                    step_dict.update({
-                        "ctrl_type": "CV",
-                        "ctrl1_val": f"{step.voltage_V:.3f}",
-                        "ctrl1_val_unit": "V",
-                        "ctrl1_val_vs": "Ref",
-                    })
+                    step_dict.update(
+                        {
+                            "ctrl_type": "CV",
+                            "ctrl1_val": f"{step.voltage_V:.3f}",
+                            "ctrl1_val_unit": "V",
+                            "ctrl1_val_vs": "Ref",
+                        },
+                    )
 
                     # Add limit details
                     lim_num = 0
                     if step.until_time_s:
                         lim_num += 1
-                        step_dict.update({
-                            f"lim{lim_num}_type": "Time",
-                            f"lim{lim_num}_comp": ">",
-                            f"lim{lim_num}_value": f"{step.until_time_s:.3f}",
-                            f"lim{lim_num}_value_unit": "s",
-                        })
+                        step_dict.update(
+                            {
+                                f"lim{lim_num}_type": "Time",
+                                f"lim{lim_num}_comp": ">",
+                                f"lim{lim_num}_value": f"{step.until_time_s:.3f}",
+                                f"lim{lim_num}_value_unit": "s",
+                            },
+                        )
                     if step.until_rate_C and self.sample.capacity_mAh:
                         until_mA = step.until_rate_C * self.sample.capacity_mAh
                     elif step.until_current_mA:
@@ -835,42 +856,54 @@ class Protocol(BaseModel):
                         until_mA = None
                     if until_mA:
                         lim_num += 1
-                        step_dict.update({
-                            f"lim{lim_num}_type": "|I|",
-                            f"lim{lim_num}_comp": "<",
-                            f"lim{lim_num}_value": f"{abs(until_mA):.3f}",
-                            f"lim{lim_num}_value_unit": "mA",
-                        })
-                    step_dict.update({
-                        "lim_nb": str(lim_num),
-                    })
+                        step_dict.update(
+                            {
+                                f"lim{lim_num}_type": "|I|",
+                                f"lim{lim_num}_comp": "<",
+                                f"lim{lim_num}_value": f"{abs(until_mA):.3f}",
+                                f"lim{lim_num}_value_unit": "mA",
+                            },
+                        )
+                    step_dict.update(
+                        {
+                            "lim_nb": str(lim_num),
+                        },
+                    )
 
                     # Add record details
                     rec_num = 0
                     if self.measurement.time_s:
                         rec_num += 1
-                        step_dict.update({
-                            f"rec{rec_num}_type": "Time",
-                            f"rec{rec_num}_value": f"{self.measurement.time_s:.3f}",
-                            f"rec{rec_num}_value_unit": "s",
-                        })
+                        step_dict.update(
+                            {
+                                f"rec{rec_num}_type": "Time",
+                                f"rec{rec_num}_value": f"{self.measurement.time_s:.3f}",
+                                f"rec{rec_num}_value_unit": "s",
+                            },
+                        )
                     if self.measurement.current_mA:
                         rec_num += 1
-                        step_dict.update({
-                            f"rec{rec_num}_type": "I",
-                            f"rec{rec_num}_value": f"{self.measurement.current_mA:.3f}",
-                            f"rec{rec_num}_value_unit": "mA",
-                        })
-                    step_dict.update({
-                        "rec_nb": str(rec_num),
-                    })
+                        step_dict.update(
+                            {
+                                f"rec{rec_num}_type": "I",
+                                f"rec{rec_num}_value": f"{self.measurement.current_mA:.3f}",
+                                f"rec{rec_num}_value_unit": "mA",
+                            },
+                        )
+                    step_dict.update(
+                        {
+                            "rec_nb": str(rec_num),
+                        },
+                    )
 
                 case Loop():
-                    step_dict.update({
-                        "ctrl_type": "Loop",
-                        "ctrl_seq": str(step.start_step - 1),  # 0-indexed here
-                        "ctrl_repeat": str(step.cycle_count - 1),  # cycles is one less than n_gotos
-                    })
+                    step_dict.update(
+                        {
+                            "ctrl_type": "Loop",
+                            "ctrl_seq": str(step.start_step - 1),  # 0-indexed here
+                            "ctrl_repeat": str(step.cycle_count - 1),  # cycles is one less than n_gotos
+                        },
+                    )
 
             step_dicts.append(step_dict)
 
