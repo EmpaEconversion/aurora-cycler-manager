@@ -726,6 +726,7 @@ class BiologicServer(CyclerServer):
         # Write the mps string to a temporary file
         # EC-lab has no concept of job IDs - we use the folder as the job ID
         # Job ID is sample ID + unix timestamp in seconds
+        run_id = run_from_sample(sample)
         jobid_on_server = f"{sample}__{int(datetime.now().timestamp())}"
         try:
             with Path("./temp.mps").open("w", encoding="utf-8") as f:
@@ -738,7 +739,9 @@ class BiologicServer(CyclerServer):
                 with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
                     remote_mps_path = self.biologic_protocols_path + f"{jobid_on_server}.mps"
                     # One folder per job, ec-lab generates multiple files per job
-                    remote_output_path = self.biologic_data_path + f"{jobid_on_server}/{jobid_on_server}.mpr"
+                    remote_output_path = (
+                        self.biologic_data_path / run_id / sample / jobid_on_server / f"{jobid_on_server}.mps"
+                    )
                     # Create the directory if it doesn't exist - data directory must also exist
                     if self.shell_type == "cmd":
                         ssh.exec_command(f'mkdir "{self.biologic_protocols_path!s}"')
@@ -770,7 +773,7 @@ class BiologicServer(CyclerServer):
 
         Use the STOP command on the Neware-api.
         """
-        # Check that sample ID matches
+        # Get job ID on server
         output = self.command(f"biologic get-job-id {pipeline} --ssh")
         job_id_on_biologic = json.loads(output).get(pipeline, {})
         # Check that a job is running
