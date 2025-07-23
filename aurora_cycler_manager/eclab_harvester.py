@@ -23,7 +23,6 @@ import gzip
 import json
 import logging
 import os
-import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -38,6 +37,7 @@ import yadg
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.setup_logging import setup_logging
+from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.version import __url__, __version__
 
 CONFIG = get_config()
@@ -399,12 +399,34 @@ def get_sampleid_from_mpr(mpr_rel_path: str | Path) -> tuple[str, str]:
     """Try to get the sample ID based on the remote file path."""
     # split the relative path into parts
     parts = Path(mpr_rel_path).parts
+    run_id: str | None = None
+    sample_number: int | None = None
+    sample_id: str | None = None
 
+    # From aurora-biologic API, files are stored base_folder/run_id/sample_id/job_id/files.mpr
+    try:
+        if parts[-4] == run_from_sample(parts[-3]):  # if this works, it was stored correctly
+            run_id = parts[-4]
+            sample_id = parts[-3]
+            return run_id, sample_id
+    except IndexError:
+        pass
+
+    # If that did not work, this may be 'out of bounds' data
+
+    # A run ID lookup table is defined in case run IDs are wrong on the server
     run_id_lookup = CONFIG.get("EC-lab harvester", {}).get("Run ID lookup", {})
 
-    # Usually the run_ID is the 2nd parent folder and the sample number is the level above
-    # If this is not the case, try the 3rd parent folder and 1st parent folder
-    for i in [-3, -4, -2]:
+    # Get valid run IDs from the database
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT `Run ID` FROM samples")
+        valid_run_ids = {row[0] for row in cursor.fetchall()}
+
+    # This is usually stored as
+    # base_folder/run_id/sample_number/files.mpr (run id index -3)
+    # base_folder/run_id/sample_number/another_folder/files.mpr (run id index -4)
+    for i in [-3, -4]:
         try:
             run_folder = parts[i]
             sample_folder = parts[i + 1]
@@ -413,32 +435,20 @@ def get_sampleid_from_mpr(mpr_rel_path: str | Path) -> tuple[str, str]:
                 msg = f"Could not get run and sample number components for {mpr_rel_path}"
                 raise ValueError(msg) from e
             continue
-        run_id = run_id_lookup.get(run_folder, None)
-        if not run_id:
-            with sqlite3.connect(CONFIG["Database path"]) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT `Run ID` FROM samples WHERE `Sample ID` LIKE ?", (f"%{run_folder}%",))
-                result = cursor.fetchone()
-                cursor.close()
-            if result:
-                run_id = result[0]
-        if run_id:
-            sample_number: int | None = None
+        # Check if the run_id is in the database or in the lookup table
+        run_id = run_folder if run_folder in valid_run_ids else run_id_lookup.get(run_folder, None)
+
+        if run_id:  # A run ID folder was found, now try to get the sample number
             try:
                 sample_number = int(sample_folder)
-            except ValueError:
-                match = re.search(r"cell(\d+)[_(]?", sample_folder)
-                sample_number = int(match.group(1)) if match else None
-            if sample_number is not None:
+                sample_id = f"{run_id}_{sample_number:02d}"
                 break
+            except ValueError:
+                pass
 
-    if not run_id:
-        msg = f"Could not find a Run ID for {mpr_rel_path}"
+    if not run_id or not sample_id:
+        msg = f"Could not get Sample ID and Run ID for {mpr_rel_path}"
         raise ValueError(msg)
-    if not sample_number:
-        msg = f"Could not find a sample number for {mpr_rel_path}"
-        raise ValueError(msg)
-    sample_id = f"{run_id}_{sample_number:02d}"
     return run_id, sample_id
 
 
