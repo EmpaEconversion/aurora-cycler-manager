@@ -8,7 +8,7 @@ from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.tomato_converter import (
     convert_all_tomato_jsons,
     convert_tomato_json,
-    get_snapshot_folder,
+    get_tomato_snapshot_folder,
 )
 
 
@@ -17,7 +17,7 @@ class TestGetSnapshotFolder:
 
     def test_get_snapshot_folder(self) -> None:
         """Test the get_snapshot_folder function."""
-        result = get_snapshot_folder()
+        result = get_tomato_snapshot_folder()
         expected_path = Path(__file__).parent / "test_data" / "local_snapshots" / "tomato_snapshots"
         assert result == expected_path
 

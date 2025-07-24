@@ -897,7 +897,7 @@ def convert_all_neware_data() -> None:
     The config file needs a key "Neware harvester" with the keys "Snapshots folder path"
     """
     # Get all xlsx and ndax files in the raw folder recursively
-    snapshots_folder = get_snapshot_folder()
+    snapshots_folder = get_neware_snapshot_folder()
     neware_files = [file for file in snapshots_folder.rglob("*") if file.suffix in [".xlsx", ".ndax"]]
     new_samples = set()
     known_samples = get_known_samples()

@@ -210,7 +210,7 @@ def convert_tomato_json(
 
 def convert_all_tomato_jsons(sampleid_contains: str = "") -> None:
     """Goes through all the raw json files in the snapshots folder and converts them to hdf5."""
-    snapshot_folder = get_snapshot_folder()
+    snapshot_folder = get_tomato_snapshot_folder()
     for batch_folder in snapshot_folder.iterdir():
         for sample_folder in batch_folder.iterdir():
             if sampleid_contains and sampleid_contains not in sample_folder.name:
