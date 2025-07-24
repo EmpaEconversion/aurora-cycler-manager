@@ -1104,11 +1104,12 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     def enable_submit(payload, crate, capacity, capacity_vals):
         if not payload or not crate:
             return True  # Disable
+        # Capacity limited to 100 mAh for safety
         if crate == "custom":
             # Disable (True) if custom capacity is None or not a valid number
-            return not capacity or capacity < 0 or capacity > 10
+            return not isinstance(capacity, (int, float)) or capacity < 0 or capacity > 100
         # Disable (True) if any capacities are not valid
-        return any(c is None or c < 0 or c > 10 for c in capacity_vals[crate].values())
+        return any(c is None or c < 0 or c > 0.1 for c in capacity_vals[crate].values())
 
     # When submit button confirmed, submit the payload with sample and capacity, refresh database
     @app.callback(
