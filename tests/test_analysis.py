@@ -5,10 +5,12 @@ import shutil
 from pathlib import Path
 
 import h5py
+import numpy as np
 import pandas as pd
 
 from aurora_cycler_manager.analysis import (
     analyse_sample,
+    calc_dqdv,
     update_sample_metadata,
 )
 from aurora_cycler_manager.database_funcs import (
@@ -108,3 +110,17 @@ class TestAnalysis:
                 file.unlink()
             for file in sample_folder.glob("cycles.*.json"):
                 file.unlink()
+
+    def test_dqdv(self) -> None:
+        """Test the dQ/dV calculation against analytical derivative."""
+        V = np.concatenate([np.linspace(0, 100, 101), np.linspace(100, 0, 101)])
+        Q = np.concatenate([np.linspace(0, 10, 101) ** 2, np.linspace(10, 0, 101) ** 2])
+        dQ = Q - np.pad(Q, (1, 0), mode="edge")[:-1]
+        res = calc_dqdv(V, Q, dQ)
+
+        # Analytical derivative
+        dQdV_expected = np.concatenate([np.linspace(0, 2, 101), np.linspace(-2, 0, 101)])
+
+        # Skip first and last points of charge/discharge - they are nan due to moving window average
+        np.testing.assert_almost_equal(res[5:95], dQdV_expected[5:95], decimal=6)
+        np.testing.assert_almost_equal(res[105:195], dQdV_expected[105:195], decimal=6)
