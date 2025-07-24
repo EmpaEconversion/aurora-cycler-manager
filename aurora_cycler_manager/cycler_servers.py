@@ -826,11 +826,59 @@ class BiologicServer(CyclerServer):
         self,
         sample_id: str,
         jobid: str,
-        jobid_on_server: str,  # noqa: ARG002
+        jobid_on_server: str,
         get_raw: bool = False,  # noqa: ARG002
     ) -> str | None:
         """Save a snapshot of a job on the server and download it to the local machine."""
-        # TODO: Implement snapshot saving and downloading
+        # We know where the job will be on the remote PC
+        run_id = run_from_sample(sample_id)
+        remote_job_folder = self.biologic_data_path / run_id / sample_id / jobid_on_server
+
+        # Connect to the remote server
+        with paramiko.SSHClient() as ssh:
+            ssh.load_system_host_keys()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
+
+            # Find all the .mpr and .mpl files in the job folder
+            ps_command = (
+                f"Get-ChildItem -Path '{remote_job_folder}' -Recurse -File "
+                f"| Where-Object {{ ($_.Extension -in '.mpl', '.mpr')}} "
+                f"| Select-Object -ExpandProperty FullName"
+            )
+            if self.shell_type == "powershell":
+                command = ps_command
+            elif self.shell_type == "cmd":
+                # Base64 encode the command to avoid quote/semicolon issues
+                encoded_ps_command = base64.b64encode(ps_command.encode("utf-16le")).decode("ascii")
+                command = f"powershell.exe -EncodedCommand {encoded_ps_command}"
+            else:
+                msg = f"Unknown shell type {self.shell_type} for server {self.label}"
+                raise ValueError(msg)
+            stdin, stdout, stderr = ssh.exec_command(command)
+            exit_status = stdout.channel.recv_exit_status()
+            if exit_status != 0:
+                msg = f"Command failed with exit status {exit_status}: {stderr.read().decode('utf-8')}"
+                raise RuntimeError(msg)
+            output = stdout.read().decode("utf-8").strip()
+            files_to_copy = output.splitlines()
+            local_folder = get_eclab_snapshot_folder()
+
+            # Local files will have the same relative path as the remote files
+            local_files = [local_folder / run_id / sample_id / jobid / file.split("\\")[-1] for file in files_to_copy]
+
+            # Copy the files across with SFTP
+            with ssh.open_sftp() as sftp:
+                for remote_file, local_file in zip(files_to_copy, local_files):
+                    local_file.parent.mkdir(parents=True, exist_ok=True)
+                    logger.info("Downloading file %s to %s", remote_file, local_file)
+                    sftp.get(remote_file, str(local_file))
+
+            # Convert copied files to hdf5
+            for local_file in local_files:
+                if local_file.suffix == ".mpr":
+                    convert_mpr(local_file)
+
         return None
 
     def get_job_data(self, jobid_on_server: str) -> dict:
