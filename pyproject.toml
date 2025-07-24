@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aurora-cycler-manager"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 version = "0.6.5"
 dependencies = [
     "dash >=3.1.0",
