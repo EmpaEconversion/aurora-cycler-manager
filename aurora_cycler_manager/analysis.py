@@ -339,8 +339,9 @@ def extract_voltage_crates(job_data: dict) -> dict:
 
             if isinstance(job.get("params", []), dict):  # it may be a dict of lists instead of a list of dicts
                 try:
+                    n_techniques = len(job["params"].get("Is") or job["params"].get("N"))
                     job["params"] = [
-                        {k: l[i] for k, l in job["params"].items()} for i in range(len(job["params"]["Is"]))
+                        {k: val[i] for k, val in job["params"].items()} for i in range(n_techniques)
                     ]
                 except (ValueError, TypeError, KeyError, AttributeError):
                     logger.exception("EC-lab params not in expected format, should be list of dicts or dict of lists")
