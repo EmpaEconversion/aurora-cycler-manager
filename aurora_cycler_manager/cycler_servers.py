@@ -15,7 +15,7 @@ import json
 import logging
 import warnings
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import paramiko
 from scp import SCPClient
@@ -670,8 +670,10 @@ class BiologicServer(CyclerServer):
     def __init__(self, server_config: dict, local_private_key_path: str | Path) -> None:
         """Initialise server object."""
         super().__init__(server_config, local_private_key_path)
-        self.biologic_protocols_path = server_config.get("biologic_protocols_path", "C:/aurora/protocols/")
-        self.biologic_data_path = server_config.get("biologic_data_path", "C:/aurora/data/")
+        # EC-lab can only work on Windows
+        self.biologic_data_path = PureWindowsPath(
+            server_config.get("biologic_data_path", "C:/aurora/data/"),
+        )
 
     def eject(self, pipeline: str) -> str:
         """Remove a sample from a pipeline.
@@ -737,29 +739,27 @@ class BiologicServer(CyclerServer):
                 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
                 ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
                 with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
-                    remote_mps_path = self.biologic_protocols_path + f"{jobid_on_server}.mps"
-                    # One folder per job, ec-lab generates multiple files per job
+                    # One folder per job, EC-lab generates multiple files per job
+                    # EC-lab will make files with suffix _C01, _C02, etc. and extensions .mpr .mpl etc.
                     remote_output_path = (
                         self.biologic_data_path / run_id / sample / jobid_on_server / f"{jobid_on_server}.mps"
                     )
                     # Create the directory if it doesn't exist - data directory must also exist
                     if self.shell_type == "cmd":
-                        ssh.exec_command(f'mkdir "{self.biologic_protocols_path!s}"')
                         ssh.exec_command(f'mkdir "{self.biologic_data_path!s}"')
                     elif self.shell_type == "powershell":
-                        ssh.exec_command(f'New-Item -ItemType Directory -Path "{self.biologic_protocols_path!s}"')
                         ssh.exec_command(f'New-Item -ItemType Directory -Path "{self.biologic_data_path!s}"')
-                    scp.put("./temp.mps", remote_mps_path)
+                    scp.put("./temp.mps", remote_output_path.as_posix())  # SCP hates Windows \
 
             # Submit the file on the remote PC
-            output = self.command(f"biologic start {pipeline} {remote_mps_path} {remote_output_path} --ssh")
+            output = self.command(f"biologic start {pipeline} {remote_output_path!s} {remote_output_path!s} --ssh")
             # Expect the output to be empty if successful, otherwise raise error
             if output:
                 msg = (
                     f"Command 'biologic start' failed with response:\n{output}\n"
                     "Probably an issue with the mps input file. "
                     "You must check on the server for more information. "
-                    f"Try manually loading the mps file at {remote_mps_path}."
+                    f"Try manually loading the mps file at {remote_output_path}."
                 )
                 raise ValueError(msg)
             jobid = f"{self.label}-{jobid_on_server}"
