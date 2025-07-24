@@ -15,7 +15,6 @@ from the sample database such as cathode active material mass.
 from __future__ import annotations
 
 import contextlib
-import gzip
 import json
 import logging
 import sqlite3
@@ -106,14 +105,6 @@ def combine_jobs(
                 metadatas.append(metadata)
                 sampleids.append(
                     metadata.get("sample_data", {}).get("Sample ID", ""),
-                )
-        elif f.name.endswith(".json.gz"):
-            with gzip.open(f, "rt", encoding="utf-8") as file:
-                data = json.load(file)
-                dfs.append(pd.DataFrame(data["data"]))
-                metadatas.append(data["metadata"])
-                sampleids.append(
-                    data["metadata"].get("sample_data", {}).get("Sample ID", ""),
                 )
     if len(set(sampleids)) != 1:
         msg = "All files must be from the same sample"
@@ -483,17 +474,15 @@ def analyse_cycles(
     voltage_upper_cutoff: float = 5,
     save_cycle_dict: bool = False,
     save_merged_hdf: bool = False,
-    save_merged_jsongz: bool = False,
 ) -> tuple[pd.DataFrame, dict, dict]:
     """Take multiple dataframes, merge and analyse the cycling data.
 
     Args:
-        job_files (List[Path]): list of paths to the json.gz job files
+        job_files (List[Path]): list of paths to the hdf5 job files
         voltage_lower_cutoff (float, optional): lower cutoff for voltage data
         voltage_upper_cutoff (float, optional): upper cutoff for voltage data
         save_cycle_dict (bool, optional): save the cycle_dict as a json file
         save_merged_hdf (bool, optional): save the merged dataframe as an hdf5 file
-        save_merged_jsongz (bool, optional): save the merged dataframe as a json.gz file
 
     Returns:
         pd.DataFrame: DataFrame containing the cycling data
@@ -859,14 +848,13 @@ def analyse_cycles(
     }
     cycles_metadata = metadata.copy()
     cycles_metadata["glossary"] = cycles_glossary
-    if save_cycle_dict or save_merged_hdf or save_merged_jsongz:
+    if save_cycle_dict or save_merged_hdf:
         save_folder = job_files[0].parent
         if save_cycle_dict:
             with (save_folder / f"cycles.{sampleid}.json").open("w", encoding="utf-8") as f:
                 json_dump_compress_lists({"data": cycle_dict, "metadata": cycles_metadata}, f, indent=4)
-        if save_merged_hdf or save_merged_jsongz:
-            df = df.drop(columns=["dt (s)", "Iavg (A)"])
         if save_merged_hdf:
+            df = df.drop(columns=["dt (s)", "Iavg (A)"])
             output_hdf5_file = f"{save_folder}/full.{sampleid}.h5"
             # change to 32 bit floats
             # for some reason the file becomes much larger with uts in 32 bit, so keep it as 64 bit
@@ -882,9 +870,6 @@ def analyse_cycles(
             )
             with h5py.File(output_hdf5_file, "a") as f:
                 f.create_dataset("metadata", data=json.dumps(metadata))
-        if save_merged_jsongz:
-            with gzip.open(save_folder / f"full.{sampleid}.json.gz", "wt", encoding="utf-8") as f:
-                json.dump({"data": df.to_dict(orient="list"), "metadata": metadata}, f)
     return df, cycle_dict, metadata
 
 
@@ -896,15 +881,11 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
     """
     run_id = run_from_sample(sample)
     file_location = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample
-    # Prioritise .h5 files
     job_files = list(file_location.glob("snapshot.*.h5"))
-    if not job_files:  # check if there are .json.gz files
-        job_files = list(file_location.glob("snapshot.*.json.gz"))
     df, cycle_dict, metadata = analyse_cycles(
         job_files,
         save_cycle_dict=True,
         save_merged_hdf=True,
-        save_merged_jsongz=False,
     )
     # also save a shrunk version of the file
     shrink_sample(sample)

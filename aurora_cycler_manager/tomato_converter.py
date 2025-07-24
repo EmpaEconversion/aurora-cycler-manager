@@ -1,12 +1,11 @@
 """Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
 
-Functions for converting raw tomato json files to aurora-compatible .h5 or
-.json.gz files.
+Functions for converting raw tomato json files to aurora-compatible hdf5 files.
 
 convert_tomato_json converts a tomato 0.2.3 json to a dataframe and metadata
-dictionary, and optionally saves it as a hdf5 or a gzipped json file. This file
-contains all cycling data as well as metadata from the tomato json and sample
-information from the database.
+dictionary, and optionally saves it as a hdf5 file. This file contains all
+cycling data as well as metadata from the tomato json and sample information
+from the database.
 
 convert_all_tomato_jsons does this for all tomato files in the local snapshot
 folder.
@@ -14,7 +13,6 @@ folder.
 
 from __future__ import annotations
 
-import gzip
 import json
 import logging
 from datetime import datetime
@@ -86,14 +84,12 @@ def puree_all_tomatos() -> None:
 def convert_tomato_json(
     snapshot_file_path: Path | str,
     output_hdf_file: bool = True,
-    output_jsongz_file: bool = False,
 ) -> tuple[pd.DataFrame, dict]:
     """Convert a raw json file from tomato to a pandas dataframe.
 
     Args:
         snapshot_file_path (Path or str): path to the raw json file
         output_hdf_file (str, optional): path to save the output hdf5 file
-        output_jsongz_file (str, optional): path to save the output json.gz file
 
     Returns:
         pd.DataFrame: DataFrame containing the cycling data
@@ -172,39 +168,31 @@ def convert_tomato_json(
         },
     }
 
-    if output_hdf_file or output_jsongz_file:  # Save and update database
+    if output_hdf_file:  # Save and update database
         run_id = run_from_sample(sampleid)
         folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sampleid
         if not folder.exists():
             folder.mkdir(parents=True)
-
-        if output_jsongz_file:
-            jsongz_filepath = folder / json_filename.replace(".json", ".json.gz")
-            full_data = {"data": data.to_dict(orient="list"), "metadata": metadata}
-            with gzip.open(jsongz_filepath, "wt", encoding="utf-8") as f:
-                json.dump(full_data, f)
-
-        if output_hdf_file:
-            hdf5_filepath = folder / json_filename.replace(".json", ".h5")
-            data = data.astype({"V (V)": "float32", "I (A)": "float32"})
-            data = data.astype(
-                {
-                    "technique": "int16",
-                    "cycle_number": "int32",
-                    "loop_number": "int32",
-                    "index": "int16",
-                },
-            )
-            data.to_hdf(
-                hdf5_filepath,
-                key="data",
-                mode="w",
-                complib="blosc",
-                complevel=9,
-            )
-            # create a dataset called metadata and json dump the metadata
-            with h5py.File(hdf5_filepath, "a") as f:
-                f.create_dataset("metadata", data=json.dumps(metadata))
+        hdf5_filepath = folder / json_filename.replace(".json", ".h5")
+        data = data.astype({"V (V)": "float32", "I (A)": "float32"})
+        data = data.astype(
+            {
+                "technique": "int16",
+                "cycle_number": "int32",
+                "loop_number": "int32",
+                "index": "int16",
+            },
+        )
+        data.to_hdf(
+            hdf5_filepath,
+            key="data",
+            mode="w",
+            complib="blosc",
+            complevel=9,
+        )
+        # create a dataset called metadata and json dump the metadata
+        with h5py.File(hdf5_filepath, "a") as f:
+            f.create_dataset("metadata", data=json.dumps(metadata))
     return data, metadata
 
 
@@ -222,7 +210,6 @@ def convert_all_tomato_jsons(sampleid_contains: str = "") -> None:
                         convert_tomato_json(
                             snapshot_file,
                             output_hdf_file=True,
-                            output_jsongz_file=False,
                         )
                         logger.info("Converted %s", snapshot_file)
                     except Exception:

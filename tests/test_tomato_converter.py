@@ -36,7 +36,7 @@ class TestConvertTomatoJson:
             / "240606_svfe_gen1_15"
             / "snapshot.tt1-100.json"
         )
-        df, metadata = convert_tomato_json(snapshot_file_path, output_hdf_file=False, output_jsongz_file=False)
+        df, metadata = convert_tomato_json(snapshot_file_path, output_hdf_file=False)
         # DataFrame checks
         assert isinstance(df, pd.DataFrame)
         assert not df.empty

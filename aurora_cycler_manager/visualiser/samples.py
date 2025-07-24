@@ -3,7 +3,6 @@
 Samples tab layout and callbacks for the visualiser app.
 """
 
-import gzip
 import json
 import logging
 import os
@@ -322,24 +321,13 @@ def register_samples_callbacks(app: Dash) -> None:
                 filepath = next(f for f in files if f.startswith("full") and f.endswith(".h5"))
                 df = pd.read_hdf(f"{file_location}/{filepath}")
                 data["data_sample_time"][sample] = df.to_dict(orient="list")
-            elif any(f.startswith("full") and f.endswith(".json.gz") for f in files):
-                filepath = next(f for f in files if f.startswith("full") and f.endswith(".json.gz"))
-                with gzip.open(f"{file_location}/{filepath}", "rb") as f:
-                    data_dict = json.load(f)["data"]
-                data["data_sample_time"][sample] = data_dict
             else:
                 cycling_files = [
                     os.path.join(file_location, f) for f in files if (f.startswith("snapshot") and f.endswith(".h5"))
                 ]
                 if not cycling_files:
-                    cycling_files = [
-                        os.path.join(file_location, f)
-                        for f in files
-                        if (f.startswith("snapshot") and f.endswith(".json.gz"))
-                    ]
-                    if not cycling_files:
-                        logger.info("No cycling files found in %s", file_location)
-                        continue
+                    logger.info("No cycling files found in %s", file_location)
+                    continue
                 df, metadata = combine_jobs([Path(f) for f in cycling_files])
                 data["data_sample_time"][sample] = df.to_dict(orient="list")
 

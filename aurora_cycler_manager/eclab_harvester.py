@@ -1,6 +1,6 @@
 """Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
 
-Harvest EC-lab .mpr files and convert to aurora-compatible .json.gz / .h5 files.
+Harvest EC-lab .mpr files and convert to aurora-compatible hdf5 files.
 
 Define the machines to grab files from in the config.json file.
 
@@ -10,8 +10,8 @@ have been modified since the last time the function was called.
 get_all_mprs does this for all machines defined in the config.
 
 convert_mpr converts an mpr to a dataframe and optionally saves it as a hdf5
-file or a gzipped json file. This file contains all cycling data as well as
-metadata from the mpr and information about the sample from the database.
+file. This file contains all cycling data as well as metadata from the mpr and
+information about the sample from the database.
 
 convert_all_mprs does this for all mpr files in the local snapshot folder, and
 saves them to the processed snapshot folder.
@@ -19,7 +19,6 @@ saves them to the processed snapshot folder.
 Run the script to harvest and convert all mpr files.
 """
 
-import gzip
 import json
 import logging
 import os
@@ -264,16 +263,14 @@ def get_mpr_data(
 
 def convert_mpr(
     mpr_file: str | Path,
-    output_jsongz_file: bool = False,
     output_hdf5_file: bool = True,
 ) -> tuple[pd.DataFrame, dict]:
-    """Convert a ec-lab mpr to dataframe, optionally save as hdf5 or zipped json file.
+    """Convert a ec-lab mpr to dataframe, optionally save as hdf5.
 
     Args:
         sampleid (str): sample ID from robot output
         mpr_file (str): path to the raw mpr file
         output_hdf_file (str, optional): path to save the output hdf5 file
-        output_jsongz_file (str, optional): path to save the output zipped json file
 
     Returns:
         pd.DataFrame: DataFrame containing the cycling data
@@ -335,7 +332,7 @@ def convert_mpr(
         },
     }
 
-    if output_hdf5_file or output_jsongz_file:  # Save and update database
+    if output_hdf5_file:  # Save and update database
         if not sample_id:
             logger.warning("Not saving %s, no valid Sample ID found", mpr_file)
             return df, metadata
@@ -344,28 +341,22 @@ def convert_mpr(
             folder.mkdir(parents=True)
 
         mpr_filename = Path(mpr_file).name
-        if output_jsongz_file:  # Save as zipped json
-            jsongz_filepath = folder / ("snapshot." + mpr_filename.replace(".mpr", ".json.gz"))
-            with gzip.open(jsongz_filepath, "wt") as f:
-                json.dump({"data": df.to_dict(orient="list"), "metadata": metadata}, f)
-            logger.info("Saved %s", jsongz_filepath)
 
-        if output_hdf5_file:  # Save as hdf5
-            hdf5_filepath = folder / ("snapshot." + mpr_filename.replace(".mpr", ".h5"))
-            # Ensure smallest data types are used
-            df = df.astype({"V (V)": "float32", "I (A)": "float32"})
-            df = df.astype({"technique": "int16", "cycle_number": "int32"})
-            df.to_hdf(
-                hdf5_filepath,
-                key="data",
-                mode="w",
-                complib="blosc",
-                complevel=9,
-            )
-            # create a dataset called metadata and json dump the metadata
-            with h5py.File(hdf5_filepath, "a") as f:
-                f.create_dataset("metadata", data=json.dumps(metadata))
-            logger.info("Saved %s", hdf5_filepath)
+        hdf5_filepath = folder / ("snapshot." + mpr_filename.replace(".mpr", ".h5"))
+        # Ensure smallest data types are used
+        df = df.astype({"V (V)": "float32", "I (A)": "float32"})
+        df = df.astype({"technique": "int16", "cycle_number": "int32"})
+        df.to_hdf(
+            hdf5_filepath,
+            key="data",
+            mode="w",
+            complib="blosc",
+            complevel=9,
+        )
+        # create a dataset called metadata and json dump the metadata
+        with h5py.File(hdf5_filepath, "a") as f:
+            f.create_dataset("metadata", data=json.dumps(metadata))
+        logger.info("Saved %s", hdf5_filepath)
 
         # Update the database
         with sqlite3.connect(CONFIG["Database path"]) as conn:
@@ -456,7 +447,6 @@ def convert_all_mprs() -> None:
                 try:
                     convert_mpr(
                         full_path,
-                        output_jsongz_file=False,
                         output_hdf5_file=True,
                     )
                     logger.info("Converted %s", full_path)
@@ -472,7 +462,6 @@ def main() -> None:
         try:
             convert_mpr(
                 mpr_path,
-                output_jsongz_file=False,
                 output_hdf5_file=True,
             )
         except (ValueError, IndexError, KeyError, RuntimeError):  # noqa: PERF203
