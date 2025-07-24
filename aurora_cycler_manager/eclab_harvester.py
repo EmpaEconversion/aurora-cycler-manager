@@ -119,6 +119,9 @@ def get_mprs(
                 f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' -and ($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr')}} "
                 f'| Select-Object -ExpandProperty FullName"'
             )
+        else:
+            msg = f"Unknown shell type {server_shell_type} for server {server_label}"
+            raise ValueError(msg)
         stdin, stdout, stderr = ssh.exec_command(command)
 
         # Parse the output
@@ -173,6 +176,22 @@ def get_all_mprs(force_copy: bool = False) -> list[str]:
     """
     all_new_files = []
     snapshot_folder = get_snapshot_folder()
+
+    # Check active biologic servers
+    for server in CONFIG.get("Servers", {}):
+        if server.get("server_type") == "biologic":
+            new_files = get_mprs(
+                server["label"],
+                server["hostname"],
+                server["username"],
+                server["shell_type"],
+                server["data_path"],
+                snapshot_folder,
+                force_copy,
+            )
+            all_new_files.extend(new_files)
+
+    # Check passive EC-lab harvesters
     for server in CONFIG.get("EC-lab harvester", {}).get("Servers", []):
         new_files = get_mprs(
             server["label"],
