@@ -205,9 +205,9 @@ def get_mpr_data(
         try:
             with mpl_file.open(encoding="ANSI") as f:
                 lines = f.readlines()
+            # Find the start datetime from the mpl
+            found_start_time = False
             for line in lines:
-                # Find the start datetime from the mpl
-                found_start_time = False
                 if line.startswith("Acquisition started on : "):
                     datetime_str = line.split(":", 1)[1].strip()
                     datetime_object = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")
@@ -223,12 +223,20 @@ def get_mpr_data(
 
     # Only keep certain columns in dataframe
     df["V (V)"] = data.data_vars["Ewe"].to_numpy()
-    df["I (A)"] = (
-        (3600 / 1000) * data.data_vars["dq"].to_numpy() / np.diff(data.coords["uts"].to_numpy(), prepend=[np.inf])
-    )
-    df["cycle_number"] = data.data_vars["half cycle"].to_numpy() // 2
-    df["technique"] = data.data_vars["mode"].to_numpy()
+    I_units = {"A": 1, "mA": 1e-3, "uA": 1e-6}
+    dq_units = {"mA·h": 3600 / 1000, "A·h": 3600}
+    if "I" in data.data_vars:
+        multiplier = I_units.get(data.data_vars["I"].attrs.get("units"), 1)
+        df["I (A)"] = data.data_vars["I"].to_numpy() * multiplier
+    elif "dq" in data.data_vars:  # If no current, calculate from dq
+        multiplier = dq_units.get(data.data_vars["dq"].attrs.get("units"), 1)
+        df["I (A)"] = (
+            multiplier * data.data_vars["dq"].to_numpy() / np.diff(data.coords["uts"].to_numpy(), prepend=[np.inf])
+        )
+    df["cycle_number"] = data.data_vars["half cycle"].to_numpy() // 2 if "half cycle" in data.data_vars else 0
+    df["technique"] = data.data_vars["mode"].to_numpy() if "mode" in data.data_vars else 0
     mpr_metadata = json.loads(data.attrs["original_metadata"])
+    mpr_metadata["job_type"] = "eclab_mpr"
     yadg_metadata = {k: v for k, v in data.attrs.items() if k.startswith("yadg")}
     return df, mpr_metadata, yadg_metadata
 
@@ -269,42 +277,8 @@ def convert_mpr(
         os.path.getmtime(mpr_file),
     ).strftime("%Y-%m-%d %H:%M:%S")
 
-    # Extract data from mpr file
-    data = yadg.extractors.extract("eclab.mpr", mpr_file)
-
-    df = pd.DataFrame()
-    df["uts"] = data.coords["uts"].to_numpy()
-
-    # Check if the time is incorrect and fix it
-    if df["uts"].to_numpy()[0] < 1000000000:  # The measurement started before 2001, assume wrong
-        # Grab the start time from mpl file
-        mpl_file = mpr_file.replace(".mpr", ".mpl")
-        try:
-            with open(mpl_file, encoding="ANSI") as f:
-                lines = f.readlines()
-            for line in lines:
-                # Find the start datetime from the mpl
-                found_start_time = False
-                if line.startswith("Acquisition started on : "):
-                    datetime_str = line.split(":", 1)[1].strip()
-                    datetime_object = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")
-                    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
-                    uts_timestamp = timezone.localize(datetime_object).timestamp()
-                    df["uts"] = df["uts"] + uts_timestamp
-                    found_start_time = True
-                    break
-            if not found_start_time:
-                logger.warning("Incorrect start time in %s and no start time in found %s", mpr_file, mpl_file)
-        except FileNotFoundError:
-            logger.warning("Incorrect start time in %s and no mpl file found.", mpr_file)
-
-    # Only keep certain columns in dataframe
-    df["V (V)"] = data.data_vars["Ewe"].to_numpy()
-    df["I (A)"] = (
-        (3600 / 1000) * data.data_vars["dq"].to_numpy() / np.diff(data.coords["uts"].to_numpy(), prepend=[np.inf])
-    )
-    df["cycle_number"] = data.data_vars["half cycle"].to_numpy() // 2
-    df["technique"] = data.data_vars["mode"].to_numpy()
+    # Get data and metadata from mpr (and mpl) files
+    df, mpr_metadata, yadg_metadata = get_mpr_data(mpr_file)
 
     # get sample data from database
     try:
@@ -312,12 +286,7 @@ def convert_mpr(
     except ValueError:
         sample_data = {}
 
-    # Get job data from the snapshot file
-    mpr_metadata = json.loads(data.attrs["original_metadata"])
-    mpr_metadata["job_type"] = "eclab_mpr"
-    yadg_metadata = {k: v for k, v in data.attrs.items() if k.startswith("yadg")}
-
-    # Metadata to add
+    # Metadata to add to file
     timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     technique_codes = {1: "Constant current", 2: "Constant voltage", 3: "Open circuit voltage"}
     metadata = {
