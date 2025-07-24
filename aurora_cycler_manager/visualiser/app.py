@@ -9,8 +9,6 @@ Allows users to view current information in the database, and control cyclers
 remotely, loading, ejecting, and submitting jobs to samples.
 """
 
-from __future__ import annotations
-
 import logging
 import socket
 import webbrowser

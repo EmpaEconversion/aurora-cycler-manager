@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal, getcontext
 from pathlib import Path
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 from xml.dom import minidom
 
 from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
@@ -31,7 +31,7 @@ def coerce_to_decimal(v: Decimal | float | str) -> Decimal | None:
     return Decimal(v)
 
 
-PreciseDecimal = Annotated[Union[Decimal, float, str], BeforeValidator(coerce_to_decimal)]
+PreciseDecimal = Annotated[Decimal | float | str, BeforeValidator(coerce_to_decimal)]
 
 
 class SampleParams(BaseModel):
@@ -165,7 +165,7 @@ class Tag(BaseTechnique):
     model_config = {"extra": "forbid"}
 
 
-AnyTechnique = Union[BaseTechnique, ConstantCurrent, ConstantVoltage, OpenCircuitVoltage, Loop, Tag]
+AnyTechnique = BaseTechnique | ConstantCurrent | ConstantVoltage | OpenCircuitVoltage | Loop | Tag
 
 
 # --- Main Protocol Model ---

@@ -12,8 +12,6 @@ quantities extracted from the cycling, such as C-rate and max voltage, and
 from the sample database such as cathode active material mass.
 """
 
-from __future__ import annotations
-
 import contextlib
 import json
 import logging

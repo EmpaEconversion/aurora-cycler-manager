@@ -8,8 +8,6 @@ interact with the server directly, e.g. to submit a job or get the status of a p
 These classes are used by server_manager.
 """
 
-from __future__ import annotations
-
 import base64
 import json
 import logging

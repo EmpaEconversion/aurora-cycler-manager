@@ -11,8 +11,6 @@ convert_all_tomato_jsons does this for all tomato files in the local snapshot
 folder.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 from datetime import datetime

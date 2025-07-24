@@ -17,8 +17,6 @@ processed and plotted. See the daemon.py script for how to run this process
 automatically.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import sqlite3
