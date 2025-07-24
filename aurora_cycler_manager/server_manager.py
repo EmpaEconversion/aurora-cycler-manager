@@ -573,7 +573,17 @@ class ServerManager:
             self.execute_sql(
                 "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Server hostname`, `Job ID on server`, "
                 "`Pipeline`, `Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (full_jobid, sample, server.label, server.hostname, jobid_on_server, pipeline, dt, json_string, comment),
+                (
+                    full_jobid,
+                    sample,
+                    server.label,
+                    server.hostname,
+                    jobid_on_server,
+                    pipeline,
+                    dt,
+                    json_string,
+                    comment,
+                ),
             )
             # Neware and Biologic servers have very expensive job id retrieval
             # It costs around 1 second to get the job id for one channel, so cannot do this in update_pipelines
