@@ -44,8 +44,8 @@ CONFIG = get_config()
 logger = logging.getLogger(__name__)
 
 
-def get_snapshot_folder() -> Path:
-    """Get the path to the snapshot folder for neware files."""
+def get_eclab_snapshot_folder() -> Path:
+    """Get the path to the snapshot folder for eclab files."""
     snapshot_parent = CONFIG.get("Snapshots folder path")
     if not snapshot_parent:
         msg = (
@@ -175,7 +175,7 @@ def get_all_mprs(force_copy: bool = False) -> list[str]:
     The "label" must match a server in the "Servers" list in the main config.
     """
     all_new_files = []
-    snapshot_folder = get_snapshot_folder()
+    snapshot_folder = get_eclab_snapshot_folder()
 
     # Check active biologic servers
     for server in CONFIG.get("Servers", {}):
@@ -446,7 +446,7 @@ def convert_all_mprs() -> None:
     lookups for folders that are named differently to run ID on the server.
     """
     # walk through raw_folder and get the sample ID
-    snapshot_folder = get_snapshot_folder()
+    snapshot_folder = get_eclab_snapshot_folder()
     for dirpath, _dirnames, filenames in os.walk(snapshot_folder):
         for filename in filenames:
             if filename.endswith(".mpr"):

@@ -34,7 +34,7 @@ tz = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
 logger = logging.getLogger(__name__)
 
 
-def get_snapshot_folder() -> Path:
+def get_tomato_snapshot_folder() -> Path:
     """Get the path to the snapshot folder for tomato files."""
     snapshot_parent = CONFIG.get("Snapshots folder path")
     if not snapshot_parent:
@@ -70,7 +70,7 @@ def puree_tomato(
 
 def puree_all_tomatos() -> None:
     """Reduce all raw tomato json files in the snapshot folder."""
-    snapshot_folder = get_snapshot_folder()
+    snapshot_folder = get_tomato_snapshot_folder()
     for batch_folder in snapshot_folder.iterdir():
         for sample_folder in batch_folder.iterdir():
             for snapshot_file in sample_folder.iterdir():

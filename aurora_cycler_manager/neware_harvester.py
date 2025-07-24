@@ -54,7 +54,7 @@ tz = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
 logger = logging.getLogger(__name__)
 
 
-def get_snapshot_folder() -> Path:
+def get_neware_snapshot_folder() -> Path:
     """Get the path to the snapshot folder for neware files."""
     snapshot_parent = CONFIG.get("Snapshots folder path")
     if not snapshot_parent:
@@ -278,7 +278,7 @@ def snapshot_raw_data(job_id: str) -> Path | None:
         # Create or update the ndax file with new raw data
         ndax_path = None
         if any(file is not None for file in found_files.values()):
-            ndax_path = get_snapshot_folder() / f"{job_id}.ndax"
+            ndax_path = get_neware_snapshot_folder() / f"{job_id}.ndax"
             logger.info("Updating ndax file at '%s'", ndax_path)
 
             # Create a temporary directory to store the files
@@ -306,7 +306,7 @@ def snapshot_raw_data(job_id: str) -> Path | None:
 def harvest_all_neware_files(force_copy: bool = False) -> list[Path]:
     """Get neware files from all servers specified in the config."""
     all_new_files = []
-    snapshots_folder = get_snapshot_folder()
+    snapshots_folder = get_neware_snapshot_folder()
     for server in CONFIG.get("Neware harvester", {}).get("Servers", []):
         new_files = harvest_neware_files(
             server_label=server["label"],

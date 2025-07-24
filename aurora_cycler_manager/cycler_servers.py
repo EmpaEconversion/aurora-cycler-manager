@@ -22,8 +22,9 @@ from scp import SCPClient
 
 from aurora_cycler_manager import unicycler
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.eclab_harvester import convert_mpr, get_eclab_snapshot_folder
 from aurora_cycler_manager.neware_harvester import convert_neware_data, snapshot_raw_data
-from aurora_cycler_manager.tomato_converter import convert_tomato_json, get_snapshot_folder, puree_tomato
+from aurora_cycler_manager.tomato_converter import convert_tomato_json, get_tomato_snapshot_folder, puree_tomato
 from aurora_cycler_manager.utils import run_from_sample
 
 logger = logging.getLogger(__name__)
@@ -297,7 +298,7 @@ class TomatoServer(CyclerServer):
         # Save a snapshot on the remote machine
         remote_save_location = f"{self.save_location}/{jobid_on_server}"
         run_id = run_from_sample(sample_id)
-        local_save_location = get_snapshot_folder() / run_id / sample_id
+        local_save_location = get_tomato_snapshot_folder() / run_id / sample_id
 
         if self.shell_type == "powershell":
             self.command(
