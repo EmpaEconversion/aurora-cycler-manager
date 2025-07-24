@@ -252,6 +252,8 @@ def get_mpr_data(
         df["I (A)"] = (
             multiplier * data.data_vars["dq"].to_numpy() / np.diff(data.coords["uts"].to_numpy(), prepend=[np.inf])
         )
+    else:
+        df["I (A)"] = 0.0
     df["cycle_number"] = data.data_vars["half cycle"].to_numpy() // 2 if "half cycle" in data.data_vars else 0
     df["technique"] = data.data_vars["mode"].to_numpy() if "mode" in data.data_vars else 0
     mpr_metadata = json.loads(data.attrs["original_metadata"])
