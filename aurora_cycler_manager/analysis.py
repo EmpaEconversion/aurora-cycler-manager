@@ -219,7 +219,7 @@ def extract_voltage_crates(job_data: dict) -> dict:
 
     # Iterate through jobs, behave differently depending on the job type
     for job in job_data:
-        job_type = job.get("job_type", None)
+        job_type = job.get("job_type")
 
         # TOMATO 0.2.3 using biologic driver
         if job_type == "tomato_0_2_biologic":
@@ -230,25 +230,25 @@ def extract_voltage_crates(job_data: dict) -> dict:
             for method in job.get("Payload", {}).get("method", []):
                 if not isinstance(method, dict):
                     continue
-                if method.get("technique", None) == "constant_current":
+                if method.get("technique") == "constant_current":
                     try:
-                        new_current = abs(c_to_float(method.get("current", None)))
+                        new_current = abs(c_to_float(method.get("current")))
                         is_already_rate = True
                     except ValueError:
                         with contextlib.suppress(ValueError, TypeError):
-                            new_current = float(method.get("current", None))
+                            new_current = float(method.get("current"))
                             is_already_rate = False
                     if new_current:
                         current = new_current
 
                     with contextlib.suppress(ValueError, TypeError):
-                        voltage = method.get("limit_voltage_min", None)
+                        voltage = method.get("limit_voltage_min")
                     min_V = min_with_none([min_V, voltage])
                     with contextlib.suppress(ValueError, TypeError):
-                        voltage = method.get("limit_voltage_max", None)
+                        voltage = method.get("limit_voltage_max")
                     max_V = max_with_none([max_V, voltage])
                     global_max_V = max_with_none([global_max_V, voltage])
-                if method.get("technique", None) == "loop":
+                if method.get("technique") == "loop":
                     if method.get("n_gotos", 9) < 9:
                         if not form_C and current:
                             if is_already_rate:
@@ -331,7 +331,7 @@ def extract_voltage_crates(job_data: dict) -> dict:
         # EC-lab mpr
         elif job_type == "eclab_mpr":
             capacity = 0
-            capacity_units = job.get("settings", {}).get("battery_capacity_unit", None)
+            capacity_units = job.get("settings", {}).get("battery_capacity_unit")
             if capacity_units == 1:  # mAh
                 capacity = job.get("settings", {}).get("battery_capacity", 0)  # in mAh
             if capacity_units and capacity_units != 1:
@@ -345,65 +345,126 @@ def extract_voltage_crates(job_data: dict) -> dict:
                 except (ValueError, TypeError, KeyError, AttributeError):
                     logger.exception("EC-lab params not in expected format, should be list of dicts or dict of lists")
 
-            for method in job.get("params", []):
-                if not isinstance(method, dict):
-                    continue
-                current_mode = method.get("set_I/C", None) or method.get("Set I/C", None)
-                current = method.get("Is", None)
-                if current_mode == "C":
-                    new_rate = method.get("N", None)
-                    rate = 1 / new_rate if new_rate else None
-                elif current_mode == "I" and capacity:
-                    current_units = method.get("I_unit", None) or method.get("unit Is", None)
-                    if current and current_units:
-                        if current_units == "A":
-                            current = current * 1000
-                        elif current_units != "mA":
-                            logger.warning("EC-lab current unit unknown: %s", current_units)
-                        rate = abs(current) / capacity
-                # Get voltage
-                discharging = None
-                Isign = method.get("I_sign", None)  # 1 = discharge, 0 = charge
-                Isign = method.get("I sign", None) if Isign is None else Isign
-                if current_mode == "C":
-                    discharging = Isign
-                elif current_mode == "I" and current:
-                    if Isign:  # noqa: SIM108
-                        discharging = 1 if current * (1 - 2 * Isign) < 0 else 0
-                    else:
-                        discharging = 1 if current < 0 else 0
-                voltage = method.get("EM", None) or method.get("EM (V)", None)
-                global_max_V = max_with_none([global_max_V, voltage])
-                if voltage:
-                    if discharging == 1:
-                        min_V = min_with_none([min_V, voltage])
-                    elif discharging == 0:
-                        max_V = max_with_none([max_V, voltage])
-                # Get cycles and set values
-                cycles = method.get("nc_cycles", None) or method.get("nc cycles", None)
-                if cycles and cycles >= 1:
-                    # Less than 10 cycles, assume formation
-                    if cycles and cycles < 9:
-                        if rate and not form_C:
-                            form_C = round_c_rate(rate, 10)
-                        if max_V and not form_max_V:
-                            form_max_V = round(max_V, 6)
-                        if min_V and not form_min_V:
-                            form_min_V = round(min_V, 6)
-                        if not form_cycle_count:
-                            form_cycle_count = cycles + 1
-                    # First time more than 10 cycles, assume longterm
-                    elif cycles and cycles > 9 and not (cycle_C or cycle_max_V or cycle_min_V):
-                        cycle_C = round_c_rate(rate, 10) if rate else None
-                        cycle_max_V = round(max_V, 6) if max_V else None
-                        cycle_min_V = round(min_V, 6) if min_V else None
-                    # If we have both formation and cycle values, stop
-                    if (cycle_C and form_C) or (cycle_max_V and form_max_V):
-                        break
-                    # Otherwise reset values and continue
-                    max_V, min_V = None, None
-                    current, new_current = None, None
-                    rate, new_rate = None, None
+            if job.get("settings", {}).get("technique", "") == "GCPL":
+                for method in job.get("params", []):
+                    if not isinstance(method, dict):
+                        continue
+                    current_mode = method.get("set_I/C") or method.get("Set I/C")
+                    current = method.get("Is")
+                    if current_mode == "C":
+                        new_rate = method.get("N")
+                        rate = 1 / new_rate if new_rate else None
+                    elif current_mode == "I" and capacity:
+                        current_units = method.get("I_unit") or method.get("unit Is")
+                        if current and current_units:
+                            if current_units == "A":
+                                current = current * 1000
+                            elif current_units != "mA":
+                                logger.warning("EC-lab current unit unknown: %s", current_units)
+                            rate = abs(current) / capacity
+                    # Get voltage
+                    discharging = None
+                    Isign = method.get("I_sign") or method.get("I sign")
+                    if current_mode == "C":
+                        discharging = Isign
+                    elif current_mode == "I" and current:
+                        if Isign:  # noqa: SIM108
+                            discharging = 1 if current * (1 - 2 * Isign) < 0 else 0
+                        else:
+                            discharging = 1 if current < 0 else 0
+                    voltage = method.get("EM") or method.get("EM (V)")
+                    global_max_V = max_with_none([global_max_V, voltage])
+                    if voltage:
+                        if discharging == 1:
+                            min_V = min_with_none([min_V, voltage])
+                        elif discharging == 0:
+                            max_V = max_with_none([max_V, voltage])
+                    # Get cycles and set values
+                    cycles = method.get("nc_cycles") or method.get("nc cycles")
+                    if cycles and cycles >= 1:
+                        # Less than 10 cycles, assume formation
+                        if cycles and cycles < 9:
+                            if rate and not form_C:
+                                form_C = round_c_rate(rate, 10)
+                            if max_V and not form_max_V:
+                                form_max_V = round(max_V, 6)
+                            if min_V and not form_min_V:
+                                form_min_V = round(min_V, 6)
+                            if not form_cycle_count:
+                                form_cycle_count = cycles + 1
+                        # First time more than 10 cycles, assume longterm
+                        elif cycles and cycles > 9 and not (cycle_C or cycle_max_V or cycle_min_V):
+                            cycle_C = round_c_rate(rate, 10) if rate else None
+                            cycle_max_V = round(max_V, 6) if max_V else None
+                            cycle_min_V = round(min_V, 6) if min_V else None
+                        # If we have both formation and cycle values, stop
+                        if (cycle_C and form_C) or (cycle_max_V and form_max_V):
+                            break
+                        # Otherwise reset values and continue
+                        max_V, min_V = None, None
+                        current, new_current = None, None
+                        rate, new_rate = None, None
+
+            elif job.get("settings", {}).get("technique", "") == "MB":
+                for method in job.get("params", []):
+                    if not isinstance(method, dict):
+                        continue
+                    if method.get("ctrl_type") == 0:  # CC
+                        # Get rate
+                        current_mode = method.get("Apply I/C")
+                        if current_mode == "C":
+                            new_rate = method.get("N")
+                            rate = 1 / new_rate if new_rate else None
+                        elif current_mode == "I" and capacity:
+                            current = method.get("ctrl1_val")
+                            current_unit = method.get("ctrl1_val_unit")
+                            if current and current_unit:
+                                if current_unit == 1:  # mA
+                                    pass
+                                else:
+                                    logger.warning("EC-lab current unit unknown: %s", current_unit)
+                                rate = abs(current) / capacity
+                        # Get voltage limits
+                        for lim in [1, 2, 3]:
+                            if method.get(f"lim{lim}_type") == 1:  # Voltage limit
+                                voltage = method.get(f"lim{lim}_val")
+                                voltage_unit = method.get(f"lim{lim}_val_unit")
+                                lim_comp = method.get(f"lim{lim}_comp")
+                                if voltage:
+                                    if voltage_unit == 0:  # V
+                                        pass
+                                    else:
+                                        logger.warning("EC-lab voltage unit unknown: %s", voltage_unit)
+                                if lim_comp == 0:  # Charge
+                                    max_V = max_with_none([max_V, voltage])
+                                elif lim_comp == 1:  # Discharge
+                                    min_V = min_with_none([min_V, voltage])
+                                global_max_V = max_with_none([global_max_V, voltage])
+                    # Get cycles and set values
+                    cycles = method.get("ctrl_repeat")
+                    if cycles and cycles >= 1:
+                        # Less than 10 cycles, assume formation
+                        if cycles and cycles < 9:
+                            if rate and not form_C:
+                                form_C = round_c_rate(rate, 10)
+                            if max_V and not form_max_V:
+                                form_max_V = round(max_V, 6)
+                            if min_V and not form_min_V:
+                                form_min_V = round(min_V, 6)
+                            if not form_cycle_count:
+                                form_cycle_count = cycles + 1
+                        # First time more than 10 cycles, assume longterm
+                        elif cycles and cycles > 9 and not (cycle_C or cycle_max_V or cycle_min_V):
+                            cycle_C = round_c_rate(rate, 10) if rate else None
+                            cycle_max_V = round(max_V, 6) if max_V else None
+                            cycle_min_V = round(min_V, 6) if min_V else None
+                        # If we have both formation and cycle values, stop
+                        if (cycle_C and form_C) or (cycle_max_V and form_max_V):
+                            break
+                        # Otherwise reset values and continue
+                        max_V, min_V = None, None
+                        current, new_current = None, None
+                        rate, new_rate = None, None
     global_max_V = round(global_max_V, 6) if global_max_V else None
     return {
         "form_C": form_C,
