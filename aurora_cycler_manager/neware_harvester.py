@@ -73,7 +73,6 @@ def harvest_neware_files(
     server_shell_type: str,
     server_copy_folder: str,
     local_folder: str | Path,
-    local_private_key_path: str | None = None,
     force_copy: bool = False,
 ) -> list[Path]:
     """Get Neware files from subfolders of specified folder.
@@ -85,7 +84,6 @@ def harvest_neware_files(
         server_shell_type (str): Type of shell to use (powershell or cmd)
         server_copy_folder (str): Folder to search and copy TODO file types
         local_folder (str): Folder to copy files to
-        local_private_key_path (str, optional): Local private key path for ssh
         force_copy (bool): Copy all files regardless of modification date
 
     Returns:
@@ -111,7 +109,7 @@ def harvest_neware_files(
         ssh.load_system_host_keys()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         logger.info("Connecting to host %s user %s", server_hostname, server_username)
-        ssh.connect(server_hostname, username=server_username, key_filename=local_private_key_path)
+        ssh.connect(server_hostname, username=server_username, key_filename=CONFIG.get("SSH private key path"))
 
         # Shell commands to find files modified since cutoff date
         # TODO: grab all the filenames and modified dates, copy if they are newer than local files not just cutoff date
@@ -255,7 +253,7 @@ def snapshot_raw_data(job_id: str) -> Path | None:
         ssh.load_system_host_keys()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         logger.info("Connecting to host %s user %s", server_hostname, server_username)
-        ssh.connect(server_hostname, username=server_username, key_filename=str(CONFIG.get("SSH private key path")))
+        ssh.connect(server_hostname, username=server_username, key_filename=CONFIG.get("SSH private key path"))
 
         # Use powershell command to search for the files on the server
         if server_shell_type == "powershell":
@@ -317,7 +315,6 @@ def harvest_all_neware_files(force_copy: bool = False) -> list[Path]:
             server_shell_type=server["shell_type"],
             server_copy_folder=server["Neware folder location"],
             local_folder=snapshots_folder,
-            local_private_key_path=str(CONFIG["SSH private key path"]),
             force_copy=force_copy,
         )
         all_new_files.extend(new_files)
