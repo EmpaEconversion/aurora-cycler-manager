@@ -521,19 +521,18 @@ def analyse_cycles(
     )
 
     sample_data = metadata.get("sample_data", {})
-    sampleid = sample_data.get("Sample ID", None)
-    job_data = metadata.get("job_data", None)
-    snapshot_status = job_data[-1].get("Snapshot status", None) if job_data else None  # Used in tomato
-    finished = job_data[-1].get("Finished", None) if job_data else None  # Used in Newares
-    snapshot_pipeline = job_data[-1].get("Pipeline", None) if job_data else None
-    last_snapshot = job_data[-1].get("Last snapshot", None) if job_data else None
+    sampleid = sample_data.get("Sample ID")
+    job_data = metadata.get("job_data")
+    snapshot_status = job_data[-1].get("Snapshot status") if job_data else None  # Used in tomato
+    finished = job_data[-1].get("Finished") if job_data else None  # Used in Newares
+    snapshot_pipeline = job_data[-1].get("Pipeline") if job_data else None
+    last_snapshot = job_data[-1].get("Last snapshot") if job_data else None
 
     # Extract useful information from the metadata
     mass_mg = sample_data.get("Cathode active material mass (mg)", np.nan)
 
     # Get voltage and C-rates
-    if job_data:
-        protocol_summary = extract_voltage_crates(job_data)
+    protocol_summary = extract_voltage_crates(job_data) if job_data else {}
 
     # Check current status and pipeline (may be more recenty than snapshot)
     pipeline, status = None, None
@@ -601,7 +600,7 @@ def analyse_cycles(
             cycle_median_I.append(weighted_median(abs(charge_data["Iavg (A)"]), abs(charge_data["dQ (mAh)"])))
 
     # Try to guess the number of formation cycles if it was not found from the job data
-    form_cycle_count = protocol_summary.get("form_cycle_count", None)
+    form_cycle_count = protocol_summary.get("form_cycle_count")
     if not form_cycle_count:
         form_cycle_count = 3
         # Check median current up to 10 cycles, if it changes assume that is the formation cycle
@@ -667,7 +666,7 @@ def analyse_cycles(
 
     # Add other columns from sample table to cycle_dict
     for col in SAMPLE_METADATA_TO_DATA:
-        cycle_dict[col] = sample_data.get(col, None)
+        cycle_dict[col] = sample_data.get(col)
 
     # Calculate additional quantities from cycling data and add to cycle_dict
     if not cycle_dict or not cycle_dict["Cycle"]:
@@ -743,20 +742,16 @@ def analyse_cycles(
             assembly_history = json.loads(assembly_history)
         if assembly_history and isinstance(assembly_history, list):
             job_start = df["uts"].iloc[0]
-            press = next((step.get("uts", None) for step in assembly_history if step["Step"] == "Press"), None)
+            press = next((step.get("uts") for step in assembly_history if step["Step"] == "Press"), None)
             electrolyte_ind = [i for i, step in enumerate(assembly_history) if step["Step"] == "Electrolyte"]
             if electrolyte_ind:
                 first_electrolyte = next(
-                    (step.get("uts", None) for step in assembly_history if step["Step"] == "Electrolyte"),
+                    (step.get("uts") for step in assembly_history if step["Step"] == "Electrolyte"),
                     None,
                 )
                 history_after_electrolyte = assembly_history[max(electrolyte_ind) :]
                 cover_electrolyte = next(
-                    (
-                        step.get("uts", None)
-                        for step in history_after_electrolyte
-                        if step["Step"] in ["Anode", "Cathode"]
-                    ),
+                    (step.get("uts") for step in history_after_electrolyte if step["Step"] in ["Anode", "Cathode"]),
                     None,
                 )
                 cycle_dict["Electrolyte to press (s)"] = (
@@ -773,13 +768,17 @@ def analyse_cycles(
         job_complete = status and status.endswith("c")
         if pipeline:
             if not job_complete:
-                if formed and cycle_dict["Capacity loss (%)"] > 20:
+                if formed and (cap_loss := cycle_dict.get("Capacity loss (%)")) and cap_loss > 20:
                     flag = "Cap loss"
-                if cycle_dict["First formation coulombic efficiency (%)"] < 60:
+                if (form_eff := cycle_dict.get("First formation coulombic efficiency (%)")) and form_eff < 60:
                     flag = "Form eff"
-                if formed and cycle_dict["Initial coulombic efficiency (%)"] < 50:
+                if formed and (init_eff := cycle_dict.get("Initial coulombic efficiency (%)")) and init_eff < 50:
                     flag = "Init eff"
-                if formed and cycle_dict["Initial specific discharge capacity (mAh/g)"] < 100:
+                if (
+                    formed
+                    and (init_cap := cycle_dict.get("Initial specific discharge capacity (mAh/g)"))
+                    and init_cap < 100
+                ):
                     flag = "Init cap"
             else:
                 flag = "Complete"
@@ -816,7 +815,7 @@ def analyse_cycles(
             # update the row
             columns = ", ".join([f"`{k}` = ?" for k in update_row])
             cursor.execute(
-                f"UPDATE results SET {columns} WHERE `Sample ID` = ?",
+                f"UPDATE results SET {columns} WHERE `Sample ID` = ?",  # noqa: S608
                 (*update_row.values(), sampleid),
             )
 
@@ -958,7 +957,7 @@ def update_sample_metadata(sample_ids: str | list[str]) -> None:
                 continue
             data["metadata"]["sample_data"] = sample_data
             for col in SAMPLE_METADATA_TO_DATA:
-                data["data"][col] = sample_data.get(col, None)
+                data["data"][col] = sample_data.get(col)
         with json_file.open("w", encoding="utf-8") as f:
             json_dump_compress_lists(data, f, indent=4)
 
@@ -977,9 +976,9 @@ def shrink_sample(sample_id: str) -> None:
     df["Q (mAh)"] = df["dQ (mAh)"].cumsum()
     # Group by cycle and calculate the derivative
     dqdv = np.full(len(df), np.nan)
-    for _cycle, idx in df.groupby("Cycle").indices.items():
-        group = df.iloc[idx]
-        dqdv[idx] = calc_dqdv(group["V (V)"].values, group["Q (mAh)"].values, group["dQ (mAh)"].values)
+    for idx in df.groupby("Cycle").indices.values():
+        group = df.iloc[np.array(idx)]
+        dqdv[idx] = calc_dqdv(group["V (V)"].to_numpy(), group["Q (mAh)"].to_numpy(), group["dQ (mAh)"].to_numpy())
     df["dQ/dV (mAh/V)"] = dqdv
 
     # Reduce precision of some columns
