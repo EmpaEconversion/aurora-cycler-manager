@@ -34,7 +34,7 @@ def _read_config_file() -> dict:
         'Shared config path': Path to the shared config file on the network drive.
 
         OPTIONAL - if you want to interact directly with cyclers (e.g. load, eject, submit jobs):
-        'SSH private key path': Path to the SSH private key file.
+        'SSH private key path': Path to the SSH private key file if not in standard location (e.g. '~/.ssh/id_rsa').
         'Snapshots folder path': Path to a (local) folder to store unprocessed snapshots e.g. 'C:/aurora-shapshots'.
 
         You can set the 'Shared config path' by running aurora-setup and following the instructions.
@@ -86,6 +86,12 @@ def _read_config_file() -> dict:
         raise ValueError(err_msg)
 
     config["User config path"] = user_config_path
+
+    # For SSH connections, private key path must be str | None, does not accept Path
+    if config.get("SSH private key path"):
+        config["SSH private key path"] = str(config["SSH private key path"])
+    else:
+        config["SSH private key path"] = None
 
     return config
 

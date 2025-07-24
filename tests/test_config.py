@@ -37,6 +37,6 @@ class TestGetConfig:
         config = get_config()
         assert isinstance(config, dict)
         assert all(isinstance(k, str) for k in config)
-        path_keys = [k for k in config if "path" in k.lower()]
+        path_keys = [k for k in config if "path" in k.lower() and "ssh" not in k.lower()]
         assert all(isinstance(config[key], Path) for key in path_keys)
         assert all(config[key].is_absolute() for key in path_keys)

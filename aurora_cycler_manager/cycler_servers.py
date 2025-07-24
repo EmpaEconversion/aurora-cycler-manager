@@ -21,17 +21,19 @@ import paramiko
 from scp import SCPClient
 
 from aurora_cycler_manager import unicycler
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.neware_harvester import convert_neware_data, snapshot_raw_data
 from aurora_cycler_manager.tomato_converter import convert_tomato_json, get_snapshot_folder, puree_tomato
 from aurora_cycler_manager.utils import run_from_sample
 
 logger = logging.getLogger(__name__)
+CONFIG = get_config()
 
 
 class CyclerServer:
     """Base class for server objects, should not be instantiated directly."""
 
-    def __init__(self, server_config: dict, local_private_key_path: str | Path) -> None:
+    def __init__(self, server_config: dict) -> None:
         """Initialise server object."""
         self.label = server_config["label"]
         self.hostname = server_config["hostname"]
@@ -40,7 +42,6 @@ class CyclerServer:
         self.shell_type = server_config.get("shell_type", "")
         self.command_prefix = server_config.get("command_prefix", "")
         self.command_suffix = server_config.get("command_suffix", "")
-        self.local_private_key = paramiko.RSAKey.from_private_key_file(local_private_key_path)
         self.last_status = None
         self.last_queue = None
         self.last_queue_all = None
@@ -54,7 +55,7 @@ class CyclerServer:
         """
         with paramiko.SSHClient() as ssh:
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+            ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
             stdin, stdout, stderr = ssh.exec_command(
                 self.command_prefix + command + self.command_suffix,
                 timeout=timeout,
@@ -148,9 +149,9 @@ class TomatoServer(CyclerServer):
 
     """
 
-    def __init__(self, server_config: dict, local_private_key_path: str | Path) -> None:
+    def __init__(self, server_config: dict) -> None:
         """Initialise server object."""
-        super().__init__(server_config, local_private_key_path)
+        super().__init__(server_config)
         self.tomato_scripts_path = server_config.get("tomato_scripts_path")
         self.save_location = "C:/tomato/aurora_scratch"
         self.tomato_data_path = server_config.get("tomato_data_path")
@@ -226,7 +227,7 @@ class TomatoServer(CyclerServer):
             with paramiko.SSHClient() as ssh:
                 ssh.load_system_host_keys()
                 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+                ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
                 with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
                     scp.put("temp.json", f"{self.save_location}/temp.json")
 
@@ -344,7 +345,7 @@ class TomatoServer(CyclerServer):
         ssh.load_system_host_keys()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         logger.info("Connecting to %s: host %s user %s", self.label, self.hostname, self.username)
-        ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+        ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
         try:
             logger.info(
                 "Downloading file %s/snapshot.%s.json to %s/snapshot.%s.json",
@@ -411,7 +412,7 @@ class TomatoServer(CyclerServer):
         with paramiko.SSHClient() as ssh:
             ssh.load_system_host_keys()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+            ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
             stdin, stdout, stderr = ssh.exec_command(command)
             if stderr.read():
                 raise ValueError(stderr.read())
@@ -443,7 +444,7 @@ class TomatoServer(CyclerServer):
         with paramiko.SSHClient() as ssh:
             ssh.load_system_host_keys()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+            ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
             stdin, stdout, stderr = ssh.exec_command(command)
             stdout = stdout.read().decode("utf-8")
             stderr = stderr.read().decode("utf-8")
@@ -542,7 +543,7 @@ class NewareServer(CyclerServer):
             with paramiko.SSHClient() as ssh:
                 ssh.load_system_host_keys()
                 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+                ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
                 with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
                     remote_xml_dir = "C:/submitted_payloads/"
                     remote_xml_path = remote_xml_dir + f"{sample}__{current_datetime}.xml"
@@ -667,9 +668,9 @@ class BiologicServer(CyclerServer):
     default, use the 'command_prefix' in the shared config to add it to the PATH.
     """
 
-    def __init__(self, server_config: dict, local_private_key_path: str | Path) -> None:
+    def __init__(self, server_config: dict) -> None:
         """Initialise server object."""
-        super().__init__(server_config, local_private_key_path)
+        super().__init__(server_config)
         # EC-lab can only work on Windows
         self.biologic_data_path = PureWindowsPath(
             server_config.get("biologic_data_path", "C:/aurora/data/"),
@@ -737,7 +738,7 @@ class BiologicServer(CyclerServer):
             with paramiko.SSHClient() as ssh:
                 ssh.load_system_host_keys()
                 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                ssh.connect(self.hostname, username=self.username, pkey=self.local_private_key)
+                ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
                 with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
                     # One folder per job, EC-lab generates multiple files per job
                     # EC-lab will make files with suffix _C01, _C02, etc. and extensions .mpr .mpl etc.

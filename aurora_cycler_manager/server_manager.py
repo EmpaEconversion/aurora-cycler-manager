@@ -71,9 +71,6 @@ class ServerManager:
         """Initialize the server manager object."""
         logger.info("Creating cycler server objects")
         self.config = CONFIG
-        if not self.config.get("SSH private key path"):
-            msg = "'SSH private key path' not found in config file. Cannot connect to servers."
-            raise ValueError(msg)
         if not self.config.get("Snapshots folder path"):
             msg = "'Snapshots folder path' not found in config file. Cannot save snapshots."
             raise ValueError(msg)
@@ -86,24 +83,20 @@ class ServerManager:
     def get_servers(self) -> dict[str, CyclerServer]:
         """Create the cycler server objects from the config file."""
         servers: dict[str, CyclerServer] = {}
-        pkey_path = self.config.get("SSH private key path")
-        if not pkey_path:
-            msg = "'SSH private key path' not found in config file. Cannot connect to servers."
-            raise ValueError(msg)
         for server_config in self.config["Servers"]:
             if server_config["server_type"] == "tomato":
                 try:
-                    servers[server_config["label"]] = TomatoServer(server_config, pkey_path)
+                    servers[server_config["label"]] = TomatoServer(server_config)
                 except (OSError, ValueError, TimeoutError, paramiko.SSHException):
                     logger.exception("Server %s could not be created, skipping", server_config["label"])
             elif server_config["server_type"] == "neware":
                 try:
-                    servers[server_config["label"]] = NewareServer(server_config, pkey_path)
+                    servers[server_config["label"]] = NewareServer(server_config)
                 except (OSError, ValueError, TimeoutError, paramiko.SSHException):
                     logger.exception("Server %s could not be created, skipping", server_config["label"])
             elif server_config["server_type"] == "biologic":
                 try:
-                    servers[server_config["label"]] = BiologicServer(server_config, pkey_path)
+                    servers[server_config["label"]] = BiologicServer(server_config)
                 except (OSError, ValueError, TimeoutError, paramiko.SSHException):
                     logger.exception("Server %s could not be created, skipping", server_config["label"])
             else:

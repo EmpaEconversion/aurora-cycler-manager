@@ -62,7 +62,6 @@ def get_mprs(
     server_username: str,
     server_shell_type: str,
     server_copy_folder: str,
-    local_private_key: str,
     local_folder: Path | str,
     force_copy: bool = False,
 ) -> list[str]:
@@ -74,9 +73,8 @@ def get_mprs(
         server_username (str): Username to login with
         server_shell_type (str): Type of shell to use (powershell or cmd)
         server_copy_folder (str): Folder to search and copy .mpr and .mpl files
-        local_private_key (str): Local private key for ssh
         local_folder (Path | str): Folder to copy files to
-        force_copy (bool): Copy all files regardless of modification date
+        force_copy (bool, optional): Copy all files regardless of modification date
 
     """
     if force_copy:  # Set cutoff date to 1970
@@ -105,7 +103,7 @@ def get_mprs(
                 "server_username": server_username,
             },
         )
-        ssh.connect(server_hostname, username=server_username, pkey=local_private_key)
+        ssh.connect(server_hostname, username=server_username, key_filename=CONFIG.get("SSH private key path"))
 
         # Shell commands to find files modified since cutoff date
         # TODO: grab all the filenames and modified dates, copy if they are newer than local files not just cutoff date
@@ -182,7 +180,6 @@ def get_all_mprs(force_copy: bool = False) -> list[str]:
             server["username"],
             server["shell_type"],
             server["EC-lab folder location"],
-            paramiko.RSAKey.from_private_key_file(str(CONFIG["SSH private key path"])),
             snapshot_folder,
             force_copy,
         )
