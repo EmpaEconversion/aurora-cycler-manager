@@ -755,23 +755,15 @@ def analyse_cycles(
 
         # Update the database with some of the results
         flag = None
-        job_complete = status and status.endswith("c")
         if pipeline:
-            if not job_complete:
-                if formed and (cap_loss := cycle_dict.get("Capacity loss (%)")) and cap_loss > 20:
-                    flag = "Cap loss"
-                if (form_eff := cycle_dict.get("First formation coulombic efficiency (%)")) and form_eff < 60:
-                    flag = "Form eff"
-                if formed and (init_eff := cycle_dict.get("Initial coulombic efficiency (%)")) and init_eff < 50:
-                    flag = "Init eff"
-                if (
-                    formed
-                    and (init_cap := cycle_dict.get("Initial specific discharge capacity (mAh/g)"))
-                    and init_cap < 100
-                ):
-                    flag = "Init cap"
-            else:
-                flag = "Complete"
+            if formed and (cap_loss := cycle_dict.get("Capacity loss (%)")) and cap_loss > 50:
+                flag = "🪫"
+            if (form_eff := cycle_dict.get("First formation coulombic efficiency (%)")) and form_eff < 50:
+                flag = "🚩"
+            if formed and (init_eff := cycle_dict.get("Initial coulombic efficiency (%)")) and init_eff < 50:
+                flag = "🚩"
+            if formed and (init_cap := cycle_dict.get("Initial specific discharge capacity (mAh/g)")) and init_cap < 50:
+                flag = "🚩"
         update_row = {
             "Pipeline": pipeline,
             "Status": status,
