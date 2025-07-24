@@ -31,6 +31,13 @@ dependencies = [
     "yadg",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.1",
+    "ruff>=0.12.3",
+    "pre-commit>=4.2.0",
+]
+
 [project.scripts]
 aurora-setup = "aurora_cycler_manager.database_setup:main"
 aurora-app = "aurora_cycler_manager.visualiser.app:main"

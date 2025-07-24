@@ -176,7 +176,7 @@ def combine_jobs(
                     "datetime": datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S %z"),
                 },
             },
-            "original_file_provenance": {str(f): m["provenance"] for f, m in zip(job_files, metadatas)},
+            "original_file_provenance": {str(f): m["provenance"] for f, m in zip(job_files, metadatas, strict=False)},
         },
         "sample_data": sample_data,
         "job_data": [m.get("job_data", {}) for m in metadatas],
@@ -618,11 +618,15 @@ def analyse_cycles(
         "Discharge capacity (mAh)": discharge_capacity_mAh,
         "Charge energy (mWh)": charge_energy_mWh,
         "Discharge energy (mWh)": discharge_energy_mWh,
-        "Charge average voltage (V)": [e / c for e, c in zip(charge_energy_mWh, charge_capacity_mAh)],
-        "Discharge average voltage (V)": [e / c for e, c in zip(discharge_energy_mWh, discharge_capacity_mAh)],
-        "Coulombic efficiency (%)": [100 * d / c for d, c in zip(discharge_capacity_mAh, charge_capacity_mAh)],
-        "Energy efficiency (%)": [100 * d / c for d, c in zip(discharge_energy_mWh, charge_energy_mWh)],
-        "Voltage efficiency (%)": [100 * d / c for d, c in zip(discharge_avg_V, charge_avg_V)],
+        "Charge average voltage (V)": [e / c for e, c in zip(charge_energy_mWh, charge_capacity_mAh, strict=False)],
+        "Discharge average voltage (V)": [
+            e / c for e, c in zip(discharge_energy_mWh, discharge_capacity_mAh, strict=False)
+        ],
+        "Coulombic efficiency (%)": [
+            100 * d / c for d, c in zip(discharge_capacity_mAh, charge_capacity_mAh, strict=False)
+        ],
+        "Energy efficiency (%)": [100 * d / c for d, c in zip(discharge_energy_mWh, charge_energy_mWh, strict=False)],
+        "Voltage efficiency (%)": [100 * d / c for d, c in zip(discharge_avg_V, charge_avg_V, strict=False)],
         "Specific charge capacity (mAh/g)": [c / (mass_mg * 1e-3) for c in charge_capacity_mAh] if mass_mg else None,
         "Specific discharge capacity (mAh/g)": [d / (mass_mg * 1e-3) for d in discharge_capacity_mAh]
         if mass_mg
@@ -637,7 +641,7 @@ def analyse_cycles(
         ]
         if formed
         else None,
-        "Delta V (V)": [c - d for c, d in zip(charge_avg_V, discharge_avg_V)],
+        "Delta V (V)": [c - d for c, d in zip(charge_avg_V, discharge_avg_V, strict=False)],
         "Charge average current (A)": charge_avg_I,
         "Discharge average current (A)": discharge_avg_I,
         "Formation max voltage (V)": protocol_summary["form_max_V"],

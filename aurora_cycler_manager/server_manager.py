@@ -115,6 +115,7 @@ class ServerManager:
                         jobs["jobname"],
                         jobs["status"],
                         jobs["pipeline"],
+                        strict=True,
                     ):
                         # Insert the job if it does not exist
                         cursor.execute(
@@ -165,6 +166,7 @@ class ServerManager:
                         status["pipeline"],
                         status["sampleid"],
                         status["jobid"],
+                        strict=True,
                     ):
                         cursor.execute(
                             "INSERT OR IGNORE INTO pipelines (`Pipeline`) VALUES (?)",
@@ -862,7 +864,7 @@ class ServerManager:
         )
         pipelines = [row[0] for row in result]
         serverids = [row[1] for row in result]
-        for serverid, pipeline in zip(serverids, pipelines):
+        for serverid, pipeline in zip(serverids, pipelines, strict=True):
             logger.info("Updating job ID for %s on server %s", pipeline, serverid)
             server = self.find_server(serverid)
             assert isinstance(server, NewareServer)  # noqa: S101

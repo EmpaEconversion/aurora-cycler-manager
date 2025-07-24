@@ -867,7 +867,7 @@ class BiologicServer(CyclerServer):
 
             # Copy the files across with SFTP
             with ssh.open_sftp() as sftp:
-                for remote_file, local_file in zip(files_to_copy, local_files):
+                for remote_file, local_file in zip(files_to_copy, local_files, strict=True):
                     local_file.parent.mkdir(parents=True, exist_ok=True)
                     logger.info("Downloading file %s to %s", remote_file, local_file)
                     sftp.get(remote_file, str(local_file))

@@ -834,7 +834,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         options = [{"label": s, "value": s} for s in possible_samples if s]
         # sort the selected rows by their pipeline with the same sorting as the AG grid
         pipelines = [s["Pipeline"] for s in selected_rows]
-        selected_rows = [s for _, s in sorted(zip(make_pipelines_comparable(pipelines), selected_rows))]
+        selected_rows = [s for _, s in sorted(zip(make_pipelines_comparable(pipelines), selected_rows, strict=True))]
         dropdowns = [
             dmc.Select(
                 label=f"{s['Pipeline']}",
@@ -901,8 +901,8 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         if not yes_clicks:
             return no_update, 0
         pipelines = [s["Pipeline"] for s in selected_rows]
-        pipelines = [s for _, s in sorted(zip(make_pipelines_comparable(pipelines), pipelines))]
-        for sample, pipeline in zip(selected_samples, pipelines):
+        pipelines = [s for _, s in sorted(zip(make_pipelines_comparable(pipelines), pipelines, strict=True))]
+        for sample, pipeline in zip(selected_samples, pipelines, strict=True):
             if not sample:
                 continue
             logger.info("Loading %s to %s", sample, pipeline)
