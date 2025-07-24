@@ -4,9 +4,13 @@ Functions for getting the configuration settings.
 """
 
 import json
+import logging
 import os
 from pathlib import Path
 
+import platformdirs
+
+logger = logging.getLogger(__name__)
 CONFIG = None
 
 
@@ -24,8 +28,16 @@ def _read_config_file() -> dict:
         config_dir = current_dir.parent / "tests" / "test_data"
         user_config_path = config_dir / "test_config.json"
     else:
-        config_dir = current_dir
+        config_dir = Path(platformdirs.user_data_dir("aurora_cycler_manager", appauthor=False))
         user_config_path = config_dir / "config.json"
+        # Legacy - might be in the current directory, move to user data directory
+        if not user_config_path.exists():
+            old_user_config_path = current_dir / "config.json"
+            if old_user_config_path.exists():
+                config_dir.mkdir(parents=True, exist_ok=True)
+                old_user_config_path.rename(user_config_path)
+                user_config_path = config_dir / "config.json"
+                logger.warning("Moved config file from %s to %s", old_user_config_path, user_config_path)
 
     err_msg = f"""
         Please fill in the config file at {user_config_path}.
@@ -47,8 +59,8 @@ def _read_config_file() -> dict:
                 json.dumps(
                     {
                         "Shared config path": "",
+                        "Snapshots folder path": platformdirs.user_data_dir("aurora_cycler_manager"),
                         "SSH private key path": "",
-                        "Snapshots folder path": "",
                     },
                     indent=4,
                 ),
@@ -56,7 +68,21 @@ def _read_config_file() -> dict:
             raise FileNotFoundError(err_msg)
 
     with user_config_path.open(encoding="utf-8") as f:
-        config = json.load(f)
+        try:
+            config = json.load(f)
+        except json.JSONDecodeError as e:
+            msg = f"Error reading config file {user_config_path}: {e}"
+            raise ValueError(msg) from e
+
+    if not config.get("Snapshots folder path"):
+        config["Snapshots folder path"] = platformdirs.user_data_dir("aurora_cycler_manager")
+        with user_config_path.open("w", encoding="utf-8") as f:
+            json.dump(config, f, indent=4)
+            logger.warning(
+                "IMPORTANT: Added default 'Snapshots folder path' to config file at %s. ",
+                user_config_path,
+            )
+            logger.warning("IMPORTANT: Snapshots can add up to many gigabytes if you have 100s of long experiments.")
 
     # Check for relative paths and convert to absolute paths
     for key in config:

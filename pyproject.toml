@@ -19,6 +19,7 @@ dependencies = [
     "orjson",
     "pandas",
     "paramiko",
+    "platformdirs>=4.3.8",
     "python-calamine",
     "pytz",
     "scp",
