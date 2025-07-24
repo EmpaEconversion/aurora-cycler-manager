@@ -684,8 +684,14 @@ class ServerManager:
                 logger.warning("Job %s is still queued, skipping snapshot.", jobid)
                 continue
 
-            # Otherwise snapshot the job
-            server = self.find_server(server_label)
+            # Check that the server is accessible
+            try:
+                server = self.find_server(server_label)
+            except KeyError as e:
+                logger.warning("Could not access server %s for job %s: %s", server_label, jobid, e)
+                continue
+
+            # Snapshot the job
             try:
                 new_snapshot_status = server.snapshot(sample_id, jobid, jobid_on_server, get_raw=get_raw)
             except FileNotFoundError as e:
