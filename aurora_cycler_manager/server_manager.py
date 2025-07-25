@@ -104,7 +104,11 @@ class ServerManager:
     def update_jobs(self) -> None:
         """Update the jobs table in the database with the current job status."""
         for label, server in self.servers.items():
-            jobs = server.get_jobs()
+            try:
+                jobs = server.get_jobs()
+            except Exception as e:
+                logger.error("Error getting job status from %s: %s", label, e)
+                continue
             dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             hostname = server.hostname
             if jobs:
@@ -154,7 +158,11 @@ class ServerManager:
     def update_pipelines(self) -> None:
         """Update the pipelines table in the database with the current status."""
         for label, server in self.servers.items():
-            status = server.get_pipelines()
+            try:
+                status = server.get_pipelines()
+            except Exception as e:
+                logger.error("Error getting pipeline status from %s: %s", label, e)
+                continue
             dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             hostname = server.hostname
             server_type = server.server_type
@@ -830,7 +838,7 @@ class ServerManager:
                 "UPDATE jobs SET `Payload` = ?, `Sample ID` = ? WHERE `Job ID` = ?",
                 (json.dumps("Unknown"), "Unknown", jobid),
             )
-            return
+            raise
         except NotImplementedError as e:
             msg = f"Server type {server.server_type} not supported for getting job data."
             raise NotImplementedError(msg) from e
@@ -848,7 +856,10 @@ class ServerManager:
         else:
             result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE `Payload` IS NULL")
         for (jobid,) in result:
-            self.update_payload(jobid)
+            try:
+                self.update_payload(jobid)
+            except Exception as e:
+                logger.error("Error updating payload for job %s: %s", jobid, e)
 
     def _update_neware_jobids(self) -> None:
         """Update all Job IDs on Neware servers.
