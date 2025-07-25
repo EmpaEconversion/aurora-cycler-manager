@@ -61,12 +61,13 @@ class CyclerServer:
             )
             output = stdout.read().decode("utf-8").strip()
             error = stderr.read().decode("utf-8").strip()
+            exit_status = stdout.channel.recv_exit_status()
+        if exit_status != 0:
+            logger.error("Command '%s' on %s failed with exit status %d", command, self.label, exit_status)
+            logger.error("Error: %s", error)
+            raise ValueError(f"Command failed with exit status {exit_status}: {error}")
         if error:
-            if error.startswith("WARNING"):
-                logger.warning("Warning running '%s' on %s: %s", command, self.label, error)
-            else:
-                logger.error("Error running '%s' on %s: %s", command, self.label, error)
-                raise ValueError(error)
+            logger.warning("Command completed with warnings running '%s' on %s: %s", command, self.label, error)
         return output
 
     def check_connection(self) -> bool:
