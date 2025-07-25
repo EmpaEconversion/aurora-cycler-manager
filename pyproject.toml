@@ -1,9 +1,10 @@
 [build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
 
 [project]
 name = "aurora-cycler-manager"
+description = "Battery cycler management, data analysis and visualisation."
 requires-python = ">=3.10"
 dynamic = ["version"]
 dependencies = [

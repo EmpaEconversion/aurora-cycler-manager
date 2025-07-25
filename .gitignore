@@ -166,3 +166,6 @@ config.json
 *.log
 *.ipynb
 *.code-workspace
+
+# UV lock file
+uv.lock
