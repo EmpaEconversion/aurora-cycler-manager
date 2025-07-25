@@ -1,20 +1,13 @@
-"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa.
 
-server_manager manages a database and tomato servers for battery cycling
+server_manager manages a database and communicates with multiple cycler servers.
 
-This module contains the ServerManager class which communicates with multiple tomato
-servers and manages a database of samples, pipelines and jobs from all servers.
+This module defines a ServerManager class. The ServerManager object communicates
+with multiple CyclerServer objects defined in cycler_servers, and manages the
+database of samples, pipelines and jobs.
 
-Server manager can do all ketchup functions (load, submit, eject, ready, cancel,
-snapshot) without the user having to know which server samples are on.
-
-Jobs can be submitted with C-rates, and the capacity can be automatically
-calculated based on the sample information in the database.
-
-The server manager can also take snapshots of all jobs in the database, save the
-data locally as a json and convert to a zipped json file. The data can then be
-processed and plotted. See the daemon.py script for how to run this process
-automatically.
+Server manager takes functions like load, submit, snapshot, update etc. sends
+commands to the appropriate server, and handles the database updates.
 """
 
 import json
@@ -42,8 +35,8 @@ logger = logging.getLogger(__name__)
 class ServerManager:
     """The ServerManager class manages the database and cycling servers.
 
-    This class is used in the app and the daemon. However the class can also be used by itself if
-    you want finer control over e.g. job submission.
+    This class is used in the app and the daemon. The class can also be used
+    directly in scripts for finer control over the cyclers.
 
     Typical usage in a script:
 
@@ -62,7 +55,8 @@ class ServerManager:
         sm.snapshot("sample_id")
 
         # Use analysis.analyse_sample("sample_id") to analyse the data
-        # After this it can be viewed in the app
+        # After this it can be viewed in the app, or read the hdf/json files
+        # directly
     """
 
     def __init__(self) -> None:

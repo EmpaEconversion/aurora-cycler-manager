@@ -1,6 +1,6 @@
-"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa.
 
-Daemon to update database, snapshot jobs and plots graphs
+Daemon to update database, snapshot jobs and plots graphs.
 
 Updates database regularly and snapshots all jobs then analyses and plots graphs
 at specified times each day. Change the update time and snapshot times in the

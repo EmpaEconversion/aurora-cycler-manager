@@ -1,15 +1,11 @@
-"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa.
 
 Functions used for parsing, analysing and plotting.
 
-Parsing:
-Contains functions for converting raw jsons from tomato to pandas dataframes,
-which can be saved to compressed hdf5 files.
+Takes partial cycling files and combines into one full DataFrame and hdf5 file.
 
-Also includes functions for analysing the cycling data, extracting the
-charge, discharge and efficiency of each cycle, and links this to various
-quantities extracted from the cycling, such as C-rate and max voltage, and
-from the sample database such as cathode active material mass.
+Analyses metadata and data to extract useful information, including protocol
+summary information, per-cycle data, and summary statistics.
 """
 
 import contextlib

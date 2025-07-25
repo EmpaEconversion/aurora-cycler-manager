@@ -1,4 +1,4 @@
-"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa.
 
 Notification system and loading messages for the Aurora cycler manager app.
 

@@ -1,4 +1,6 @@
-"""A universal cycling Protocol model to convert to different formats.
+"""Copyright © 2025, Empa.
+
+A universal cycling Protocol model to convert to different formats.
 
 Protocol is a Pydantic model that defines a cycling protocol which can be stored/read in JSON format.
 The model only contains a subset of all possible techniques and parameters.

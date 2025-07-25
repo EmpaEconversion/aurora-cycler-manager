@@ -1,4 +1,7 @@
-"""Functions for interacting with the database."""
+"""Copyright © 2025, Empa.
+
+Functions for interacting with the database.
+"""
 
 import json
 import sqlite3

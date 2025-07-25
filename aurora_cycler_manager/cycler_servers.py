@@ -1,9 +1,13 @@
-"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa.
 
-Server classes used by server_manager, currently only tomato servers are implemented.
+Server classes used by server_manager, including:
+- Neware server, designed for Neware BTS 8.0 with aurora-neware CLI
+- Biologic server, designed for Biologic EC-lab with aurora-biologic CLI
+- Tomato server, designed for tomato 0.2.3
 
-Unlike the harvester modules, which can only download the latest data, cycler servers can be used to
-interact with the server directly, e.g. to submit a job or get the status of a pipeline.
+Unlike the harvester modules, which can only download the latest data, cycler
+servers can be used to interact with the server directly, e.g. to submit a job
+or get the status of a pipeline.
 
 These classes are used by server_manager.
 """
