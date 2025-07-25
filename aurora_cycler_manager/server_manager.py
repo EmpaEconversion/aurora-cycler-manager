@@ -459,7 +459,7 @@ class ServerManager:
                     logger.warning(warning.message)
             else:
                 # Update database preemtively if no warnings were caught
-                ready = server.server_type == "neware"  # Neware behaves differently - ready if no sample
+                ready = server.server_type in ["neware", "biologic"]  # Neware/Biologic -> ready if no sample
                 self.execute_sql(
                     "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = ? WHERE `Pipeline` = ?",
                     (ready, pipeline),
