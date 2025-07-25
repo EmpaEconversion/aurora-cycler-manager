@@ -249,7 +249,7 @@ class TomatoServer(CyclerServer):
         msg = f"Error submitting job: {output}"
         raise ValueError(msg)
 
-    def cancel(self, job_id_on_server: str, _sampleid: str, _pipeline: str) -> str:
+    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
         """Cancel a job on the server."""
         return self.command(f"{self.tomato_scripts_path}ketchup cancel {job_id_on_server}")
 
