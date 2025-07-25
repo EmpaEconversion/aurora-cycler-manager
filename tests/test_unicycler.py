@@ -266,6 +266,7 @@ class TestUnicycler(TestCase):
         protocol.to_neware_xml()
         protocol.to_tomato_mpg2()
         protocol.to_pybamm_experiment()
+        protocol.to_eclab_settings()
 
     def test_tags(self) -> None:
         """Test tags in Protocol."""
@@ -460,3 +461,29 @@ class TestUnicycler(TestCase):
         neware1 = neware1[:idx] + neware1[idx + 65 :]
         neware2 = neware2[:idx] + neware2[idx + 65 :]
         assert neware1 == neware2
+
+    def test_to_eclab_settings(self) -> None:
+        """Test conversion to ECLab settings."""
+        protocol = Protocol(
+            measurement=MeasurementParams(time_s=1),
+            safety=SafetyParams(),
+            method=[
+                OpenCircuitVoltage(until_time_s=1),
+                OpenCircuitVoltage(until_time_s=1),
+                Tag(tag="tag1"),
+                OpenCircuitVoltage(until_time_s=1),
+                OpenCircuitVoltage(until_time_s=1),
+                Loop(start_step="tag1", cycle_count=3),
+                Loop(start_step=4, cycle_count=3),
+            ],
+        )
+        eclab_settings = protocol.to_eclab_settings(sample_name="test", capacity_mAh=1.0)
+        # Find where the line begins with "ctrl_seq"
+        lines = eclab_settings.splitlines()
+        ctrl_seq_start = next((i for i, line in enumerate(lines) if line.startswith("ctrl_seq")), None)
+        assert ctrl_seq_start is not None, "ctrl_seq not found in ECLab settings"
+        test_str = (
+            "ctrl_seq            0                   0                   0                   "
+            "0                   2                   2                   "
+        )
+        assert lines[ctrl_seq_start] == test_str, "ctrl_seq line does not match expected"

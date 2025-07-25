@@ -1,4 +1,6 @@
-"""A universal cycling Protocol model to convert to different formats.
+"""Copyright © 2025, Empa.
+
+A universal cycling Protocol model to convert to different formats.
 
 Protocol is a Pydantic model that defines a cycling protocol which can be stored/read in JSON format.
 The model only contains a subset of all possible techniques and parameters.
@@ -9,10 +11,11 @@ to_neware_xml(), to_tomato_mpg2() and to_pybamm_experiment() methods respectivel
 import json
 import uuid
 import xml.etree.ElementTree as ET
+from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal, getcontext
 from pathlib import Path
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 from xml.dom import minidom
 
 from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
@@ -30,7 +33,7 @@ def coerce_to_decimal(v: Decimal | float | str) -> Decimal | None:
     return Decimal(v)
 
 
-PreciseDecimal = Annotated[Decimal, BeforeValidator(coerce_to_decimal)]
+PreciseDecimal = Annotated[Decimal | float | str, BeforeValidator(coerce_to_decimal)]
 
 
 class SampleParams(BaseModel):
@@ -164,7 +167,7 @@ class Tag(BaseTechnique):
     model_config = {"extra": "forbid"}
 
 
-AnyTechnique = Union[BaseTechnique, ConstantCurrent, ConstantVoltage, OpenCircuitVoltage, Loop, Tag]
+AnyTechnique = BaseTechnique | ConstantCurrent | ConstantVoltage | OpenCircuitVoltage | Loop | Tag
 
 
 # --- Main Protocol Model ---
@@ -174,7 +177,7 @@ class Protocol(BaseModel):
     sample: SampleParams = Field(default_factory=SampleParams)
     measurement: MeasurementParams
     safety: SafetyParams
-    method: list[AnyTechnique] = Field(min_length=1)  # Ensure at least one step
+    method: Sequence[AnyTechnique] = Field(min_length=1)  # Ensure at least one step
 
     model_config = {"extra": "forbid"}
 
@@ -618,6 +621,346 @@ class Protocol(BaseModel):
         cleaned_exploded_steps = [i for i in exploded_steps if i not in loops]
         # change from list of indices to list of strings
         return [pybamm_experiment[i] for i in cleaned_exploded_steps]
+
+    def to_eclab_settings(
+        self,
+        save_path: Path | None = None,
+        sample_name: str | None = None,
+        capacity_mAh: Decimal | float | None = None,
+    ) -> str:
+        """Make one giant technique for the entire protocol."""
+        # Allow overwriting name and capacity
+        if sample_name:
+            self.sample.name = sample_name
+        if capacity_mAh:
+            self.sample.capacity_mAh = Decimal(capacity_mAh)
+
+        # Make sure sample name is set
+        if not self.sample.name or self.sample.name == "$NAME":
+            msg = "If using blank sample name or $NAME placeholder, a sample name must be provided in this function."
+            raise ValueError(msg)
+
+        # Make sure capacity is set if using C-rate steps
+        self._validate_capacity_c_rates()
+
+        # Remove tags and convert to indices
+        self.tag_to_indices()
+
+        header = [
+            "EC-LAB SETTING FILE",
+            "",
+            "Number of linked techniques : 1",
+            "Device : MPG-2",
+            "CE vs. WE compliance from -10 V to 10 V",
+            "Electrode connection : standard",
+            "Potential control : Ewe",
+            "Ewe ctrl range : min = 0.00 V, max = 5.00 V",
+            "Safety Limits :",
+            "	Do not start on E overload",
+            f"Comments : {self.sample.name}",
+            "Cycle Definition : Charge/Discharge alternance",
+            "Turn to OCV between techniques",
+            "",
+            "Technique : 1",
+            "Modulo Bat",
+        ]
+
+        # Find the maximum current to determine the I range - it is not straightforward to switch this during a run
+        # so we use the range that covers all currents
+        currents_mA = [
+            float(s.rate_C) * float(self.sample.capacity_mAh)
+            if s.rate_C and self.sample.capacity_mAh
+            else float(s.current_mA)
+            if s.current_mA
+            else 0
+            for s in self.method
+            if isinstance(s, (ConstantCurrent))
+        ]
+        max_current_mA = max(currents_mA) if currents_mA else 0
+        if max_current_mA < 1:
+            I_range = "1 mA"
+        elif max_current_mA < 10:
+            I_range = "10 mA"
+        elif max_current_mA < 100:
+            I_range = "100 mA"
+        else:
+            msg = "Not allowed to apply more than 100 mA"
+            raise ValueError(msg)
+
+        default_step = {
+            "Ns": "",
+            "ctrl_type": "",
+            "Apply I/C": "I",
+            "current/potential": "current",
+            "ctrl1_val": "",
+            "ctrl1_val_unit": "",
+            "ctrl1_val_vs": "",
+            "ctrl2_val": "",
+            "ctrl2_val_unit": "",
+            "ctrl2_val_vs": "",
+            "ctrl3_val": "",
+            "ctrl3_val_unit": "",
+            "ctrl3_val_vs": "",
+            "N": "0.00",
+            "charge/discharge": "Charge",
+            "charge/discharge_1": "Charge",
+            "Apply I/C_1": "I",
+            "N1": "0.00",
+            "ctrl4_val": "",
+            "ctrl4_val_unit": "",
+            "ctrl5_val": "",
+            "ctrl5_val_unit": "",
+            "ctrl_tM": "0",
+            "ctrl_seq": "0",
+            "ctrl_repeat": "0",
+            "ctrl_trigger": "Falling Edge",
+            "ctrl_TO_t": "0.000",
+            "ctrl_TO_t_unit": "d",
+            "ctrl_Nd": "6",
+            "ctrl_Na": "2",
+            "ctrl_corr": "0",
+            "lim_nb": "0",
+            "lim1_type": "Time",
+            "lim1_comp": ">",
+            "lim1_Q": "",
+            "lim1_value": "0.000",
+            "lim1_value_unit": "s",
+            "lim1_action": "Next sequence",
+            "lim1_seq": "",
+            "lim2_type": "",
+            "lim2_comp": "",
+            "lim2_Q": "",
+            "lim2_value": "",
+            "lim2_value_unit": "",
+            "lim2_action": "Next sequence",
+            "lim2_seq": "",
+            "rec_nb": "0",
+            "rec1_type": "",
+            "rec1_value": "",
+            "rec1_value_unit": "",
+            "rec2_type": "",
+            "rec2_value": "",
+            "rec2_value_unit": "",
+            "E range min (V)": "0.000",
+            "E range max (V)": "5.000",
+            "I Range": I_range,
+            "I Range min": "Unset",
+            "I Range max": "Unset",
+            "I Range init": "Unset",
+            "auto rest": "0",
+            "Bandwidth": "5",
+        }
+
+        # Make a list of dicts, one for each step
+        step_dicts = []
+        for i, step in enumerate(self.method):
+            step_dict = default_step.copy()
+            step_dict.update(
+                {
+                    "Ns": str(i),
+                    "lim1_seq": str(i + 1),
+                    "lim2_seq": str(i + 1),
+                },
+            )
+            if isinstance(step, OpenCircuitVoltage):
+                step_dict.update(
+                    {
+                        "ctrl_type": "Rest",
+                        "lim_nb": "1",
+                        "lim1_type": "Time",
+                        "lim1_comp": ">",
+                        "lim1_value": f"{step.until_time_s:.3f}",
+                        "lim1_value_unit": "s",
+                        "rec_nb": "1",
+                        "rec1_type": "Time",
+                        "rec1_value": f"{self.measurement.time_s or 0:.3f}",
+                        "rec1_value_unit": "s",
+                    },
+                )
+
+            elif isinstance(step, ConstantCurrent):
+                if step.rate_C and self.sample.capacity_mAh:
+                    current_mA = step.rate_C * self.sample.capacity_mAh
+                elif step.current_mA:
+                    current_mA = step.current_mA
+                else:
+                    msg = "Either rate_C or current_mA must be set for ConstantCurrent step."
+                    raise ValueError(msg)
+
+                if abs(current_mA) < 1:
+                    step_dict.update(
+                        {
+                            "ctrl_type": "CC",
+                            "ctrl1_val": f"{current_mA:.3f}",
+                            "ctrl1_val_unit": "µA",
+                            "ctrl1_val_vs": "<None>",
+                        },
+                    )
+                else:
+                    step_dict.update(
+                        {
+                            "ctrl_type": "CC",
+                            "ctrl1_val": f"{current_mA:.3f}",
+                            "ctrl1_val_unit": "mA",
+                            "ctrl1_val_vs": "<None>",
+                        },
+                    )
+
+                # Add limit details
+                lim_num = 0
+                if step.until_time_s:
+                    lim_num += 1
+                    step_dict.update(
+                        {
+                            f"lim{lim_num}_type": "Time",
+                            f"lim{lim_num}_comp": ">",
+                            f"lim{lim_num}_value": f"{step.until_time_s:.3f}",
+                            f"lim{lim_num}_value_unit": "s",
+                        },
+                    )
+                if step.until_voltage_V:
+                    lim_num += 1
+                    comp = ">" if current_mA > 0 else "<"
+                    step_dict.update(
+                        {
+                            f"lim{lim_num}_type": "Ewe",
+                            f"lim{lim_num}_comp": comp,
+                            f"lim{lim_num}_value": f"{step.until_voltage_V:.3f}",
+                            f"lim{lim_num}_value_unit": "V",
+                        },
+                    )
+                step_dict.update(
+                    {
+                        "lim_nb": str(lim_num),
+                    },
+                )
+
+                # Add record details
+                rec_num = 0
+                if self.measurement.time_s:
+                    rec_num += 1
+                    step_dict.update(
+                        {
+                            f"rec{rec_num}_type": "Time",
+                            f"rec{rec_num}_value": f"{self.measurement.time_s:.3f}",
+                            f"rec{rec_num}_value_unit": "s",
+                        },
+                    )
+                if self.measurement.voltage_V:
+                    rec_num += 1
+                    step_dict.update(
+                        {
+                            f"rec{rec_num}_type": "Ewe",
+                            f"rec{rec_num}_value": f"{self.measurement.voltage_V:.3f}",
+                            f"rec{rec_num}_value_unit": "V",
+                        },
+                    )
+                step_dict.update(
+                    {
+                        "rec_nb": str(rec_num),
+                    },
+                )
+
+            elif isinstance(step, ConstantVoltage):
+                step_dict.update(
+                    {
+                        "ctrl_type": "CV",
+                        "ctrl1_val": f"{step.voltage_V:.3f}",
+                        "ctrl1_val_unit": "V",
+                        "ctrl1_val_vs": "Ref",
+                    },
+                )
+
+                # Add limit details
+                lim_num = 0
+                if step.until_time_s:
+                    lim_num += 1
+                    step_dict.update(
+                        {
+                            f"lim{lim_num}_type": "Time",
+                            f"lim{lim_num}_comp": ">",
+                            f"lim{lim_num}_value": f"{step.until_time_s:.3f}",
+                            f"lim{lim_num}_value_unit": "s",
+                        },
+                    )
+                if step.until_rate_C and self.sample.capacity_mAh:
+                    until_mA = step.until_rate_C * self.sample.capacity_mAh
+                elif step.until_current_mA:
+                    until_mA = step.until_current_mA
+                else:
+                    until_mA = None
+                if until_mA:
+                    lim_num += 1
+                    step_dict.update(
+                        {
+                            f"lim{lim_num}_type": "|I|",
+                            f"lim{lim_num}_comp": "<",
+                            f"lim{lim_num}_value": f"{abs(until_mA):.3f}",
+                            f"lim{lim_num}_value_unit": "mA",
+                        },
+                    )
+                step_dict.update(
+                    {
+                        "lim_nb": str(lim_num),
+                    },
+                )
+
+                # Add record details
+                rec_num = 0
+                if self.measurement.time_s:
+                    rec_num += 1
+                    step_dict.update(
+                        {
+                            f"rec{rec_num}_type": "Time",
+                            f"rec{rec_num}_value": f"{self.measurement.time_s:.3f}",
+                            f"rec{rec_num}_value_unit": "s",
+                        },
+                    )
+                if self.measurement.current_mA:
+                    rec_num += 1
+                    step_dict.update(
+                        {
+                            f"rec{rec_num}_type": "I",
+                            f"rec{rec_num}_value": f"{self.measurement.current_mA:.3f}",
+                            f"rec{rec_num}_value_unit": "mA",
+                        },
+                    )
+                step_dict.update(
+                    {
+                        "rec_nb": str(rec_num),
+                    },
+                )
+
+            elif isinstance(step, Loop):
+                step_dict.update(
+                    {
+                        "ctrl_type": "Loop",
+                        "ctrl_seq": str(step.start_step - 1),  # 0-indexed here
+                        "ctrl_repeat": str(step.cycle_count - 1),  # cycles is one less than n_gotos
+                    },
+                )
+
+            else:
+                msg = f"to_eclab_settings does not support step type: {step.name}"
+                raise NotImplementedError(msg)
+
+            step_dicts.append(step_dict)
+
+        # Transform list of dicts into list of strings, each row is one key and all values of each step
+        # All elements must be 20 characters wide
+        rows = []
+        for row_header in default_step:
+            row_data = [step[row_header] for step in step_dicts]
+            rows.append(row_header.ljust(20) + "".join(d.ljust(20) for d in row_data))
+
+        settings_string = "\n".join([*header, *rows, ""])
+
+        if save_path:
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            with save_path.open("w", encoding="utf-8") as f:
+                f.write(settings_string)
+
+        return settings_string
 
 
 def from_dict(data: dict, sample_name: str | None = None, sample_capacity_mAh: float | None = None) -> Protocol:

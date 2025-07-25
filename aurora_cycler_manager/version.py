@@ -1,8 +1,6 @@
 """Version information for the Aurora cycler manager package."""
 
-from importlib.metadata import version
-
-__version__ = version("aurora-cycler-manager")
+__version__ = "0.6.5"
 __author__ = "Graham Kimbell"
 __title__ = "Aurora cycler manager"
 __license__ = "MIT"

@@ -1,4 +1,4 @@
-"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa.
 
 Script to create the shared config and database files.
 

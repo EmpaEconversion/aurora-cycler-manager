@@ -1,6 +1,6 @@
-"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa.
 
-Harvest Neware data files and convert to aurora-compatible .json.gz / .h5 files.
+Harvest Neware data files and convert to aurora-compatible hdf5 files.
 
 Define the machines to grab files from in the config.json file.
 
@@ -10,9 +10,8 @@ if they have been modified since the last time the function was called.
 get_all_neware_data does this for all machines defined in the config.
 
 convert_neware_data converts the file to a pandas dataframe and metadata
-dictionary, and optionally saves as a hdf5 file or gzipped json file. This file
-contains all cycling data as well as metadata and information about the sample
-from the database.
+dictionary, and optionally saves as a hdf5 file. This file contains all cycling
+data as well as metadata and information about the sample from the database.
 
 convert_all_neware_data does this for all files in the local snapshot folder,
 and saves them to the processed snapshot folder.
@@ -20,10 +19,7 @@ and saves them to the processed snapshot folder.
 Run the script to harvest and convert all neware files.
 """
 
-from __future__ import annotations
-
 import base64
-import gzip
 import json
 import logging
 import os
@@ -54,7 +50,7 @@ tz = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
 logger = logging.getLogger(__name__)
 
 
-def get_snapshot_folder() -> Path:
+def get_neware_snapshot_folder() -> Path:
     """Get the path to the snapshot folder for neware files."""
     snapshot_parent = CONFIG.get("Snapshots folder path")
     if not snapshot_parent:
@@ -73,7 +69,6 @@ def harvest_neware_files(
     server_shell_type: str,
     server_copy_folder: str,
     local_folder: str | Path,
-    local_private_key_path: str | None = None,
     force_copy: bool = False,
 ) -> list[Path]:
     """Get Neware files from subfolders of specified folder.
@@ -85,7 +80,6 @@ def harvest_neware_files(
         server_shell_type (str): Type of shell to use (powershell or cmd)
         server_copy_folder (str): Folder to search and copy TODO file types
         local_folder (str): Folder to copy files to
-        local_private_key_path (str, optional): Local private key path for ssh
         force_copy (bool): Copy all files regardless of modification date
 
     Returns:
@@ -111,7 +105,7 @@ def harvest_neware_files(
         ssh.load_system_host_keys()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         logger.info("Connecting to host %s user %s", server_hostname, server_username)
-        ssh.connect(server_hostname, username=server_username, key_filename=local_private_key_path)
+        ssh.connect(server_hostname, username=server_username, key_filename=CONFIG.get("SSH private key path"))
 
         # Shell commands to find files modified since cutoff date
         # TODO: grab all the filenames and modified dates, copy if they are newer than local files not just cutoff date
@@ -255,7 +249,7 @@ def snapshot_raw_data(job_id: str) -> Path | None:
         ssh.load_system_host_keys()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         logger.info("Connecting to host %s user %s", server_hostname, server_username)
-        ssh.connect(server_hostname, username=server_username, key_filename=str(CONFIG.get("SSH private key path")))
+        ssh.connect(server_hostname, username=server_username, key_filename=CONFIG.get("SSH private key path"))
 
         # Use powershell command to search for the files on the server
         if server_shell_type == "powershell":
@@ -280,7 +274,7 @@ def snapshot_raw_data(job_id: str) -> Path | None:
         # Create or update the ndax file with new raw data
         ndax_path = None
         if any(file is not None for file in found_files.values()):
-            ndax_path = get_snapshot_folder() / f"{job_id}.ndax"
+            ndax_path = get_neware_snapshot_folder() / f"{job_id}.ndax"
             logger.info("Updating ndax file at '%s'", ndax_path)
 
             # Create a temporary directory to store the files
@@ -308,7 +302,7 @@ def snapshot_raw_data(job_id: str) -> Path | None:
 def harvest_all_neware_files(force_copy: bool = False) -> list[Path]:
     """Get neware files from all servers specified in the config."""
     all_new_files = []
-    snapshots_folder = get_snapshot_folder()
+    snapshots_folder = get_neware_snapshot_folder()
     for server in CONFIG.get("Neware harvester", {}).get("Servers", []):
         new_files = harvest_neware_files(
             server_label=server["label"],
@@ -317,7 +311,6 @@ def harvest_all_neware_files(force_copy: bool = False) -> list[Path]:
             server_shell_type=server["shell_type"],
             server_copy_folder=server["Neware folder location"],
             local_folder=snapshots_folder,
-            local_private_key_path=str(CONFIG["SSH private key path"]),
             force_copy=force_copy,
         )
         all_new_files.extend(new_files)
@@ -782,14 +775,12 @@ def convert_neware_data(
     file_path: Path | str,
     sampleid: str | None = None,
     known_samples: list[str] | None = None,
-    output_jsongz_file: bool = False,
     output_hdf5_file: bool = True,
 ) -> tuple[pd.DataFrame, dict]:
-    """Convert a neware file to a dataframe and save as .h5 or .gz.json.
+    """Convert a neware file to a dataframe and save as hdf5.
 
     Args:
         file_path (Path): Path to the neware file
-        output_jsongz_file (bool): Whether to save the file as a gzipped json
         output_hdf5_file (bool): Whether to save the file as a hdf5
         known_samples (list[str], optional): List of known Sample IDs to check against
 
@@ -845,7 +836,7 @@ def convert_neware_data(
         },
     }
 
-    if output_jsongz_file or output_hdf5_file:
+    if output_hdf5_file:
         if not sampleid:
             logger.warning("Not saving %s, no valid Sample ID found", file_path)
             return data, metadata
@@ -853,11 +844,6 @@ def convert_neware_data(
         folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sampleid
         if not folder.exists():
             folder.mkdir(parents=True)
-
-        if output_jsongz_file:
-            file_name = f"snapshot.{file_path.stem}.json.gz"
-            with gzip.open(folder / file_name, "wt") as f:
-                json.dump({"data": data.to_dict(orient="list"), "metadata": metadata}, f)
 
         if output_hdf5_file:  # Save as hdf5
             file_name = f"snapshot.{file_path.stem}.h5"
@@ -895,12 +881,12 @@ def convert_neware_data(
 
 
 def convert_all_neware_data() -> None:
-    """Convert all neware files to gzipped json files.
+    """Convert all neware files to hdf5 files.
 
     The config file needs a key "Neware harvester" with the keys "Snapshots folder path"
     """
     # Get all xlsx and ndax files in the raw folder recursively
-    snapshots_folder = get_snapshot_folder()
+    snapshots_folder = get_neware_snapshot_folder()
     neware_files = [file for file in snapshots_folder.rglob("*") if file.suffix in [".xlsx", ".ndax"]]
     new_samples = set()
     known_samples = get_known_samples()

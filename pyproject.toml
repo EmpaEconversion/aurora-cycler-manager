@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aurora-cycler-manager"
-requires-python = ">=3.9"
-version = "0.6.5"
+requires-python = ">=3.10"
+dynamic = ["version"]
 dependencies = [
     "dash >=3.1.0",
     "dash_ag_grid",
@@ -19,6 +19,7 @@ dependencies = [
     "orjson",
     "pandas",
     "paramiko",
+    "platformdirs>=4.3.8",
     "python-calamine",
     "pytz",
     "scp",
@@ -27,7 +28,15 @@ dependencies = [
     "tsdownsample",
     "waitress",
     "xmltodict",
-    "yadg",
+    "yadg>=6.1.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "bumpver>=2025.1131",
+    "pre-commit>=4.2.0",
+    "pytest>=8.4.1",
+    "ruff>=0.12.3",
 ]
 
 [project.scripts]
@@ -72,3 +81,20 @@ exclude = [
     "^test", # files that start with test
 ]
 plugins = ["pydantic.mypy"]
+
+[tool.bumpver]
+current_version = "v0.6.5"
+version_pattern = "vMAJOR.MINOR.PATCH[PYTAGNUM]"
+commit_message = "Bump version {old_version} -> {new_version}."
+tag_message = "Release {new_version}."
+tag_scope = "default"
+pre_commit_hook = ""
+post_commit_hook = ""
+commit = true
+tag = true
+push = true
+
+[tool.bumpver.file_patterns]
+"aurora_cycler_manager/version.py" = [
+    '__version__ = "{pep440_version}"',
+]

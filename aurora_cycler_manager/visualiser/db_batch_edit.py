@@ -1,4 +1,7 @@
-"""Batch edit sub-layout for the database tab."""
+"""Copyright © 2025, Empa.
+
+Batch editing sub-layout for the database tab.
+"""
 
 import logging
 

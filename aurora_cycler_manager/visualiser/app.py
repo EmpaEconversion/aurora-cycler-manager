@@ -1,4 +1,4 @@
-"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa.
 
 Web-based visualiser for the Aurora cycler manager based on Dash and Plotly.
 
@@ -8,8 +8,6 @@ systems, both of individual samples and of batches of samples.
 Allows users to view current information in the database, and control cyclers
 remotely, loading, ejecting, and submitting jobs to samples.
 """
-
-from __future__ import annotations
 
 import logging
 import socket

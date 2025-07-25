@@ -1,4 +1,4 @@
-"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa.
 
 Useful functions for the visualiser app.
 """
@@ -7,7 +7,7 @@ import sqlite3
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -16,7 +16,7 @@ from scipy import stats
 
 from aurora_cycler_manager.config import get_config
 
-ArrayLike = Union[list, np.ndarray, pd.Series]
+ArrayLike = list | np.ndarray | pd.Series
 
 CONFIG = get_config()
 

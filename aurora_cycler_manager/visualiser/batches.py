@@ -1,4 +1,4 @@
-"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa.
 
 Batches tab layout and callbacks for the visualiser app.
 """
@@ -380,7 +380,7 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict, plot_style: str) -> go.Figu
     # If there is a categorical color scale, add a legend by adding fake traces
     elif sdata["color_mode"] != "none":
         title = "<br>".join(textwrap.wrap(sdata["color_by"], width=24))
-        for uval, uind in zip(sdata["unique_color_labels"], sdata["unique_color_indices"]):
+        for uval, uind in zip(sdata["unique_color_labels"], sdata["unique_color_indices"], strict=True):
             if isinstance(uval, float):
                 label = f"{uval:.6g}"
             elif isinstance(uval, int):
@@ -408,7 +408,7 @@ def add_legend_colorbar(fig_dict: dict, sdata: dict, plot_style: str) -> go.Figu
     # If there markers are styled, add a legend by adding fake traces
     if sdata["symbols"]:
         title = "<br>".join(textwrap.wrap(sdata["style_by"], width=24))
-        for ustyle, uind in zip(sdata["unique_style_labels"], sdata["unique_style_indices"]):
+        for ustyle, uind in zip(sdata["unique_style_labels"], sdata["unique_style_indices"], strict=True):
             if isinstance(ustyle, float):
                 label = f"{ustyle:.6g}"
             elif isinstance(ustyle, int):

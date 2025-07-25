@@ -1,4 +1,7 @@
-"""Batch edit sub-layout for the database tab."""
+"""Copyright © 2025, Empa.
+
+Protocol editing sub-layout for the database tab.
+"""
 
 import base64
 import json
@@ -883,7 +886,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             technique_cls(
                 **{
                     name: value
-                    for name, value in zip(ALL_TECHNIQUE_INPUTS, input_values)
+                    for name, value in zip(ALL_TECHNIQUE_INPUTS, input_values, strict=True)
                     if name in technique_cls.model_fields
                 },
             )
@@ -925,7 +928,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         new_technique = technique_cls(
             **{
                 name: value
-                for name, value in zip(ALL_TECHNIQUE_INPUTS, input_values)
+                for name, value in zip(ALL_TECHNIQUE_INPUTS, input_values, strict=True)
                 if name in technique_cls.model_fields
             },
         ).model_dump()

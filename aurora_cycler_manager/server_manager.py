@@ -1,23 +1,14 @@
-"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa.
 
-server_manager manages a database and tomato servers for battery cycling
+server_manager manages a database and communicates with multiple cycler servers.
 
-This module contains the ServerManager class which communicates with multiple tomato
-servers and manages a database of samples, pipelines and jobs from all servers.
+This module defines a ServerManager class. The ServerManager object communicates
+with multiple CyclerServer objects defined in cycler_servers, and manages the
+database of samples, pipelines and jobs.
 
-Server manager can do all ketchup functions (load, submit, eject, ready, cancel,
-snapshot) without the user having to know which server samples are on.
-
-Jobs can be submitted with C-rates, and the capacity can be automatically
-calculated based on the sample information in the database.
-
-The server manager can also take snapshots of all jobs in the database, save the
-data locally as a json and convert to a zipped json file. The data can then be
-processed and plotted. See the daemon.py script for how to run this process
-automatically.
+Server manager takes functions like load, submit, snapshot, update etc. sends
+commands to the appropriate server, and handles the database updates.
 """
-
-from __future__ import annotations
 
 import json
 import logging
@@ -34,7 +25,7 @@ import paramiko
 
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.cycler_servers import CyclerServer, NewareServer, TomatoServer
+from aurora_cycler_manager.cycler_servers import BiologicServer, CyclerServer, NewareServer, TomatoServer
 from aurora_cycler_manager.utils import run_from_sample
 
 CONFIG = get_config()
@@ -44,8 +35,8 @@ logger = logging.getLogger(__name__)
 class ServerManager:
     """The ServerManager class manages the database and cycling servers.
 
-    This class is used in the app and the daemon. However the class can also be used by itself if
-    you want finer control over e.g. job submission.
+    This class is used in the app and the daemon. The class can also be used
+    directly in scripts for finer control over the cyclers.
 
     Typical usage in a script:
 
@@ -64,16 +55,14 @@ class ServerManager:
         sm.snapshot("sample_id")
 
         # Use analysis.analyse_sample("sample_id") to analyse the data
-        # After this it can be viewed in the app
+        # After this it can be viewed in the app, or read the hdf/json files
+        # directly
     """
 
     def __init__(self) -> None:
         """Initialize the server manager object."""
         logger.info("Creating cycler server objects")
         self.config = CONFIG
-        if not self.config.get("SSH private key path"):
-            msg = "'SSH private key path' not found in config file. Cannot connect to servers."
-            raise ValueError(msg)
         if not self.config.get("Snapshots folder path"):
             msg = "'Snapshots folder path' not found in config file. Cannot save snapshots."
             raise ValueError(msg)
@@ -86,19 +75,20 @@ class ServerManager:
     def get_servers(self) -> dict[str, CyclerServer]:
         """Create the cycler server objects from the config file."""
         servers: dict[str, CyclerServer] = {}
-        pkey_path = self.config.get("SSH private key path")
-        if not pkey_path:
-            msg = "'SSH private key path' not found in config file. Cannot connect to servers."
-            raise ValueError(msg)
         for server_config in self.config["Servers"]:
             if server_config["server_type"] == "tomato":
                 try:
-                    servers[server_config["label"]] = TomatoServer(server_config, pkey_path)
+                    servers[server_config["label"]] = TomatoServer(server_config)
                 except (OSError, ValueError, TimeoutError, paramiko.SSHException):
                     logger.exception("Server %s could not be created, skipping", server_config["label"])
             elif server_config["server_type"] == "neware":
                 try:
-                    servers[server_config["label"]] = NewareServer(server_config, pkey_path)
+                    servers[server_config["label"]] = NewareServer(server_config)
+                except (OSError, ValueError, TimeoutError, paramiko.SSHException):
+                    logger.exception("Server %s could not be created, skipping", server_config["label"])
+            elif server_config["server_type"] == "biologic":
+                try:
+                    servers[server_config["label"]] = BiologicServer(server_config)
                 except (OSError, ValueError, TimeoutError, paramiko.SSHException):
                     logger.exception("Server %s could not be created, skipping", server_config["label"])
             else:
@@ -108,7 +98,11 @@ class ServerManager:
     def update_jobs(self) -> None:
         """Update the jobs table in the database with the current job status."""
         for label, server in self.servers.items():
-            jobs = server.get_jobs()
+            try:
+                jobs = server.get_jobs()
+            except Exception as e:
+                logger.error("Error getting job status from %s: %s", label, e)
+                continue
             dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             hostname = server.hostname
             if jobs:
@@ -119,6 +113,7 @@ class ServerManager:
                         jobs["jobname"],
                         jobs["status"],
                         jobs["pipeline"],
+                        strict=True,
                     ):
                         # Insert the job if it does not exist
                         cursor.execute(
@@ -157,7 +152,11 @@ class ServerManager:
     def update_pipelines(self) -> None:
         """Update the pipelines table in the database with the current status."""
         for label, server in self.servers.items():
-            status = server.get_pipelines()
+            try:
+                status = server.get_pipelines()
+            except Exception as e:
+                logger.error("Error getting pipeline status from %s: %s", label, e)
+                continue
             dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             hostname = server.hostname
             server_type = server.server_type
@@ -169,6 +168,7 @@ class ServerManager:
                         status["pipeline"],
                         status["sampleid"],
                         status["jobid"],
+                        strict=True,
                     ):
                         cursor.execute(
                             "INSERT OR IGNORE INTO pipelines (`Pipeline`) VALUES (?)",
@@ -181,8 +181,8 @@ class ServerManager:
                             "WHERE `Pipeline` = ?",
                             (ready, dt, label, hostname, server_type, pipeline),
                         )
-                        # Need to treat nulls from tomato and Neware differently...
-                        # Tomato null means sample removed, Neware means no update
+                        # Need to treat nulls from tomato and Neware/Biologic differently
+                        # Tomato null means sample removed, Neware/Biologic means no update
                         if server_type == "tomato" or sampleid is not None:
                             cursor.execute(
                                 "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
@@ -192,6 +192,7 @@ class ServerManager:
                             server_type == "tomato"
                             or jobid_on_server is not None
                             or (server_type == "neware" and ready == 1)
+                            or (server_type == "biologic" and ready == 1)
                         ):
                             jobid = f"{label}-{jobid_on_server}" if jobid_on_server else None
                             cursor.execute(
@@ -460,7 +461,7 @@ class ServerManager:
                     logger.warning(warning.message)
             else:
                 # Update database preemtively if no warnings were caught
-                ready = server.server_type == "neware"  # Neware behaves differently - ready if no sample
+                ready = server.server_type in ["neware", "biologic"]  # Neware/Biologic -> ready if no sample
                 self.execute_sql(
                     "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = ? WHERE `Pipeline` = ?",
                     (ready, pipeline),
@@ -566,28 +567,34 @@ class ServerManager:
         pipeline = result[0][1]
 
         logger.info("Submitting job to %s with capacity %.5f Ah", sample, capacity_Ah)
-        full_jobid, jobid, json_string = server.submit(sample, capacity_Ah, payload, pipeline)
+        full_jobid, jobid_on_server, json_string = server.submit(sample, capacity_Ah, payload, pipeline)
         dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         # Update the job table in the database
-        if full_jobid and jobid:
+        if full_jobid and jobid_on_server:
             self.execute_sql(
                 "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Server hostname`, `Job ID on server`, "
                 "`Pipeline`, `Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (full_jobid, sample, server.label, server.hostname, jobid, pipeline, dt, json_string, comment),
+                (
+                    full_jobid,
+                    sample,
+                    server.label,
+                    server.hostname,
+                    jobid_on_server,
+                    pipeline,
+                    dt,
+                    json_string,
+                    comment,
+                ),
             )
-            # Bit of a duct tape fix until Neware's API improves
+            # Neware and Biologic servers have very expensive job id retrieval
             # It costs around 1 second to get the job id for one channel, so cannot do this in update_pipelines
-            # Just do it once on job submission and don't update until job is finised
-            if server.server_type == "neware":
-                assert isinstance(server, NewareServer)  # noqa: S101
-                jobid_on_server = server._get_job_id(pipeline)  # noqa: SLF001
-                full_jobid = f"{server.label}-{jobid}"
-                if jobid_on_server:
-                    self.execute_sql(
-                        "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ?, `Ready` = 0 WHERE `Pipeline` = ?",
-                        (full_jobid, jobid_on_server, pipeline),
-                    )
+            # Just do it once on job submission and don't update until job is finished
+            if isinstance(server, (NewareServer, BiologicServer)):
+                self.execute_sql(
+                    "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ?, `Ready` = 0 WHERE `Pipeline` = ?",
+                    (full_jobid, jobid_on_server, pipeline),
+                )
 
     def cancel(self, jobid: str) -> str:
         """Cancel a job on a server.
@@ -679,8 +686,14 @@ class ServerManager:
                 logger.warning("Job %s is still queued, skipping snapshot.", jobid)
                 continue
 
-            # Otherwise snapshot the job
-            server = self.find_server(server_label)
+            # Check that the server is accessible
+            try:
+                server = self.find_server(server_label)
+            except KeyError as e:
+                logger.warning("Could not access server %s for job %s: %s", server_label, jobid, e)
+                continue
+
+            # Snapshot the job
             try:
                 new_snapshot_status = server.snapshot(sample_id, jobid, jobid_on_server, get_raw=get_raw)
             except FileNotFoundError as e:
@@ -819,7 +832,7 @@ class ServerManager:
                 "UPDATE jobs SET `Payload` = ?, `Sample ID` = ? WHERE `Job ID` = ?",
                 (json.dumps("Unknown"), "Unknown", jobid),
             )
-            return
+            raise
         except NotImplementedError as e:
             msg = f"Server type {server.server_type} not supported for getting job data."
             raise NotImplementedError(msg) from e
@@ -837,7 +850,10 @@ class ServerManager:
         else:
             result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE `Payload` IS NULL")
         for (jobid,) in result:
-            self.update_payload(jobid)
+            try:
+                self.update_payload(jobid)
+            except Exception as e:
+                logger.error("Error updating payload for job %s: %s", jobid, e)
 
     def _update_neware_jobids(self) -> None:
         """Update all Job IDs on Neware servers.
@@ -853,7 +869,7 @@ class ServerManager:
         )
         pipelines = [row[0] for row in result]
         serverids = [row[1] for row in result]
-        for serverid, pipeline in zip(serverids, pipelines):
+        for serverid, pipeline in zip(serverids, pipelines, strict=True):
             logger.info("Updating job ID for %s on server %s", pipeline, serverid)
             server = self.find_server(serverid)
             assert isinstance(server, NewareServer)  # noqa: S101

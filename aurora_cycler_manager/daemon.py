@@ -1,20 +1,18 @@
-"""Copyright © 2025, Empa, Graham Kimbell, Enea Svaluto-Ferro, Ruben Kuhnel, Corsin Battaglia.
+"""Copyright © 2025, Empa.
 
-Daemon to update database, snapshot jobs and plots graphs
+Daemon to update database, snapshot jobs and plots graphs.
 
 Updates database regularly and snapshots all jobs then analyses and plots graphs
 at specified times each day. Change the update time and snapshot times in the
 main block to suit your needs.
 """
 
-from __future__ import annotations
-
 import logging
 import sys
 import traceback
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from time import sleep
-from typing import Callable
 
 from aurora_cycler_manager import server_manager
 from aurora_cycler_manager.analysis import analyse_all_batches, analyse_all_samples
