@@ -746,9 +746,9 @@ class BiologicServer(CyclerServer):
                     )
                     # Create the directory if it doesn't exist - data directory must also exist
                     if self.shell_type == "cmd":
-                        ssh.exec_command(f'mkdir "{self.biologic_data_path!s}"')
+                        ssh.exec_command(f'mkdir "{remote_output_path.parent.as_posix()}"')
                     elif self.shell_type == "powershell":
-                        ssh.exec_command(f'New-Item -ItemType Directory -Path "{self.biologic_data_path!s}"')
+                        ssh.exec_command(f'New-Item -ItemType Directory -Path "{remote_output_path.parent.as_posix()}"')
                     scp.put("./temp.mps", remote_output_path.as_posix())  # SCP hates Windows \
 
             # Submit the file on the remote PC
