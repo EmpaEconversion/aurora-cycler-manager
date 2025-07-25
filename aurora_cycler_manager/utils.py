@@ -1,4 +1,7 @@
-"""Some utility functions for the Aurora Cycler Manager."""
+"""Copyright © 2025, Empa.
+
+Utility functions for the Aurora Cycler Manager.
+"""
 
 import json
 import uuid
