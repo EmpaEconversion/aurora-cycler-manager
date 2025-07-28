@@ -180,7 +180,7 @@ class TomatoServer(CyclerServer):
         self,
         sample: str,
         capacity_Ah: float,
-        payload: str | dict,
+        payload: str | Path | dict,
         _pipeline: str = "",
         send_file: bool = False,
     ) -> tuple[str, str, str]:
@@ -189,8 +189,8 @@ class TomatoServer(CyclerServer):
         Args:
             sample (str): The name of the sample to be tested
             capacity_Ah (float): The capacity of the sample in Ah
-            payload (str | dict): The JSON payload to be submitted, can include '$NAME' which is
-                replaced with the actual sample ID
+            payload (str | Path | dict): The JSON protocol to be submitted, either unicycler or tomato
+                can be a path to a file or a dictionary
             pipeline (str, optional): The pipeline to submit the job to (not necessary for Tomato servers)
             send_file (bool, default = False): If True, the payload is written to a file and sent to the server
 
@@ -201,26 +201,39 @@ class TomatoServer(CyclerServer):
 
         """
         # Check if json_file is a string that could be a file path or a JSON string
-        if isinstance(payload, str):
+        if isinstance(payload, (str, Path)):
             try:
                 # Attempt to load json_file as JSON string
                 payload = json.loads(payload)
             except json.JSONDecodeError:
                 with Path(payload).open(encoding="utf-8") as f:  # type: ignore[arg-type]
                     payload = json.load(f)
+
         # If json_file is already a dictionary, use it directly
         elif not isinstance(payload, dict):
             msg = "json_file must be a file path, a JSON string, or a dictionary"
             raise TypeError(msg)
 
         assert isinstance(payload, dict)  # noqa: S101 for mypy type checking
-        # Add the sample name and capacity to the payload
-        payload["sample"]["name"] = sample
-        payload["sample"]["capacity"] = capacity_Ah
-        # Convert the payload to a json string
-        json_string = json.dumps(payload)
-        # Change all other instances of $NAME to the sample name
-        json_string = json_string.replace("$NAME", sample)
+
+        # Check if payload is unicycler
+        if "tomato" in payload:  # It is already a tomato payload
+            # Add the sample name and capacity to the payload
+            payload["sample"]["name"] = sample
+            payload["sample"]["capacity"] = capacity_Ah
+            # Convert the payload to a json string
+            json_string = json.dumps(payload)
+            # Change all other instances of $NAME to the sample name
+            json_string = json_string.replace("$NAME", sample)
+        else:
+            try:
+                json_string = unicycler.from_dict(payload).to_tomato_mpg2(
+                    sample_name=sample,
+                    capacity_mAh=capacity_Ah * 1000,
+                )
+            except Exception as e:
+                msg = "Payload must be a unicycler protocol or a valid Tomato MPG2 protocol"
+                raise ValueError(msg) from e
 
         if send_file:  # Write the json string to a file, send it, run it on the server
             # Write file locally
