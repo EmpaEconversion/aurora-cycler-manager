@@ -1028,9 +1028,6 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             return "No file selected", {}
         folder = CONFIG.get("Protocols folder path")
 
-        tomato_keys = ["version", "method", "tomato"]
-        unicycler_keys = ["measurement", "safety", "method"]
-
         if filename.endswith(".json"):
             try:
                 with (folder / filename).open(encoding="utf-8") as f:
@@ -1050,7 +1047,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             # Should be a tomato JSON or unicycler JSON
             if not isinstance(payload, dict):
                 return "❌ cannot submit .xml to tomato", {}
-            if any(k not in payload for k in tomato_keys) and any(k not in payload for k in unicycler_keys):
+            if "tomato" not in payload and "unicycler" not in payload:
                 msg = f"❌ {filename} is not a tomato json or unicycler json"
                 return msg, {}
 
@@ -1066,7 +1063,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
                 return f"❌ {filename} is not a Neware xml file", {}
 
             # It's a json dict
-            if any(k not in payload for k in unicycler_keys):
+            if "unicycler" not in payload:
                 msg = f"❌ {filename} is not a unicycler json file"
                 return msg, {}
 
