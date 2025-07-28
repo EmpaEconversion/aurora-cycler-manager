@@ -49,7 +49,7 @@ def _read_config_file() -> dict:
         'SSH private key path': Path to the SSH private key file if not in standard location (e.g. '~/.ssh/id_rsa').
         'Snapshots folder path': Path to a (local) folder to store unprocessed snapshots e.g. 'C:/aurora-shapshots'.
 
-        You can set the 'Shared config path' by running aurora-setup and following the instructions.
+        You can set the 'Shared config path' by running 'aurora-setup connect --project-dir=<path>'.
     """
 
     # if there is no user config file, create one
@@ -64,6 +64,10 @@ def _read_config_file() -> dict:
                     },
                     indent=4,
                 ),
+            )
+            logger.info(
+                "Created new config file at %s.",
+                user_config_path,
             )
             raise FileNotFoundError(err_msg)
 

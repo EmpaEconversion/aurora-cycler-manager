@@ -44,12 +44,11 @@ In a Python environment:
 ```
 pip install aurora-cycler-manager
 ```
-After successfully installing, run and follow the instructions:
-```
-aurora-setup
-```
+
 To _view data from an existing set up_:
-- Say yes to 'Connect to an existing configuration and database', then give the path to this folder
+```
+aurora-setup connect --project-dir="path\to\your\setup"
+```
 
 To _interact with servers on an existing set up_:
 - Interacting with servers (submitting jobs, harvesting data etc.) works with OpenSSH
@@ -59,15 +58,23 @@ To _interact with servers on an existing set up_:
   - "SSH private key path" can be changed, if your key is not in a standard folder
   - "Snapshots folder path" is where raw data downloaded from cyclers is stored, this can become very large
 
-To _create a new set up_: 
-- Use `aurora-setup` to create a configuration and database
-- Fill in the configuration file with details about e.g. Neware and EC-Lab servers, examples are left in the default config file
+To _create a new set up_:
+```
+aurora-setup init --project-dir="path\to\your\setup"
+```
+- This generates subfolders within the directory, a database, and a configuation file
+- Fill in the configuration file with details about e.g. Neware and EC-Lab servers, examples are left in the default config
 - In `Servers`, the `server_type` must be `neware`, `biologic`, or `tomato`
-- The `server_label` should be short and only letters and numbers, no special characters like `- _ / \`
+- The `server_label` should be short and only letters and numbers, no special characters like `-_/\`
 - The `shell_type` is the default shell when SSH-ing into the machine, it must be `cmd` or `powershell`
 - To set up a `neware` server, follow the instructions from [`aurora-neware`](https://github.com/empaeconversion/aurora-neware)
 - To set up a `biologic` server, follow the instructions from [`aurora-biologic`](https://github.com/empaeconversion/aurora-biologic)
 - To set up a `tomato` server, follow instructions from [`tomato-0.2.3`](https://dgbowl.github.io/tomato/0.2.3/)
+- If you change database columns in the shared configuration file, you can update the database with `aurora-setup update`
+```
+aurora-setup update
+```
+- Use the option `--force` if you want to permanetly delete columns and their data.
 
 ## Updating
 
