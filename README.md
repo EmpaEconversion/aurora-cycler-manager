@@ -3,9 +3,9 @@
   <img src="https://github.com/user-attachments/assets/95845ec0-e155-4e4f-95d2-ab1c992de940#gh-dark-mode-only" width="500" align="center" alt="Aurora cycler manager">
 </p>
 
-</br>
+<br>
 
-Cycler management, data pipeline, and data visualisation for Empa's robotic battery lab.
+Cycler control, data pipeline, and data visualisation from Empa's robotic battery lab.
 
 - Tracks samples, experiments and results.
 - Control Neware and Biologic cyclers on multiple machines from one place.
@@ -25,9 +25,9 @@ Experiments can use C-rates and the program will automatically calculate the cur
 
 ### Data harvesting
 
-Data is automatically gathered from cyclers.
+Data is automatically gathered from cyclers, all incoming files are converted to one open standard - accepts Biologic .mpr, Neware .ndax, Neware .xlsx, and tomato .json. Raw time-series data is converted to a hdf5 file including provenance tracked metadata.
 
-The program converts all incoming filetypes to one open standard - accepts Biologic .mpr, Neware .ndax, Neware .xlsx, and `tomato` .json. Raw time-series data is converted to a hdf5 file including provenance tracked metadata.
+Data is converted using [`NewareNDA`](https://github.com/d-cogswell/NewareNDA) and [`yadg`](https://github.com/dgbowl/yadg), processing the raw binary data directly. This is much faster and more space efficient than exporting to text or Excel formats from these cyclers.
 
 ### Analysis
 
@@ -51,11 +51,12 @@ aurora-setup connect --project-dir="path\to\your\setup"
 ```
 
 To _interact with servers on an existing set up_:
-- Interacting with servers (submitting jobs, harvesting data etc.) works with OpenSSH
+- Interacting with servers (submitting jobs, harvesting data etc.) works with OpenSSH, servers must have OpenSSH installed and running
 - Generate a public/private key pair on your system with `ssh-keygen`
-- Ensure your public key is authorized on the system running the cycler
+- Copy your public key (usually in `%USERPROFILE%\.ssh\id_rsa.pub`) to the cycler server
+- Add it to the server's `authorized_keys` file (usually in `C:\Users\username\.ssh\authorized_keys`)
 - (optional) You can make changes to your user config, this is stored in your user folder e.g. /users/yourname/appdata/local/aurora_cycler_manager/
-  - "SSH private key path" can be changed, if your key is not in a standard folder
+  - "SSH private key path" can be changed, if your key is not in a standard location
   - "Snapshots folder path" is where raw data downloaded from cyclers is stored, this can become very large
 
 To _create a new set up_:
@@ -78,11 +79,11 @@ aurora-setup update
 
 ## Updating
 
-From versions `0.5.x` you do not have to re-do any of the setup steps, just upgrade with pip:
+Upgrade with pip, you do not have to redo any setup steps:
 ```
 pip install aurora-cycler-manager --upgrade
 ```
-If upgrading from earlier versions, first `pip uninstall aurora-cycler-manager` then follow the installation steps.
+If upgrading from earlier than 0.5.0, first `pip uninstall aurora-cycler-manager` then follow the installation steps.
 
 ## Usage
 
@@ -109,4 +110,9 @@ aurora-daemon
 
 ## Acknowledgements
 
-This software was developed at the Materials for Energy Conversion Lab at the Swiss Federal Laboratories for Materials Science and Technology (Empa), and supported through the EU's Horizon program under the IntelLiGent project (101069765) and the Swiss State Secretariat for Education, Research and Innovation (SERI) (22.00142). 🇪🇺🇨🇭
+This software was developed at the Laboratory of Materials for Energy Conversion at Empa, the Swiss Federal Laboratories for Materials Science and Technology, and supported by funding from the [IntelLiGent](https://heuintelligent.eu/) project from the European Union’s research and innovation program under grant agreement No. 101069765, and from the Swiss State Secretariat for Education, Research, and Innovation (SERI) under contract No. 22.001422.
+
+<img src="https://github.com/user-attachments/assets/373d30b2-a7a4-4158-a3d8-f76e3a45a508#gh-light-mode-only" height="100" alt="IntelLiGent logo">
+<img src="https://github.com/user-attachments/assets/9d003d4f-af2f-497a-8560-d228cc93177c#gh-dark-mode-only" height="100" alt="IntelLiGent logo">&nbsp;&nbsp;&nbsp;&nbsp;
+<img src="https://github.com/user-attachments/assets/1d32a635-703b-432c-9d42-02e07d94e9a9" height="100" alt="EU flag">&nbsp;&nbsp;&nbsp;&nbsp;
+<img src="https://github.com/user-attachments/assets/cd410b39-5989-47e5-b502-594d9a8f5ae1" height="100" alt="Swiss secretariat">
