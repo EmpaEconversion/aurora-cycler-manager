@@ -12,7 +12,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from pytz import timezone
-from scipy import stats
 
 from aurora_cycler_manager.config import get_config
 
@@ -115,25 +114,37 @@ def make_pipelines_comparable(pipelines: list[str | None]) -> list[str | None]:
 
 def cramers_v(x: ArrayLike, y: ArrayLike) -> float:
     """Calculate Cramer's V for two categorical variables."""
+    # Create contingency table
     confusion_matrix = pd.crosstab(x, y)
-    chi2 = stats.chi2_contingency(confusion_matrix)[0]
-    n = confusion_matrix.sum().sum()
-    phi2 = chi2 / n
+    observed = confusion_matrix.to_numpy()
+    n = observed.sum()
+
+    # Compute expected frequencies
+    row_totals = observed.sum(axis=1, keepdims=True)
+    col_totals = observed.sum(axis=0, keepdims=True)
+    expected = row_totals @ col_totals / n
+
+    # Compute chi-squared statistic
+    with np.errstate(divide="ignore", invalid="ignore"):
+        chi2 = (observed - expected) ** 2 / expected
+        chi2[np.isnan(chi2)] = 0.0  # Handle 0/0 cases
+
+    chi2_stat = chi2.sum()
+
+    # Compute phi-squared
+    phi2 = chi2_stat / n
     r, k = confusion_matrix.shape
+
+    # Bias correction
     phi2corr = max(0, phi2 - ((k - 1) * (r - 1)) / (n - 1))
     rcorr = r - ((r - 1) ** 2) / (n - 1)
     kcorr = k - ((k - 1) ** 2) / (n - 1)
-    if min((kcorr - 1), (rcorr - 1)) == 0:
+
+    denom = min((kcorr - 1), (rcorr - 1))
+    if denom == 0:
         return 0.0
-    return np.sqrt(phi2corr / min((kcorr - 1), (rcorr - 1)))
 
-
-def anova_test(x: ArrayLike, y: ArrayLike) -> float:
-    """ANOVA test between categorical and continuous variables."""
-    categories = pd.Series(x).unique()
-    groups = [y[x == category] for category in categories]
-    f_stat, p_value = stats.f_oneway(*groups)
-    return p_value
+    return np.sqrt(phi2corr / denom)
 
 
 def correlation_ratio(categories: ArrayLike, measurements: ArrayLike) -> float:
@@ -149,8 +160,23 @@ def correlation_ratio(categories: ArrayLike, measurements: ArrayLike) -> float:
     y_total_avg = np.sum(np.multiply(y_avg_array, n_array)) / np.sum(n_array)
     numerator = np.sum(np.multiply(n_array, np.power(np.subtract(y_avg_array, y_total_avg), 2)))
     denominator = np.sum(np.power(np.subtract(measurements, y_total_avg), 2))
-    eta = 0.0 if numerator == 0 else np.sqrt(numerator / denominator)
-    return eta
+    return 0.0 if numerator == 0 else np.sqrt(numerator / denominator)
+
+
+def weight_by_num_samples(df: pd.DataFrame) -> np.ndarray:
+    """Calculate weight matrix based on number of samples."""
+    # 1 where the value is not NaN, 0 where it is NaN
+    mask = df.notna().astype(int).to_numpy()
+
+    # Matrix multiply to get number of samples for each pair of columns
+    co_occurrence = np.matmul(mask.T, mask)
+
+    # Weight by inverse root, set diagonal to 0
+    with np.errstate(divide="ignore"):
+        weights = 1 - co_occurrence.astype(float) ** -0.5
+    np.fill_diagonal(weights, 0.0)
+
+    return weights
 
 
 def correlation_matrix(df: pd.DataFrame) -> pd.DataFrame:
@@ -178,4 +204,4 @@ def correlation_matrix(df: pd.DataFrame) -> pd.DataFrame:
                 corr.loc[col1, col2] = correlation_ratio(df[col1], df[col2])
             elif pd.api.types.is_object_dtype(df[col1]) and pd.api.types.is_object_dtype(df[col2]):
                 corr.loc[col1, col2] = cramers_v(df[col1], df[col2])
-    return corr
+    return corr * weight_by_num_samples(df)
