@@ -204,7 +204,7 @@ def default_config(base_dir: Path) -> dict:
     }
 
 
-def create_database(force: bool) -> None:
+def create_database(force: bool = False) -> None:
     """Create/update a database file."""
     # Load the configuration
     config = get_config()
