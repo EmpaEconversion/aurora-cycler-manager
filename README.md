@@ -3,9 +3,9 @@
   <img src="https://github.com/user-attachments/assets/95845ec0-e155-4e4f-95d2-ab1c992de940#gh-dark-mode-only" width="500" align="center" alt="Aurora cycler manager">
 </p>
 
-</br>
+<br>
 
-Cycler management, data pipeline, and data visualisation for Empa's robotic battery lab.
+Cycler control, data pipeline, and data visualisation from Empa's robotic battery lab.
 
 - Tracks samples, experiments and results.
 - Control Neware and Biologic cyclers on multiple machines from one place.
@@ -15,19 +15,19 @@ Cycler management, data pipeline, and data visualisation for Empa's robotic batt
 
 ### Jobs
 
-Aurora cycler manager can be used to control and submit experiments to Biologic and Neware cyclers. Biologic cyclers are controlled through `tomato`, and Neware through a Python API.
+Aurora cycler manager can be used to control and submit experiments to Biologic and Neware cyclers.
 
-Jobs can be either be submitted with a cycler-specific file (e.g. xml protocols for Neware).
+Jobs can be submitted with a cycler-specific file (e.g. .xml or .mps).
 
-Alternatively, a `unicycler` universal .json protocol can be used, which is converted to the appropriate format on submission. `unicycler` protocols can currently be converted to Neware .xml, `tomato` .json, and `PyBaMM` experiments. It is particularly useful for generating Neware .xml which can be difficult to define programmatically.
+Alternatively, a `unicycler` universal .json protocol can be used, which is converted to the appropriate format on submission.
 
 Experiments can use C-rates and the program will automatically calculate the current required based on the sample information in the database.
 
 ### Data harvesting
 
-Data is automatically gathered from cyclers. Harvesters are also available to download data from Biologic's EC-Lab.
+Data is automatically gathered from cyclers, all incoming files are converted to one open standard - accepts Biologic .mpr, Neware .ndax, Neware .xlsx, and tomato .json. Raw time-series data is converted to a hdf5 file including provenance tracked metadata.
 
-The program converts all incoming filetypes to one open standard - accepts Biologic .mpr, `tomato` .json, Neware .ndax, and Neware .xlsx. Raw time-series data is converted to a hdf5 file including provenance tracked metadata.
+Data is converted using [`NewareNDA`](https://github.com/d-cogswell/NewareNDA) and [`yadg`](https://github.com/dgbowl/yadg), processing the raw binary data directly. This is much faster and more space efficient than exporting to text or Excel formats from these cyclers.
 
 ### Analysis
 
@@ -42,35 +42,48 @@ A web-app based on `Plotly Dash` allows rapid, interactive viewing of time-serie
 In a Python environment:
 
 ```
-pip install git+https://github.com/EmpaEconversion/aurora-cycler-manager.git
+pip install aurora-cycler-manager
 ```
-After successfully installing, run and follow the instructions:
-```
-aurora-setup
-```
+
 To _view data from an existing set up_:
-- Say yes to 'Connect to an existing configuration and database', then give the path to this folder.
+```
+aurora-setup connect --project-dir="path\to\your\setup"
+```
 
 To _interact with servers on an existing set up_:
-- Interacting with servers (submitting jobs, harvesting data etc.) works with OpenSSH
+- Interacting with servers (submitting jobs, harvesting data etc.) works with OpenSSH, servers must have OpenSSH installed and running
 - Generate a public/private key pair on your system with `ssh-keygen`
-- Ensure your public key is authorized on the system running the cycler
-- In config.json fill in 'SSH private key path' and 'Snapshots folder path'
-- Snapshots folder path stores the raw data downloaded from cyclers which is processed. This data can be deleted any time.
-- To connect and control `tomato` servers, `tomato v0.2.3` must be configured on the remote PC
-- To harvest from EC-Lab or Neware cyclers, set data to save/backup to some location and specify this location in the shared configuration file
+- Copy your public key (usually in `%USERPROFILE%\.ssh\id_rsa.pub`) to the cycler server
+- Add it to the server's `authorized_keys` file (usually in `C:\Users\username\.ssh\authorized_keys`)
+- (optional) You can make changes to your user config, this is stored in your user folder e.g. /users/yourname/appdata/local/aurora_cycler_manager/
+  - "SSH private key path" can be changed, if your key is not in a standard location
+  - "Snapshots folder path" is where raw data downloaded from cyclers is stored, this can become very large
 
-To _create a new set up_: 
-- Use `aurora-setup` to create a configuration and database - it is currently designed with network storage in mind, so other users can access data.
-- Fill in the configuration file with details about e.g. tomato, Neware and EC-Lab servers. Examples are left in the default config file.
+To _create a new set up_:
+```
+aurora-setup init --project-dir="path\to\your\setup"
+```
+- This generates subfolders within the directory, a database, and a configuation file
+- Fill in the configuration file with details about e.g. Neware and EC-Lab servers, examples are left in the default config
+- In `Servers`, the `server_type` must be `neware`, `biologic`, or `tomato`
+- The `server_label` should be short and only letters and numbers, no special characters like `-_/\`
+- The `shell_type` is the default shell when SSH-ing into the machine, it must be `cmd` or `powershell`
+- To set up a `neware` server, follow the instructions from [`aurora-neware`](https://github.com/empaeconversion/aurora-neware)
+- To set up a `biologic` server, follow the instructions from [`aurora-biologic`](https://github.com/empaeconversion/aurora-biologic)
+- To set up a `tomato` server, follow instructions from [`tomato-0.2.3`](https://dgbowl.github.io/tomato/0.2.3/)
+- If you change database columns in the shared configuration file, you can update the database with `aurora-setup update`
+```
+aurora-setup update
+```
+- Use the option `--force` if you want to permanetly delete columns and their data.
 
 ## Updating
 
-From versions `0.5.x` you do not have to re-do any of the setup steps, just upgrade with pip:
+Upgrade with pip, you do not have to redo any setup steps:
 ```
-pip install git+https://github.com/EmpaEconversion/aurora-cycler-manager.git --upgrade
+pip install aurora-cycler-manager --upgrade
 ```
-If upgrading from earlier versions, first `pip uninstall aurora-cycler-manager` then follow the installation steps.
+If upgrading from earlier than 0.5.0, first `pip uninstall aurora-cycler-manager` then follow the installation steps.
 
 ## Usage
 
@@ -79,11 +92,12 @@ A web app allows users to view analysed data and see the status of samples, jobs
 aurora-app
 ```
 
-To upload sample information to the database, place output .json files from the Aurora robot into the samples folder defined in the configuration.
-
-Hand-made cells can also be added, a .json must be created with the keys defined in the shared configuration.
-
-Loading samples, submitting jobs etc. can be performed on `tomato` or Neware directly, or using the `aurora-app` GUI, or by writing a Python script to use the functions in server_manager.py.
+- There are three tabs, samples plotting, batch plotting, and database.
+- To upload sample information to the database, use the 'Add samples' button in the database tab, and select a .json file defining the cells.
+- Hand-made cells can also be added, a .json must be created with the keys defined in the configuration file.
+- Protocols can be created in database -> protocols.
+- In database -> pipelines, load samples onto the pipelines, then submit a protocol.
+- Loading samples, submitting jobs, analysing data etc. can also be run in Python scripts directly - see the example in `server_manager.py`.
 
 With SSH access, automatic data harvesting and analysis is run using:
 ```
@@ -96,4 +110,9 @@ aurora-daemon
 
 ## Acknowledgements
 
-This software was developed at the Materials for Energy Conversion Lab at the Swiss Federal Laboratories for Materials Science and Technology (Empa), and supported through the EU's Horizon program under the IntelLiGent project (101069765) and the Swiss State Secretariat for Education, Research and Innovation (SERI) (22.00142). 🇪🇺🇨🇭
+This software was developed at the Laboratory of Materials for Energy Conversion at Empa, the Swiss Federal Laboratories for Materials Science and Technology, and supported by funding from the [IntelLiGent](https://heuintelligent.eu/) project from the European Union’s research and innovation program under grant agreement No. 101069765, and from the Swiss State Secretariat for Education, Research, and Innovation (SERI) under contract No. 22.001422.
+
+<img src="https://github.com/user-attachments/assets/373d30b2-a7a4-4158-a3d8-f76e3a45a508#gh-light-mode-only" height="100" alt="IntelLiGent logo">
+<img src="https://github.com/user-attachments/assets/9d003d4f-af2f-497a-8560-d228cc93177c#gh-dark-mode-only" height="100" alt="IntelLiGent logo">&nbsp;&nbsp;&nbsp;&nbsp;
+<img src="https://github.com/user-attachments/assets/1d32a635-703b-432c-9d42-02e07d94e9a9" height="100" alt="EU flag">&nbsp;&nbsp;&nbsp;&nbsp;
+<img src="https://github.com/user-attachments/assets/cd410b39-5989-47e5-b502-594d9a8f5ae1" height="100" alt="Swiss secretariat">

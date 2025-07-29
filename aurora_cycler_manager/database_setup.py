@@ -1,21 +1,43 @@
 """Copyright © 2025, Empa.
 
-Script to create the shared config and database files.
+Command line utility for setting up the Aurora Cycler Manager.
 
-Config and database files are created if they do not exist during server-manager
-initialisation. The config file is created with some default values for
-file paths and server information. The database samples table is created
-with columns specified in the config file, with alternative names for handling
-different naming conventions in output files.
+Connect to an existing configuration:
+    aurora-setup connect --config=<path>
+
+Create a new setup with a shared config file and database:
+    aurora-setup init --base-dir=<path> [--overwrite]
+
+Update the existing database from the config:
+    aurora-setup update [--force]
+
+Get the status of the setup:
+    aurora-setup status [--verbose]
 """
 
+import argparse
+import contextlib
 import json
+import logging
 import os
 import sqlite3
-import sys
 from pathlib import Path
 
+import platformdirs
+
 from aurora_cycler_manager.config import get_config
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Check if the environment is set for pytest
+root_dir = Path(__file__).resolve().parent
+if os.getenv("PYTEST_RUNNING") == "1":
+    root_dir = root_dir.parent / "tests" / "test_data"
+    USER_CONFIG_PATH = root_dir / "test_config.json"
+else:
+    user_config_dir = Path(platformdirs.user_data_dir("aurora_cycler_manager", appauthor=False))
+    USER_CONFIG_PATH = user_config_dir / "config.json"
 
 
 def default_config(base_dir: Path) -> dict:
@@ -71,24 +93,9 @@ def default_config(base_dir: Path) -> dict:
             {"Name": "Sample ID", "Alternative names": ["sampleid"], "Type": "VARCHAR(255) PRIMARY KEY"},
             {"Name": "Run ID", "Type": "VARCHAR(255)"},
             {"Name": "Cell number", "Alternative names": ["Battery_Number"], "Type": "INT"},
-            {"Name": "N:P ratio", "Alternative names": ["Actual N:P Ratio"], "Type": "FLOAT"},
             {"Name": "Rack position", "Alternative names": ["Rack_Position"], "Type": "INT"},
-            {"Name": "Separator type", "Type": "VARCHAR(255)"},
-            {"Name": "Electrolyte name", "Alternative names": ["Electrolyte"], "Type": "VARCHAR(255)"},
-            {"Name": "Electrolyte description", "Type": "TEXT"},
-            {"Name": "Electrolyte position", "Type": "INT"},
-            {"Name": "Electrolyte amount (uL)", "Alternative names": ["Electrolyte Amount"], "Type": "FLOAT"},
-            {"Name": "Electrolyte dispense order", "Type": "VARCHAR(255)"},
-            {
-                "Name": "Electrolyte amount before separator (uL)",
-                "Alternative names": ["Electrolyte Amount Before Seperator (uL)"],
-                "Type": "FLOAT",
-            },
-            {
-                "Name": "Electrolyte amount after separator (uL)",
-                "Alternative names": ["Electrolyte Amount After Seperator (uL)"],
-                "Type": "FLOAT",
-            },
+            {"Name": "N:P ratio", "Alternative names": ["Actual N:P Ratio"], "Type": "FLOAT"},
+            {"Name": "N:P ratio overlap factor", "Type": "FLOAT"},
             {"Name": "Anode rack position", "Alternative names": ["Anode Position"], "Type": "INT"},
             {"Name": "Anode type", "Type": "VARCHAR(255)"},
             {"Name": "Anode description", "Type": "TEXT"},
@@ -99,7 +106,11 @@ def default_config(base_dir: Path) -> dict:
                 "Alternative names": ["Anode Current Collector Weight (mg)"],
                 "Type": "FLOAT",
             },
-            {"Name": "Anode active material mass fraction", "Alternative names": ["Anode AM Content"], "Type": "FLOAT"},
+            {
+                "Name": "Anode active material mass fraction",
+                "Alternative names": ["Anode active material weight fraction", "Anode AM Content"],
+                "Type": "FLOAT",
+            },
             {
                 "Name": "Anode active material mass (mg)",
                 "Alternative names": ["Anode Active Material Weight (mg)", "Anode AM Weight (mg)"],
@@ -152,42 +163,62 @@ def default_config(base_dir: Path) -> dict:
                 "Alternative names": ["Cathode Capacity (mAh)"],
                 "Type": "FLOAT",
             },
+            {"Name": "Separator type", "Alternative names": ["Separator"], "Type": "VARCHAR(255)"},
+            {"Name": "Separator diameter (mm)", "Type": "FLOAT"},
+            {"Name": "Separator thickness (mm)", "Type": "FLOAT"},
+            {"Name": "Electrolyte name", "Alternative names": ["Electrolyte"], "Type": "VARCHAR(255)"},
+            {"Name": "Electrolyte description", "Type": "TEXT"},
+            {"Name": "Electrolyte position", "Type": "INT"},
+            {"Name": "Electrolyte amount (uL)", "Alternative names": ["Electrolyte Amount"], "Type": "FLOAT"},
+            {"Name": "Electrolyte dispense order", "Type": "VARCHAR(255)"},
+            {
+                "Name": "Electrolyte amount before separator (uL)",
+                "Alternative names": ["Electrolyte Amount Before Seperator (uL)"],
+                "Type": "FLOAT",
+            },
+            {
+                "Name": "Electrolyte amount after separator (uL)",
+                "Alternative names": ["Electrolyte Amount After Seperator (uL)"],
+                "Type": "FLOAT",
+            },
             {
                 "Name": "C-rate definition capacity (mAh)",
                 "Alternative names": ["Capacity (mAh)", "C-rate Capacity (mAh)"],
                 "Type": "FLOAT",
             },
-            {"Name": "Target N:P ratio", "Type": "FLOAT"},
-            {"Name": "Minimum N:P ratio", "Type": "FLOAT"},
-            {"Name": "Maximum N:P ratio", "Type": "FLOAT"},
-            {"Name": "N:P ratio overlap factor", "Type": "FLOAT"},
             {"Name": "Casing type", "Type": "VARCHAR(255)"},
-            {"Name": "Separator diameter (mm)", "Type": "FLOAT"},
-            {"Name": "Spacer (mm)", "Type": "FLOAT"},
-            {"Name": "Comment", "Alternative names": ["Comments"], "Type": "TEXT"},
+            {"Name": "Casing material", "Type": "VARCHAR(255)"},
+            {"Name": "Top spacer type", "Type": "VARCHAR(255)"},
+            {"Name": "Top spacer thickness (mm)", "Alternative names": ["Spacer (mm)"], "Type": "FLOAT"},
+            {"Name": "Top spacer diameter (mm)", "Alternative names": [], "Type": "FLOAT"},
+            {"Name": "Top spacer material", "Alternative names": [], "Type": "VARCHAR(255)"},
+            {"Name": "Bottom spacer type", "Type": "VARCHAR(255)"},
+            {"Name": "Bottom spacer thickness (mm)", "Alternative names": [], "Type": "FLOAT"},
+            {"Name": "Bottom spacer diameter (mm)", "Alternative names": [], "Type": "FLOAT"},
+            {"Name": "Bottom spacer material", "Alternative names": [], "Type": "VARCHAR(255)"},
             {"Name": "Label", "Type": "VARCHAR(255)"},
+            {"Name": "Comment", "Alternative names": ["Comments"], "Type": "TEXT"},
             {"Name": "Barcode", "Type": "VARCHAR(255)"},
-            {"Name": "Subbatch number", "Alternative names": ["Batch Number", "Subbatch"], "Type": "INT"},
             {"Name": "Assembly history", "Type": "TEXT"},
         ],
     }
 
 
-def create_database() -> None:
+def create_database(force: bool = False) -> None:
     """Create/update a database file."""
     # Load the configuration
-
     config = get_config()
     database_path = Path(config["Database path"])
 
     # Check if database file already exists
     if database_path.exists() and database_path.suffix == ".db":
         db_existed = True
-        print(f"Found database at {database_path}")
+        logger.info("Found database at %s", database_path)
     else:
-        print(f"No database at {database_path}, creating new database")
         db_existed = False
         database_path.parent.mkdir(exist_ok=True)
+        logger.info("Creating new database at %s", database_path)
+
     # Get the list of columns from the configuration
     columns = config["Sample database"]
     column_definitions = [f"`{col['Name']}` {col['Type']}" for col in columns]
@@ -294,140 +325,187 @@ def create_database() -> None:
             removed_columns = [col for col in existing_columns if col not in new_columns]
             if removed_columns:
                 # Ask user to double confirm
-                print(f"Database config would remove columns: {', '.join(removed_columns)}")
-                msg1 = "Are you sure you want to delete these columns? Type 'yes' to confirm: "
-                msg2 = "Are you really sure? This will permanently delete all data in these columns. Type 'really' to confirm: "
-                if input(msg1) == "yes" and input(msg2) == "really":
-                    for col in removed_columns:
-                        cursor.execute(f'ALTER TABLE samples DROP COLUMN "{col}"')
-                    conn.commit()
-                    print(f"Columns {', '.join(removed_columns)} removed")
+                if not force:
+                    msg = (
+                        "WARNING: Operation would remove columns.\n"
+                        "Use '--force' to proceed.\n"
+                        f"Would remove columns: {', '.join(removed_columns)}"
+                    )
+                    raise ValueError(msg)
+                for col in removed_columns:
+                    cursor.execute(f'ALTER TABLE samples DROP COLUMN "{col}"')
+                conn.commit()
+                logger.warning("Columns %s removed", ", ".join(removed_columns))
             if added_columns:
                 # Add new columns
                 for col in config["Sample database"]:
                     if col["Name"] in added_columns:
                         cursor.execute(f'ALTER TABLE samples ADD COLUMN "{col["Name"]}" {col["Type"]}')
                 conn.commit()
-                print(f"Adding new columns to database: {', '.join(added_columns)}")
+                logger.info("Adding new columns to database: %s", ", ".join(added_columns))
             if not added_columns and not removed_columns:
-                print("No changes to database configuration")
+                logger.info("No changes to database configuration")
+
+
+def create_new_setup(base_dir: str | Path, overwrite: bool = False) -> None:
+    """Create a new aurora setup with a shared config file and database."""
+    base_dir = Path(base_dir).resolve()
+    shared_config_path = base_dir / "database" / "shared_config.json"
+    if shared_config_path.exists():
+        if overwrite:
+            logger.warning("Overwriting existing shared config file at %s", shared_config_path)
         else:
-            print(f"Created database at {database_path}")
+            msg = "Shared config file already exists. Use --overwrite to overwrite it."
+            raise FileExistsError(msg)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    (base_dir / "database").mkdir(exist_ok=True)
+    (base_dir / "snapshots").mkdir(exist_ok=True)
+    (base_dir / "protocols").mkdir(exist_ok=True)
+
+    logger.info("Created folder structure at %s", base_dir)
+
+    with (shared_config_path).open("w") as f:
+        json.dump(default_config(base_dir), f, indent=4)
+
+    # Read the user_config file, if it didn't exist before, get_config will create it
+    with contextlib.suppress(Exception):
+        get_config(reload=True)
+    with (USER_CONFIG_PATH).open("r") as f:
+        user_config = json.load(f)
+
+    # Add the shared config path to the user config file
+    user_config["Shared config path"] = str(shared_config_path)
+    with (USER_CONFIG_PATH).open("w") as f:
+        json.dump(user_config, f, indent=4)
+
+    # Reload the configuration with the new path
+    get_config(reload=True)
+
+    create_database(force=False)
+
+    logger.critical(
+        "YOU MUST FILL IN THE DETAILS AT %s",
+        shared_config_path,
+    )
+
+
+def connect_to_config(shared_config_folder: str | Path) -> None:
+    """Connect to an existing configuration."""
+    shared_config_path = Path(shared_config_folder).resolve()
+    # Try to find the shared config file in a few different locations
+    confirmed_shared_config_path = None
+
+    # Maybe they provided a full path to the shared config file
+    if shared_config_path.suffix == ".json" and shared_config_path.exists():
+        confirmed_shared_config_path = shared_config_path
+
+    # Maybe they provided a parent folder or parent parent folder
+    if not confirmed_shared_config_path and shared_config_path.is_dir():
+        potential_paths = [
+            shared_config_path / "database" / "shared_config.json",
+            shared_config_path / "shared_config.json",
+        ]
+        for path in potential_paths:
+            if path.exists():
+                confirmed_shared_config_path = path
+                break
+
+    # If not, give up searching
+    if not confirmed_shared_config_path:
+        msg = "Could not find a valid shared config file. Check that shared_config.json exists in the provided folder."
+        raise FileNotFoundError(msg)
+
+    logger.info("Using shared config file at %s", str(confirmed_shared_config_path))
+
+    # Check that the shared config has the required keys
+    required_keys = [
+        "Database path",
+        "Database backup folder path",
+        "Samples folder path",
+        "Protocols folder path",
+        "Processed snapshots folder path",
+    ]
+    with confirmed_shared_config_path.open("r") as f:
+        shared_config = json.load(f)
+    for key in required_keys:
+        if key not in shared_config:
+            msg = f"Shared config file at {confirmed_shared_config_path} is missing required key: {key}"
+            raise ValueError(msg)
+
+    # Update the user config file with the shared config path
+    logger.info("Updating user config file at %s", str(USER_CONFIG_PATH))
+    with (USER_CONFIG_PATH).open("r") as f:
+        user_config = json.load(f)
+    user_config["Shared config path"] = str(confirmed_shared_config_path)
+    with (USER_CONFIG_PATH).open("w") as f:
+        json.dump(user_config, f, indent=4)
+
+    # If this runs successfully, the user can now run the app
+    get_config()
+
+
+def get_status(verbose: bool = False) -> dict:
+    """Print the status of the aurora cycler manager setup."""
+    if not USER_CONFIG_PATH.exists():
+        logger.error("User config file does not exist at %s", USER_CONFIG_PATH)
+        raise FileNotFoundError
+
+    with USER_CONFIG_PATH.open("r") as f:
+        user_config = json.load(f)
+
+    shared_config_path = user_config.get("Shared config path")
+    if not shared_config_path or not Path(shared_config_path).exists():
+        logger.error(
+            "Shared config path is not set or does not exist. "
+            "Use 'aurora-setup connect' to connect to a config, "
+            "or 'aurora-setup init' to create a new one."
+        )
+        raise FileNotFoundError
+    logger.info("User config file: %s", USER_CONFIG_PATH)
+    logger.info("Shared config file: %s", shared_config_path)
+
+    config = get_config()
+    if verbose:
+        logger.info("Current configuration:")
+        config = {k: str(v) if isinstance(v, Path) else v for k, v in config.items()}
+        logger.info(json.dumps(config, indent=4))
+    return config
 
 
 def main() -> None:
-    """Create the shared config and database files."""
-    root_dir = Path(__file__).resolve().parent
+    """CLI entry point for aurora cycler manager setup utility."""
+    parser = argparse.ArgumentParser(description="aurora-cycler-manager setup utility.")
+    subparsers = parser.add_subparsers(dest="command")
 
-    # Check if the environment is set for pytest
-    if os.getenv("PYTEST_RUNNING") == "1":
-        root_dir = root_dir.parent / "tests" / "test_data"
-        config_path = root_dir / "test_config.json"
+    connect_parser = subparsers.add_parser("connect", help="Connect to existing config")
+    connect_parser.add_argument("--project-dir", type=Path, required=True)
+
+    create_parser = subparsers.add_parser("init", help="Create new config and database")
+    create_parser.add_argument("--project-dir", type=Path, required=True)
+    create_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing config and database")
+
+    update_parser = subparsers.add_parser("update", help="Update the database from the config")
+    update_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Allow permanent deletion of database columns if config removes columns.",
+    )
+
+    status_parser = subparsers.add_parser("status", help="Get the status of the setup")
+    status_parser.add_argument("--verbose", action="store_true", help="Print verbose output")
+
+    args = parser.parse_args()
+
+    if args.command == "connect":
+        connect_to_config(args.project_dir)
+    elif args.command == "init":
+        create_new_setup(args.project_dir, args.overwrite)
+    elif args.command == "update":
+        create_database(force=args.force)
+    elif args.command == "status":
+        get_status(verbose=args.verbose)
     else:
-        config_path = root_dir / "config.json"
-
-    try:
-        config = get_config()
-        if config.get("Shared config path") and config.get("Database path"):
-            print("Set up already exists:")
-            print(f"User config file: {config_path}")
-            print(f"Shared config file: {config['Shared config path']}")
-            print(f"Database: {config['Database path']}")
-            choice = input("Update existing database entries? (yes/no): ")
-            if choice.lower() in ["yes", "y"]:
-                create_database()
-                sys.exit()
-            choice = input("Continue with another set up? (yes/no): ")
-            if choice not in ["yes", "y"]:
-                print("Exiting")
-                sys.exit()
-    except (ValueError, FileNotFoundError):
-        pass
-
-    choice = input("Connect to an existing configuration and database? (yes/no):")
-    if choice.lower() in ["yes", "y"]:
-        shared_config_path_str = input("Please enter the path to the shared_config.json file or parent folder:")
-        # Remove quotes, spaces etc.
-        shared_config_path = Path(shared_config_path_str.strip("'\" ")).resolve()
-        # Try to find the shared config file in a few different locations
-        potential_paths = [
-            shared_config_path,
-            shared_config_path / "shared_config.json",
-            shared_config_path / "database" / "shared_config.json",
-        ]
-        for path in potential_paths:
-            if path.exists() and path.suffix == ".json":
-                shared_config_path = path
-                break
-        else:
-            print("Could not find a valid shared config file. Exiting.")
-            sys.exit()
-
-        # Update the user config file with the shared config path
-        print(f"Updating user config file at {config_path}")
-        with (config_path).open("r") as f:
-            config = json.load(f)
-        config["Shared config path"] = str(shared_config_path)
-        with (config_path).open("w") as f:
-            json.dump(config, f, indent=4)
-        # If this runs successfully, the user can now run the app
-        get_config()
-
-        print("Successfully connected to existing configuration. Run the app with 'aurora-app'")
-    elif choice.lower() in ["no", "n"]:
-        choice = input("Create a new config, database and file structure? (yes/no):")
-        if choice.lower() not in ["yes", "y"]:
-            print("Exiting")
-            sys.exit()
-        base_dir = Path(
-            input("Please enter the folder path to be used for Aurora database and data storage:")
-        ).resolve()
-        # If it doesn't exist, ask user if they want to create the folder
-        if not base_dir.exists():
-            choice = input(f"Folder {base_dir} does not exist. Create it? (yes/no): ")
-            if choice.lower() in ["y", "yes"]:
-                base_dir.mkdir(parents=True)
-            else:
-                print("Exiting")
-                sys.exit()
-
-        # Create the folder structure
-        (base_dir / "database").mkdir(exist_ok=True)
-        (base_dir / "samples").mkdir(exist_ok=True)
-        (base_dir / "snapshots").mkdir(exist_ok=True)
-        (base_dir / "payloads").mkdir(exist_ok=True)
-        print(f"Created folder structure in {base_dir}")
-
-        # Create the config file, if it already exists warn the user
-        config_path = base_dir / "database" / "shared_config.json"
-        if config_path.exists():
-            choice = input(f"Config file {config_path} already exists. Overwrite it? (yes/no): ")
-            if choice.lower() not in ["yes", "y"]:
-                print("Exiting")
-        with (base_dir / "database" / "shared_config.json").open("w") as f:
-            json.dump(default_config(base_dir), f, indent=4)
-        # Read the user config file and update with the shared config file
-        try:
-            get_config()
-        except (FileNotFoundError, ValueError):
-            # If it didn't exist before, get_config will have created a blank file
-            with (config_path).open("r") as f:
-                config = json.load(f)
-
-        # Change all the Path objects to strings to dump to json
-        for k, v in config.items():
-            if isinstance(v, Path):
-                config[k] = str(v)
-        with (config_path).open("w") as f:
-            json.dump(config, f, indent=4)
-        print(f"Created shared config file at {config_path}")
-        print(f"Updated user config at {root_dir / 'config.json'} to point to shared config file")
-
-        # Create the database
-        create_database()
-
-        print(f"IMPORTANT: Before use you must fill in server details in {config_path}")
-        print("If you change database columns, run this script again.")
+        parser.print_help()
 
 
 if __name__ == "__main__":
