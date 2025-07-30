@@ -41,7 +41,7 @@ dev = [
 
 [project.scripts]
 aurora-setup = "aurora_cycler_manager.database_setup:main"
-aurora-app = "aurora_cycler_manager.visualiser.app:main"
+aurora-app = "aurora_cycler_manager.visualiser.startup:main"
 aurora-daemon = "aurora_cycler_manager.daemon:main"
 
 [tool.setuptools.package-data]
