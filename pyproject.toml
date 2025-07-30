@@ -24,7 +24,6 @@ dependencies = [
     "python-calamine>=0.4.0",
     "pytz>=2025.2",
     "scp>=0.15.0",
-    "scipy>=1.16.0",
     "tables>=3.10.2",
     "tsdownsample>=0.1.4.1",
     "waitress>=3.0.2",
