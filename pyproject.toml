@@ -8,7 +8,7 @@ description = "Battery cycler management, data analysis and visualisation."
 requires-python = ">=3.10"
 dynamic = ["version"]
 dependencies = [
-    "aurora-unicycler>=0.2.0",
+    "aurora-unicycler>=0.3.0",
     "dash>=3.1.0",
     "dash_ag_grid>=32.3.0",
     "dash_bootstrap_components>=2.0.3",
