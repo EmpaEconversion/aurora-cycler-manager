@@ -11,21 +11,22 @@ from decimal import Decimal
 from pathlib import Path
 
 import dash_mantine_components as dmc
+from aurora_unicycler import (
+    ConstantCurrent,
+    ConstantVoltage,
+    ImpedanceSpectroscopy,
+    Loop,
+    OpenCircuitVoltage,
+    Protocol,
+    Step,
+    Tag,
+)
 from dash import Dash, Input, Output, State, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 from dash_ag_grid import AgGrid
 from pydantic import ValidationError
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.unicycler import (
-    BaseTechnique,
-    ConstantCurrent,
-    ConstantVoltage,
-    Loop,
-    OpenCircuitVoltage,
-    Tag,
-    from_dict,
-)
 from aurora_cycler_manager.visualiser.notifications import error_notification, success_notification
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ TECHNIQUE_NAMES = {
     "constant_current": "Constant current",
     "constant_voltage": "Constant voltage",
     "open_circuit_voltage": "Open circuit voltage",
+    "impedance_spectroscopy": "Impedance spectroscopy",
     "loop": "Loop",
     "tag": "Tag",
 }
@@ -42,12 +44,13 @@ ALL_TECHNIQUES = {
     "Constant current": ConstantCurrent,
     "Constant voltage": ConstantVoltage,
     "Open circuit voltage": OpenCircuitVoltage,
+    "Impedance spectroscopy": ImpedanceSpectroscopy,
     "Loop": Loop,
     "Tag": Tag,
 }
 ALL_TECHNIQUES_REV = {v: k for k, v in ALL_TECHNIQUES.items()}
 ALL_TECHNIQUE_INPUTS = {k for v in ALL_TECHNIQUES.values() for k in v.model_fields}
-ALL_TECHNIQUE_INPUTS.remove("name")
+ALL_TECHNIQUE_INPUTS.remove("step")
 ALL_TECHNIQUE_INPUTS.remove("id")
 
 column_defs = [
@@ -102,7 +105,7 @@ def seconds_to_time(seconds: float | Decimal | None) -> str:
 
 def describe_row(technique: dict) -> str:
     """Generate a description for a row based on the technique."""
-    name = technique.get("name")
+    name = technique.get("step")
     if not name:
         description = "Select technique"
     elif name == "constant_current":
@@ -125,11 +128,24 @@ def describe_row(technique: dict) -> str:
         if (time := technique.get("until_time_s")) is not None and time > 0:
             description = f"until {seconds_to_time(time)}"
     elif name == "loop":
-        start_step = technique.get("start_step")
-        start_step_str = f"'{start_step}'" if isinstance(start_step, str) else f"technqiue {start_step} (1-indexed)"
-        description = f"to {start_step_str} for {technique.get('cycle_count')} cycles"
+        loop_to = technique.get("loop_to")
+        loop_to_str = f"'{loop_to}'" if isinstance(loop_to, str) else f"technqiue {loop_to} (1-indexed)"
+        description = f"to {loop_to_str} for {technique.get('cycle_count')} cycles"
     elif name == "tag":
         description = f"{technique.get('tag')}"
+    elif name == "impedance_spectroscopy":
+        if technique.get("amplitude_V"):
+            description = f"±{technique.get('amplitude_V')} V "
+        else:
+            description = f"±{technique.get('amplitude_mA')} mA "
+        description += (
+            f"from {technique.get('start_frequency_Hz'):.6g} Hz "
+            f"to {technique.get('end_frequency_Hz'):.6g} Hz, "
+            f"{technique.get('points_per_decade')} pts/dec, "
+            f"{technique.get('measures_per_point')} meas/pt"
+        )
+        if technique.get("drift_correction"):
+            description += ", drift correct"
     else:
         description = "Select technique"
     return description
@@ -141,7 +157,7 @@ def protocol_dict_to_row_data(protocol: dict) -> list[dict]:
         {
             "index": i,
             "id": technique.get("id"),
-            "technique": TECHNIQUE_NAMES.get(technique.get("name", "...")),
+            "technique": TECHNIQUE_NAMES.get(technique.get("step", "...")),
             "description": describe_row(technique),
         }
         for i, technique in enumerate(protocol.get("method", []))
@@ -304,6 +320,82 @@ step_edit_menu = dmc.Stack(
                     id="voltage_V-group",
                     style={"display": "none"},
                 ),
+                html.Div(
+                    dmc.NumberInput(
+                        id="amplitude_V",
+                        label="Amplitude (V)",
+                        suffix=" V",
+                        hideControls=True,
+                        allowNegative=False,
+                    ),
+                    id="amplitude_V-group",
+                    style={"display": "none"},
+                ),
+                html.Div(
+                    dmc.NumberInput(
+                        id="amplitude_mA",
+                        label="Amplitude (mA)",
+                        suffix=" mA",
+                        hideControls=True,
+                        allowNegative=False,
+                    ),
+                    id="amplitude_mA-group",
+                    style={"display": "none"},
+                ),
+                html.Div(
+                    dmc.NumberInput(
+                        id="start_frequency_Hz",
+                        label="Start frequency (Hz)",
+                        suffix=" Hz",
+                        thousandSeparator=",",
+                        hideControls=True,
+                        allowNegative=False,
+                    ),
+                    id="start_frequency_Hz-group",
+                    style={"display": "none"},
+                ),
+                html.Div(
+                    dmc.NumberInput(
+                        id="end_frequency_Hz",
+                        label="End frequency (Hz)",
+                        suffix=" Hz",
+                        thousandSeparator=",",
+                        hideControls=True,
+                        allowNegative=False,
+                    ),
+                    id="end_frequency_Hz-group",
+                    style={"display": "none"},
+                ),
+                html.Div(
+                    dmc.NumberInput(
+                        id="points_per_decade",
+                        label="Points per decade",
+                        hideControls=True,
+                        allowDecimal=False,
+                        allowNegative=False,
+                    ),
+                    id="points_per_decade-group",
+                    style={"display": "none"},
+                ),
+                html.Div(
+                    dmc.NumberInput(
+                        id="measures_per_point",
+                        label="Measures per frequency",
+                        hideControls=True,
+                        allowDecimal=False,
+                        allowNegative=False,
+                    ),
+                    id="measures_per_point-group",
+                    style={"display": "none"},
+                ),
+                html.Div(
+                    dmc.Checkbox(
+                        id="drift_correction",
+                        label="Drift correction",
+                    ),
+                    id="drift_correction-group",
+                    style={"display": "none"},
+                ),
                 dmc.NumberInput(
                     id="until_time_s",
                     label="Until time (s)",
@@ -380,11 +472,11 @@ step_edit_menu = dmc.Stack(
                 ),
                 html.Div(
                     dmc.TextInput(
-                        id="start_step",
+                        id="loop_to",
                         label="Start step",
                         placeholder="Tag string or start step (1-indexed)",
                     ),
-                    id="start_step-group",
+                    id="loop_to-group",
                     style={"display": "none"},
                 ),
                 html.Div(
@@ -439,7 +531,7 @@ step_edit_menu = dmc.Stack(
     ],
 )
 
-# Menu for editing measurement and safety parameters
+# Menu for editing record and safety parameters
 global_edit_menu = dmc.Stack(
     id="global-edit-menu",
     children=[
@@ -447,7 +539,7 @@ global_edit_menu = dmc.Stack(
             legend="Measurement parameters",
             children=[
                 dmc.NumberInput(
-                    id="measurement_interval_s",
+                    id="record_interval_s",
                     placeholder="Time interval (s)",
                     style={"width": "100%"},
                     suffix=" s",
@@ -455,7 +547,7 @@ global_edit_menu = dmc.Stack(
                     debounce=True,
                 ),
                 dmc.NumberInput(
-                    id="measurement_interval_v",
+                    id="record_interval_v",
                     placeholder="Voltage interval (V)",
                     style={"width": "100%"},
                     suffix=" V",
@@ -463,7 +555,7 @@ global_edit_menu = dmc.Stack(
                     debounce=True,
                 ),
                 dmc.NumberInput(
-                    id="measurement_interval_mA",
+                    id="record_interval_mA",
                     placeholder="Current interval (mA)",
                     style={"width": "100%"},
                     suffix=" mA",
@@ -545,7 +637,7 @@ global_edit_menu = dmc.Stack(
 protocol_edit_layout = html.Div(
     id="protocol-container",
     children=[
-        dcc.Store(id="protocol-store", data={"method": [], "measurement": {}, "safety": {}}),
+        dcc.Store(id="protocol-store", data={"method": [], "record": {}, "safety": {}}),
         dcc.Store(id="protocol-store-selected", data=[]),  # For selected rows
         dcc.Store(id="protocol-edit-clipboard", data=[]),  # For copy/paste functionality
         html.Div(
@@ -593,9 +685,9 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     @app.callback(
         Output("protocol-edit-grid", "selectedRows"),
         Output("protocol-edit-grid", "rowData"),
-        Output("measurement_interval_s", "value"),
-        Output("measurement_interval_v", "value"),
-        Output("measurement_interval_mA", "value"),
+        Output("record_interval_s", "value"),
+        Output("record_interval_v", "value"),
+        Output("record_interval_mA", "value"),
         Output("min_voltage_V", "value"),
         Output("max_voltage_V", "value"),
         Output("min_current_mA", "value"),
@@ -611,10 +703,10 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             return [], []
         row_data = protocol_dict_to_row_data(protocol_dict)
         new_selected_rows = [row_data[i] for i in selected_indices] if selected_indices else []
-        # Update the measurement and safety parameters
-        measurement_interval_s = protocol_dict.get("measurement", {}).get("time_s")
-        measurement_interval_v = protocol_dict.get("measurement", {}).get("voltage_V")
-        measurement_interval_mA = protocol_dict.get("measurement", {}).get("current_mA")
+        # Update the record and safety parameters
+        record_interval_s = protocol_dict.get("record", {}).get("time_s")
+        record_interval_v = protocol_dict.get("record", {}).get("voltage_V")
+        record_interval_mA = protocol_dict.get("record", {}).get("current_mA")
         safety_max_V = protocol_dict.get("safety", {}).get("max_voltage_V")
         safety_min_V = protocol_dict.get("safety", {}).get("min_voltage_V")
         safety_max_mA = protocol_dict.get("safety", {}).get("max_current_mA")
@@ -623,9 +715,9 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         return (
             new_selected_rows,
             row_data,
-            measurement_interval_s,
-            measurement_interval_v,
-            measurement_interval_mA,
+            record_interval_s,
+            record_interval_v,
+            record_interval_mA,
             safety_min_V,
             safety_max_V,
             safety_min_mA,
@@ -649,7 +741,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             decoded = base64.b64decode(content_string).decode("utf-8")
             samples = json.loads(decoded)
             try:
-                protocol = from_dict(samples).model_dump()
+                protocol = Protocol.from_dict(samples).model_dump()
                 # add an id to each technique
                 for technique in protocol["method"]:
                     technique["id"] = uuid.uuid4()
@@ -717,7 +809,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             reordered_indices = [i for i, row in enumerate(indices) if row in selected_indices]
             index = max(reordered_indices) + 1 if reordered_indices else None
         # add a new row to the data store
-        new_row = BaseTechnique(name="Select technique").model_dump()
+        new_row = Step(step="Select technique").model_dump()
         new_row["id"] = uuid.uuid4()
         if index is not None:
             protocol_dict["method"].insert(index, new_row)
@@ -809,11 +901,11 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     def update_step_edit_menu(selected_rows: list[dict], protocol_dict: dict) -> tuple[str | None, ...]:
         """Update the step edit menu with the selected row data."""
         if selected_rows is None or not selected_rows:
-            return None, *([None] * len(ALL_TECHNIQUE_INPUTS))
+            return "", *([""] * len(ALL_TECHNIQUE_INPUTS))
         selected_row = selected_rows[0]
         index = selected_row["index"]
         technique = protocol_dict["method"][index]
-        input_values = [technique.get(x, None) for x in ALL_TECHNIQUE_INPUTS]
+        input_values = [technique.get(x, "") for x in ALL_TECHNIQUE_INPUTS]
         return selected_row["technique"], *input_values
 
     # If user selects a technique, show the inputs for that technique
@@ -859,12 +951,20 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     )
     def update_time_inputs(until_time_s: float) -> tuple[int | str, int | str, int | str]:
         """Update the time inputs based on the until_time_s value."""
-        if until_time_s is None:
+        if until_time_s is None or until_time_s == "":
             return 0, 0, 0
         hours = int(until_time_s) // 3600
         minutes = (int(until_time_s) % 3600) // 60
         seconds = int(until_time_s) % 60
         return hours, minutes, seconds
+
+    @app.callback(
+        Output("drift_correction", "value"),
+        Input("drift_correction", "checked"),
+    )
+    def update_drift_correction(checked: bool) -> bool:
+        """Dmc uses 'checked' for checkbox and 'value' for everything else."""
+        return checked
 
     # if you change a value in the step edit menu, check if the technique is valid
     @app.callback(
@@ -890,7 +990,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
                     if name in technique_cls.model_fields
                 },
             )
-        except ValidationError as e:
+        except (ValidationError, TypeError) as e:
             logger.exception("Pydantic validation error of individual technique")
             friendly_error = str(e).split("\n", 1)[1] if "\n" in str(e) else str(e)
             friendly_error = friendly_error.split("[", 1)[0].strip()
@@ -967,9 +1067,9 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         protocol_dict["method"][:] = [protocol_dict["method"][i] for i in indices]
         # Validate the protocol
         try:
-            from_dict(protocol_dict)
+            Protocol.from_dict(protocol_dict)
         except ValidationError as e:
-            logger.error("Pydantic validation error for whole protocol: %s", e)  # noqa: TRY400
+            logger.exception("Pydantic validation error for whole protocol")
             friendly_error = str(e).split("\n", 1)[1] if "\n" in str(e) else str(e)
             friendly_error = friendly_error.split("[", 1)[0].strip()
             return friendly_error, {"visibility": "visible"}
@@ -986,12 +1086,12 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         """Update the save button based on the protocol validity and name."""
         return not name or name.strip() == "" or warning.get("visibility") == "visible"
 
-    # If any safety or measurement parameters change, update the protocol store
+    # If any safety or record parameters change, update the protocol store
     @app.callback(
         Output("protocol-store", "data", allow_duplicate=True),
-        Input("measurement_interval_s", "value"),
-        Input("measurement_interval_v", "value"),
-        Input("measurement_interval_mA", "value"),
+        Input("record_interval_s", "value"),
+        Input("record_interval_v", "value"),
+        Input("record_interval_mA", "value"),
         Input("min_voltage_V", "value"),
         Input("max_voltage_V", "value"),
         Input("min_current_mA", "value"),
@@ -1001,9 +1101,9 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         prevent_initial_call=True,
     )
     def update_global_parameters(
-        measurement_interval_s: float,
-        measurement_interval_v: float,
-        measurement_interval_mA: float,
+        record_interval_s: float,
+        record_interval_v: float,
+        record_interval_mA: float,
         min_voltage_V: float,
         max_voltage_V: float,
         min_current_mA: float,
@@ -1012,9 +1112,9 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         protocol_dict: dict,
     ) -> dict:
         """Update the global parameters in the protocol store."""
-        protocol_dict["measurement"]["time_s"] = measurement_interval_s
-        protocol_dict["measurement"]["voltage_V"] = measurement_interval_v
-        protocol_dict["measurement"]["current_mA"] = measurement_interval_mA
+        protocol_dict["record"]["time_s"] = record_interval_s
+        protocol_dict["record"]["voltage_V"] = record_interval_v
+        protocol_dict["record"]["current_mA"] = record_interval_mA
         protocol_dict["safety"]["min_voltage_V"] = min_voltage_V
         protocol_dict["safety"]["max_voltage_V"] = max_voltage_V
         protocol_dict["safety"]["min_current_mA"] = min_current_mA
@@ -1078,7 +1178,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             for technique in protocol_copy.get("method", []):
                 if "id" in technique:
                     del technique["id"]
-            protocol = from_dict(protocol_copy)
+            protocol = Protocol.from_dict(protocol_copy)
             folder.mkdir(parents=True, exist_ok=True)
             with file_path.open("w") as f:
                 f.write(protocol.model_dump_json(exclude_none=True, indent=4))
