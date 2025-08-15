@@ -20,9 +20,9 @@ from datetime import datetime
 from pathlib import Path, PureWindowsPath
 
 import paramiko
+from aurora_unicycler import Protocol
 from scp import SCPClient
 
-from aurora_cycler_manager import unicycler
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.eclab_harvester import convert_mpr, get_eclab_snapshot_folder
 from aurora_cycler_manager.neware_harvester import convert_neware_data, snapshot_raw_data
@@ -227,7 +227,7 @@ class TomatoServer(CyclerServer):
             json_string = json_string.replace("$NAME", sample)
         else:
             try:
-                json_string = unicycler.from_dict(payload).to_tomato_mpg2(
+                json_string = Protocol.from_dict(payload).to_tomato_mpg2(
                     sample_name=sample,
                     capacity_mAh=capacity_Ah * 1000,
                 )
@@ -517,7 +517,7 @@ class NewareServer(CyclerServer):
             )
             raise TypeError(msg)
         if isinstance(payload, dict):  # assume unicycler dict
-            xml_string = unicycler.from_dict(payload, sample, capacity_Ah * 1000).to_neware_xml()
+            xml_string = Protocol.from_dict(payload, sample, capacity_Ah * 1000).to_neware_xml()
         elif isinstance(payload, str):  # it is a file path
             if payload.startswith("<?xml"):  # it is already an xml string
                 xml_string = payload
@@ -531,7 +531,7 @@ class NewareServer(CyclerServer):
                     xml_string = f.read()
             elif payload.suffix == ".json":
                 with payload.open(encoding="utf-8") as f:
-                    xml_string = unicycler.from_dict(json.load(f), sample, capacity_Ah * 1000).to_neware_xml()
+                    xml_string = Protocol.from_dict(json.load(f), sample, capacity_Ah * 1000).to_neware_xml()
             else:
                 msg = "Payload must be a path to an xml or json file or xml string or dict."
                 raise TypeError(msg)
@@ -723,14 +723,14 @@ class BiologicServer(CyclerServer):
             msg = "For Biologic, payload must be a unicycler protocol, either a dict, or path to a JSON file."
             raise TypeError(msg)
         if isinstance(payload, dict):  # assume unicycler dict
-            mps_string = unicycler.from_dict(payload, sample, capacity_Ah * 1000).to_eclab_settings()
+            mps_string = Protocol.from_dict(payload, sample, capacity_Ah * 1000).to_biologic_mps()
         elif isinstance(payload, (Path, str)):  # it is a file path
             payload = Path(payload)
             if not payload.exists():
                 raise FileNotFoundError
             if payload.suffix == ".json":
                 with payload.open(encoding="utf-8") as f:
-                    mps_string = unicycler.from_dict(json.load(f), sample, capacity_Ah * 1000).to_eclab_settings()
+                    mps_string = Protocol.from_dict(json.load(f), sample, capacity_Ah * 1000).to_biologic_mps()
             else:
                 msg = "Payload must be a path to a unicycler json file or dict."
                 raise TypeError(msg)
