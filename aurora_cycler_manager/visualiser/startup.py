@@ -6,6 +6,7 @@ Show stuff happening in the terminal to keep users happy :).
 """
 
 import logging
+import os
 
 from aurora_cycler_manager.setup_logging import setup_logging
 
@@ -51,11 +52,20 @@ def gradient_line(start_rgb: tuple, mid_rgb: tuple, end_rgb: tuple, text: str) -
     return "".join(gradient)
 
 
+def supports_truecolor() -> bool:
+    """Check if the terminal supports colors."""
+    colorterm = os.environ.get("COLORTERM", "")
+    return bool("truecolor" in colorterm.lower() or os.environ.get("WT_SESSION"))
+
+
 def main() -> None:
     """Start the Aurora app."""
-    for line in ascii_art.splitlines():
-        gradient_text = gradient_line((103, 203, 243), (77, 193, 185), (183, 119, 179), line)
-        print(gradient_text)
+    if supports_truecolor():
+        for line in ascii_art.splitlines():
+            gradient_text = gradient_line((103, 203, 243), (77, 193, 185), (183, 119, 179), line)
+            print(gradient_text)
+    else:
+        print(ascii_art)
     print()
 
     setup_logging()
