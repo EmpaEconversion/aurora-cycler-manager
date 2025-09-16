@@ -571,7 +571,7 @@ class ServerManager:
         dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         # Update the job table in the database
-        if full_jobid and jobid_on_server:
+        if full_jobid:
             self.execute_sql(
                 "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Server hostname`, `Job ID on server`, "
                 "`Pipeline`, `Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -595,6 +595,9 @@ class ServerManager:
                     "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ?, `Ready` = 0 WHERE `Pipeline` = ?",
                     (full_jobid, jobid_on_server, pipeline),
                 )
+        else:
+            msg = "Submission did not return a job ID."
+            raise ValueError(msg)
 
     def cancel(self, jobid: str) -> str:
         """Cancel a job on a server.
