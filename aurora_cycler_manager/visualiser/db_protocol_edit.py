@@ -809,7 +809,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             reordered_indices = [i for i, row in enumerate(indices) if row in selected_indices]
             index = max(reordered_indices) + 1 if reordered_indices else None
         # add a new row to the data store
-        new_row = Step(step="Select technique").model_dump()
+        new_row = Step().model_dump()
         new_row["id"] = uuid.uuid4()
         if index is not None:
             protocol_dict["method"].insert(index, new_row)
