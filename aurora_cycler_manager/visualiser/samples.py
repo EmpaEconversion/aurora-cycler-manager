@@ -313,13 +313,13 @@ def register_samples_callbacks(app: Dash) -> None:
                 continue
             if compressed and any(f.startswith("shrunk") and f.endswith(".h5") for f in files):
                 filepath = next(f for f in files if f.startswith("shrunk") and f.endswith(".h5"))
-                df = pd.read_hdf(f"{file_location}/{filepath}")
+                df = pd.read_hdf(f"{file_location}/{filepath}", key="data")
                 data_dict = df.to_dict(orient="list")
                 data_dict["Shrunk"] = True
                 data["data_sample_time"][sample] = data_dict
             elif any(f.startswith("full") and f.endswith(".h5") for f in files):
                 filepath = next(f for f in files if f.startswith("full") and f.endswith(".h5"))
-                df = pd.read_hdf(f"{file_location}/{filepath}")
+                df = pd.read_hdf(f"{file_location}/{filepath}", key="data")
                 data["data_sample_time"][sample] = df.to_dict(orient="list")
             else:
                 cycling_files = [
@@ -328,7 +328,7 @@ def register_samples_callbacks(app: Dash) -> None:
                 if not cycling_files:
                     logger.info("No cycling files found in %s", file_location)
                     continue
-                df, metadata = combine_jobs([Path(f) for f in cycling_files])
+                df, df_eis, metadata = combine_jobs([Path(f) for f in cycling_files])
                 data["data_sample_time"][sample] = df.to_dict(orient="list")
 
             # Get the analysed file
@@ -435,9 +435,10 @@ def register_samples_callbacks(app: Dash) -> None:
             fig["layout"]["title"] = "No data..."
             return fig
         for sample, cycle_dict in data["data_sample_cycle"].items():
+            print(cycle_dict[yvar])
             trace = go.Scattergl(
                 x=cycle_dict["Cycle"],
-                y=cycle_dict[yvar],
+                y=cycle_dict[yvar] or [np.nan] * len(cycle_dict["Cycle"]),  # in case y is None
                 mode="lines+markers",
                 name=sample,
                 hovertemplate=f"{sample}<br>Cycle: %{{x}}<br>{yvar}: %{{y}}<extra></extra>",

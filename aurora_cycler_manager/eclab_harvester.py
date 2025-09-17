@@ -255,6 +255,10 @@ def get_mpr_data(
         df["I (A)"] = 0.0
     df["cycle_number"] = data.data_vars["half cycle"].to_numpy() // 2 if "half cycle" in data.data_vars else 0
     df["technique"] = data.data_vars["mode"].to_numpy() if "mode" in data.data_vars else 0
+    if "freq" in data.data_vars and "Re(Z)" in data.data_vars and "-Im(Z)" in data.data_vars:  # EIS data
+        df["f (Hz)"] = data.data_vars["freq"].to_numpy()
+        df["Re(Z) (ohm)"] = data.data_vars["Re(Z)"]
+        df["-Im(Z) (ohm)"] = data.data_vars["-Im(Z)"]
     mpr_metadata = json.loads(data.attrs["original_metadata"])
     mpr_metadata["job_type"] = "eclab_mpr"
     yadg_metadata = {k: v for k, v in data.attrs.items() if k.startswith("yadg")}
@@ -326,6 +330,9 @@ def convert_mpr(
             "uts": "Unix time stamp in seconds",
             "V (V)": "Cell voltage in volts",
             "I (A)": "Current across cell in amps",
+            "f (Hz)": "Frequency of oscillations in impedance spectroscopy",
+            "Re(Z) (ohm)": "Real impedance from impedance spectroscopy",
+            "-Im(Z) (ohm)": "Imaginary impedance from impedance spectroscopy",
             "cycle_number": "Number of cycles based on EC-lab half cycles",
             "technique": "code of technique using mpr conventions, see technique codes",
             "technique codes": technique_codes,

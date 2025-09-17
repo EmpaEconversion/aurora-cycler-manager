@@ -72,7 +72,7 @@ def _sort_times(start_times: list | np.ndarray, end_times: list | np.ndarray) ->
 
 def combine_jobs(
     job_files: list[Path],
-) -> tuple[pd.DataFrame, dict]:
+) -> tuple[pd.DataFrame, pd.DataFrame | None, dict]:
     """Read multiple job files and return a single dataframe.
 
     Merges the data, identifies cycle numbers and changes column names.
@@ -126,6 +126,13 @@ def combine_jobs(
             "uts": "uts",
         },
     )
+    # Separate out EIS
+    df_eis = None
+    if "f (Hz)" in df:
+        df_eis = df[(df["f (Hz)"].notna()) & (df["f (Hz)"] != 0)]
+        df = df[(df["f (Hz)"].isna()) | (df["f (Hz)"] == 0)]
+        df = df.drop(columns=["f (Hz)", "Re(Z) (ohm)", "-Im(Z) (ohm)"])
+
     df["dt (s)"] = np.concatenate([[0], df["uts"].to_numpy()[1:] - df["uts"].to_numpy()[:-1]])
     df["Iavg (A)"] = np.concatenate([[0], (df["I (A)"].to_numpy()[1:] + df["I (A)"].to_numpy()[:-1]) / 2])
     df["dQ (mAh)"] = 1e3 * df["Iavg (A)"] * df["dt (s)"] / 3600
@@ -153,6 +160,14 @@ def combine_jobs(
             df.loc[df["Step"] == step, "Cycle"] = cycle
             cycle += 1
 
+    # Add cycles to EIS
+    if df_eis is not None and not df_eis.empty:
+        # EIS cycle is the largest cycle that occured at a time before
+        df["cummax_cycle"] = df["Cycle"].cummax()
+        df_eis = pd.merge_asof(df_eis, df[["uts", "cummax_cycle"]], on="uts", direction="backward")
+        df = df.drop(columns=["cummax_cycle"])
+        df_eis = df_eis.rename(columns={"cummax_cycle": "Cycle"})
+
     # Add provenance to the metadatas
     timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     # Replace sample data with latest from database
@@ -179,7 +194,7 @@ def combine_jobs(
         "glossary": glossary,
     }
 
-    return df, metadata
+    return df, df_eis, metadata
 
 
 def extract_voltage_crates(job_data: dict) -> dict:
@@ -486,7 +501,7 @@ def analyse_cycles(
     TODO: Add save location as an argument.
 
     """
-    df, metadata = combine_jobs(job_files)
+    df, df_eis, metadata = combine_jobs(job_files)
 
     # update metadata
     timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
@@ -858,6 +873,14 @@ def analyse_cycles(
                 complib="blosc",
                 complevel=9,
             )
+            if df_eis is not None and not df_eis.empty:
+                df_eis.to_hdf(
+                    output_hdf5_file,
+                    key="eis",
+                    mode="a",
+                    complib="blosc",
+                    complevel=9,
+                )
             with h5py.File(output_hdf5_file, "a") as f:
                 f.create_dataset("metadata", data=json.dumps(metadata))
     return df, cycle_dict, metadata
@@ -939,7 +962,7 @@ def shrink_sample(sample_id: str) -> None:
     if not file_location.exists():
         msg = f"File {file_location} not found"
         raise FileNotFoundError(msg)
-    df = pd.read_hdf(file_location)
+    df = pd.read_hdf(file_location, "data")
     # Only keep a few columns
     df = df[["V (V)", "I (A)", "uts", "dQ (mAh)", "Cycle"]]
     # Calculate derivative - impossible to do after downsampling
