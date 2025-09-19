@@ -16,6 +16,7 @@ import base64
 import json
 import logging
 import warnings
+import tempfile
 from datetime import datetime
 from pathlib import Path, PureWindowsPath
 
@@ -28,6 +29,7 @@ from aurora_cycler_manager.eclab_harvester import convert_mpr, get_eclab_snapsho
 from aurora_cycler_manager.neware_harvester import convert_neware_data, snapshot_raw_data
 from aurora_cycler_manager.tomato_converter import convert_tomato_json, get_tomato_snapshot_folder, puree_tomato
 from aurora_cycler_manager.utils import run_from_sample
+import subprocess
 
 logger = logging.getLogger(__name__)
 CONFIG = get_config()
@@ -910,3 +912,117 @@ class BiologicServer(CyclerServer):
         """Get the testid for a pipeline."""
         output = self.command(f"biologic get-job-id {pipeline} --ssh")
         return json.loads(output).get(pipeline)
+
+
+class NewareAiidaServer(CyclerServer):
+    """Server class for Neware servers accessed through AiiDA, implements all the methods in CyclerServer.
+
+    Used by server_manager to interact with Neware servers, should not be instantiated directly.
+
+    A Neware server is a PC running Neware BTS 8.0 with the API enabled and aurora-neware CLI
+    installed. The 'neware' CLI command should be accessible in the PATH. If it is not by default,
+    use the 'command_prefix' in the shared config to add it to the PATH.
+
+    """
+
+    def eject(self, pipeline: str) -> str:
+        """Remove a sample from a pipeline.
+
+        Do not need to actually change anything on Neware client, just update the database.
+        """
+        return f"Ejecting {pipeline}"
+
+    def load(self, sample: str, pipeline: str) -> str:
+        """Load a sample onto a pipeline.
+
+        Do not need to actually change anything on Neware client, just update the database.
+        """
+        return f"Loading {sample} onto {pipeline}"
+
+    def ready(self, pipeline: str) -> str:
+        """Readying and unreadying does not exist on Neware."""
+        raise NotImplementedError
+
+    def submit(
+        self, sample: str, capacity_Ah: float, payload: str | dict | Path, pipeline: str
+    ) -> tuple[str, str, str]:
+        """Submit a job to the server.
+
+        Use the start command on the aurora-neware CLI installed on Neware machine.
+        """
+        print("Submitting job to Neware server...")
+
+        # Open a temporary folder and dump the content of payload to a json file there
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            json_path = Path(tmpdirname) / "payload.json"
+            with open(json_path, "w") as f:
+                json.dump(payload, f)
+
+            # Submit the command using shell
+            shell_command = f"aiida-neware neware@neware-001 {json_path} {pipeline}"
+            print(f"Running shell command: {shell_command}")
+            activate_script = Path("/home/lab131/aiida-venv") / "bin" / "activate"
+            command_to_run = f"source {activate_script} && {shell_command}"
+            result = subprocess.run(command_to_run, shell=True, executable="/bin/bash", capture_output=True, text=True)
+            unique_uuid = result.stdout.split()[0]
+
+        return unique_uuid, None, json.dumps(payload)
+
+    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
+        """Cancel a job on the server.
+
+        Use the STOP command on the Neware-api.
+        """
+
+        print("Cancelling job on Neware server...")
+
+        return f"Stopped pipeline {pipeline} on Neware"
+
+    def get_pipelines(self) -> dict:
+        """Get the status of all pipelines on the server."""
+
+        """Get the status of all pipelines on the server."""
+        result = json.loads(self.command("neware status"))
+        # result is a dict with keys=pipeline and value a dict of stuff
+        # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
+        pipelines, sampleids, readys = [], [], []
+        for pip, data in result.items():
+            pipelines.append(pip)
+            if data["workstatus"] in ["working", "pause", "protect"]:  # working\stop\finish\protect\pause
+                sampleids.append(data["barcode"])
+                readys.append(False)
+            else:
+                sampleids.append(None)
+                readys.append(True)
+        return {"pipeline": pipelines, "sampleid": sampleids, "jobid": [None] * len(pipelines), "ready": readys}
+
+    def get_jobs(self) -> dict:
+        """Get all jobs from server.
+
+        Not implemented, could use inquiredf but very slow. Return empty dict for now.
+        """
+        return {}
+
+    def snapshot(
+        self,
+        sample_id: str,
+        jobid: str,
+        jobid_on_server: str,  # noqa: ARG002
+        get_raw: bool = False,  # noqa: ARG002
+    ) -> str | None:
+        """Save a snapshot of a job on the server and download it to the local machine."""
+
+        return None  # Neware does not have a snapshot status like tomato
+
+    def get_job_data(self, jobid_on_server: str) -> dict:
+        """Get the jobdata dict for a job."""
+        # TODO: This is problematic because Neware XMLs don't easily translate to a dict.
+        raise NotImplementedError
+
+    def get_last_data(self, job_id_on_server: str) -> dict:
+        """Get the last data from a job snapshot."""
+        raise NotImplementedError
+
+    def _get_job_id(self, pipeline: str) -> str:
+        """Get the testid for a pipeline."""
+        raise NotImplementedError
