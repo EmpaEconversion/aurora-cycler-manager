@@ -30,6 +30,7 @@ dependencies = [
     "waitress>=3.0.2",
     "xmltodict>=0.14.2",
     "yadg>=6.1.3",
+    # Add aiida-neware when it is released.
 ]
 
 [project.optional-dependencies]

@@ -25,7 +25,13 @@ import paramiko
 
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.cycler_servers import BiologicServer, CyclerServer, NewareServer, TomatoServer
+from aurora_cycler_manager.cycler_servers import (
+    BiologicServer,
+    CyclerServer,
+    NewareServer,
+    TomatoServer,
+    NewareAiidaServer,
+)
 from aurora_cycler_manager.utils import run_from_sample
 
 CONFIG = get_config()
@@ -89,6 +95,13 @@ class ServerManager:
             elif server_config["server_type"] == "biologic":
                 try:
                     servers[server_config["label"]] = BiologicServer(server_config)
+                except (OSError, ValueError, TimeoutError, paramiko.SSHException):
+                    logger.exception("Server %s could not be created, skipping", server_config["label"])
+            elif server_config["server_type"] == "neware-aiida":
+                # aiida-neware is not a cycler server, but a client to interact with Neware servers
+                # It does not need to be instantiated here, as it is used in the aiida-neware plugin
+                try:
+                    servers[server_config["label"]] = NewareAiidaServer(server_config)
                 except (OSError, ValueError, TimeoutError, paramiko.SSHException):
                     logger.exception("Server %s could not be created, skipping", server_config["label"])
             else:
