@@ -966,7 +966,7 @@ class NewareAiidaServer(CyclerServer):
             result = subprocess.run(command_to_run, shell=True, executable="/bin/bash", capture_output=True, text=True)
             unique_uuid = result.stdout.split()[0]
 
-        return unique_uuid, 1, json.dumps(payload)
+        return unique_uuid, None, json.dumps(payload)
 
     def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
         """Cancel a job on the server.
