@@ -445,6 +445,7 @@ def connect_to_config(shared_config_folder: str | Path) -> None:
 
     # If this runs successfully, the user can now run the app
     get_config(reload=True)
+    logger.info("You can now start the app with aurora-app")
 
 
 def get_status(verbose: bool = False) -> dict:
@@ -481,17 +482,27 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command")
 
     connect_parser = subparsers.add_parser("connect", help="Connect to existing config")
-    connect_parser.add_argument("--project-dir", type=Path, required=True)
+    connect_parser.add_argument(
+        "--project-dir",
+        type=Path,
+        required=True,
+        help="Path to Aurora project directory containing configuration, database, data folders",
+    )
 
     create_parser = subparsers.add_parser("init", help="Create new config and database")
-    create_parser.add_argument("--project-dir", type=Path, required=True)
+    create_parser.add_argument(
+        "--project-dir",
+        type=Path,
+        required=True,
+        help="Path to Aurora project directory - subfolders, configuration files and a database will be placed here",
+    )
     create_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing config and database")
 
     update_parser = subparsers.add_parser("update", help="Update the database from the config")
     update_parser.add_argument(
         "--force",
         action="store_true",
-        help="Allow permanent deletion of database columns if config removes columns.",
+        help="Allow permanent deletion of database columns if config removes columns",
     )
 
     status_parser = subparsers.add_parser("status", help="Get the status of the setup")
