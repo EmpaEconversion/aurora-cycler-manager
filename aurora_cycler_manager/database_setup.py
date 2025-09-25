@@ -432,6 +432,9 @@ def connect_to_config(shared_config_folder: str | Path) -> None:
             msg = f"Shared config file at {confirmed_shared_config_path} is missing required key: {key}"
             raise ValueError(msg)
 
+    # get_config will generate a default file if it doesn't exist
+    with contextlib.suppress(Exception):
+        get_config(reload=True)
     # Update the user config file with the shared config path
     logger.info("Updating user config file at %s", str(USER_CONFIG_PATH))
     with (USER_CONFIG_PATH).open("r") as f:
@@ -441,7 +444,8 @@ def connect_to_config(shared_config_folder: str | Path) -> None:
         json.dump(user_config, f, indent=4)
 
     # If this runs successfully, the user can now run the app
-    get_config()
+    get_config(reload=True)
+    logger.info("You can now start the app with aurora-app")
 
 
 def get_status(verbose: bool = False) -> dict:
@@ -478,17 +482,27 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command")
 
     connect_parser = subparsers.add_parser("connect", help="Connect to existing config")
-    connect_parser.add_argument("--project-dir", type=Path, required=True)
+    connect_parser.add_argument(
+        "--project-dir",
+        type=Path,
+        required=True,
+        help="Path to Aurora project directory containing configuration, database, data folders",
+    )
 
     create_parser = subparsers.add_parser("init", help="Create new config and database")
-    create_parser.add_argument("--project-dir", type=Path, required=True)
+    create_parser.add_argument(
+        "--project-dir",
+        type=Path,
+        required=True,
+        help="Path to Aurora project directory - subfolders, configuration files and a database will be placed here",
+    )
     create_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing config and database")
 
     update_parser = subparsers.add_parser("update", help="Update the database from the config")
     update_parser.add_argument(
         "--force",
         action="store_true",
-        help="Allow permanent deletion of database columns if config removes columns.",
+        help="Allow permanent deletion of database columns if config removes columns",
     )
 
     status_parser = subparsers.add_parser("status", help="Get the status of the setup")
