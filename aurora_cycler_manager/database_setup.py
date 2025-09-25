@@ -432,6 +432,9 @@ def connect_to_config(shared_config_folder: str | Path) -> None:
             msg = f"Shared config file at {confirmed_shared_config_path} is missing required key: {key}"
             raise ValueError(msg)
 
+    # get_config will generate a default file if it doesn't exist
+    with contextlib.suppress(Exception):
+        get_config(reload=True)
     # Update the user config file with the shared config path
     logger.info("Updating user config file at %s", str(USER_CONFIG_PATH))
     with (USER_CONFIG_PATH).open("r") as f:
@@ -441,7 +444,7 @@ def connect_to_config(shared_config_folder: str | Path) -> None:
         json.dump(user_config, f, indent=4)
 
     # If this runs successfully, the user can now run the app
-    get_config()
+    get_config(reload=True)
 
 
 def get_status(verbose: bool = False) -> dict:
