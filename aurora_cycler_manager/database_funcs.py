@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.utils import run_from_sample
+from .config import get_config
+from .utils import run_from_sample
 
 CONFIG = get_config()
 
@@ -313,30 +313,6 @@ def save_or_overwrite_batch(batch_name: str, batch_description: str, sample_ids:
                 "INSERT INTO batch_samples (batch_id, sample_id) VALUES (?, ?)",
                 (batch_id, sample_id),
             )
-        conn.commit()
-
-
-def modify_batch(old_label: str, new_label: str, batch_description: str, sample_ids: list) -> None:
-    """Change name, description or samples in a batch.
-
-    Keeps ID the same, but changes label and description.
-    Raises error if batch does not exist.
-    """
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT id FROM batches WHERE label = ?", (old_label,))
-        result = cur.fetchone()
-        if not result:
-            msg = f"Batch {old_label} does not exist."
-            raise ValueError(msg)
-        batch_id = result[0]
-        cur.execute(
-            "UPDATE batches SET label = ?, description = ? WHERE id = ?",
-            (new_label, batch_description, batch_id),
-        )
-        cur.execute("DELETE FROM batch_samples WHERE batch_id = ?", (batch_id,))
-        for sample_id in sample_ids:
-            cur.execute("INSERT INTO batch_samples (batch_id, sample_id) VALUES (?, ?)", (batch_id, sample_id))
         conn.commit()
 
 
