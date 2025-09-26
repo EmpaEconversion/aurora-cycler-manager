@@ -23,9 +23,7 @@ from typing import Literal
 import pandas as pd
 import paramiko
 
-from aurora_cycler_manager.analysis import analyse_sample
-from aurora_cycler_manager.config import get_config
-from . import cycler_servers
+from . import cycler_servers, analysis, config
 from aurora_cycler_manager.utils import run_from_sample
 
 SERVER_CORRESPONDENCE = {
@@ -34,7 +32,7 @@ SERVER_CORRESPONDENCE = {
     "biologic": cycler_servers.BiologicServer,
 }
 
-CONFIG = get_config()
+CONFIG = config.get_config()
 logger = logging.getLogger(__name__)
 
 
@@ -720,7 +718,7 @@ class ServerManager:
 
         # Analyse the new data (only once per sample)
         for unique_sample_id in {sample_id for sample_id, *_ in result}:
-            analyse_sample(unique_sample_id)
+            analysis.analyse_sample(unique_sample_id)
 
     def snapshot_all(
         self,
