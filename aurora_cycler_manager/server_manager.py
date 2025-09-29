@@ -110,10 +110,12 @@ class ServerManager:
                         jobs["pipeline"],
                         strict=True,
                     ):
+                        # Get full job ID, TODO: replace so empty job ID on server / UUID can be used
+                        full_jobid = f"{label}-{jobid_on_server}"
                         # Insert the job if it does not exist
                         cursor.execute(
                             "INSERT OR IGNORE INTO jobs (`Job ID`,`Job ID on server`) VALUES (?,?)",
-                            (f"{label}-{jobid_on_server}", jobid_on_server),
+                            (full_jobid, jobid_on_server),
                         )
                         # If pipeline is none, do not update (keep old value)
                         if pipeline is None:
@@ -122,7 +124,7 @@ class ServerManager:
                                 "SET `Status` = ?, `Jobname` = ?, `Server label` = ?, "
                                 "`Server hostname` = ?, `Last checked` = ? "
                                 "WHERE `Job ID` = ?",
-                                (status, jobname, label, server.hostname, dt, f"{label}-{jobid_on_server}"),
+                                (status, jobname, label, server.hostname, dt, full_jobid),
                             )
                         else:
                             cursor.execute(
@@ -139,7 +141,7 @@ class ServerManager:
                                     server.hostname,
                                     jobid_on_server,
                                     dt,
-                                    f"{label}-{jobid_on_server}",
+                                    full_jobid,
                                 ),
                             )
                     conn.commit()
