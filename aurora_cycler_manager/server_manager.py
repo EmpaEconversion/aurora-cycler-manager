@@ -23,12 +23,16 @@ from typing import Literal
 import pandas as pd
 import paramiko
 
-from aurora_cycler_manager.analysis import analyse_sample
-from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.cycler_servers import BiologicServer, CyclerServer, NewareServer, TomatoServer
-from aurora_cycler_manager.utils import run_from_sample
+from . import analysis, config, cycler_servers
+from .utils import run_from_sample
 
-CONFIG = get_config()
+SERVER_CORRESPONDENCE = {
+    "tomato": cycler_servers.TomatoServer,
+    "neware": cycler_servers.NewareServer,
+    "biologic": cycler_servers.BiologicServer,
+}
+
+CONFIG = config.get_config()
 logger = logging.getLogger(__name__)
 
 
@@ -72,27 +76,19 @@ class ServerManager:
             raise ValueError(msg)
         logger.info("Server manager initialised, consider updating database with update_db()")
 
-    def get_servers(self) -> dict[str, CyclerServer]:
+    def get_servers(self) -> dict[str, cycler_servers.CyclerServer]:
         """Create the cycler server objects from the config file."""
-        servers: dict[str, CyclerServer] = {}
+        servers: dict[str, cycler_servers.CyclerServer] = {}
         for server_config in self.config["Servers"]:
-            if server_config["server_type"] == "tomato":
-                try:
-                    servers[server_config["label"]] = TomatoServer(server_config)
-                except (OSError, ValueError, TimeoutError, paramiko.SSHException):
-                    logger.exception("Server %s could not be created, skipping", server_config["label"])
-            elif server_config["server_type"] == "neware":
-                try:
-                    servers[server_config["label"]] = NewareServer(server_config)
-                except (OSError, ValueError, TimeoutError, paramiko.SSHException):
-                    logger.exception("Server %s could not be created, skipping", server_config["label"])
-            elif server_config["server_type"] == "biologic":
-                try:
-                    servers[server_config["label"]] = BiologicServer(server_config)
-                except (OSError, ValueError, TimeoutError, paramiko.SSHException):
-                    logger.exception("Server %s could not be created, skipping", server_config["label"])
-            else:
+            if server_config["server_type"] not in SERVER_CORRESPONDENCE:
                 logger.error("Server type %s not recognized, skipping", server_config["server_type"])
+                continue
+            try:
+                server_class = SERVER_CORRESPONDENCE[server_config["server_type"]]
+                servers[server_config["label"]] = server_class(server_config)
+            except (OSError, ValueError, TimeoutError, paramiko.SSHException):
+                logger.exception("Server %s could not be created, skipping", server_config["label"])
+
         return servers
 
     def update_jobs(self) -> None:
@@ -104,7 +100,6 @@ class ServerManager:
                 logger.error("Error getting job status from %s: %s", label, e)
                 continue
             dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            hostname = server.hostname
             if jobs:
                 with sqlite3.connect(self.config["Database path"]) as conn:
                     cursor = conn.cursor()
@@ -115,10 +110,12 @@ class ServerManager:
                         jobs["pipeline"],
                         strict=True,
                     ):
+                        # Get full job ID, TODO: replace so empty job ID on server / UUID can be used
+                        full_jobid = f"{label}-{jobid_on_server}"
                         # Insert the job if it does not exist
                         cursor.execute(
                             "INSERT OR IGNORE INTO jobs (`Job ID`,`Job ID on server`) VALUES (?,?)",
-                            (f"{label}-{jobid_on_server}", jobid_on_server),
+                            (full_jobid, jobid_on_server),
                         )
                         # If pipeline is none, do not update (keep old value)
                         if pipeline is None:
@@ -127,7 +124,7 @@ class ServerManager:
                                 "SET `Status` = ?, `Jobname` = ?, `Server label` = ?, "
                                 "`Server hostname` = ?, `Last checked` = ? "
                                 "WHERE `Job ID` = ?",
-                                (status, jobname, label, hostname, dt, f"{label}-{jobid_on_server}"),
+                                (status, jobname, label, server.hostname, dt, full_jobid),
                             )
                         else:
                             cursor.execute(
@@ -141,10 +138,10 @@ class ServerManager:
                                     pipeline,
                                     jobname,
                                     label,
-                                    hostname,
+                                    server.hostname,
                                     jobid_on_server,
                                     dt,
-                                    f"{label}-{jobid_on_server}",
+                                    full_jobid,
                                 ),
                             )
                     conn.commit()
@@ -158,8 +155,6 @@ class ServerManager:
                 logger.error("Error getting pipeline status from %s: %s", label, e)
                 continue
             dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            hostname = server.hostname
-            server_type = server.server_type
             if status:
                 with sqlite3.connect(self.config["Database path"]) as conn:
                     cursor = conn.cursor()
@@ -179,20 +174,20 @@ class ServerManager:
                             "SET `Ready` = ?, `Last checked` = ?, `Server label` = ?, "
                             "`Server hostname` = ?, `Server type` = ? "
                             "WHERE `Pipeline` = ?",
-                            (ready, dt, label, hostname, server_type, pipeline),
+                            (ready, dt, label, server.hostname, server.server_type, pipeline),
                         )
                         # Need to treat nulls from tomato and Neware/Biologic differently
                         # Tomato null means sample removed, Neware/Biologic means no update
-                        if server_type == "tomato" or sampleid is not None:
+                        if server.server_type == "tomato" or sampleid is not None:
                             cursor.execute(
                                 "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
                                 (sampleid, pipeline),
                             )
                         if (
-                            server_type == "tomato"
+                            server.server_type == "tomato"
                             or jobid_on_server is not None
-                            or (server_type == "neware" and ready == 1)
-                            or (server_type == "biologic" and ready == 1)
+                            or (server.server_type == "neware" and ready == 1)
+                            or (server.server_type == "biologic" and ready == 1)
                         ):
                             jobid = f"{label}-{jobid_on_server}" if jobid_on_server else None
                             cursor.execute(
@@ -247,7 +242,7 @@ class ServerManager:
                 conn.commit()
             return cursor.fetchall()
 
-    def find_server(self, label: str) -> CyclerServer:
+    def find_server(self, label: str) -> cycler_servers.CyclerServer:
         """Get the server object from the label."""
         if not label:
             msg = (
@@ -590,7 +585,7 @@ class ServerManager:
             # Neware and Biologic servers have very expensive job id retrieval
             # It costs around 1 second to get the job id for one channel, so cannot do this in update_pipelines
             # Just do it once on job submission and don't update until job is finished
-            if isinstance(server, (NewareServer, BiologicServer)):
+            if isinstance(server, (cycler_servers.NewareServer, cycler_servers.BiologicServer)):
                 self.execute_sql(
                     "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ?, `Ready` = 0 WHERE `Pipeline` = ?",
                     (full_jobid, jobid_on_server, pipeline),
@@ -725,7 +720,7 @@ class ServerManager:
 
         # Analyse the new data (only once per sample)
         for unique_sample_id in {sample_id for sample_id, *_ in result}:
-            analyse_sample(unique_sample_id)
+            analysis.analyse_sample(unique_sample_id)
 
     def snapshot_all(
         self,
@@ -872,14 +867,10 @@ class ServerManager:
         for serverid, pipeline in zip(serverids, pipelines, strict=True):
             logger.info("Updating job ID for %s on server %s", pipeline, serverid)
             server = self.find_server(serverid)
-            assert isinstance(server, NewareServer)  # noqa: S101
+            assert isinstance(server, cycler_servers.NewareServer)  # noqa: S101
             jobid_on_server = server._get_job_id(pipeline)  # noqa: SLF001
             full_jobid = f"{server.label}-{jobid_on_server}"
             self.execute_sql(
                 "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ? WHERE `Pipeline` = ?",
                 (full_jobid, jobid_on_server, pipeline),
             )
-
-
-if __name__ == "__main__":
-    pass
