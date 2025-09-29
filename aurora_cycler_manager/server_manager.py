@@ -874,7 +874,3 @@ class ServerManager:
                 "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ? WHERE `Pipeline` = ?",
                 (full_jobid, jobid_on_server, pipeline),
             )
-
-
-if __name__ == "__main__":
-    pass
