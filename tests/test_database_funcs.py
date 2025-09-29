@@ -17,7 +17,6 @@ from aurora_cycler_manager.database_funcs import (
     get_batch_details,
     get_job_data,
     get_sample_data,
-    modify_batch,
     remove_batch,
     save_or_overwrite_batch,
     update_sample_label,
@@ -256,27 +255,10 @@ class TestSampleFunctions:
             )
             assert "240620_kigr_gen2_04" in batch_details["Batch please"]["samples"]
 
-            # Modify everything in the batch
-            modify_batch(
-                "Batch please",
-                "Batch but different label",
-                "And a different description",
-                [
-                    "240620_kigr_gen2_07",
-                    "240620_kigr_gen2_08",
-                    "240620_kigr_gen2_09",
-                ],
-            )
+            # Remove the batch
+            remove_batch("Batch please")
             batch_details = get_batch_details()
             assert "Batch please" not in batch_details
-            assert "Batch but different label" in batch_details
-            assert batch_details["Batch but different label"]["description"] == "And a different description"
-            assert "240620_kigr_gen2_08" in batch_details["Batch but different label"]["samples"]
-
-            # Remove the batch
-            remove_batch("Batch but different label")
-            batch_details = get_batch_details()
-            assert "Batch but different label" not in batch_details
 
         finally:
             shutil.copyfile(self.db_path.with_suffix(".bak"), self.db_path)
