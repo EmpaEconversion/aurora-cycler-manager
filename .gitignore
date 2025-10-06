@@ -169,3 +169,6 @@ config.json
 
 # UV lock file
 uv.lock
+
+# diskcache cache folder
+cache/
