@@ -1200,7 +1200,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     def view_data(n_clicks: int, selected_rows: list) -> tuple[str, list | NoUpdate, list | NoUpdate, int | NoUpdate]:
         if not n_clicks or not selected_rows:
             raise PreventUpdate
-        sample_id = [s["Sample ID"] for s in selected_rows]
+        sample_id = [s["Sample ID"] for s in selected_rows if s.get("Sample ID")]
         if len(sample_id) > 1:
             return "tab-2", no_update, sample_id, 1
         return "tab-1", sample_id, no_update, no_update
@@ -1233,12 +1233,13 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
     def snapshot_sample(yes_clicks: int, selected_rows: list) -> None:
         if yes_clicks:
             for row in selected_rows:
-                if row.get("Job ID"):
-                    logger.info("Snapshotting %s", row["Job ID"])
-                    sm.snapshot(row["Job ID"])
-                else:
-                    logger.info("Snapshotting %s", row["Sample ID"])
-                    sm.snapshot(row["Sample ID"])
+                if row:
+                    if row.get("Job ID"):
+                        logger.info("Snapshotting %s", row["Job ID"])
+                        sm.snapshot(row["Job ID"])
+                    else:
+                        logger.info("Snapshotting %s", row["Sample ID"])
+                        sm.snapshot(row["Sample ID"])
 
     # Delete button pop up
     @app.callback(
