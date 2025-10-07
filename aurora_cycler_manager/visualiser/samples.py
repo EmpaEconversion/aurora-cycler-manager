@@ -401,7 +401,7 @@ def register_samples_callbacks(app: Dash) -> None:
 
             trace = go.Scatter(
                 x=(np.array(data_dict["uts"]) - offset) / multiplier,
-                y=data_dict[yvar],
+                y=data_dict.get(yvar) if yvar in data_dict else [np.nan] * len(data_dict["uts"]),
                 mode="lines",
                 name=sample,
                 hovertemplate=f"{sample}<br>Time: %{{x}}<br>{yvar}: %{{y}}<extra></extra>",
@@ -437,7 +437,7 @@ def register_samples_callbacks(app: Dash) -> None:
         for sample, cycle_dict in data["data_sample_cycle"].items():
             trace = go.Scattergl(
                 x=cycle_dict["Cycle"],
-                y=cycle_dict[yvar],
+                y=cycle_dict.get(yvar) if yvar in cycle_dict else [np.nan] * len(cycle_dict["Cycle"]),
                 mode="lines+markers",
                 name=sample,
                 hovertemplate=f"{sample}<br>Cycle: %{{x}}<br>{yvar}: %{{y}}<extra></extra>",

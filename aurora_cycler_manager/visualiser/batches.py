@@ -729,7 +729,7 @@ def register_batches_callbacks(app: Dash) -> None:
                     line["dash"] = sdata["lines"][i]
                 trace = go.Scattergl(
                     x=sample["Cycle"],
-                    y=sample[yvar],
+                    y=sample.get(yvar) if yvar in sample else [np.nan] * len(sample["Cycle"]),
                     mode=plot_style,
                     name=sample["Sample ID"],
                     line=line,
