@@ -1225,12 +1225,13 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
 
     # When snapshot confirmed, snapshot the samples and refresh the database
     @app.callback(
+        Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("snapshot-yes-close", "n_clicks"),
         State("selected-rows-store", "data"),
         running=[(Output("loading-message-store", "data"), "Snapshotting data...", "")],
         prevent_initial_call=True,
     )
-    def snapshot_sample(yes_clicks: int, selected_rows: list) -> None:
+    def snapshot_sample(yes_clicks: int, selected_rows: list) -> NoUpdate:
         if yes_clicks:
             for row in selected_rows:
                 if row:
@@ -1240,6 +1241,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
                     else:
                         logger.info("Snapshotting %s", row["Sample ID"])
                         sm.snapshot(row["Sample ID"])
+        return no_update  # Needs any output to trigger loading spinner
 
     # Delete button pop up
     @app.callback(
