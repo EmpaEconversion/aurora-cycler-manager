@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from .config import get_config
-from .utils import run_from_sample
+from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.utils import run_from_sample
 
 CONFIG = get_config()
 

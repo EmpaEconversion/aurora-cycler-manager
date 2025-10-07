@@ -23,8 +23,8 @@ from typing import Literal
 import pandas as pd
 import paramiko
 
-from . import analysis, config, cycler_servers
-from .utils import run_from_sample
+from aurora_cycler_manager import analysis, config, cycler_servers
+from aurora_cycler_manager.utils import run_from_sample
 
 SERVER_CORRESPONDENCE = {
     "tomato": cycler_servers.TomatoServer,
