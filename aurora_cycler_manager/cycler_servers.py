@@ -27,7 +27,7 @@ from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.eclab_harvester import convert_mpr, get_eclab_snapshot_folder
 from aurora_cycler_manager.neware_harvester import convert_neware_data, snapshot_raw_data
 from aurora_cycler_manager.tomato_converter import convert_tomato_json, get_tomato_snapshot_folder, puree_tomato
-from aurora_cycler_manager.utils import run_from_sample
+from aurora_cycler_manager.utils import run_from_sample, ssh_connect
 
 logger = logging.getLogger(__name__)
 CONFIG = get_config()
@@ -57,8 +57,7 @@ class CyclerServer:
         the server's default shell, the standard output is returned as a string.
         """
         with paramiko.SSHClient() as ssh:
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
+            ssh_connect(ssh, self.username, self.hostname)
             stdin, stdout, stderr = ssh.exec_command(
                 self.command_prefix + command + self.command_suffix,
                 timeout=timeout,
@@ -242,9 +241,7 @@ class TomatoServer(CyclerServer):
 
             # Send file to server
             with paramiko.SSHClient() as ssh:
-                ssh.load_system_host_keys()
-                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
+                ssh_connect(ssh, self.username, self.hostname)
                 with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
                     scp.put("temp.json", f"{self.save_location}/temp.json")
 
@@ -358,12 +355,8 @@ class TomatoServer(CyclerServer):
             Path(local_save_location).mkdir(parents=True)
 
         # Use SCPClient to transfer the file from the remote machine
-        ssh = paramiko.SSHClient()
-        ssh.load_system_host_keys()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        logger.info("Connecting to %s: host %s user %s", self.label, self.hostname, self.username)
-        ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
-        try:
+        with paramiko.SSHClient() as ssh:
+            ssh_connect(ssh, self.username, self.hostname)
             logger.info(
                 "Downloading file %s/snapshot.%s.json to %s/snapshot.%s.json",
                 remote_save_location,
@@ -382,8 +375,6 @@ class TomatoServer(CyclerServer):
                         f"{remote_save_location}/snapshot.{jobid_on_server}.zip",
                         f"{local_save_location}/snapshot.{jobid}.zip",
                     )
-        finally:
-            ssh.close()
 
         # Compress the local snapshot file
         puree_tomato(f"{local_save_location}/snapshot.{jobid}.json")
@@ -427,9 +418,7 @@ class TomatoServer(CyclerServer):
             command = f'powershell.exe -Command "{ps_command}"'
 
         with paramiko.SSHClient() as ssh:
-            ssh.load_system_host_keys()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
+            ssh_connect(ssh, self.username, self.hostname)
             stdin, stdout, stderr = ssh.exec_command(command)
             if stderr.read():
                 raise ValueError(stderr.read())
@@ -459,9 +448,7 @@ class TomatoServer(CyclerServer):
         elif self.shell_type == "cmd":
             command = f'powershell.exe -Command "{ps_command}"'
         with paramiko.SSHClient() as ssh:
-            ssh.load_system_host_keys()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
+            ssh_connect(ssh, self.username, self.hostname)
             stdin, stdout, stderr = ssh.exec_command(command)
             stdout = stdout.read().decode("utf-8")
             stderr = stderr.read().decode("utf-8")
@@ -558,9 +545,7 @@ class NewareServer(CyclerServer):
                 f.write(xml_string)
             # Transfer the file to the remote PC and start the job
             with paramiko.SSHClient() as ssh:
-                ssh.load_system_host_keys()
-                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
+                ssh_connect(ssh, self.username, self.hostname)
                 with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
                     remote_xml_dir = "C:/submitted_payloads/"
                     remote_xml_path = remote_xml_dir + f"{sample}__{current_datetime}.xml"
@@ -753,9 +738,7 @@ class BiologicServer(CyclerServer):
                 f.write(mps_string)
             # Transfer the file to the remote PC and start the job
             with paramiko.SSHClient() as ssh:
-                ssh.load_system_host_keys()
-                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
+                ssh_connect(ssh, self.username, self.hostname)
                 with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
                     # One folder per job, EC-lab generates multiple files per job
                     # EC-lab will make files with suffix _C01, _C02, etc. and extensions .mpr .mpl etc.
@@ -852,9 +835,7 @@ class BiologicServer(CyclerServer):
 
         # Connect to the remote server
         with paramiko.SSHClient() as ssh:
-            ssh.load_system_host_keys()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
+            ssh_connect(ssh, self.username, self.hostname)
 
             # Find all the .mpr and .mpl files in the job folder
             ps_command = (

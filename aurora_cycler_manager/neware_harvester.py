@@ -41,7 +41,7 @@ from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.setup_logging import setup_logging
-from aurora_cycler_manager.utils import run_from_sample
+from aurora_cycler_manager.utils import run_from_sample, ssh_connect
 from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
@@ -102,10 +102,7 @@ def harvest_neware_files(
 
     # Connect to the server and copy the files
     with paramiko.SSHClient() as ssh:
-        ssh.load_system_host_keys()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        logger.info("Connecting to host %s user %s", server_hostname, server_username)
-        ssh.connect(server_hostname, username=server_username, key_filename=CONFIG.get("SSH private key path"))
+        ssh_connect(ssh, server_username, server_hostname)
 
         # Shell commands to find files modified since cutoff date
         # TODO: grab all the filenames and modified dates, copy if they are newer than local files not just cutoff date
@@ -246,10 +243,7 @@ def snapshot_raw_data(job_id: str) -> Path | None:
 
     # Connect to the server
     with paramiko.SSHClient() as ssh:
-        ssh.load_system_host_keys()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        logger.info("Connecting to host %s user %s", server_hostname, server_username)
-        ssh.connect(server_hostname, username=server_username, key_filename=CONFIG.get("SSH private key path"))
+        ssh_connect(ssh, server_username, server_hostname)
 
         # Use powershell command to search for the files on the server
         if server_shell_type == "powershell":

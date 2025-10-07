@@ -47,6 +47,7 @@ def _read_config_file() -> dict:
 
         OPTIONAL - if you want to interact directly with cyclers (e.g. load, eject, submit jobs):
         'SSH private key path': Path to the SSH private key file if not in standard location (e.g. '~/.ssh/id_rsa').
+        'SSH known hosts path': Path to the SSH known hosts file if not in standard location ('~/.ssh/known_hosts')
         'Snapshots folder path': Path to a (local) folder to store unprocessed snapshots e.g. 'C:/aurora-shapshots'.
 
         You can set the 'Shared config path' by running 'aurora-setup connect --project-dir=<path>'.
@@ -61,6 +62,7 @@ def _read_config_file() -> dict:
                         "Shared config path": "",
                         "Snapshots folder path": platformdirs.user_data_dir("aurora_cycler_manager"),
                         "SSH private key path": "",
+                        "SSH known hosts path": "",
                     },
                     indent=4,
                 ),
@@ -117,11 +119,15 @@ def _read_config_file() -> dict:
 
     config["User config path"] = user_config_path
 
-    # For SSH connections, private key path must be str | None, does not accept Path
+    # For SSH connections, paths must be str | None, does not accept Path
     if config.get("SSH private key path"):
         config["SSH private key path"] = str(config["SSH private key path"])
     else:
         config["SSH private key path"] = None
+    if config.get("SSH known hosts path"):
+        config["SSH known hosts path"] = str(config["SSH known hosts path"])
+    else:
+        config["SSH known hosts path"] = Path("~/.ssh/known_hosts").expanduser()
 
     return config
 

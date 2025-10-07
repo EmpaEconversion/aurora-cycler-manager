@@ -36,7 +36,7 @@ import yadg
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.setup_logging import setup_logging
-from aurora_cycler_manager.utils import run_from_sample
+from aurora_cycler_manager.utils import run_from_sample, ssh_connect
 from aurora_cycler_manager.version import __url__, __version__
 
 CONFIG = get_config()
@@ -92,17 +92,7 @@ def get_mprs(
 
     # Connect to the server and copy the files
     with paramiko.SSHClient() as ssh:
-        ssh.load_system_host_keys()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        logger.info(
-            "Connecting to server",
-            extra={
-                "server_label": server_label,
-                "server_hostname": server_hostname,
-                "server_username": server_username,
-            },
-        )
-        ssh.connect(server_hostname, username=server_username, key_filename=CONFIG.get("SSH private key path"))
+        ssh_connect(ssh, server_username, server_hostname)
 
         # Shell commands to find files modified since cutoff date
         # TODO: grab all the filenames and modified dates, copy if they are newer than local files not just cutoff date
