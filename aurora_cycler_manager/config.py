@@ -60,7 +60,7 @@ def _read_config_file() -> dict:
                 json.dumps(
                     {
                         "Shared config path": "",
-                        "Snapshots folder path": platformdirs.user_data_dir("aurora_cycler_manager"),
+                        "Snapshots folder path": platformdirs.user_data_dir("aurora_cycler_manager", appauthor=False),
                         "SSH private key path": "",
                         "SSH known hosts path": "",
                     },
@@ -81,7 +81,7 @@ def _read_config_file() -> dict:
             raise ValueError(msg) from e
 
     if not config.get("Snapshots folder path"):
-        config["Snapshots folder path"] = platformdirs.user_data_dir("aurora_cycler_manager")
+        config["Snapshots folder path"] = platformdirs.user_data_dir("aurora_cycler_manager", appauthor=False)
         with user_config_path.open("w", encoding="utf-8") as f:
             json.dump(config, f, indent=4)
             logger.warning(
