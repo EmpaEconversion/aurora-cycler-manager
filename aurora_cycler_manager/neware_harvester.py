@@ -109,13 +109,15 @@ def harvest_neware_files(
         if server_shell_type == "powershell":
             command = (
                 f"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
-                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' -and ($_.Extension -eq '.xlsx' -or $_.Extension -eq '.ndax')}} "
+                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}'"
+                " -and ($_.Extension -eq '.xlsx' -or $_.Extension -eq '.ndax')}} "
                 f"| Select-Object -ExpandProperty FullName"
             )
         elif server_shell_type == "cmd":
             command = (
                 f"powershell.exe -Command \"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
-                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' -and ($_.Extension -eq '.xlsx' -or $_.Extension -eq '.ndax')}} "
+                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}'"
+                " -and ($_.Extension -eq '.xlsx' -or $_.Extension -eq '.ndax')}} "
                 f'| Select-Object -ExpandProperty FullName"'
             )
         _stdin, stdout, stderr = ssh.exec_command(command)
@@ -140,7 +142,7 @@ def harvest_neware_files(
                 local_path.parent.mkdir(parents=True, exist_ok=True)  # Create local directory if it doesn't exist
                 # Prepend the server label to the filename
                 local_path = local_path.with_name(
-                    f"{server_label}-{local_path.name.replace('_', '-').replace(' ', '-')}"
+                    f"{server_label}-{local_path.name.replace('_', '-').replace(' ', '-')}",
                 )
                 logger.info("Copying '%s' to '%s'", file, local_path)
                 sftp.get(file, local_path)
@@ -575,7 +577,7 @@ def get_neware_metadata_from_db(job_id: str) -> dict:
 
     xml_payload = xmltodict.parse(row["Payload"], attr_prefix="")
     metadata = _clean_ndax_step(xml_payload)
-    server_label, Device_ID, Subdevice_ID, Channel_ID, Test_ID = job_id.split("-")
+    _server_label, Device_ID, Subdevice_ID, Channel_ID, Test_ID = job_id.split("-")
     metadata["Device ID"] = Device_ID
     metadata["Subdevice ID"] = Subdevice_ID
     metadata["Channel ID"] = Channel_ID
@@ -610,7 +612,9 @@ def get_sampleid_from_metadata(metadata: dict, known_samples: list[str] | None =
             break
     if sampleid is None:  # May be user error, try some common fixes
         logger.info(
-            "Could not find Sample ID '%s' or '%s' in database, trying to infer it", barcode_sampleid, remark_sampleid
+            "Could not find Sample ID '%s' or '%s' in database, trying to infer it",
+            barcode_sampleid,
+            remark_sampleid,
         )
         for possible_sampleid in [remark_sampleid, barcode_sampleid]:
             # Should be YYMMDD-otherstuff-XX, where XX is a number
@@ -629,7 +633,9 @@ def get_sampleid_from_metadata(metadata: dict, known_samples: list[str] | None =
                     break
     if not sampleid:
         logger.warning(
-            "Barcode: '%s', or Remark: '%s' not recognised as a Sample ID", barcode_sampleid, remark_sampleid
+            "Barcode: '%s', or Remark: '%s' not recognised as a Sample ID",
+            barcode_sampleid,
+            remark_sampleid,
         )
     return sampleid
 
@@ -775,6 +781,7 @@ def convert_neware_data(
 
     Args:
         file_path (Path): Path to the neware file
+        sampleid (str, optional): Sample ID to use, otherwise find from metadata
         output_hdf5_file (bool): Whether to save the file as a hdf5
         known_samples (list[str], optional): List of known Sample IDs to check against
 
@@ -928,7 +935,7 @@ def main() -> None:
         try:
             analyse_sample(sample)
             logger.info("Analysed %s", sample)
-        except Exception:  # noqa: PERF203
+        except Exception:
             logger.exception("Error analysing %s", sample)
 
 

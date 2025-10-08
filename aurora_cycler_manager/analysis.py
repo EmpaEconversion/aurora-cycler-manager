@@ -352,10 +352,7 @@ def extract_voltage_crates(job_data: dict) -> dict:
                     if current_mode == "C":
                         discharging = Isign
                     elif current_mode == "I" and current:
-                        if Isign:  # noqa: SIM108
-                            discharging = 1 if current * (1 - 2 * Isign) < 0 else 0
-                        else:
-                            discharging = 1 if current < 0 else 0
+                        discharging = (1 if current * (1 - 2 * Isign) < 0 else 0) if Isign else 1 if current < 0 else 0
                     voltage = method.get("EM") or method.get("EM (V)")
                     global_max_V = max_with_none([global_max_V, voltage])
                     if voltage:
@@ -1122,11 +1119,11 @@ def analyse_all_batches() -> None:
     for plot_name, batch in batches.items():
         try:
             analyse_batch(plot_name, batch)
-        except (ValueError, KeyError, PermissionError, RuntimeError, FileNotFoundError):  # noqa: PERF203
+        except (ValueError, KeyError, PermissionError, RuntimeError, FileNotFoundError):
             logger.exception("Failed to analyse %s", plot_name)
 
 
-def moving_average(x, npoints: int = 11) -> np.ndarray:
+def moving_average(x: np.ndarray, npoints: int = 11) -> np.ndarray:
     """Calculate moving window average of a 1D array."""
     if npoints % 2 == 0:
         npoints += 1  # Ensure npoints is odd for a symmetric window

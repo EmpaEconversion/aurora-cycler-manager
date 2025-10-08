@@ -3,12 +3,17 @@
 Intended to be run as a script to create a subset of the database for pytest.
 """
 
+import logging
 import os
 import sqlite3
 import sys
 from pathlib import Path
 
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.setup_logging import setup_logging
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 CONFIG = get_config()
 DB_PATH = CONFIG["Database path"]
@@ -34,7 +39,7 @@ def copy_database_schema(source_db: Path, target_db: Path) -> None:
 
         conn_target.commit()
 
-    print("Schema copied successfully.")
+    logger.info("Schema copied successfully.")
 
 
 def copy_rows(source_db: Path, target_db: Path, table: str, id_col: str, row_ids: list[str]) -> None:
@@ -64,16 +69,16 @@ def copy_rows(source_db: Path, target_db: Path, table: str, id_col: str, row_ids
                     f"INSERT OR REPLACE INTO {table} ({columns_str}) VALUES ({placeholders})",  # noqa: S608
                     row,
                 )
-                print("Row copied:", row_id)
+                logger.info("Row copied: %s", row_id)
             else:
-                print("Row not found:", row_id)
+                logger.info("Row not found: %s", row_id)
         conn_target.commit()
 
 
 if __name__ == "__main__":
     # Check if the script is run directly
     if "PYTEST_RUNNING" in os.environ:
-        print("This script is intended to be run outside of pytest.")
+        logger.error("This script is intended to be run outside of pytest.")
         sys.exit(1)
 
     # Remove old table

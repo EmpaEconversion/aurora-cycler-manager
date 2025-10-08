@@ -27,6 +27,7 @@ dependencies = [
     "scp>=0.15.0",
     "tables>=3.10.1",
     "tsdownsample>=0.1.4.1",
+    "typing-extensions>=4.15.0",
     "waitress>=3.0.2",
     "xmltodict>=0.14.2",
     "yadg>=6.2.2",
@@ -52,13 +53,9 @@ aurora-daemon = "aurora_cycler_manager.daemon:main"
 line-length = 120
 lint.select = ["ALL"]
 lint.ignore = [
-    "N806",
     "N803",
+    "N806",
     "N815",
-    "T201",
-    "FA102",
-    "FBT001",
-    "FBT002",
     "PLR2004",
     "TD002",
     "TD003",

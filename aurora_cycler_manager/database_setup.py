@@ -58,7 +58,7 @@ def default_config(base_dir: Path) -> dict:
                 "command_prefix": "this is put before any command, e.g. conda activate tomato ; ",
                 "command_suffix": "",
                 "tomato_scripts_path": "tomato-specific: this is put before ketchup in the command",
-                "tomato_data_path": "tomato-specific: the folder where data is stored, usually AppData/local/dgbowl/tomato/version/jobs",
+                "tomato_data_path": "tomato-specific: data folder, usually AppData/local/dgbowl/tomato/version/jobs",
             },
         ],
         "EC-lab harvester": {
@@ -462,7 +462,7 @@ def get_status(verbose: bool = False) -> dict:
         logger.error(
             "Shared config path is not set or does not exist. "
             "Use 'aurora-setup connect' to connect to a config, "
-            "or 'aurora-setup init' to create a new one."
+            "or 'aurora-setup init' to create a new one.",
         )
         raise FileNotFoundError
     logger.info("User config file: %s", USER_CONFIG_PATH)

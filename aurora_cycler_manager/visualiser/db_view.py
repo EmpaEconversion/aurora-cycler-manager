@@ -366,7 +366,7 @@ ready_modal = dmc.Modal(
                 "Ready",
                 id="ready-yes-close",
             ),
-        ]
+        ],
     ),
     id="ready-modal",
     centered=True,
@@ -381,7 +381,7 @@ unready_modal = dmc.Modal(
                 "Unready",
                 id="unready-yes-close",
             ),
-        ]
+        ],
     ),
     id="unready-modal",
     centered=True,
@@ -435,7 +435,7 @@ submit_modal = dmc.Modal(
                 id="submit-yes-close",
                 disabled=True,
             ),
-        ]
+        ],
     ),
 )
 
@@ -449,7 +449,7 @@ cancel_modal = dmc.Modal(
                 id="cancel-yes-close",
                 color="red",
             ),
-        ]
+        ],
     ),
     id="cancel-modal",
     centered=True,
@@ -466,7 +466,7 @@ snapshot_modal = dmc.Modal(
                 id="snapshot-yes-close",
                 color="orange",
             ),
-        ]
+        ],
     ),
     id="snapshot-modal",
     centered=True,
@@ -489,7 +489,7 @@ create_batch_modal = dmc.Modal(
                 "Create",
                 id="batch-save-yes-close",
             ),
-        ]
+        ],
     ),
     id="batch-save-modal",
     centered=True,
@@ -506,7 +506,7 @@ delete_modal = dmc.Modal(
                 id="delete-yes-close",
                 color="red",
             ),
-        ]
+        ],
     ),
     id="delete-modal",
     centered=True,
@@ -526,7 +526,7 @@ label_modal = dmc.Modal(
                 "Label",
                 id="label-yes-close",
             ),
-        ]
+        ],
     ),
     id="label-modal",
     centered=True,
@@ -594,7 +594,7 @@ db_view_layout = html.Div(
 # -------------------------------- Callbacks --------------------------------- #
 
 
-def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
+def register_db_view_callbacks(app: Dash) -> None:
     """Register callbacks for the database view layout."""
     register_batch_edit_callbacks(app, database_access)
     register_protocol_edit_callbacks(app)
@@ -666,7 +666,12 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         prevent_initial_call=True,
     )
     def update_selected_rows(
-        samples: list, pipelines: list, jobs: list, results: list, table: str, lens: dict
+        samples: list,
+        pipelines: list,
+        jobs: list,
+        results: list,
+        table: str,
+        lens: dict,
     ) -> tuple[list, str]:
         message_dict = {
             "samples": (samples, f"{len(samples) if samples else 0}/{lens['samples'] if lens else 0}"),
@@ -721,7 +726,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("table-select", "value"),
         prevent_initial_call=True,
     )
-    def enable_buttons(selected_rows: list, table: str) -> tuple[bool]:
+    def enable_buttons(selected_rows: list, table: str) -> tuple[bool, ...]:
         enabled = set()
         # Add buttons to enabled set with union operator |=
         if database_access and table == "samples":
@@ -754,9 +759,8 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
                         enabled |= {"snapshot-button"}
                         if all(s.get("Status") in ["r", "q", "qw"] for s in selected_rows):
                             enabled |= {"cancel-button"}
-                elif table == "results":
-                    if all(s.get("Sample ID") is not None for s in selected_rows):
-                        enabled |= {"label-button", "create-batch-button"}
+                elif table == "results" and all(s.get("Sample ID") is not None for s in selected_rows):
+                    enabled |= {"label-button", "create-batch-button"}
             if any(s["Sample ID"] is not None for s in selected_rows):
                 enabled |= {"view-button"}
         # False = enabled (not my choice), so this returns True if button is NOT in enabled set
@@ -826,7 +830,11 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         prevent_initial_call=True,
     )
     def load_sample_button(
-        _load_clicks: int, yes_clicks: int, is_open: bool, selected_rows: list, possible_samples: list
+        _load_clicks: int,
+        yes_clicks: int,
+        is_open: bool,
+        selected_rows: list,
+        possible_samples: list,
     ) -> tuple[bool, list | NoUpdate, dict | NoUpdate]:
         if not selected_rows or not ctx.triggered:
             return is_open, no_update, no_update
@@ -864,7 +872,10 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         prevent_initial_call=True,
     )
     def update_load_selection(
-        _inc_clicks: int, _clear_clicks: int, selected_samples: list, possible_samples: list
+        _inc_clicks: int,
+        _clear_clicks: int,
+        selected_samples: list,
+        possible_samples: list,
     ) -> list:
         if not ctx.triggered:
             return selected_samples
@@ -992,7 +1003,10 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         prevent_initial_call=True,
     )
     def submit_pipeline_button(
-        _submit_clicks: int, yes_clicks: int, _is_open: bool, selected_rows: list
+        _submit_clicks: int,
+        yes_clicks: int,
+        _is_open: bool,
+        selected_rows: list,
     ) -> tuple[bool | NoUpdate, list | NoUpdate, dict | NoUpdate]:
         if not ctx.triggered:
             return no_update, no_update, no_update
@@ -1138,7 +1152,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             try:
                 sm.submit(row["Sample ID"], payload, capacity_Ah)
                 success_notification("", f"Sample {row['Sample ID']} submitted", queue=True)
-            except Exception as e:  # noqa: BLE001, PERF203
+            except Exception as e:
                 error_notification("", f"Error submitting sample {row['Sample ID']}: {e}", queue=True)
         return 1
 

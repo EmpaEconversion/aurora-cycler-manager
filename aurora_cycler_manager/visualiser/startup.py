@@ -55,8 +55,8 @@ def main() -> None:
     """Start the Aurora app."""
     for line in ascii_art.splitlines():
         gradient_text = gradient_line((103, 203, 243), (77, 193, 185), (183, 119, 179), line)
-        print(gradient_text)
-    print()
+        print(gradient_text)  # noqa: T201
+    print()  # noqa: T201
 
     setup_logging()
     logger.info("Trying to connect to cycler servers...")

@@ -678,7 +678,7 @@ protocol_edit_layout = html.Div(
 
 
 ### Callbacks ###
-def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
+def register_protocol_edit_callbacks(app: Dash) -> None:
     """Register callbacks for the protocol edit tab."""
 
     # If the data changes, update the grid
@@ -794,7 +794,10 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         prevent_initial_call=True,
     )
     def add_row(
-        n_clicks: int, protocol_dict: dict, grid_data: list[dict], selected_rows: list[dict]
+        n_clicks: int,
+        protocol_dict: dict,
+        grid_data: list[dict],
+        selected_rows: list[dict],
     ) -> tuple[dict, list[int]]:
         """Add a new row to the data store."""
         if n_clicks is None or n_clicks == 0:
@@ -1158,7 +1161,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         prevent_initial_call=True,
     )
     def save_protocol(
-        save_clicks: int,
+        _save_clicks: int,
         overwrite_clicks: int,
         protocol_dict: dict,
         name: str,

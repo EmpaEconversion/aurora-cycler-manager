@@ -485,7 +485,7 @@ def register_batches_callbacks(app: Dash) -> None:
         Input("batch-yes-close", "n_clicks"),
         prevent_initial_call=True,
     )
-    def open_samples_modal(select_clicks: int, yes: int) -> bool:
+    def open_samples_modal(_select_clicks: int, _yes: int) -> bool:
         if not ctx.triggered:
             return False
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
@@ -509,13 +509,13 @@ def register_batches_callbacks(app: Dash) -> None:
         prevent_initial_call=True,
     )
     def load_selected_samples(
-        n_clicks: int,
+        _n_clicks: int,
         samples: list,
         batches: list,
         data: dict,
         batch_defs: dict[str, dict],
         y_val: str,
-    ):
+    ) -> tuple:
         """Load the selected samples into the data store."""
         if not ctx.triggered:
             raise PreventUpdate
@@ -836,8 +836,13 @@ def register_batches_callbacks(app: Dash) -> None:
             return fig, [], []
         df = pd.concat(dfs, ignore_index=True)
 
-        # remove columns where all values are the same
-        df = df.loc[:, df.nunique() > 1]
+        # Remove columns where all values are the same
+        def is_constant(series: pd.Series) -> bool:
+            """Check if a series is constant."""
+            arr = series.to_numpy()
+            return arr.shape[0] == 0 or (arr[0] == arr).all()
+
+        df = df.loc[:, [not is_constant(df[col]) for col in df.columns]]
 
         # remove other unnecessary columns
         columns_not_needed = [

@@ -268,7 +268,7 @@ def register_samples_callbacks(app: Dash) -> None:
         Input("samples-store", "data"),
         prevent_initial_call=True,
     )
-    def update_samples_dropdown(samples: list):
+    def update_samples_dropdown(samples: list) -> tuple[list, list, list]:
         """Update available samples in the dropdown."""
         return samples, samples, samples
 
@@ -328,7 +328,7 @@ def register_samples_callbacks(app: Dash) -> None:
                 if not cycling_files:
                     logger.info("No cycling files found in %s", file_location)
                     continue
-                df, metadata = combine_jobs([Path(f) for f in cycling_files])
+                df, _metadata = combine_jobs([Path(f) for f in cycling_files])
                 data["data_sample_time"][sample] = df.to_dict(orient="list")
 
             # Get the analysed file

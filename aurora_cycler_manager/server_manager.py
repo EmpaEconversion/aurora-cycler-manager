@@ -263,7 +263,7 @@ class ServerManager:
     def sort_pipeline(df: pd.DataFrame) -> pd.DataFrame:
         """Sorting pipelines so e.g. MPG2-1-2 comes before MPG2-1-10."""
 
-        def custom_sort(x: str):  # noqa: ANN202
+        def custom_sort(x: str) -> int | str:
             try:
                 numbers = x.split("-")[-2:]
                 return 1000 * int(numbers[0]) + int(numbers[1])
@@ -277,7 +277,7 @@ class ServerManager:
     def sort_job(df: pd.DataFrame) -> pd.DataFrame:
         """Sort jobs so servers are grouped together and jobs are sorted by number."""
 
-        def custom_sort(x: str):  # noqa: ANN202
+        def custom_sort(x: str) -> tuple[str, int]:
             try:
                 server, number = x.rsplit("-", 1)
                 return (server, int(number))
@@ -770,7 +770,7 @@ class ServerManager:
                 if isinstance(e, FileNotFoundError):  # Something ran on server, so sleep
                     sleep(10)
                 continue
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 tb = traceback.format_exc()
                 error_message = str(e) if str(e) else "An error occurred but no message was provided."
                 logger.warning("Unexpected error snapshotting %s: %s\n%s", jobid, error_message, tb)

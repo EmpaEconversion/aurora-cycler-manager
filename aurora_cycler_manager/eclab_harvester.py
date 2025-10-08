@@ -99,19 +99,21 @@ def get_mprs(
         if server_shell_type == "powershell":
             command = (
                 f"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
-                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' -and ($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr')}} "
+                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' "
+                "-and ($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr')}} "
                 f"| Select-Object -ExpandProperty FullName"
             )
         elif server_shell_type == "cmd":
             command = (
                 f"powershell.exe -Command \"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
-                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' -and ($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr')}} "
+                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' "
+                "-and ($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr')}} "
                 f'| Select-Object -ExpandProperty FullName"'
             )
         else:
             msg = f"Unknown shell type {server_shell_type} for server {server_label}"
             raise ValueError(msg)
-        stdin, stdout, stderr = ssh.exec_command(command)
+        _stdin, stdout, stderr = ssh.exec_command(command)
 
         # Parse the output
         output = stdout.read().decode("utf-8").strip()
@@ -258,9 +260,8 @@ def convert_mpr(
     """Convert a ec-lab mpr to dataframe, optionally save as hdf5.
 
     Args:
-        sampleid (str): sample ID from robot output
         mpr_file (str): path to the raw mpr file
-        output_hdf_file (str, optional): path to save the output hdf5 file
+        output_hdf5_file (str, optional): path to save the output hdf5 file
 
     Returns:
         pd.DataFrame: DataFrame containing the cycling data
@@ -454,7 +455,7 @@ def main() -> None:
                 mpr_path,
                 output_hdf5_file=True,
             )
-        except (ValueError, IndexError, KeyError, RuntimeError):  # noqa: PERF203
+        except (ValueError, IndexError, KeyError, RuntimeError):
             logger.exception("Error converting %s", mpr_path)
             continue
 

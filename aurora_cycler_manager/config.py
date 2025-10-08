@@ -138,7 +138,7 @@ def get_config(reload: bool = False) -> dict:
     Only reads the config file once, unless reload is set to True.
 
     """
-    global CONFIG  # noqa: PLW0603
+    global CONFIG
     if CONFIG is None or reload:
         CONFIG = _read_config_file()
     return CONFIG

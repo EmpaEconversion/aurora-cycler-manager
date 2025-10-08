@@ -41,7 +41,6 @@ trigger_time = 600  # Delay to check one final time after switching to 'idle'
 
 def queue_notification(notification: Notification) -> None:
     """Add a notification to the queue."""
-    global notification_queue
     notification_queue.append(notification)
 
 
@@ -114,13 +113,14 @@ notifications_layout = html.Div(
 # When in a 'listening' state, a function will set the interval to e.g. 1 second
 # Otherwise in 'idle' it will be set to 1 minute
 def register_notifications_callbacks(app: Dash) -> None:
-    # When the notify-interval time changes, change trigger-interval one second later
+    """Change trigger-interval one second after the notify-interval time changes."""
+
     @app.callback(
         Output("trigger-interval", "disabled", allow_duplicate=True),
         Input("notify-interval", "interval"),
         prevent_initial_call=True,
     )
-    def update_interval_changed(interval: int) -> bool:
+    def update_interval_changed(_interval: int) -> bool:
         return False
 
     # Check for notifications whenever notify or trigger interval changes
@@ -131,8 +131,8 @@ def register_notifications_callbacks(app: Dash) -> None:
         Input("trigger-interval", "n_intervals"),
         prevent_initial_call=True,
     )
-    def check_notifications(n_notify: int, n_trigger: int) -> tuple[list[Notification], bool]:
-        # return notification list and clear it
+    def check_notifications(_n_notify: int, n_trigger: int) -> tuple[list[Notification], bool]:
+        """Return notification list and clear it."""
         global notification_queue
         if not notification_queue:
             return [], bool(n_trigger)
