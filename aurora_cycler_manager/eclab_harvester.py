@@ -64,6 +64,7 @@ def get_mprs(
     server_shell_type: str,
     server_copy_folder: str,
     local_folder: Path | str,
+    *,
     force_copy: bool = False,
 ) -> list[str]:
     """Get .mpr files from subfolders of specified folder.
@@ -159,7 +160,7 @@ def get_mprs(
         return new_files
 
 
-def get_all_mprs(force_copy: bool = False) -> list[str]:
+def get_all_mprs(*, force_copy: bool = False) -> list[str]:
     """Get all MPR files from the folders specified in the config.
 
     The config file needs a key "EC-lab harvester" with a key "Snapshots folder
@@ -180,7 +181,7 @@ def get_all_mprs(force_copy: bool = False) -> list[str]:
                 server["shell_type"],
                 server["data_path"],
                 snapshot_folder,
-                force_copy,
+                force_copy=force_copy,
             )
             all_new_files.extend(new_files)
 
@@ -193,7 +194,7 @@ def get_all_mprs(force_copy: bool = False) -> list[str]:
             server["shell_type"],
             server["EC-lab folder location"],
             snapshot_folder,
-            force_copy,
+            force_copy=force_copy,
         )
         all_new_files.extend(new_files)
     return all_new_files
@@ -257,6 +258,7 @@ def get_mpr_data(
 
 def convert_mpr(
     mpr_file: str | Path,
+    *,
     output_hdf5_file: bool = True,
 ) -> tuple[pd.DataFrame, dict]:
     """Convert a ec-lab mpr to dataframe, optionally save as hdf5.

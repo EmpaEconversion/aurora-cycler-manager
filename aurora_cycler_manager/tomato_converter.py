@@ -83,6 +83,7 @@ def puree_all_tomatos() -> None:
 
 def convert_tomato_json(
     snapshot_file_path: Path | str,
+    *,
     output_hdf_file: bool = True,
 ) -> tuple[pd.DataFrame, dict]:
     """Convert a raw json file from tomato to a pandas dataframe.

@@ -71,6 +71,7 @@ def harvest_neware_files(
     server_shell_type: str,
     server_copy_folder: str,
     local_folder: str | Path,
+    *,
     force_copy: bool = False,
 ) -> list[Path]:
     """Get Neware files from subfolders of specified folder.
@@ -297,7 +298,7 @@ def snapshot_raw_data(job_id: str) -> Path | None:
     return ndax_path
 
 
-def harvest_all_neware_files(force_copy: bool = False) -> list[Path]:
+def harvest_all_neware_files(*, force_copy: bool = False) -> list[Path]:
     """Get neware files from all servers specified in the config."""
     all_new_files = []
     snapshots_folder = get_neware_snapshot_folder()
@@ -777,6 +778,7 @@ def convert_neware_data(
     file_path: Path | str,
     sampleid: str | None = None,
     known_samples: list[str] | None = None,
+    *,
     output_hdf5_file: bool = True,
 ) -> tuple[pd.DataFrame, dict]:
     """Convert a neware file to a dataframe and save as hdf5.
