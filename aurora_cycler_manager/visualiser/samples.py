@@ -283,7 +283,7 @@ def register_samples_callbacks(app: Dash) -> None:
         running=[(Output("loading-message-store", "data"), "Loading data...", "")],
         prevent_initial_call=True,
     )
-    def update_sample_data(samples: list, compressed: bool, data: dict) -> tuple[dict, list, list]:
+    def update_sample_data(samples: list, data: dict, *, compressed: bool) -> tuple[dict, list, list]:
         """Load data for selected samples and put in data store."""
         # Get rid of samples that are no longer selected
         for sample in list(data["data_sample_time"].keys()):

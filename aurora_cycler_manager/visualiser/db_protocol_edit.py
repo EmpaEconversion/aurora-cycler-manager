@@ -730,7 +730,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         Output("protocol-store", "data", allow_duplicate=True),
         Output("protocol-store-selected", "data", allow_duplicate=True),
         Output("protocol-name", "value"),
-        Output("notifications-container", "children", allow_duplicate=True),
+        Output("notifications-container", "sendNotifications", allow_duplicate=True),
         Input("load-protocol-button", "contents"),
         State("load-protocol-button", "filename"),
         prevent_initial_call=True,
@@ -746,12 +746,12 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
                 for technique in protocol["method"]:
                     technique["id"] = uuid.uuid4()
                 return protocol, [], filename[:-5], no_update
-            except ValidationError:
+            except (ValidationError, AttributeError, ValueError, KeyError):
                 return (
                     no_update,
                     no_update,
                     no_update,
-                    error_notification("Oh no", "This is not a valid protocol file!"),
+                    [error_notification("Oh no", "This is not a valid protocol file!")],
                 )
         raise PreventUpdate
 
@@ -1127,7 +1127,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
 
     # Pressing save opens a confirm dialog
     @app.callback(
-        Output("notifications-container", "children", allow_duplicate=True),
+        Output("notifications-container", "sendNotifications", allow_duplicate=True),
         Output("save-protocol-confirm", "displayed"),
         Output("overwrite-protocol-confirm", "displayed"),
         Input("protocol-save-button", "n_clicks"),
@@ -1140,7 +1140,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         folder = CONFIG.get("Protocols folder path")
         if not folder:
             return (
-                error_notification("No protocols folder", "Please check config"),
+                [error_notification("No protocols folder", "Please check config")],
                 no_update,
                 no_update,
             )
@@ -1153,7 +1153,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
 
     # If the user confirms saving, save the protocol to the protocols folder
     @app.callback(
-        Output("notifications-container", "children", allow_duplicate=True),
+        Output("notifications-container", "sendNotifications", allow_duplicate=True),
         Input("save-protocol-confirm", "submit_n_clicks"),
         Input("overwrite-protocol-confirm", "submit_n_clicks"),
         State("protocol-store", "data"),
@@ -1169,13 +1169,15 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         """Save the protocol to the protocols folder."""
         folder = CONFIG.get("Protocols folder path")
         if not folder:
-            return error_notification("Error", "No protocols folder path set in config!")
+            return [error_notification("Error", "No protocols folder path set in config!")]
         file_path = Path(folder) / f"{name}.json"
         if file_path.exists() and overwrite_clicks is None:
-            return error_notification(
-                "Cannot save",
-                "Protocol with this name already exists! Please choose another name.",
-            )
+            return [
+                error_notification(
+                    "Cannot save",
+                    "Protocol with this name already exists! Please choose another name.",
+                )
+            ]
         try:
             protocol_copy = protocol_dict.copy()
             for technique in protocol_copy.get("method", []):
@@ -1185,7 +1187,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
             folder.mkdir(parents=True, exist_ok=True)
             with file_path.open("w") as f:
                 f.write(protocol.model_dump_json(exclude_none=True, indent=4))
-            return success_notification("Success", f"'{name}' saved to protocols folder")
+            return [success_notification("Success", f"'{name}' saved to protocols folder")]
         except Exception as e:
             logger.exception("Error saving protocol")
-            return error_notification("Error", f"Could not save protocol: {e}")
+            return [error_notification("Error", f"Could not save protocol: {e}")]
