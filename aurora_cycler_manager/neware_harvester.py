@@ -59,7 +59,9 @@ def get_neware_snapshot_folder() -> Path:
             f"Please fill in the config file at {CONFIG.get('User config path')}.",
         )
         raise ValueError(msg)
-    return Path(snapshot_parent) / "neware_snapshots"
+    snapshot_path = Path(snapshot_parent) / "neware_snapshots"
+    snapshot_path.mkdir(parents=True, exist_ok=True)
+    return snapshot_path
 
 
 def harvest_neware_files(

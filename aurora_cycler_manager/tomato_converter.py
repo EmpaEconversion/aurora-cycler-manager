@@ -39,7 +39,9 @@ def get_tomato_snapshot_folder() -> Path:
             f"Please fill in the config file at {CONFIG.get('User config path')}.",
         )
         raise ValueError(msg)
-    return Path(snapshot_parent) / "tomato_snapshots"
+    snapshot_path = Path(snapshot_parent) / "tomato_snapshots"
+    snapshot_path.mkdir(parents=True, exist_ok=True)
+    return snapshot_path
 
 
 def puree_tomato(
