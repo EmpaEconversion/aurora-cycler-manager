@@ -36,7 +36,7 @@ import yadg
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.setup_logging import setup_logging
-from aurora_cycler_manager.utils import run_from_sample
+from aurora_cycler_manager.utils import run_from_sample, ssh_connect
 from aurora_cycler_manager.version import __url__, __version__
 
 CONFIG = get_config()
@@ -52,7 +52,9 @@ def get_eclab_snapshot_folder() -> Path:
             f"Please fill in the config file at {CONFIG.get('User config path')}.",
         )
         raise ValueError(msg)
-    return Path(snapshot_parent) / "eclab_snapshots"
+    snapshot_path = Path(snapshot_parent) / "eclab_snapshots"
+    snapshot_path.mkdir(parents=True, exist_ok=True)
+    return snapshot_path
 
 
 def get_mprs(
@@ -62,6 +64,7 @@ def get_mprs(
     server_shell_type: str,
     server_copy_folder: str,
     local_folder: Path | str,
+    *,
     force_copy: bool = False,
 ) -> list[str]:
     """Get .mpr files from subfolders of specified folder.
@@ -92,36 +95,28 @@ def get_mprs(
 
     # Connect to the server and copy the files
     with paramiko.SSHClient() as ssh:
-        ssh.load_system_host_keys()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        logger.info(
-            "Connecting to server",
-            extra={
-                "server_label": server_label,
-                "server_hostname": server_hostname,
-                "server_username": server_username,
-            },
-        )
-        ssh.connect(server_hostname, username=server_username, key_filename=CONFIG.get("SSH private key path"))
+        ssh_connect(ssh, server_username, server_hostname)
 
         # Shell commands to find files modified since cutoff date
         # TODO: grab all the filenames and modified dates, copy if they are newer than local files not just cutoff date
         if server_shell_type == "powershell":
             command = (
                 f"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
-                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' -and ($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr')}} "
+                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' "
+                "-and ($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr')}} "
                 f"| Select-Object -ExpandProperty FullName"
             )
         elif server_shell_type == "cmd":
             command = (
                 f"powershell.exe -Command \"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
-                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' -and ($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr')}} "
+                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' "
+                "-and ($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr')}} "
                 f'| Select-Object -ExpandProperty FullName"'
             )
         else:
             msg = f"Unknown shell type {server_shell_type} for server {server_label}"
             raise ValueError(msg)
-        stdin, stdout, stderr = ssh.exec_command(command)
+        _stdin, stdout, stderr = ssh.exec_command(command)
 
         # Parse the output
         output = stdout.read().decode("utf-8").strip()
@@ -165,7 +160,7 @@ def get_mprs(
         return new_files
 
 
-def get_all_mprs(force_copy: bool = False) -> list[str]:
+def get_all_mprs(*, force_copy: bool = False) -> list[str]:
     """Get all MPR files from the folders specified in the config.
 
     The config file needs a key "EC-lab harvester" with a key "Snapshots folder
@@ -186,7 +181,7 @@ def get_all_mprs(force_copy: bool = False) -> list[str]:
                 server["shell_type"],
                 server["data_path"],
                 snapshot_folder,
-                force_copy,
+                force_copy=force_copy,
             )
             all_new_files.extend(new_files)
 
@@ -199,7 +194,7 @@ def get_all_mprs(force_copy: bool = False) -> list[str]:
             server["shell_type"],
             server["EC-lab folder location"],
             snapshot_folder,
-            force_copy,
+            force_copy=force_copy,
         )
         all_new_files.extend(new_files)
     return all_new_files
@@ -263,14 +258,14 @@ def get_mpr_data(
 
 def convert_mpr(
     mpr_file: str | Path,
+    *,
     output_hdf5_file: bool = True,
 ) -> tuple[pd.DataFrame, dict]:
     """Convert a ec-lab mpr to dataframe, optionally save as hdf5.
 
     Args:
-        sampleid (str): sample ID from robot output
         mpr_file (str): path to the raw mpr file
-        output_hdf_file (str, optional): path to save the output hdf5 file
+        output_hdf5_file (str, optional): path to save the output hdf5 file
 
     Returns:
         pd.DataFrame: DataFrame containing the cycling data
@@ -464,7 +459,7 @@ def main() -> None:
                 mpr_path,
                 output_hdf5_file=True,
             )
-        except (ValueError, IndexError, KeyError, RuntimeError):  # noqa: PERF203
+        except (ValueError, IndexError, KeyError, RuntimeError):
             logger.exception("Error converting %s", mpr_path)
             continue
 

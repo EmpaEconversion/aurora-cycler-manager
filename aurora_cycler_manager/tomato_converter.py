@@ -39,7 +39,9 @@ def get_tomato_snapshot_folder() -> Path:
             f"Please fill in the config file at {CONFIG.get('User config path')}.",
         )
         raise ValueError(msg)
-    return Path(snapshot_parent) / "tomato_snapshots"
+    snapshot_path = Path(snapshot_parent) / "tomato_snapshots"
+    snapshot_path.mkdir(parents=True, exist_ok=True)
+    return snapshot_path
 
 
 def puree_tomato(
@@ -81,6 +83,7 @@ def puree_all_tomatos() -> None:
 
 def convert_tomato_json(
     snapshot_file_path: Path | str,
+    *,
     output_hdf_file: bool = True,
 ) -> tuple[pd.DataFrame, dict]:
     """Convert a raw json file from tomato to a pandas dataframe.

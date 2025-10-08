@@ -52,9 +52,10 @@ aurora-setup connect --project-dir="path\to\your\setup"
 
 To _interact with servers on an existing set up_:
 - Interacting with servers (submitting jobs, harvesting data etc.) works with OpenSSH, servers must have OpenSSH installed and running
-- Generate a public/private key pair on your system with `ssh-keygen`
+- Generate a public/private key pair on the user system with `ssh-keygen`
 - Copy your public key (usually in `%USERPROFILE%\.ssh\id_rsa.pub`) to the cycler server
 - Add it to the server's `authorized_keys` file (usually in `C:\Users\username\.ssh\authorized_keys`)
+- Check the connection using `ssh user@host` from the user's terminal, confirm the connection to add the host to the user's `known_hosts` file, the Aurora app can now use the connection 
 - (optional) You can make changes to your user config, this is stored in your user folder e.g. /users/yourname/appdata/local/aurora_cycler_manager/
   - "SSH private key path" can be changed, if your key is not in a standard location
   - "Snapshots folder path" is where raw data downloaded from cyclers is stored, this can become very large
@@ -71,11 +72,7 @@ aurora-setup init --project-dir="path\to\your\setup"
 - To set up a `neware` server, follow the instructions from [`aurora-neware`](https://github.com/empaeconversion/aurora-neware)
 - To set up a `biologic` server, follow the instructions from [`aurora-biologic`](https://github.com/empaeconversion/aurora-biologic)
 - To set up a `tomato` server, follow instructions from [`tomato-0.2.3`](https://dgbowl.github.io/tomato/0.2.3/)
-- If you change database columns in the shared configuration file, you can update the database with `aurora-setup update`
-```
-aurora-setup update
-```
-- Use the option `--force` if you want to permanetly delete columns and their data.
+- If you change database columns in the shared configuration file, you can update the database with `aurora-setup update`, use the option `--force` if you want to permanetly delete columns and their data.
 
 ## Updating
 

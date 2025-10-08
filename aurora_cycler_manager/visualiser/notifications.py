@@ -31,7 +31,7 @@ callback is running.
 
 from dash import Dash, Input, Output, html
 from dash.dcc import Interval
-from dash_mantine_components import Notification, NotificationProvider
+from dash_mantine_components import NotificationContainer
 
 notification_queue = []
 idle_time = 1000 * 60  # Time to check for notifications when 'idle'
@@ -39,63 +39,62 @@ active_time = 500  # Time to check for notifications when 'active'
 trigger_time = 600  # Delay to check one final time after switching to 'idle'
 
 
-def queue_notification(notification: Notification) -> None:
+def queue_notification(notification: dict) -> None:
     """Add a notification to the queue."""
-    global notification_queue
     notification_queue.append(notification)
 
 
-def success_notification(title: str, message: str, queue: bool = False) -> Notification:
+def success_notification(title: str, message: str, *, queue: bool = False) -> dict:
     """Create a success notification."""
-    notification = Notification(
-        title=title,
-        message=message,
-        color="green",
-        action="show",
-        icon=html.I(className="bi bi-check-circle"),
-    )
+    notification = {
+        "title": title,
+        "message": message,
+        "color": "green",
+        "action": "show",
+        "icon": html.I(className="bi bi-check-circle"),
+    }
     if queue:
         queue_notification(notification)
     return notification
 
 
-def info_notification(title: str, message: str, queue: bool = False) -> Notification:
+def info_notification(title: str, message: str, *, queue: bool = False) -> dict:
     """Create an info notification."""
-    notification = Notification(
-        title=title,
-        message=message,
-        color="blue",
-        action="show",
-        icon=html.I(className="bi bi-info-circle"),
-    )
+    notification = {
+        "title": title,
+        "message": message,
+        "color": "blue",
+        "action": "show",
+        "icon": html.I(className="bi bi-info-circle"),
+    }
     if queue:
         queue_notification(notification)
     return notification
 
 
-def warning_notification(title: str, message: str, queue: bool = False) -> Notification:
+def warning_notification(title: str, message: str, *, queue: bool = False) -> dict:
     """Create a warning notification."""
-    notification = Notification(
-        title=title,
-        message=message,
-        color="yellow",
-        action="show",
-        icon=html.I(className="bi bi-exclamation-triangle"),
-    )
+    notification = {
+        "title": title,
+        "message": message,
+        "color": "yellow",
+        "action": "show",
+        "icon": html.I(className="bi bi-exclamation-triangle"),
+    }
     if queue:
         queue_notification(notification)
     return notification
 
 
-def error_notification(title: str, message: str, queue: bool = False) -> Notification:
+def error_notification(title: str, message: str, *, queue: bool = False) -> dict:
     """Create an error notification."""
-    notification = Notification(
-        title=title,
-        message=message,
-        color="red",
-        action="show",
-        icon=html.I(className="bi bi-x-circle"),
-    )
+    notification = {
+        "title": title,
+        "message": message,
+        "color": "red",
+        "action": "show",
+        "icon": html.I(className="bi bi-x-circle"),
+    }
     if queue:
         queue_notification(notification)
     return notification
@@ -103,8 +102,7 @@ def error_notification(title: str, message: str, queue: bool = False) -> Notific
 
 notifications_layout = html.Div(
     [
-        html.Div([], id="notifications-container"),
-        NotificationProvider(),
+        NotificationContainer(id="notifications-container"),
         Interval(id="notify-interval", interval=idle_time),
         Interval(id="trigger-interval", interval=trigger_time, n_intervals=0, disabled=True),
     ],
@@ -114,25 +112,26 @@ notifications_layout = html.Div(
 # When in a 'listening' state, a function will set the interval to e.g. 1 second
 # Otherwise in 'idle' it will be set to 1 minute
 def register_notifications_callbacks(app: Dash) -> None:
-    # When the notify-interval time changes, change trigger-interval one second later
+    """Change trigger-interval one second after the notify-interval time changes."""
+
     @app.callback(
         Output("trigger-interval", "disabled", allow_duplicate=True),
         Input("notify-interval", "interval"),
         prevent_initial_call=True,
     )
-    def update_interval_changed(interval: int) -> bool:
+    def update_interval_changed(_interval: int) -> bool:
         return False
 
     # Check for notifications whenever notify or trigger interval changes
     @app.callback(
-        Output("notifications-container", "children", allow_duplicate=True),
+        Output("notifications-container", "sendNotifications", allow_duplicate=True),
         Output("trigger-interval", "disabled", allow_duplicate=True),
         Input("notify-interval", "n_intervals"),
         Input("trigger-interval", "n_intervals"),
         prevent_initial_call=True,
     )
-    def check_notifications(n_notify: int, n_trigger: int) -> tuple[list[Notification], bool]:
-        # return notification list and clear it
+    def check_notifications(_n_notify: int, n_trigger: int) -> tuple[list[dict], bool]:
+        """Return notification list and clear it."""
         global notification_queue
         if not notification_queue:
             return [], bool(n_trigger)

@@ -7,11 +7,12 @@ import base64
 import json
 import logging
 from datetime import datetime
+from typing import Literal
 
 import dash_ag_grid as dag
 import dash_mantine_components as dmc
 import paramiko
-from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
+from dash import ALL, Dash, Input, NoUpdate, Output, State, dcc, html, no_update
 from dash import callback_context as ctx
 from dash.exceptions import PreventUpdate
 
@@ -365,7 +366,7 @@ ready_modal = dmc.Modal(
                 "Ready",
                 id="ready-yes-close",
             ),
-        ]
+        ],
     ),
     id="ready-modal",
     centered=True,
@@ -380,7 +381,7 @@ unready_modal = dmc.Modal(
                 "Unready",
                 id="unready-yes-close",
             ),
-        ]
+        ],
     ),
     id="unready-modal",
     centered=True,
@@ -434,7 +435,7 @@ submit_modal = dmc.Modal(
                 id="submit-yes-close",
                 disabled=True,
             ),
-        ]
+        ],
     ),
 )
 
@@ -448,7 +449,7 @@ cancel_modal = dmc.Modal(
                 id="cancel-yes-close",
                 color="red",
             ),
-        ]
+        ],
     ),
     id="cancel-modal",
     centered=True,
@@ -465,7 +466,7 @@ snapshot_modal = dmc.Modal(
                 id="snapshot-yes-close",
                 color="orange",
             ),
-        ]
+        ],
     ),
     id="snapshot-modal",
     centered=True,
@@ -488,7 +489,7 @@ create_batch_modal = dmc.Modal(
                 "Create",
                 id="batch-save-yes-close",
             ),
-        ]
+        ],
     ),
     id="batch-save-modal",
     centered=True,
@@ -505,7 +506,7 @@ delete_modal = dmc.Modal(
                 id="delete-yes-close",
                 color="red",
             ),
-        ]
+        ],
     ),
     id="delete-modal",
     centered=True,
@@ -525,7 +526,7 @@ label_modal = dmc.Modal(
                 "Label",
                 id="label-yes-close",
             ),
-        ]
+        ],
     ),
     id="label-modal",
     centered=True,
@@ -537,11 +538,6 @@ label_modal = dmc.Modal(
 db_view_layout = html.Div(
     style={"height": "100%", "padding": "10px"},
     children=[
-        # invisible div just to make the loading spinner work when no outputs are changed
-        html.Div(
-            id="loading-database",
-            style={"display": "none"},
-        ),
         html.Div(
             style={"height": "100%", "overflow": "auto"},
             children=[
@@ -598,7 +594,7 @@ db_view_layout = html.Div(
 # -------------------------------- Callbacks --------------------------------- #
 
 
-def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
+def register_db_view_callbacks(app: Dash) -> None:
     """Register callbacks for the database view layout."""
     register_batch_edit_callbacks(app, database_access)
     register_protocol_edit_callbacks(app)
@@ -656,7 +652,8 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             *table_visibilities,
         )
 
-    # Update the selected rows in the table
+    # Update data store with the selected rows, and update the message below the table
+    # Triggers when table or selection changes
     @app.callback(
         Output("selected-rows-store", "data"),
         Output("table-info", "children"),
@@ -668,7 +665,14 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("len-store", "data"),
         prevent_initial_call=True,
     )
-    def update_selected_rows(samples, pipelines, jobs, results, table, lens):
+    def update_selected_rows(
+        samples: list,
+        pipelines: list,
+        jobs: list,
+        results: list,
+        table: str,
+        lens: dict,
+    ) -> tuple[list, str]:
         message_dict = {
             "samples": (samples, f"{len(samples) if samples else 0}/{lens['samples'] if lens else 0}"),
             "pipelines": (pipelines, f"{len(pipelines) if pipelines else 0}/{lens['pipelines'] if lens else 0}"),
@@ -688,7 +692,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("db-update-interval", "n_intervals"),
         running=[(Output("loading-message-store", "data"), "Reading database...", "")],
     )
-    def refresh_database(n_clicks, n_intervals):
+    def refresh_database(_n_clicks: int, _n_intervals: int) -> tuple:
         db_data = get_database()
         dt_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         last_checked = get_db_last_update()
@@ -709,7 +713,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         running=[(Output("loading-message-store", "data"), "Updating databse - querying servers...", "")],
         prevent_initial_call=True,
     )
-    def update_database(n_clicks):
+    def update_database(n_clicks: int) -> int:
         if n_clicks is None:
             raise PreventUpdate
         sm.update_db()
@@ -722,7 +726,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("table-select", "value"),
         prevent_initial_call=True,
     )
-    def enable_buttons(selected_rows, table):
+    def enable_buttons(selected_rows: list, table: str) -> tuple[bool, ...]:
         enabled = set()
         # Add buttons to enabled set with union operator |=
         if database_access and table == "samples":
@@ -755,9 +759,8 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
                         enabled |= {"snapshot-button"}
                         if all(s.get("Status") in ["r", "q", "qw"] for s in selected_rows):
                             enabled |= {"cancel-button"}
-                elif table == "results":
-                    if all(s.get("Sample ID") is not None for s in selected_rows):
-                        enabled |= {"label-button", "create-batch-button"}
+                elif table == "results" and all(s.get("Sample ID") is not None for s in selected_rows):
+                    enabled |= {"label-button", "create-batch-button"}
             if any(s["Sample ID"] is not None for s in selected_rows):
                 enabled |= {"view-button"}
         # False = enabled (not my choice), so this returns True if button is NOT in enabled set
@@ -772,7 +775,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("clipboard", "n_clicks"),
         prevent_initial_call=True,
     )
-    def copy_button(n, selected_rows, nclip):
+    def copy_button(_n: int, selected_rows: list, nclip: int) -> tuple[str, int]:
         if selected_rows:
             tsv_header = "\t".join(selected_rows[0].keys())
             tsv_data = "\n".join(["\t".join(str(value) for value in row.values()) for row in selected_rows])
@@ -788,7 +791,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("eject-modal", "opened"),
         prevent_initial_call=True,
     )
-    def eject_sample_button(eject_clicks, yes_clicks, is_open):
+    def eject_sample_button(_eject_clicks: int, yes_clicks: int, is_open: bool) -> bool:
         if not ctx.triggered:
             return is_open
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
@@ -796,25 +799,23 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             return not is_open
         if button_id == "eject-yes-close" and yes_clicks:
             return False
-        return is_open, no_update, no_update, no_update
+        return is_open
 
     # When eject button confirmed, eject samples and refresh the database
     @app.callback(
-        Output("loading-database", "children", allow_duplicate=True),
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("eject-yes-close", "n_clicks"),
-        State("table-data-store", "data"),
         State("selected-rows-store", "data"),
         running=[(Output("loading-message-store", "data"), "Ejecting samples...", "")],
         prevent_initial_call=True,
     )
-    def eject_sample(yes_clicks, data, selected_rows):
+    def eject_sample(yes_clicks: int, selected_rows: list) -> int:
         if not yes_clicks:
-            return no_update, 0
+            return 0
         for row in selected_rows:
             logger.info("Ejecting %s", row["Pipeline"])
             sm.eject(row["Pipeline"])
-        return no_update, 1
+        return 1
 
     # Load button pop up, includes dynamic dropdowns for selecting samples to load
     @app.callback(
@@ -828,7 +829,13 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("samples-store", "data"),
         prevent_initial_call=True,
     )
-    def load_sample_button(load_clicks, yes_clicks, is_open, selected_rows, possible_samples):
+    def load_sample_button(
+        _load_clicks: int,
+        yes_clicks: int,
+        is_open: bool,
+        selected_rows: list,
+        possible_samples: list,
+    ) -> tuple[bool, list | NoUpdate, dict | NoUpdate]:
         if not selected_rows or not ctx.triggered:
             return is_open, no_update, no_update
         options = [{"label": s, "value": s} for s in possible_samples if s]
@@ -864,7 +871,12 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("samples-store", "data"),
         prevent_initial_call=True,
     )
-    def update_load_selection(inc_clicks, clear_clicks, selected_samples, possible_samples):
+    def update_load_selection(
+        _inc_clicks: int,
+        _clear_clicks: int,
+        selected_samples: list,
+        possible_samples: list,
+    ) -> list:
         if not ctx.triggered:
             return selected_samples
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
@@ -889,7 +901,6 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
 
     # When load is pressed, load samples and refresh the database
     @app.callback(
-        Output("loading-database", "children", allow_duplicate=True),
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("load-yes-close", "n_clicks"),
         State("selected-rows-store", "data"),
@@ -897,9 +908,9 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         running=[(Output("loading-message-store", "data"), "Loading samples...", "")],
         prevent_initial_call=True,
     )
-    def load_sample(yes_clicks, selected_rows, selected_samples):
+    def load_sample(yes_clicks: int, selected_rows: list, selected_samples: list) -> int:
         if not yes_clicks:
-            return no_update, 0
+            return 0
         pipelines = [s["Pipeline"] for s in selected_rows]
         pipelines = [s for _, s in sorted(zip(make_pipelines_comparable(pipelines), pipelines, strict=True))]
         for sample, pipeline in zip(selected_samples, pipelines, strict=True):
@@ -907,7 +918,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
                 continue
             logger.info("Loading %s to %s", sample, pipeline)
             sm.load(sample, pipeline)
-        return no_update, 1
+        return 1
 
     # Ready button pop up
     @app.callback(
@@ -917,7 +928,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("ready-modal", "opened"),
         prevent_initial_call=True,
     )
-    def ready_pipeline_button(ready_clicks, yes_clicks, is_open):
+    def ready_pipeline_button(_ready_clicks: int, yes_clicks: int, is_open: bool) -> bool:
         if not ctx.triggered:
             return is_open
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
@@ -925,11 +936,10 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             return True
         if button_id == "ready-yes-close" and yes_clicks:
             return False
-        return is_open, no_update, no_update, no_update
+        return is_open
 
     # When ready button confirmed, ready pipelines and refresh the database
     @app.callback(
-        Output("loading-database", "children", allow_duplicate=True),
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("ready-yes-close", "n_clicks"),
         State("selected-rows-store", "data"),
@@ -939,13 +949,13 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         ],
         prevent_initial_call=True,
     )
-    def ready_pipeline(yes_clicks, selected_rows):
+    def ready_pipeline(yes_clicks: int, selected_rows: list) -> int:
         if not yes_clicks:
-            return no_update, 0
+            return 0
         for row in selected_rows:
             sm.ready(row["Pipeline"])
             success_notification("", f"Pipeline {row['Pipeline']} ready", queue=True)
-        return no_update, 1
+        return 1
 
     # Unready button pop up
     @app.callback(
@@ -955,7 +965,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("unready-modal", "opened"),
         prevent_initial_call=True,
     )
-    def unready_pipeline_button(unready_clicks, yes_clicks, is_open):
+    def unready_pipeline_button(_unready_clicks: int, yes_clicks: int, is_open: bool) -> bool:
         if not ctx.triggered:
             return is_open
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
@@ -963,24 +973,23 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             return True
         if button_id == "unready-yes-close" and yes_clicks:
             return False
-        return is_open, no_update, no_update, no_update
+        return is_open
 
     # When unready button confirmed, unready pipelines and refresh the database
     @app.callback(
-        Output("loading-database", "children", allow_duplicate=True),
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("unready-yes-close", "n_clicks"),
         State("selected-rows-store", "data"),
         running=[(Output("loading-message-store", "data"), "Unreadying pipelines...", "")],
         prevent_initial_call=True,
     )
-    def unready_pipeline(yes_clicks, selected_rows):
+    def unready_pipeline(yes_clicks: int, selected_rows: list) -> int:
         if not yes_clicks:
-            return no_update, 0
+            return 0
         for row in selected_rows:
             logger.info("Unreadying %s", row["Pipeline"])
             _output = sm.unready(row["Pipeline"])
-        return no_update, 1
+        return 1
 
     # Submit button pop up
     @app.callback(
@@ -993,7 +1002,12 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("selected-rows-store", "data"),
         prevent_initial_call=True,
     )
-    def submit_pipeline_button(submit_clicks, yes_clicks, is_open, selected_rows):
+    def submit_pipeline_button(
+        _submit_clicks: int,
+        yes_clicks: int,
+        _is_open: bool,
+        selected_rows: list,
+    ) -> tuple[bool | NoUpdate, list | NoUpdate, dict | NoUpdate]:
         if not ctx.triggered:
             return no_update, no_update, no_update
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
@@ -1021,7 +1035,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("selected-rows-store", "data"),
         prevent_initial_call=True,
     )
-    def check_payload(opened, filename, selected_rows):
+    def check_payload(opened: bool, filename: str, selected_rows: list) -> tuple[str, dict]:
         if not opened:
             return no_update, no_update
         if not filename:
@@ -1078,7 +1092,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("submit-crate-vals", "data"),
         prevent_initial_call=True,
     )
-    def submit_custom_crate(crate, capacities):
+    def submit_custom_crate(crate: str, capacities: dict) -> tuple[dict, str]:
         if crate == "custom":
             return {}, ""
         capacity_vals = capacities.get(crate, {})  # sample: capacity
@@ -1096,7 +1110,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("submit-crate-vals", "data"),
         prevent_initial_call=True,
     )
-    def enable_submit(payload, crate, capacity, capacity_vals):
+    def enable_submit(payload: dict, crate: str, capacity: float, capacity_vals: dict) -> bool:
         if not payload or not crate:
             return True  # Disable
         # Capacity limited to 100 mAh for safety
@@ -1108,7 +1122,6 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
 
     # When submit button confirmed, submit the payload with sample and capacity, refresh database
     @app.callback(
-        Output("loading-database", "children", allow_duplicate=True),
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("submit-yes-close", "n_clicks"),
         State("selected-rows-store", "data"),
@@ -1121,21 +1134,27 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         ],
         prevent_initial_call=True,
     )
-    def submit_pipeline(yes_clicks, selected_rows, payload, crate_calc, capacity):
+    def submit_pipeline(
+        yes_clicks: int,
+        selected_rows: list,
+        payload: dict,
+        crate_calc: Literal["custom", "areal", "mass", "nominal"],
+        capacity: float,
+    ) -> int:
         if not yes_clicks:
-            return no_update, 0
+            return 0
         # capacity_Ah: float | 'areal','mass','nominal'
         capacity_Ah = capacity / 1000 if crate_calc == "custom" else crate_calc
         if not isinstance(capacity_Ah, float) and capacity_Ah not in ["areal", "mass", "nominal"]:
             logger.error("Invalid capacity calculation method: %s", capacity_Ah)
-            return no_update, 0
+            return 0
         for row in selected_rows:
             try:
                 sm.submit(row["Sample ID"], payload, capacity_Ah)
                 success_notification("", f"Sample {row['Sample ID']} submitted", queue=True)
-            except Exception as e:  # noqa: BLE001, PERF203
+            except Exception as e:
                 error_notification("", f"Error submitting sample {row['Sample ID']}: {e}", queue=True)
-        return no_update, 1
+        return 1
 
     # When selecting create batch, switch to batch sub-tab with samples selected
     @app.callback(
@@ -1145,7 +1164,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("selected-rows-store", "data"),
         prevent_initial_call=True,
     )
-    def create_batch(n_clicks, selected_rows):
+    def create_batch(_n_clicks: int, selected_rows: list) -> tuple[str, list]:
         return "batches", [s.get("Sample ID") for s in selected_rows]
 
     # Cancel button pop up
@@ -1156,7 +1175,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("cancel-modal", "opened"),
         prevent_initial_call=True,
     )
-    def cancel_job_button(cancel_clicks, yes_clicks, is_open):
+    def cancel_job_button(_cancel_clicks: int, yes_clicks: int, is_open: bool) -> bool:
         if not ctx.triggered:
             return is_open
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
@@ -1164,23 +1183,23 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             return not is_open
         if button_id == "cancel-yes-close" and yes_clicks:
             return False
-        return is_open, no_update, no_update, no_update
+        return is_open
 
     # When cancel confirmed, cancel the jobs and refresh the database
     @app.callback(
-        Output("loading-database", "children", allow_duplicate=True),
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("cancel-yes-close", "n_clicks"),
         State("selected-rows-store", "data"),
+        running=[(Output("loading-message-store", "data"), "Cancelling jobs...", "")],
         prevent_initial_call=True,
     )
-    def cancel_job(yes_clicks, selected_rows):
+    def cancel_job(yes_clicks: int, selected_rows: list) -> int:
         if not yes_clicks:
-            return no_update, 0
+            return 0
         for row in selected_rows:
             logger.info("Cancelling job %s", row["Job ID"])
             sm.cancel(row["Job ID"])
-        return no_update, 1
+        return 1
 
     # View data
     @app.callback(
@@ -1192,10 +1211,10 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("selected-rows-store", "data"),
         prevent_initial_call=True,
     )
-    def view_data(n_clicks, selected_rows):
+    def view_data(n_clicks: int, selected_rows: list) -> tuple[str, list | NoUpdate, list | NoUpdate, int | NoUpdate]:
         if not n_clicks or not selected_rows:
             raise PreventUpdate
-        sample_id = [s["Sample ID"] for s in selected_rows]
+        sample_id = [s["Sample ID"] for s in selected_rows if s.get("Sample ID")]
         if len(sample_id) > 1:
             return "tab-2", no_update, sample_id, 1
         return "tab-1", sample_id, no_update, no_update
@@ -1208,7 +1227,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("snapshot-modal", "opened"),
         prevent_initial_call=True,
     )
-    def snapshot_sample_button(snapshot_clicks, yes_clicks, is_open):
+    def snapshot_sample_button(_snapshot_clicks: int, yes_clicks: int, is_open: bool) -> bool:
         if not ctx.triggered:
             return is_open
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
@@ -1216,27 +1235,27 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             return not is_open
         if button_id == "snapshot-yes-close" and yes_clicks:
             return False
-        return is_open, no_update, no_update, no_update
+        return is_open
 
     # When snapshot confirmed, snapshot the samples and refresh the database
     @app.callback(
-        Output("loading-database", "children", allow_duplicate=True),
+        Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("snapshot-yes-close", "n_clicks"),
         State("selected-rows-store", "data"),
         running=[(Output("loading-message-store", "data"), "Snapshotting data...", "")],
         prevent_initial_call=True,
     )
-    def snapshot_sample(yes_clicks, selected_rows):
-        if not yes_clicks:
-            raise PreventUpdate
-        for row in selected_rows:
-            if row.get("Job ID"):
-                logger.info("Snapshotting %s", row["Job ID"])
-                sm.snapshot(row["Job ID"])
-            else:
-                logger.info("Snapshotting %s", row["Sample ID"])
-                sm.snapshot(row["Sample ID"])
-        raise PreventUpdate
+    def snapshot_sample(yes_clicks: int, selected_rows: list) -> NoUpdate:
+        if yes_clicks:
+            for row in selected_rows:
+                if row:
+                    if row.get("Job ID"):
+                        logger.info("Snapshotting %s", row["Job ID"])
+                        sm.snapshot(row["Job ID"])
+                    else:
+                        logger.info("Snapshotting %s", row["Sample ID"])
+                        sm.snapshot(row["Sample ID"])
+        return no_update  # Needs any output to trigger loading spinner
 
     # Delete button pop up
     @app.callback(
@@ -1246,7 +1265,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("delete-modal", "opened"),
         prevent_initial_call=True,
     )
-    def delete_sample_button(delete_clicks, yes_clicks, is_open):
+    def delete_sample_button(_delete_clicks: int, yes_clicks: int, is_open: bool) -> bool:
         if not ctx.triggered:
             return is_open
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
@@ -1254,23 +1273,23 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             return not is_open
         if button_id == "delete-yes-close" and yes_clicks:
             return False
-        return is_open, no_update, no_update, no_update
+        return is_open
 
     # When delete confirmed, delete the samples and refresh the database
     @app.callback(
-        Output("loading-database", "children", allow_duplicate=True),
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("delete-yes-close", "n_clicks"),
         State("selected-rows-store", "data"),
         prevent_initial_call=True,
+        running=[(Output("loading-message-store", "data"), "Deleting samples...", "")],
     )
-    def delete_sample(yes_clicks, selected_rows):
+    def delete_sample(yes_clicks: int, selected_rows: list) -> int:
         if not yes_clicks:
-            return no_update, 0
+            return 0
         sample_ids = [s["Sample ID"] for s in selected_rows]
         logger.info("Deleting [%s]", ", ".join(sample_ids))
         delete_samples(sample_ids)
-        return no_update, 1
+        return 1
 
     # Add samples button pop up
     @app.callback(
@@ -1280,7 +1299,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("add-samples-button", "filename"),
         prevent_initial_call=True,
     )
-    def upload_samples(contents, filename):
+    def upload_samples(contents: str, filename: str) -> tuple[int | NoUpdate, bool | NoUpdate]:
         if contents:
             _content_type, content_string = contents.split(",")
             decoded = base64.b64decode(content_string).decode("utf-8")
@@ -1302,7 +1321,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("add-samples-button", "filename"),
         prevent_initial_call=True,
     )
-    def upload_overwrite_samples(submit_n_clicks, contents, filename):
+    def upload_overwrite_samples(submit_n_clicks: int, contents: str, filename: str) -> int:
         if submit_n_clicks and contents:
             _content_type, content_string = contents.split(",")
             decoded = base64.b64decode(content_string).decode("utf-8")
@@ -1320,7 +1339,7 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         State("label-modal", "opened"),
         prevent_initial_call=True,
     )
-    def label_sample_button(label_clicks, yes_clicks, is_open):
+    def label_sample_button(_label_clicks: int, yes_clicks: int, is_open: bool) -> bool:
         if not ctx.triggered:
             return is_open
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
@@ -1328,26 +1347,26 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
             return not is_open
         if button_id == "label-yes-close" and yes_clicks:
             return False
-        return is_open, no_update, no_update, no_update
+        return is_open
 
     # When label confirmed, label the samples and refresh the database
     @app.callback(
-        Output("loading-database", "children", allow_duplicate=True),
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("label-yes-close", "n_clicks"),
         State("selected-rows-store", "data"),
         State("label-input", "value"),
         prevent_initial_call=True,
+        running=[(Output("loading-message-store", "data"), "Labelling samples...", "")],
     )
-    def label_sample(yes_clicks, selected_rows, label):
+    def label_sample(yes_clicks: int, selected_rows: list, label: str) -> int:
         if not yes_clicks:
-            return no_update, 0
+            return 0
         sample_ids = [s["Sample ID"] for s in selected_rows]
         logger.info("Labelling [%s] with '%s'", ", ".join(sample_ids), label)
         update_sample_label(sample_ids, label)
         logger.info("Updating metadata in cycles.*.json and full.*.h5 files")
         update_sample_metadata(sample_ids)
-        return no_update, 1
+        return 1
 
     # Synchronise add-samples button disabled state
     @app.callback(
@@ -1355,5 +1374,5 @@ def register_db_view_callbacks(app: Dash) -> None:  # noqa: C901, PLR0915
         Input("add-samples-button", "disabled"),
         prevent_initial_call=True,
     )
-    def disabled_sync(disabled):
+    def disabled_sync(disabled: bool) -> bool:
         return disabled

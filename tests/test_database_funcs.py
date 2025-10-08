@@ -30,7 +30,7 @@ class TestPreCheckSampleFile:
         """Should raise error if file not found."""
         # Test with a non-existent file
         non_existent_file = Path("non_existent_file.json")
-        with pytest.raises(FileNotFoundError, match=".*does not exist.*"):
+        with pytest.raises(FileNotFoundError, match=r".*does not exist.*"):
             _pre_check_sample_file(non_existent_file)
 
     def test_too_big(self) -> None:
@@ -39,7 +39,7 @@ class TestPreCheckSampleFile:
             large_file = Path("large_file.json")
             with large_file.open("wb") as f:
                 f.write(b"0" * (2 * 1024 * 1024 + 1))
-            with pytest.raises(ValueError, match=".*is over 2 MB.*"):
+            with pytest.raises(ValueError, match=r".*is over 2 MB.*"):
                 _pre_check_sample_file(large_file)
         finally:
             # Clean up the dummy file
@@ -52,7 +52,7 @@ class TestPreCheckSampleFile:
         try:
             temp_file = sample_file.with_suffix(".txt")
             temp_file.write_text(sample_file.read_text())
-            with pytest.raises(ValueError, match=".*not a json file.*"):
+            with pytest.raises(ValueError, match=r".*not a json file.*"):
                 _pre_check_sample_file(temp_file)
         finally:
             # Clean up the dummy file
@@ -74,28 +74,28 @@ class TestRecalculateSampleData:
         """Should raise error if sampleid is missing."""
         df = self.df.copy()
         df = df.drop(columns=["Sample ID"])
-        with pytest.raises(ValueError, match=".*does not contain a 'Sample ID' column.*"):
+        with pytest.raises(ValueError, match=r".*does not contain a 'Sample ID' column.*"):
             _recalculate_sample_data(df)
 
     def test_duplicate_row(self) -> None:
         """Should raise error if there are duplicate rows."""
         df = self.df.copy()
         df = pd.concat([df, df])
-        with pytest.raises(ValueError, match=".*contains duplicate.*"):
+        with pytest.raises(ValueError, match=r".*contains duplicate.*"):
             _recalculate_sample_data(df)
 
     def test_nan_sampleid(self) -> None:
         """Should raise error if sampleid is NaN."""
         df = self.df.copy()
         df.loc[0, "Sample ID"] = None
-        with pytest.raises(ValueError, match=".*contains NaN.*"):
+        with pytest.raises(ValueError, match=r".*contains NaN.*"):
             _recalculate_sample_data(df)
 
     def test_backticks(self) -> None:
         """Should raise error if any column name contains backticks."""
         df = self.df.copy()
         df = df.rename(columns={"Anode Type": "Bobby tables `; DROP TABLE samples"})
-        with pytest.raises(ValueError, match=".*cannot contain backticks.*"):
+        with pytest.raises(ValueError, match=r".*cannot contain backticks.*"):
             _recalculate_sample_data(df)
 
     def test_column_config(self) -> None:
@@ -222,7 +222,7 @@ class TestSampleFunctions:
             assert batch_details["Batch please"]["description"] == "A test batch for testing"
 
             # Try overwriting - it should raise a ValueError
-            with pytest.raises(ValueError, match=".*already exists.*"):
+            with pytest.raises(ValueError, match=r".*already exists.*"):
                 save_or_overwrite_batch(
                     "Batch please",
                     "A test batch for testing",

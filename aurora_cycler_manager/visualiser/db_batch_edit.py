@@ -6,7 +6,7 @@ Batch editing sub-layout for the database tab.
 import logging
 
 import dash_mantine_components as dmc
-from dash import Dash, Input, Output, State, dcc, html, no_update
+from dash import Dash, Input, NoUpdate, Output, State, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 
 from aurora_cycler_manager.database_funcs import (
@@ -94,7 +94,9 @@ batch_edit_layout = dmc.Stack(
 
 
 ### Callbacks ###
-def register_batch_edit_callbacks(app: Dash, database_access: bool):
+def register_batch_edit_callbacks(app: Dash, database_access: bool) -> None:
+    """Register all callbacks for the batch editing tab."""
+
     # When a batch is selected, show the samples in the batch
     @app.callback(
         Output("batch-edit-name", "value"),
@@ -107,7 +109,7 @@ def register_batch_edit_callbacks(app: Dash, database_access: bool):
         State("batches-store", "data"),
         prevent_initial_call=True,
     )
-    def update_batch_edit_samples(batch: str, samples: list, batch_defs: dict[str, dict]):
+    def update_batch_edit_samples(batch: str, samples: list, batch_defs: dict[str, dict]) -> tuple:
         # samples sent from elsewhere
         if samples:
             return "", "", samples, None, {}
@@ -127,7 +129,7 @@ def register_batch_edit_callbacks(app: Dash, database_access: bool):
         Input("batch-edit-samples", "value"),
         prevent_initial_call=True,
     )
-    def enable_save_batch(name: str, samples: list[str]):
+    def enable_save_batch(name: str, samples: list[str]) -> bool:
         return not (database_access and name and samples)
 
     # When the batch name is the same as an existing batch, enable the delete button
@@ -137,7 +139,7 @@ def register_batch_edit_callbacks(app: Dash, database_access: bool):
         State("batches-store", "data"),
         prevent_initial_call=True,
     )
-    def enable_delete_batch(name: str, batch_defs: dict[str, dict]):
+    def enable_delete_batch(name: str, batch_defs: dict[str, dict]) -> bool:
         return not (database_access and (name in batch_defs))
 
     # When save batch is pressed, open a confirm dialog
@@ -149,7 +151,7 @@ def register_batch_edit_callbacks(app: Dash, database_access: bool):
         State("batches-store", "data"),
         prevent_initial_call=True,
     )
-    def save_batch_button(n_clicks, name, batch_def):
+    def save_batch_button(n_clicks: int, name: str, batch_def: dict) -> tuple[bool | NoUpdate, bool | NoUpdate]:
         if n_clicks:
             if name in batch_def:
                 return no_update, True
@@ -166,7 +168,7 @@ def register_batch_edit_callbacks(app: Dash, database_access: bool):
         State("batch-edit-samples", "value"),
         prevent_initial_call=True,
     )
-    def save_batch(save_click, overwrite_click, name, description, samples):
+    def save_batch(_save_clicks: int, _overwrite_click: int, name: str, description: str, samples: list) -> int:
         logger.info("Saving batch %s", name)
         save_or_overwrite_batch(name, description, samples, overwrite=True)
         return 1
@@ -177,7 +179,7 @@ def register_batch_edit_callbacks(app: Dash, database_access: bool):
         Input("batch-edit-delete-button", "n_clicks"),
         prevent_initial_call=True,
     )
-    def delete_batch_button(n_clicks):
+    def delete_batch_button(n_clicks: int) -> bool:
         if n_clicks:
             return True
         raise PreventUpdate
@@ -190,7 +192,7 @@ def register_batch_edit_callbacks(app: Dash, database_access: bool):
         State("batch-edit-name", "value"),
         prevent_initial_call=True,
     )
-    def delete_batch(delete_click, name: str):
+    def delete_batch(_delete_clicks: int, name: str) -> tuple[int, str]:
         logger.info("Deleting batch %s", name)
         remove_batch(name)
         return 1, ""

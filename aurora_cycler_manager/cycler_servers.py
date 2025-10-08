@@ -22,12 +22,13 @@ from pathlib import Path, PureWindowsPath
 import paramiko
 from aurora_unicycler import Protocol
 from scp import SCPClient
+from typing_extensions import override
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.eclab_harvester import convert_mpr, get_eclab_snapshot_folder
 from aurora_cycler_manager.neware_harvester import convert_neware_data, snapshot_raw_data
 from aurora_cycler_manager.tomato_converter import convert_tomato_json, get_tomato_snapshot_folder, puree_tomato
-from aurora_cycler_manager.utils import run_from_sample
+from aurora_cycler_manager.utils import run_from_sample, ssh_connect
 
 logger = logging.getLogger(__name__)
 CONFIG = get_config()
@@ -57,9 +58,8 @@ class CyclerServer:
         the server's default shell, the standard output is returned as a string.
         """
         with paramiko.SSHClient() as ssh:
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
-            stdin, stdout, stderr = ssh.exec_command(
+            ssh_connect(ssh, self.username, self.hostname)
+            _stdin, stdout, stderr = ssh.exec_command(
                 self.command_prefix + command + self.command_suffix,
                 timeout=timeout,
             )
@@ -69,7 +69,8 @@ class CyclerServer:
         if exit_status != 0:
             logger.error("Command '%s' on %s failed with exit status %d", command, self.label, exit_status)
             logger.error("Error: %s", error)
-            raise ValueError(f"Command failed with exit status {exit_status}: {error}")
+            msg = f"Command failed with exit status {exit_status}: {error}"
+            raise ValueError(msg)
         if error:
             logger.warning("Command completed with warnings running '%s' on %s: %s", command, self.label, error)
         return output
@@ -160,28 +161,33 @@ class TomatoServer(CyclerServer):
         self.save_location = "C:/tomato/aurora_scratch"
         self.tomato_data_path = server_config.get("tomato_data_path")
 
+    @override
     def eject(self, pipeline: str) -> str:
         """Eject any sample from the pipeline."""
         return self.command(f"{self.tomato_scripts_path}ketchup eject {pipeline}")
 
+    @override
     def load(self, sample: str, pipeline: str) -> str:
         """Load a sample into a pipeline."""
         return self.command(f"{self.tomato_scripts_path}ketchup load {sample} {pipeline}")
 
+    @override
     def ready(self, pipeline: str) -> str:
         """Ready a pipeline for use."""
         return self.command(f"{self.tomato_scripts_path}ketchup ready {pipeline}")
 
+    @override
     def unready(self, pipeline: str) -> str:
         """Unready a pipeline - only works if no job submitted yet, otherwise use cancel."""
         return self.command(f"{self.tomato_scripts_path}ketchup unready {pipeline}")
 
+    @override
     def submit(
         self,
         sample: str,
         capacity_Ah: float,
         payload: str | Path | dict,
-        _pipeline: str = "",
+        pipeline: str = "",
         send_file: bool = False,
     ) -> tuple[str, str, str]:
         """Submit a job to the server.
@@ -242,9 +248,7 @@ class TomatoServer(CyclerServer):
 
             # Send file to server
             with paramiko.SSHClient() as ssh:
-                ssh.load_system_host_keys()
-                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
+                ssh_connect(ssh, self.username, self.hostname)
                 with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
                     scp.put("temp.json", f"{self.save_location}/temp.json")
 
@@ -267,10 +271,12 @@ class TomatoServer(CyclerServer):
         msg = f"Error submitting job: {output}"
         raise ValueError(msg)
 
+    @override
     def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
         """Cancel a job on the server."""
         return self.command(f"{self.tomato_scripts_path}ketchup cancel {job_id_on_server}")
 
+    @override
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
         output = self.command(f"{self.tomato_scripts_path}ketchup status -J")
@@ -285,6 +291,7 @@ class TomatoServer(CyclerServer):
         self.last_queue = queue_dict
         return queue_dict
 
+    @override
     def get_jobs(self) -> dict:
         """Get all jobs from server."""
         output = self.command(f"{self.tomato_scripts_path}ketchup status queue -v -J")
@@ -292,6 +299,7 @@ class TomatoServer(CyclerServer):
         self.last_queue_all = queue_all_dict
         return queue_all_dict
 
+    @override
     def snapshot(
         self,
         sample_id: str,
@@ -302,6 +310,7 @@ class TomatoServer(CyclerServer):
         """Save a snapshot of a job on the server and download it to the local machine.
 
         Args:
+            sample_id (str): The Sample ID of the sample running
             jobid (str): The jobid of the job on the local machine
             jobid_on_server (str): The jobid of the job on the server
             local_save_location (str): The directory to save the snapshot data to
@@ -350,7 +359,7 @@ class TomatoServer(CyclerServer):
         except ValueError as e:
             emsg = str(e)
             if "AssertionError" in emsg and "os.path.isdir(jobdir)" in emsg:
-                raise FileNotFoundError from e  # TODO make this error more deterministic up the chain
+                raise FileNotFoundError from e  # TODO: make this error more deterministic up the chain
             raise
         logger.info("Snapshotted file on remote server %s", self.label)
         # Get local directory to save the snapshot data
@@ -358,12 +367,8 @@ class TomatoServer(CyclerServer):
             Path(local_save_location).mkdir(parents=True)
 
         # Use SCPClient to transfer the file from the remote machine
-        ssh = paramiko.SSHClient()
-        ssh.load_system_host_keys()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        logger.info("Connecting to %s: host %s user %s", self.label, self.hostname, self.username)
-        ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
-        try:
+        with paramiko.SSHClient() as ssh:
+            ssh_connect(ssh, self.username, self.hostname)
             logger.info(
                 "Downloading file %s/snapshot.%s.json to %s/snapshot.%s.json",
                 remote_save_location,
@@ -382,8 +387,6 @@ class TomatoServer(CyclerServer):
                         f"{remote_save_location}/snapshot.{jobid_on_server}.zip",
                         f"{local_save_location}/snapshot.{jobid}.zip",
                     )
-        finally:
-            ssh.close()
 
         # Compress the local snapshot file
         puree_tomato(f"{local_save_location}/snapshot.{jobid}.json")
@@ -396,6 +399,7 @@ class TomatoServer(CyclerServer):
 
         return snapshot_status
 
+    @override
     def get_last_data(self, job_id_on_server: str) -> dict:
         """Get the last data from a job snapshot.
 
@@ -427,10 +431,8 @@ class TomatoServer(CyclerServer):
             command = f'powershell.exe -Command "{ps_command}"'
 
         with paramiko.SSHClient() as ssh:
-            ssh.load_system_host_keys()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
-            stdin, stdout, stderr = ssh.exec_command(command)
+            ssh_connect(ssh, self.username, self.hostname)
+            _stdin, stdout, stderr = ssh.exec_command(command)
             if stderr.read():
                 raise ValueError(stderr.read())
         file_name = stdout.readline().strip()
@@ -439,6 +441,7 @@ class TomatoServer(CyclerServer):
         file_content_json["file_name"] = file_name
         return file_content_json
 
+    @override
     def get_job_data(self, jobid_on_server: str) -> dict:
         """Get the jobdata dict for a job."""
         if not self.tomato_data_path:
@@ -459,10 +462,8 @@ class TomatoServer(CyclerServer):
         elif self.shell_type == "cmd":
             command = f'powershell.exe -Command "{ps_command}"'
         with paramiko.SSHClient() as ssh:
-            ssh.load_system_host_keys()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
-            stdin, stdout, stderr = ssh.exec_command(command)
+            ssh_connect(ssh, self.username, self.hostname)
+            _stdin, stdout, stderr = ssh.exec_command(command)
             stdout = stdout.read().decode("utf-8")
             stderr = stderr.read().decode("utf-8")
         if stderr:
@@ -484,6 +485,7 @@ class NewareServer(CyclerServer):
 
     """
 
+    @override
     def eject(self, pipeline: str) -> str:
         """Remove a sample from a pipeline.
 
@@ -491,6 +493,7 @@ class NewareServer(CyclerServer):
         """
         return f"Ejecting {pipeline}"
 
+    @override
     def load(self, sample: str, pipeline: str) -> str:
         """Load a sample onto a pipeline.
 
@@ -498,12 +501,18 @@ class NewareServer(CyclerServer):
         """
         return f"Loading {sample} onto {pipeline}"
 
+    @override
     def ready(self, pipeline: str) -> str:
         """Readying and unreadying does not exist on Neware."""
         raise NotImplementedError
 
+    @override
     def submit(
-        self, sample: str, capacity_Ah: float, payload: str | dict | Path, pipeline: str
+        self,
+        sample: str,
+        capacity_Ah: float,
+        payload: str | dict | Path,
+        pipeline: str,
     ) -> tuple[str, str, str]:
         """Submit a job to the server.
 
@@ -558,9 +567,7 @@ class NewareServer(CyclerServer):
                 f.write(xml_string)
             # Transfer the file to the remote PC and start the job
             with paramiko.SSHClient() as ssh:
-                ssh.load_system_host_keys()
-                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
+                ssh_connect(ssh, self.username, self.hostname)
                 with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
                     remote_xml_dir = "C:/submitted_payloads/"
                     remote_xml_path = remote_xml_dir + f"{sample}__{current_datetime}.xml"
@@ -590,6 +597,7 @@ class NewareServer(CyclerServer):
             Path("temp.xml").unlink()  # Remove the file on local machine
         return jobid, jobid_on_server, xml_string
 
+    @override
     def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
         """Cancel a job on the server.
 
@@ -623,6 +631,7 @@ class NewareServer(CyclerServer):
             raise ValueError(output)
         return f"Stopped pipeline {pipeline} on Neware"
 
+    @override
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
         result = json.loads(self.command("neware status"))
@@ -639,6 +648,7 @@ class NewareServer(CyclerServer):
                 readys.append(True)
         return {"pipeline": pipelines, "sampleid": sampleids, "jobid": [None] * len(pipelines), "ready": readys}
 
+    @override
     def get_jobs(self) -> dict:
         """Get all jobs from server.
 
@@ -646,12 +656,13 @@ class NewareServer(CyclerServer):
         """
         return {}
 
+    @override
     def snapshot(
         self,
         sample_id: str,
         jobid: str,
-        jobid_on_server: str,  # noqa: ARG002
-        get_raw: bool = False,  # noqa: ARG002
+        jobid_on_server: str,
+        get_raw: bool = False,
     ) -> str | None:
         """Save a snapshot of a job on the server and download it to the local machine."""
         ndax_path = snapshot_raw_data(jobid)
@@ -660,11 +671,13 @@ class NewareServer(CyclerServer):
 
         return None  # Neware does not have a snapshot status like tomato
 
+    @override
     def get_job_data(self, jobid_on_server: str) -> dict:
         """Get the jobdata dict for a job."""
         # TODO: This is problematic because Neware XMLs don't easily translate to a dict.
         raise NotImplementedError
 
+    @override
     def get_last_data(self, job_id_on_server: str) -> dict:
         """Get the last data from a job snapshot."""
         raise NotImplementedError
@@ -693,6 +706,7 @@ class BiologicServer(CyclerServer):
             server_config.get("biologic_data_path", "C:/aurora/data/"),
         )
 
+    @override
     def eject(self, pipeline: str) -> str:
         """Remove a sample from a pipeline.
 
@@ -700,6 +714,7 @@ class BiologicServer(CyclerServer):
         """
         return f"Ejecting {pipeline}"
 
+    @override
     def load(self, sample: str, pipeline: str) -> str:
         """Load a sample onto a pipeline.
 
@@ -707,12 +722,18 @@ class BiologicServer(CyclerServer):
         """
         return f"Loading {sample} onto {pipeline}"
 
+    @override
     def ready(self, pipeline: str) -> str:
         """Readying and unreadying does not exist on Biologic."""
         raise NotImplementedError
 
+    @override
     def submit(
-        self, sample: str, capacity_Ah: float, payload: str | dict | Path, pipeline: str
+        self,
+        sample: str,
+        capacity_Ah: float,
+        payload: str | dict | Path,
+        pipeline: str,
     ) -> tuple[str, str, str]:
         """Submit a job to the server.
 
@@ -753,9 +774,7 @@ class BiologicServer(CyclerServer):
                 f.write(mps_string)
             # Transfer the file to the remote PC and start the job
             with paramiko.SSHClient() as ssh:
-                ssh.load_system_host_keys()
-                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
+                ssh_connect(ssh, self.username, self.hostname)
                 with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
                     # One folder per job, EC-lab generates multiple files per job
                     # EC-lab will make files with suffix _C01, _C02, etc. and extensions .mpr .mpl etc.
@@ -786,6 +805,7 @@ class BiologicServer(CyclerServer):
             Path("temp.mps").unlink()  # Remove the file on local machine
         return jobid, jobid_on_server, mps_string
 
+    @override
     def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
         """Cancel a job on the server.
 
@@ -810,6 +830,7 @@ class BiologicServer(CyclerServer):
             raise ValueError(output)
         return f"Stopped pipeline {pipeline} on Biologic"
 
+    @override
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
         result = json.loads(self.command("biologic status --ssh"))
@@ -831,6 +852,7 @@ class BiologicServer(CyclerServer):
             "ready": readys,
         }
 
+    @override
     def get_jobs(self) -> dict:
         """Get all jobs from server.
 
@@ -838,12 +860,13 @@ class BiologicServer(CyclerServer):
         """
         return {}
 
+    @override
     def snapshot(
         self,
         sample_id: str,
         jobid: str,
         jobid_on_server: str,
-        get_raw: bool = False,  # noqa: ARG002
+        get_raw: bool = False,
     ) -> str | None:
         """Save a snapshot of a job on the server and download it to the local machine."""
         # We know where the job will be on the remote PC
@@ -852,9 +875,7 @@ class BiologicServer(CyclerServer):
 
         # Connect to the remote server
         with paramiko.SSHClient() as ssh:
-            ssh.load_system_host_keys()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(self.hostname, username=self.username, key_filename=CONFIG.get("SSH private key path"))
+            ssh_connect(ssh, self.username, self.hostname)
 
             # Find all the .mpr and .mpl files in the job folder
             ps_command = (
@@ -871,7 +892,7 @@ class BiologicServer(CyclerServer):
             else:
                 msg = f"Unknown shell type {self.shell_type} for server {self.label}"
                 raise ValueError(msg)
-            stdin, stdout, stderr = ssh.exec_command(command)
+            _stdin, stdout, stderr = ssh.exec_command(command)
             exit_status = stdout.channel.recv_exit_status()
             if exit_status != 0:
                 msg = f"Command failed with exit status {exit_status}: {stderr.read().decode('utf-8')}"
@@ -897,11 +918,13 @@ class BiologicServer(CyclerServer):
 
         return None
 
+    @override
     def get_job_data(self, jobid_on_server: str) -> dict:
         """Get the jobdata dict for a job."""
         # TODO: Implement getting job data from mps file
         raise NotImplementedError
 
+    @override
     def get_last_data(self, job_id_on_server: str) -> dict:
         """Get the last data from a job snapshot."""
         raise NotImplementedError

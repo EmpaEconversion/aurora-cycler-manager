@@ -1,4 +1,4 @@
-"""Copyright © 2025, Empa
+"""Copyright © 2025, Empa.
 
 Set up logging.
 """
@@ -7,7 +7,7 @@ import logging
 import sys
 
 
-def setup_logging(level=logging.INFO) -> None:
+def setup_logging(level: int = logging.INFO) -> None:
     """Set up logging config."""
     for handler in logging.root.handlers[:]:  # Remove existing handlers
         logging.root.removeHandler(handler)

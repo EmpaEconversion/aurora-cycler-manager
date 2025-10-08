@@ -41,7 +41,7 @@ from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.setup_logging import setup_logging
-from aurora_cycler_manager.utils import run_from_sample
+from aurora_cycler_manager.utils import run_from_sample, ssh_connect
 from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
@@ -59,7 +59,9 @@ def get_neware_snapshot_folder() -> Path:
             f"Please fill in the config file at {CONFIG.get('User config path')}.",
         )
         raise ValueError(msg)
-    return Path(snapshot_parent) / "neware_snapshots"
+    snapshot_path = Path(snapshot_parent) / "neware_snapshots"
+    snapshot_path.mkdir(parents=True, exist_ok=True)
+    return snapshot_path
 
 
 def harvest_neware_files(
@@ -69,6 +71,7 @@ def harvest_neware_files(
     server_shell_type: str,
     server_copy_folder: str,
     local_folder: str | Path,
+    *,
     force_copy: bool = False,
 ) -> list[Path]:
     """Get Neware files from subfolders of specified folder.
@@ -102,23 +105,22 @@ def harvest_neware_files(
 
     # Connect to the server and copy the files
     with paramiko.SSHClient() as ssh:
-        ssh.load_system_host_keys()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        logger.info("Connecting to host %s user %s", server_hostname, server_username)
-        ssh.connect(server_hostname, username=server_username, key_filename=CONFIG.get("SSH private key path"))
+        ssh_connect(ssh, server_username, server_hostname)
 
         # Shell commands to find files modified since cutoff date
         # TODO: grab all the filenames and modified dates, copy if they are newer than local files not just cutoff date
         if server_shell_type == "powershell":
             command = (
                 f"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
-                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' -and ($_.Extension -eq '.xlsx' -or $_.Extension -eq '.ndax')}} "
+                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}'"
+                " -and ($_.Extension -eq '.xlsx' -or $_.Extension -eq '.ndax')}} "
                 f"| Select-Object -ExpandProperty FullName"
             )
         elif server_shell_type == "cmd":
             command = (
                 f"powershell.exe -Command \"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
-                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' -and ($_.Extension -eq '.xlsx' -or $_.Extension -eq '.ndax')}} "
+                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}'"
+                " -and ($_.Extension -eq '.xlsx' -or $_.Extension -eq '.ndax')}} "
                 f'| Select-Object -ExpandProperty FullName"'
             )
         _stdin, stdout, stderr = ssh.exec_command(command)
@@ -143,7 +145,7 @@ def harvest_neware_files(
                 local_path.parent.mkdir(parents=True, exist_ok=True)  # Create local directory if it doesn't exist
                 # Prepend the server label to the filename
                 local_path = local_path.with_name(
-                    f"{server_label}-{local_path.name.replace('_', '-').replace(' ', '-')}"
+                    f"{server_label}-{local_path.name.replace('_', '-').replace(' ', '-')}",
                 )
                 logger.info("Copying '%s' to '%s'", file, local_path)
                 sftp.get(file, local_path)
@@ -246,10 +248,7 @@ def snapshot_raw_data(job_id: str) -> Path | None:
 
     # Connect to the server
     with paramiko.SSHClient() as ssh:
-        ssh.load_system_host_keys()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        logger.info("Connecting to host %s user %s", server_hostname, server_username)
-        ssh.connect(server_hostname, username=server_username, key_filename=CONFIG.get("SSH private key path"))
+        ssh_connect(ssh, server_username, server_hostname)
 
         # Use powershell command to search for the files on the server
         if server_shell_type == "powershell":
@@ -299,7 +298,7 @@ def snapshot_raw_data(job_id: str) -> Path | None:
     return ndax_path
 
 
-def harvest_all_neware_files(force_copy: bool = False) -> list[Path]:
+def harvest_all_neware_files(*, force_copy: bool = False) -> list[Path]:
     """Get neware files from all servers specified in the config."""
     all_new_files = []
     snapshots_folder = get_neware_snapshot_folder()
@@ -581,7 +580,7 @@ def get_neware_metadata_from_db(job_id: str) -> dict:
 
     xml_payload = xmltodict.parse(row["Payload"], attr_prefix="")
     metadata = _clean_ndax_step(xml_payload)
-    server_label, Device_ID, Subdevice_ID, Channel_ID, Test_ID = job_id.split("-")
+    _server_label, Device_ID, Subdevice_ID, Channel_ID, Test_ID = job_id.split("-")
     metadata["Device ID"] = Device_ID
     metadata["Subdevice ID"] = Subdevice_ID
     metadata["Channel ID"] = Channel_ID
@@ -616,7 +615,9 @@ def get_sampleid_from_metadata(metadata: dict, known_samples: list[str] | None =
             break
     if sampleid is None:  # May be user error, try some common fixes
         logger.info(
-            "Could not find Sample ID '%s' or '%s' in database, trying to infer it", barcode_sampleid, remark_sampleid
+            "Could not find Sample ID '%s' or '%s' in database, trying to infer it",
+            barcode_sampleid,
+            remark_sampleid,
         )
         for possible_sampleid in [remark_sampleid, barcode_sampleid]:
             # Should be YYMMDD-otherstuff-XX, where XX is a number
@@ -635,7 +636,9 @@ def get_sampleid_from_metadata(metadata: dict, known_samples: list[str] | None =
                     break
     if not sampleid:
         logger.warning(
-            "Barcode: '%s', or Remark: '%s' not recognised as a Sample ID", barcode_sampleid, remark_sampleid
+            "Barcode: '%s', or Remark: '%s' not recognised as a Sample ID",
+            barcode_sampleid,
+            remark_sampleid,
         )
     return sampleid
 
@@ -775,12 +778,14 @@ def convert_neware_data(
     file_path: Path | str,
     sampleid: str | None = None,
     known_samples: list[str] | None = None,
+    *,
     output_hdf5_file: bool = True,
 ) -> tuple[pd.DataFrame, dict]:
     """Convert a neware file to a dataframe and save as hdf5.
 
     Args:
         file_path (Path): Path to the neware file
+        sampleid (str, optional): Sample ID to use, otherwise find from metadata
         output_hdf5_file (bool): Whether to save the file as a hdf5
         known_samples (list[str], optional): List of known Sample IDs to check against
 
@@ -934,7 +939,7 @@ def main() -> None:
         try:
             analyse_sample(sample)
             logger.info("Analysed %s", sample)
-        except Exception:  # noqa: PERF203
+        except Exception:
             logger.exception("Error analysing %s", sample)
 
 

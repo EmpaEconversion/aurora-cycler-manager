@@ -52,7 +52,7 @@ class TestAnalysis:
             msg = "This test should not run outside of pytest environment!"
             raise RuntimeError(msg)
 
-        test_project_path_1, test_project_path_2 = setup_test_projects
+        test_project_path_1, _test_project_path_2 = setup_test_projects
         shared_config_1 = test_project_path_1 / "database" / "shared_config.json"
         generated_files = [
             "database/shared_config.json",
@@ -119,7 +119,7 @@ class TestAnalysis:
         if os.getenv("PYTEST_RUNNING") != "1":
             msg = "This test should not run outside of pytest environment!"
             raise RuntimeError(msg)
-        test_project_path_1, test_project_path_2 = setup_test_projects
+        test_project_path_1, _test_project_path_2 = setup_test_projects
         shared_config_1 = test_project_path_1 / "database" / "shared_config.json"
 
         # Initialise the setup
