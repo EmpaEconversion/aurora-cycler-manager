@@ -102,18 +102,19 @@ def get_mprs(
         if server_shell_type == "powershell":
             command = (
                 f"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
-                f"| Where-Object {{ "
+                "| Where-Object { "
                 f"$_.LastWriteTime -gt '{cutoff_date_str}' -and "
-                f"($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr')}} "
-                f"| Select-Object -ExpandProperty FullName"
+                "($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr')} "
+                "| Select-Object -ExpandProperty FullName"
             )
         elif server_shell_type == "cmd":
             command = (
                 'powershell.exe -Command "'
                 f"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
-                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' "
-                f"-and ($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr') "
-                f"}} | Select-Object -ExpandProperty FullName"
+                "| Where-Object { "
+                f"$_.LastWriteTime -gt '{cutoff_date_str}' -and "
+                "($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr') "
+                "} | Select-Object -ExpandProperty FullName"
                 '"'
             )
         else:
