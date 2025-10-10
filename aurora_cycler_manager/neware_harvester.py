@@ -112,16 +112,20 @@ def harvest_neware_files(
         if server_shell_type == "powershell":
             command = (
                 f"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
-                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}'"
-                " -and ($_.Extension -eq '.xlsx' -or $_.Extension -eq '.ndax')}} "
-                f"| Select-Object -ExpandProperty FullName"
+                "| Where-Object { "
+                f"$_.LastWriteTime -gt '{cutoff_date_str}' -and "
+                "($_.Extension -eq '.xlsx' -or $_.Extension -eq '.ndax') "
+                "} | Select-Object -ExpandProperty FullName"
             )
         elif server_shell_type == "cmd":
             command = (
-                f"powershell.exe -Command \"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
-                f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}'"
-                " -and ($_.Extension -eq '.xlsx' -or $_.Extension -eq '.ndax')}} "
-                f'| Select-Object -ExpandProperty FullName"'
+                'powershell.exe -Command "'
+                f"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
+                "| Where-Object { "
+                f"$_.LastWriteTime -gt '{cutoff_date_str}' -and "
+                "($_.Extension -eq '.xlsx' -or $_.Extension -eq '.ndax') "
+                "} | Select-Object -ExpandProperty FullName"
+                '"'
             )
         _stdin, stdout, stderr = ssh.exec_command(command)
 
