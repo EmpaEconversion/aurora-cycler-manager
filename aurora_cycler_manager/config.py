@@ -6,6 +6,7 @@ Functions for getting the configuration settings.
 import json
 import logging
 import os
+import sqlite3
 from pathlib import Path
 
 import platformdirs
@@ -117,6 +118,10 @@ def _read_config_file() -> dict:
     if not config.get("Database path"):
         raise ValueError(err_msg)
 
+    # Patch the database in case users are using an old version
+    if config.get("Database path").exists():
+        patch_database(config)
+
     config["User config path"] = user_config_path
 
     # For SSH connections, paths must be str | None, does not accept Path
@@ -132,7 +137,21 @@ def _read_config_file() -> dict:
     return config
 
 
-def get_config(reload: bool = False) -> dict:
+def patch_database(config: dict) -> None:
+    """Add missing columns to database, in case users are coming from an older version."""
+    with sqlite3.connect(config["Database path"]) as conn:
+        cursor = conn.cursor()
+        # Make columns in the jobs table if it doesn't exist
+        cursor.execute("PRAGMA table_info(jobs)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if "Capacity (mAh)" not in columns:
+            cursor.execute("ALTER TABLE jobs ADD COLUMN `Capacity (mAh)` FLOAT")
+        if "Unicycler protocol" not in columns:
+            cursor.execute("ALTER TABLE jobs ADD COLUMN `Unicycler protocol` TEXT")
+        conn.commit()
+
+
+def get_config(*, reload: bool = False) -> dict:
     """Return global configuration dictionary.
 
     Only reads the config file once, unless reload is set to True.
