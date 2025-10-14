@@ -4,19 +4,28 @@ Database view tab layout and callbacks for the visualiser app.
 """
 
 import base64
+import io
 import json
 import logging
+import tempfile
+import zipfile
+from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 import dash_ag_grid as dag
 import dash_mantine_components as dmc
+import pandas as pd
 import paramiko
-from dash import ALL, Dash, Input, NoUpdate, Output, State, dcc, html, no_update
+from dash import ALL, Dash, Input, NoUpdate, Output, State, callback, clientside_callback, dcc, html, no_update
 from dash import callback_context as ctx
 from dash.exceptions import PreventUpdate
+from flask import abort, send_file
+from flask.typing import ResponseReturnValue
 
 from aurora_cycler_manager.analysis import update_sample_metadata
+from aurora_cycler_manager.bdf_converter import aurora_to_bdf
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import (
     add_samples_from_object,
@@ -25,6 +34,7 @@ from aurora_cycler_manager.database_funcs import (
     update_sample_label,
 )
 from aurora_cycler_manager.server_manager import ServerManager
+from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.visualiser.db_batch_edit import (
     batch_edit_layout,
     register_batch_edit_callbacks,
@@ -47,7 +57,6 @@ from aurora_cycler_manager.visualiser.notifications import (
 
 # ------------------------ Initialize server manager ------------------------- #
 
-
 # If user cannot ssh connect then disable features that require it
 logger = logging.getLogger(__name__)
 CONFIG = get_config()
@@ -62,7 +71,31 @@ except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
     logger.warning(e)
     logger.warning("You cannot access any servers. Running in view-only mode.")
 
-# ----------------------------- Layout - tables ----------------------------- #
+# ---------------------------- Utility functions ----------------------------- #
+
+DOWNLOAD_DIR = Path(tempfile.gettempdir()) / "aurora_tmp"
+DOWNLOAD_DIR.mkdir(exist_ok=True, parents=True)
+
+
+def cleanup_temp_folder() -> None:
+    """Remove temp files older than an hour in temp download dir. Only keep last 5 files."""
+    files = {}
+    for f in DOWNLOAD_DIR.iterdir():
+        if f.is_file():
+            creation_uts = f.stat().st_birthtime
+            now_uts = datetime.now().timestamp()  # noqa: DTZ005
+            age = now_uts - creation_uts
+            if age > 3600:
+                f.unlink()
+            else:
+                files[f] = age
+    if len(files) > 5:
+        files = dict(sorted(files.items(), key=lambda x: x[1]))
+        for f in list(files.keys())[5:]:
+            f.unlink()
+
+
+# ----------------------------- Layout - tables ------------------------------ #
 
 DEFAULT_TABLE_OPTIONS: dict[str, str | dict] = {
     "dashGridOptions": {
@@ -138,6 +171,7 @@ BUTTONS = [
     "delete-button",
     "add-samples-button",
     "label-button",
+    "download-button",
 ]
 visibility_settings = {
     "batches": {
@@ -158,6 +192,7 @@ visibility_settings = {
         "snapshot-button",
         "label-button",
         "create-batch-button",
+        "download-button",
     },
     "jobs": {
         "table-container",
@@ -169,6 +204,7 @@ visibility_settings = {
         "view-button",
         "label-button",
         "create-batch-button",
+        "download-button",
     },
     "samples": {
         "table-container",
@@ -178,6 +214,7 @@ visibility_settings = {
         "add-samples-button",
         "label-button",
         "create-batch-button",
+        "download-button",
     },
 }
 
@@ -253,6 +290,12 @@ button_layout = dmc.Flex(
                     leftSection=html.I(className="bi bi-trash3"),
                     id="delete-button",
                     color="red",
+                ),
+                dmc.Button(
+                    "Download",
+                    leftSection=html.I(className="bi bi-download"),
+                    id="download-button",
+                    className="me-1",
                 ),
                 dcc.Upload(
                     dmc.Button(
@@ -532,6 +575,44 @@ label_modal = dmc.Modal(
     centered=True,
 )
 
+download_modal = dmc.Modal(
+    title="Download",
+    children=dmc.Stack(
+        [
+            dmc.Fieldset(
+                legend="Select files to download",
+                children=dmc.Stack(
+                    [
+                        dmc.Checkbox(label="HDF5 time-series", id="download-hdf"),
+                        dmc.Checkbox(label="BDF parquet time-series", id="download-bdf-parquet"),
+                        dmc.Checkbox(label="JSON cycling summary", id="download-json-summary"),
+                    ]
+                ),
+            ),
+            dmc.Button(
+                "Process",
+                id="download-process-button",
+                leftSection=html.I(className="bi bi-arrow-repeat"),
+                disabled=True,
+            ),
+            dmc.Progress(value=0, id="process-progress"),
+            dmc.NavLink(
+                label="Download data",
+                id="download-yes-close",
+                href=None,
+                disabled=True,
+                target="_blank",
+                variant="filled",
+                color="blue",
+                leftSection=html.I(className="bi bi-download"),
+                active=True,
+            ),
+        ],
+    ),
+    id="download-modal",
+    centered=True,
+)
+
 # ------------------------------- Main layout -------------------------------- #
 
 
@@ -587,6 +668,7 @@ db_view_layout = html.Div(
         create_batch_modal,
         delete_modal,
         label_modal,
+        download_modal,
     ],
 )
 
@@ -733,7 +815,9 @@ def register_db_view_callbacks(app: Dash) -> None:
             enabled |= {"add-samples-button"}
         if selected_rows:
             enabled |= {"copy-button"}
-            if accessible_servers:  # Need cycler permissions to do anything except copy, view or upload
+            if len(selected_rows) <= 200:  # To avoid enormous zip files being stored
+                enabled |= {"download-button"}
+            if accessible_servers:  # Need cycler permissions to do anything except copy, view, upload, download
                 if table == "samples":
                     if all(s.get("Sample ID") is not None for s in selected_rows):
                         enabled |= {"delete-button", "label-button", "create-batch-button"}
@@ -1376,3 +1460,167 @@ def register_db_view_callbacks(app: Dash) -> None:
     )
     def disabled_sync(disabled: bool) -> bool:
         return disabled
+
+    # When download button is pressed, open the modal
+    @app.callback(
+        Output("download-modal", "opened"),
+        Output("download-yes-close", "disabled", allow_duplicate=True),
+        Output("process-progress", "value", allow_duplicate=True),
+        Input("download-button", "n_clicks"),
+        Input("download-yes-close", "n_clicks"),
+        State("download-modal", "opened"),
+        prevent_initial_call=True,
+    )
+    def download_data_open_modal(
+        _download_clicks: int, _yes_clicks: int, is_open: bool
+    ) -> tuple[bool, bool, int | NoUpdate]:
+        if not ctx.triggered:
+            raise PreventUpdate
+        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        if button_id == "download-button":
+            return True, True, 0
+        if button_id == "download-yes-close":
+            return False, True, 0
+        return is_open, True, no_update
+
+    clientside_callback(
+        """
+        function updateLoadingState(n_clicks) {
+            return true
+        }
+        """,
+        Output("download-process-button", "loading", allow_duplicate=True),
+        Input("download-process-button", "n_clicks"),
+        prevent_initial_call=True,
+    )
+
+    # If the file type is changed, allow reprocessing
+    @app.callback(
+        Output("download-process-button", "disabled", allow_duplicate=True),
+        Output("download-yes-close", "disabled", allow_duplicate=True),
+        Output("process-progress", "value", allow_duplicate=True),
+        Input("download-hdf", "checked"),
+        Input("download-json-summary", "checked"),
+        Input("download-bdf-parquet", "checked"),
+        prevent_initial_call=True,
+    )
+    def reset_process(*inputs: tuple) -> tuple[bool, bool, int]:
+        """If filetypes change, disable download, enable process, reset progress bar."""
+        if any(inputs):
+            return False, True, 0
+        return True, True, 0
+
+    # When process is confirmed, process the data and store zip in temp folder
+    @callback(
+        output=[
+            Output("download-yes-close", "href", allow_duplicate=True),
+            Output("download-yes-close", "disabled", allow_duplicate=True),
+            Output("download-process-button", "disabled", allow_duplicate=True),
+            Output("download-process-button", "loading"),
+        ],
+        inputs=[
+            Input("download-process-button", "n_clicks"),
+        ],
+        state=[
+            State("selected-rows-store", "data"),
+            State("download-hdf", "checked"),
+            State("download-json-summary", "checked"),
+            State("download-bdf-parquet", "checked"),
+        ],
+        running=[
+            (Output("download-process-button", "disabled"), True, False),
+            (Output("download-process-button", "loading"), True, False),
+        ],
+        cancel=Input("download-modal", "opened"),
+        progress=[Output("process-progress", "value", allow_duplicate=True)],
+        background=True,
+        prevent_initial_call=True,
+    )
+    def batch_process_data(
+        set_progress: Callable,
+        _yes_clicks: int,
+        selected_rows: list,
+        download_hdf: bool | None,
+        download_json: bool | None,
+        download_bdf: bool | None,
+    ) -> tuple[str, bool, bool, bool]:
+        """Batch process data from selected samples and store in zip in temp folder on server."""
+        sample_ids = [s["Sample ID"] for s in selected_rows]
+
+        # Remove old download files
+        cleanup_temp_folder()
+
+        # Number of files
+        n_files = len(sample_ids) * (int(download_hdf or 0) + int(download_json or 0) + int(download_bdf or 0))
+        i = 0
+        set_progress(100 * i / n_files)
+        # Create a new zip archive to populate
+        temp_zip = tempfile.NamedTemporaryFile(dir=DOWNLOAD_DIR, delete=False, suffix=".zip")  # noqa: SIM115
+        with zipfile.ZipFile(temp_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for sample in sample_ids:
+                run_id = run_from_sample(sample)
+                data_folder = CONFIG["Processed snapshots folder path"]
+                sample_folder = str(data_folder / run_id / sample)
+
+                if download_hdf:
+                    i += 1
+                    try:
+                        hdf5_file = next(Path(sample_folder).glob("full.*.h5"))
+                    except StopIteration:
+                        logger.warning("No HDF5 file found for %s", sample)
+                        set_progress(100 * i / n_files)
+                        continue
+                    with hdf5_file.open("rb") as f:
+                        hdf5_bytes = f.read()
+                    zf.writestr(sample + "/" + hdf5_file.name, hdf5_bytes)
+                    set_progress(100 * i / n_files)
+
+                if download_json:
+                    i += 1
+                    try:
+                        json_file = next(Path(sample_folder).glob("cycles.*.json"))
+                    except StopIteration:
+                        logger.warning("No HDF5 file found for %s", sample)
+                        set_progress(100 * i / n_files)
+                        continue
+                    with json_file.open("rb") as f:
+                        json_bytes = f.read()
+                    zf.writestr(sample + "/" + json_file.name, json_bytes)
+                    set_progress(100 * i / n_files)
+
+                if download_bdf:
+                    i += 1
+                    try:
+                        hdf5_file = next(Path(sample_folder).glob("full.*.h5"))
+                    except StopIteration:
+                        logger.warning("No HDF5 file found for %s", sample)
+                        set_progress(100 * i / n_files)
+                        continue
+                    df = pd.read_hdf(hdf5_file)
+                    df = aurora_to_bdf(pd.DataFrame(df))
+                    # convert to parquet file and write to zip
+                    buffer = io.BytesIO()
+                    df.to_parquet(buffer, index=False)  # or index=True, depending on your needs
+                    buffer.seek(0)
+                    parquet_name = hdf5_file.with_suffix(".bdf.parquet").name
+                    zf.writestr(sample + "/" + parquet_name, buffer.read())
+                    set_progress(100 * i / n_files)
+
+        logger.info("Saved zip file in server temp folder: %s", temp_zip.name)
+        set_progress(100)
+        return (f"/download-temp/{temp_zip.name}", False, False, False)
+
+    # This lets users download files from a URL
+    @app.server.route("/download-temp/<path:filename>")
+    def download_temp_file(filename: str) -> ResponseReturnValue:
+        """Route to download files from the server."""
+        try:
+            file_path = (DOWNLOAD_DIR / filename).resolve()
+        except Exception:  # noqa: BLE001
+            abort(400)
+        if not str(file_path).startswith(str(DOWNLOAD_DIR)):  # Traversal attack
+            abort(403)
+        if file_path.exists() and file_path.is_file():  # Download the file
+            return send_file(str(file_path), as_attachment=True, download_name="aurora-data.zip")
+        abort(404)
+        return None

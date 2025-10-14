@@ -15,7 +15,8 @@ import webbrowser
 
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
-from dash import ClientsideFunction, Dash, Input, Output, _dash_renderer, dcc, html
+import diskcache
+from dash import ClientsideFunction, Dash, DiskcacheManager, Input, Output, _dash_renderer, dcc, html
 from waitress import serve
 
 from aurora_cycler_manager.setup_logging import setup_logging
@@ -35,10 +36,18 @@ logger = logging.getLogger(__name__)
 # Need to set this for Mantine notifications to work
 _dash_renderer._set_react_version("18.2.0")  # noqa: SLF001
 
+# Setup cache for long callbacks
+cache = diskcache.Cache("./cache")
+background_callback_manager = DiskcacheManager(cache)
+
 # Define app and layout
 external_stylesheets = [dbc.icons.BOOTSTRAP, dmc.styles.NOTIFICATIONS, "/assets/style.css"]
 dmc.add_figure_templates()
-app = Dash(__name__, external_stylesheets=external_stylesheets)
+app = Dash(
+    __name__,
+    external_stylesheets=external_stylesheets,
+    background_callback_manager=background_callback_manager,
+)
 app.clientside_callback(
     ClientsideFunction(namespace="clients", function_name="animateMessage"),
     Output("loading-message", "children"),
