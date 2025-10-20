@@ -67,11 +67,6 @@ batch_edit_layout = dmc.Stack(
             ],
         ),
         ### Confirmation dialogs ###
-        # Add sample confirmation
-        dcc.ConfirmDialog(
-            id="add-samples-confirm",
-            message="This will overwrite samples. Are you sure you want to continue?",
-        ),
         # Save batch confirmation
         dcc.ConfirmDialog(
             id="save-batch-confirm",
