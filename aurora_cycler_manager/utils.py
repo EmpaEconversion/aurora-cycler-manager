@@ -9,11 +9,15 @@ from fractions import Fraction
 from io import TextIOWrapper
 
 import numpy as np
+import pandas as pd
 import paramiko
 
 from aurora_cycler_manager.config import get_config
 
 CONFIG = get_config()
+
+# Used to generate deterministic UUIDs from experiments
+NAMESPACE_UUID = uuid.UUID("77dd4189-5fe2-4c3f-9e2c-9762e39f16b1")
 
 
 def ssh_connect(ssh: paramiko.SSHClient, username: str, hostname: str) -> None:
@@ -30,6 +34,24 @@ def run_from_sample(sampleid: str) -> str:
     if not isinstance(sampleid, str) or len(sampleid.split("_")) < 2 or not sampleid.split("_")[-1].isdigit():
         return "misc"
     return sampleid.rsplit("_", 1)[0]
+
+
+def hash_dataframe(df: pd.DataFrame) -> str:
+    """Get a UUID for a dataframe based on first 10 measured voltages.
+
+    This ensures that even if more data is appended, the filename changes, the
+    sample ID is lost, data is converted between different formats, etc., it can
+    still be associated with the same job.
+    """
+    if "V (V)" not in df:
+        msg = "Dataframe must have V (V) column to hash"
+        raise ValueError(msg)
+    if len(df) < 10:
+        msg = "Dataframe must have at least 10 points to hash"
+        raise ValueError(msg)
+    formatted = [f"{v:.6g}" for v in df["V (V)"].iloc[:10]]
+    canon_string = ",".join(formatted).encode("utf-8")
+    return str(uuid.uuid5(NAMESPACE_UUID, canon_string))
 
 
 def c_to_float(c_rate: str) -> float:

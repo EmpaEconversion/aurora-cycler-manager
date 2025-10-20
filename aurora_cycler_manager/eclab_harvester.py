@@ -32,11 +32,12 @@ import pandas as pd
 import paramiko
 import pytz
 import yadg
+from dgbowl_schemas.yadg.dataschema import ExtractorFactory
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.setup_logging import setup_logging
-from aurora_cycler_manager.utils import run_from_sample, ssh_connect
+from aurora_cycler_manager.utils import hash_dataframe, run_from_sample, ssh_connect
 from aurora_cycler_manager.version import __url__, __version__
 
 CONFIG = get_config()
@@ -205,41 +206,37 @@ def get_all_mprs(*, force_copy: bool = False) -> list[str]:
 
 
 def get_mpr_data(
-    mpr_file: str | Path,
+    mpr_file: str | Path | bytes,
+    mpl_file: str | Path | bytes | None = None,
 ) -> tuple[pd.DataFrame, dict, dict]:
-    """Convert mpr to dataframe."""
-    mpr_file = Path(mpr_file)
+    """Convert mpr file to dataframe."""
+    if isinstance(mpr_file, (str, Path)):
+        mpr_file = Path(mpr_file)
+        data = yadg.extractors.extract("eclab.mpr", mpr_file)
+    elif isinstance(mpr_file, bytes):
+        extractor = ExtractorFactory(extractor={"filetype": "eclab.mpr"}).extractor
+        data = yadg.extractors.extract_from_bytes(
+            source=mpr_file,
+            extractor=extractor,
+        )
+    else:
+        msg = "mpr_file must be str, Path, or raw bytes of mpr file."
+        raise TypeError(msg)
 
-    data = yadg.extractors.extract("eclab.mpr", mpr_file)
-
+    # Create dataframe
     df = pd.DataFrame()
     df["uts"] = data.coords["uts"].to_numpy()
 
     # Check if the time is incorrect and fix it
-    if df["uts"].to_numpy()[0] < 1000000000:  # The measurement started before 2001, assume wrong
-        # Grab the start time from mpl file
-        mpl_file = mpr_file.with_suffix(".mpl")
-        try:
-            with mpl_file.open(encoding="ANSI") as f:
-                lines = f.readlines()
-            # Find the start datetime from the mpl
-            found_start_time = False
-            for line in lines:
-                if line.startswith("Acquisition started on : "):
-                    datetime_str = line.split(":", 1)[1].strip()
-                    datetime_object = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")
-                    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
-                    uts_timestamp = timezone.localize(datetime_object).timestamp()
-                    df["uts"] = df["uts"] + uts_timestamp
-                    found_start_time = True
-                    break
-            if not found_start_time:
-                logger.warning("Incorrect start time in %s and no start time in found %s", mpr_file, mpl_file)
-        except FileNotFoundError:
-            logger.warning("Incorrect start time in %s and no mpl file found.", mpr_file)
+    df = check_mpr_uts(df, mpr_file, mpl_file)
 
     # Only keep certain columns in dataframe
-    df["V (V)"] = data.data_vars["Ewe"].to_numpy()
+    try:
+        voltage_col = next(col for col in ("Ewe", "<Ewe>") if col in data.data_vars)
+    except StopIteration as e:
+        msg = "No voltage column found in data"
+        raise KeyError(msg) from e
+    df["V (V)"] = data.data_vars[voltage_col].to_numpy()
     I_units = {"A": 1, "mA": 1e-3, "uA": 1e-6}
     dq_units = {"mA·h": 3600 / 1000, "A·h": 3600}
     if "I" in data.data_vars:
@@ -254,25 +251,78 @@ def get_mpr_data(
         df["I (A)"] = 0.0
     df["cycle_number"] = data.data_vars["half cycle"].to_numpy() // 2 if "half cycle" in data.data_vars else 0
     df["technique"] = data.data_vars["mode"].to_numpy() if "mode" in data.data_vars else 0
+    df = df.astype({"V (V)": "float32", "I (A)": "float32"})
+    df = df.astype({"technique": "int16", "cycle_number": "int32"})
+
+    # Get metadata
     mpr_metadata = json.loads(data.attrs["original_metadata"])
     mpr_metadata["job_type"] = "eclab_mpr"
     yadg_metadata = {k: v for k, v in data.attrs.items() if k.startswith("yadg")}
+
     return df, mpr_metadata, yadg_metadata
 
 
+def check_mpr_uts(
+    df: pd.DataFrame, mpr_file: str | Path | bytes, mpl_file: str | Path | bytes | None = None
+) -> pd.DataFrame:
+    """Check if the unix timestamp is correct, attempts to find it from .mpl if not."""
+    if df["uts"].to_numpy()[0] < 1000000000:  # The measurement started before 2001, assume wrong
+        if not isinstance(mpr_file, (str, Path)) and not mpl_file:
+            msg = "Incorrect start time in mpr file, reading from bytes, cannot auto-find mpl and no mpl provided."
+            raise ValueError(msg)
+        # Try to find the start datetime from the mpl
+        if isinstance(mpr_file, (str, Path)) and not mpl_file:
+            mpl_file = Path(mpr_file).with_suffix(".mpl")
+            if not mpl_file.exists():
+                msg = "Could not get acquisition start time from mpr, cannot find associated mpl file."
+                raise ValueError(msg)
+        if isinstance(mpl_file, (str, Path)):
+            with Path(mpl_file).open(encoding="ANSI") as f:
+                lines = f.readlines()
+        elif isinstance(mpl_file, bytes):  # file-like object
+            text = mpl_file.decode("ANSI", errors="replace")
+            lines = text.splitlines()
+        else:
+            msg = "Cannot get start time from mpr or mpl file."
+            raise ValueError(msg)
+        try:
+            for line in lines:
+                if line.startswith("Acquisition started on : "):
+                    datetime_str = line.split(":", 1)[1].strip()
+                    datetime_object = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")
+                    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
+                    uts_timestamp = timezone.localize(datetime_object).timestamp()
+                    df["uts"] = df["uts"] + uts_timestamp
+                    break
+            else:
+                msg = "Incorrect start time in {mpr_file} and no start time in found {mpl_file}"
+                raise ValueError(msg)
+        except FileNotFoundError as e:
+            msg = "Incorrect start time in mpr file, cannot find associated mpl file"
+            raise ValueError(msg) from e
+    return df
+
+
 def convert_mpr(
-    mpr_file: str | Path,
+    mpr_file: str | Path | bytes,
+    mpl_file: str | Path | bytes | None = None,
     *,
     output_hdf5_file: bool = True,
+    sample_id: str | None = None,
+    modified_date: datetime | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     """Convert a ec-lab mpr to dataframe, optionally save as hdf5.
 
     Args:
-        mpr_file (str): path to the raw mpr file
+        mpr_file (str, Path, bytes): path to the mpr file, or raw bytes
+        mpl_file (str, Path, bytes, optional): path to the associated mpl file, or raw bytes
         output_hdf5_file (str, optional): path to save the output hdf5 file
+        sample_id (str, optional): Sample ID as in database, REQUIRED if reading from bytes
+        modified_date (datetime, optional): Used for last snapshot time, inferred from path
 
     Returns:
-        pd.DataFrame: DataFrame containing the cycling data
+        pd.DataFrame: DataFrame containing the time-series cycling data
+        dict: metadata
 
     Columns in output DataFrame:
     - uts: unix timestamp in seconds
@@ -281,21 +331,30 @@ def convert_mpr(
     - cycle_number: number of cycles within one technique
     - technique: code of technique using Biologic convention
 
-    TODO: use capacity to define C rate
-
     """
-    # Normalize paths to avoid escape character issues
-    mpr_file = os.path.normpath(mpr_file)
-
-    # Try to get the sample ID and run ID from the path
-    run_id, sample_id = get_sampleid_from_mpr(mpr_file)
-
-    creation_date = datetime.fromtimestamp(
-        os.path.getmtime(mpr_file),
-    ).strftime("%Y-%m-%d %H:%M:%S")
+    # Ensure there is a Sample ID, Run ID, and optionally creation date
+    if isinstance(mpr_file, (str, Path)):
+        mpr_file = Path(mpr_file).resolve()
+        if not sample_id:
+            run_id, sample_id = get_sampleid_from_mpr(mpr_file)
+        else:
+            run_id = run_from_sample(sample_id)
+        if not modified_date:
+            modified_date = datetime.fromtimestamp(
+                mpr_file.stat().st_mtime,
+                tz=pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich")),
+            )
+    elif isinstance(mpr_file, bytes):  # file-like object
+        if not sample_id:
+            msg = "Sample ID is required if reading from bytes"
+            raise ValueError(msg)
+        run_id = run_from_sample(sample_id)
+    else:
+        msg = "mpr_file must be str, Path, or file-like object"
+        raise TypeError(msg)
 
     # Get data and metadata from mpr (and mpl) files
-    df, mpr_metadata, yadg_metadata = get_mpr_data(mpr_file)
+    df, mpr_metadata, yadg_metadata = get_mpr_data(mpr_file, mpl_file)
 
     # get sample data from database
     try:
@@ -308,7 +367,7 @@ def convert_mpr(
     technique_codes = {1: "Constant current", 2: "Constant voltage", 3: "Open circuit voltage"}
     metadata = {
         "provenance": {
-            "snapshot_file": mpr_file,
+            "snapshot_file": str(mpr_file) if isinstance(mpr_file, (str, Path)) else None,
             "yadg_metadata": yadg_metadata,
             "aurora_metadata": {
                 "mpr_conversion": {
@@ -331,7 +390,8 @@ def convert_mpr(
         },
     }
 
-    if output_hdf5_file:  # Save and update database
+    # Save and update database
+    if output_hdf5_file:
         if not sample_id:
             logger.warning("Not saving %s, no valid Sample ID found", mpr_file)
             return df, metadata
@@ -339,12 +399,15 @@ def convert_mpr(
         if not folder.exists():
             folder.mkdir(parents=True)
 
-        mpr_filename = Path(mpr_file).name
+        if isinstance(mpr_file, (str, Path)):
+            # The filename should already be a job ID
+            hdf5_filepath = folder / ("snapshot." + Path(mpr_file).name.replace(".mpr", ".h5"))
+        else:
+            # Create a filename from UUID
+            mpr_uuid = hash_dataframe(df)
+            hdf5_filepath = folder / ("snapshot." + mpr_uuid + ".h5")
 
-        hdf5_filepath = folder / ("snapshot." + mpr_filename.replace(".mpr", ".h5"))
         # Ensure smallest data types are used
-        df = df.astype({"V (V)": "float32", "I (A)": "float32"})
-        df = df.astype({"technique": "int16", "cycle_number": "int32"})
         df.to_hdf(
             hdf5_filepath,
             key="data",
@@ -366,7 +429,7 @@ def convert_mpr(
             )
             cursor.execute(
                 "UPDATE results SET `Last snapshot` = ? WHERE `Sample ID` = ?",
-                (creation_date, sample_id),
+                (modified_date.strftime("%Y-%m-%d %H:%M:%S") if modified_date else None, sample_id),
             )
             cursor.close()
     return df, metadata
