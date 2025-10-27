@@ -35,9 +35,9 @@ import yadg
 from dgbowl_schemas.yadg.dataschema import ExtractorFactory
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.database_funcs import get_sample_data
+from aurora_cycler_manager.database_funcs import add_data_to_db, get_sample_data
 from aurora_cycler_manager.setup_logging import setup_logging
-from aurora_cycler_manager.utils import hash_dataframe, run_from_sample, ssh_connect
+from aurora_cycler_manager.utils import run_from_sample, ssh_connect
 from aurora_cycler_manager.version import __url__, __version__
 
 CONFIG = get_config()
@@ -306,19 +306,23 @@ def check_mpr_uts(
 def convert_mpr(
     mpr_file: str | Path | bytes,
     mpl_file: str | Path | bytes | None = None,
-    *,
-    output_hdf5_file: bool = True,
     sample_id: str | None = None,
+    job_id: str | None = None,
     modified_date: datetime | None = None,
+    file_name: str | None = None,
+    *,
+    update_database: bool = True,
 ) -> tuple[pd.DataFrame, dict]:
-    """Convert a ec-lab mpr to dataframe, optionally save as hdf5.
+    """Convert a ec-lab mpr to dataframe, optionally update database.
 
     Args:
         mpr_file (str, Path, bytes): path to the mpr file, or raw bytes
         mpl_file (str, Path, bytes, optional): path to the associated mpl file, or raw bytes
-        output_hdf5_file (str, optional): path to save the output hdf5 file
+        update_database (bool, optional): whether to save data and update tables in database
         sample_id (str, optional): Sample ID as in database, REQUIRED if reading from bytes
-        modified_date (datetime, optional): Used for last snapshot time, inferred from path
+        job_id (str, optional): Job ID as in the database, will check dataframe hash if not used
+        modified_date (datetime, optional): Used for last snapshot time, inferred from mpr_file if str/path
+        file_name (str, optional): Filename uploaded to the database, inferred from mpr_file if str/path
 
     Returns:
         pd.DataFrame: DataFrame containing the time-series cycling data
@@ -347,6 +351,9 @@ def convert_mpr(
     elif isinstance(mpr_file, bytes):  # file-like object
         if not sample_id:
             msg = "Sample ID is required if reading from bytes"
+            raise ValueError(msg)
+        if not file_name:
+            msg = "File name is required if reading from bytes"
             raise ValueError(msg)
         run_id = run_from_sample(sample_id)
     else:
@@ -391,7 +398,7 @@ def convert_mpr(
     }
 
     # Save and update database
-    if output_hdf5_file:
+    if update_database:
         if not sample_id:
             logger.warning("Not saving %s, no valid Sample ID found", mpr_file)
             return df, metadata
@@ -399,15 +406,18 @@ def convert_mpr(
         if not folder.exists():
             folder.mkdir(parents=True)
 
-        if isinstance(mpr_file, (str, Path)):
-            # The filename should already be a job ID
-            hdf5_filepath = folder / ("snapshot." + Path(mpr_file).name.replace(".mpr", ".h5"))
+        # Get the file stem and path
+        if file_name:
+            file_stem = Path(file_name).stem
         else:
-            # Create a filename from UUID
-            mpr_uuid = hash_dataframe(df)
-            hdf5_filepath = folder / ("snapshot." + mpr_uuid + ".h5")
+            assert isinstance(mpr_file, (str, Path))
+            file_stem = Path(mpr_file).stem
+        hdf5_filepath = folder / f"snapshot.{file_stem}.h5"
 
-        # Ensure smallest data types are used
+        # Add the file/job information to the database
+        add_data_to_db(sample_id, file_stem, df, job_id)
+
+        # Create the 'data' hdf5 dataset
         df.to_hdf(
             hdf5_filepath,
             key="data",
@@ -415,7 +425,8 @@ def convert_mpr(
             complib="blosc",
             complevel=9,
         )
-        # create a dataset called metadata and json dump the metadata
+
+        # Create a dataset called metadata and json dump the metadata
         with h5py.File(hdf5_filepath, "a") as f:
             f.create_dataset("metadata", data=json.dumps(metadata))
         logger.info("Saved %s", hdf5_filepath)
@@ -509,7 +520,7 @@ def convert_all_mprs() -> None:
                 try:
                     convert_mpr(
                         full_path,
-                        output_hdf5_file=True,
+                        update_database=True,
                     )
                     logger.info("Converted %s", full_path)
                 except (ValueError, IndexError, KeyError, RuntimeError):
@@ -524,7 +535,7 @@ def main() -> None:
         try:
             convert_mpr(
                 mpr_path,
-                output_hdf5_file=True,
+                update_database=True,
             )
         except (ValueError, IndexError, KeyError, RuntimeError):
             logger.exception("Error converting %s", mpr_path)
