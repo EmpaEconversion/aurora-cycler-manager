@@ -32,9 +32,12 @@ logger = logging.getLogger(__name__)
 
 # Check if the environment is set for pytest
 root_dir = Path(__file__).resolve().parent
+custom_config_path = os.getenv("AURORA_USER_CONFIG")
 if os.getenv("PYTEST_RUNNING") == "1":
     root_dir = root_dir.parent / "tests" / "test_data"
     USER_CONFIG_PATH = root_dir / "test_config.json"
+elif custom_config_path:
+    USER_CONFIG_PATH = Path(custom_config_path)
 else:
     user_config_dir = Path(platformdirs.user_data_dir("aurora_cycler_manager", appauthor=False))
     USER_CONFIG_PATH = user_config_dir / "config.json"

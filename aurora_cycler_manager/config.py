@@ -22,11 +22,18 @@ def _read_config_file() -> dict:
 
     """
     current_dir = Path(__file__).resolve().parent
-
+    custom_config_path = os.getenv("AURORA_USER_CONFIG")
     # Check if the environment is set for pytest
     if os.getenv("PYTEST_RUNNING") == "1":
         config_dir = current_dir.parent / "tests" / "test_data"
         user_config_path = config_dir / "test_config.json"
+    # Check if using a custom configuration, e.g. for testing
+    elif custom_config_path:
+        user_config_path = Path(custom_config_path)
+        config_dir = user_config_path.parent
+        if not user_config_path.exists():
+            msg = f"User config file {user_config_path} does not exist."
+            raise FileNotFoundError(msg)
     else:
         config_dir = Path(platformdirs.user_data_dir("aurora_cycler_manager", appauthor=False))
         user_config_path = config_dir / "config.json"

@@ -5,7 +5,9 @@ Initialization can take a few seconds if connecting to several cyclers.
 Show stuff happening in the terminal to keep users happy :).
 """
 
+import argparse
 import logging
+import os
 
 from aurora_cycler_manager.setup_logging import setup_logging
 
@@ -26,6 +28,7 @@ URORA         UROR  AURORAURORA   UROR      AU      RO    RAUR      ORAURORAUROR
 AUROR         AURO   RAURORAUR    ORAU      RORAURORAU    RORA       URORAUR ORA
                                            UROR    AURO                         
                                             RA      UR                          
+
 """  # noqa: W291
 
 
@@ -53,10 +56,30 @@ def gradient_line(start_rgb: tuple, mid_rgb: tuple, end_rgb: tuple, text: str) -
 
 def main() -> None:
     """Start the Aurora app."""
+    parser = argparse.ArgumentParser(description="Start the Aurora visualiser")
+    parser.add_argument(
+        "--user-config",
+        type=str,
+        help="Override the default user configuration json file for testing.",
+    )
+    args = parser.parse_args()
+    if args.user_config:
+        os.environ["AURORA_USER_CONFIG"] = args.user_config
     for line in ascii_art.splitlines():
         gradient_text = gradient_line((103, 203, 243), (77, 193, 185), (183, 119, 179), line)
         print(gradient_text)  # noqa: T201
-    print()  # noqa: T201
+    if args.user_config:
+        custom_lines = [
+            "!" * 80,
+            "!" * 26 + "  NOT USING DEFAULT CONFIG  " + "!" * 26,
+            "!" * 80,
+            "",
+            f"Reading from: {args.user_config}",
+            "",
+        ]
+        for line in custom_lines:
+            gradient_text = gradient_line((103, 203, 243), (77, 193, 185), (183, 119, 179), line)
+            print(gradient_text)  # noqa: T201
 
     setup_logging()
     logger.info("Trying to connect to cycler servers...")
