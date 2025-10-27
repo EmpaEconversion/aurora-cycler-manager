@@ -5,6 +5,8 @@ Functions for interacting with the database.
 
 import json
 import sqlite3
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -324,4 +326,166 @@ def remove_batch(batch_name: str) -> None:
         batch_id = cur.fetchone()[0]
         cur.execute("DELETE FROM batches WHERE label = ?", (batch_name,))
         cur.execute("DELETE FROM batch_samples WHERE batch_id = ?", (batch_id,))
+        conn.commit()
+
+
+### JOBS ###
+
+
+def get_unicycler_protocols(sample_id: str) -> list[dict]:
+    """Return a list of unicycler protocols associated with the sample."""
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT `Job ID`, `Unicycler protocol`, `Capacity (mAh)` "
+            "FROM jobs "
+            "WHERE `Sample ID` = ? AND `Unicycler protocol` IS NOT NULL",
+            (sample_id,),
+        )
+        rows = cur.fetchall()
+    return [dict(row) for row in rows]
+
+
+def add_data_to_db_without_job(sample_id: str, file_stem: str, df: pd.DataFrame) -> str:
+    """Add data with unknown or non-existent Job ID.
+
+    Checks if data is already associated with a job, if not add a new job to the database.
+
+    Args:
+        sample_id: Sample ID that the data is associated with
+        file_stem: Filename of the file uploaded without snapshot. or extension
+        df: Time-series dataframe of the data
+
+    Returns:
+        str: Job ID
+
+    """
+    data_start = datetime.fromtimestamp(df["uts"].iloc[0], tz=timezone.utc).isoformat()
+    data_end = datetime.fromtimestamp(df["uts"].iloc[-1], tz=timezone.utc).isoformat()
+    modified = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cursor = conn.cursor()
+        # Check if there is already a job with this sample ID and data
+        cursor.execute(
+            "SELECT `Job ID` FROM dataframes WHERE`Sample ID` = ? AND `File stem` = ?",
+            (sample_id, file_stem),
+        )
+        result = cursor.fetchone()
+        # If there is no known job, create a new one with random uuid
+        job_id = result[0] if result else str(uuid.uuid4())
+        # Create data table entry if it doesn't exist
+        cursor.execute(
+            "INSERT OR IGNORE INTO dataframes (`Sample ID`, `File stem`, `Job ID`) VALUES (?, ?, ?)",
+            (sample_id, file_stem, job_id),
+        )
+        # Update the data table entry
+        cursor.execute(
+            "UPDATE dataframes SET `From known source` = ?, `Data start` = ?, `Data end` = ?, `Modified` = ? "
+            "WHERE `Sample ID` = ? AND `File stem` = ?",
+            (False, data_start, data_end, modified, sample_id, file_stem),
+        )
+        # Create the Jobs table entry if it doesn't exist, otherwise leave as is (could have manually be altered)
+        cursor.execute(
+            "INSERT OR IGNORE INTO jobs (`Job ID`, `Sample ID`, `Comment`) VALUES (?, ?, ?)",
+            (job_id, sample_id, f"Source unknown, uploaded as: {file_stem}"),
+        )
+        cursor.close()
+    return job_id
+
+
+def add_data_to_db_with_job(sample_id: str, file_stem: str, df: pd.DataFrame, job_id: str) -> str:
+    """Add data to the database with a known Job ID.
+
+    If there is already data associated with the job with a different Job ID, overwrite the info.
+
+    Args:
+        sample_id: Sample ID that the data is associated with
+        file_stem: Filename of the file uploaded without snapshot. or extension
+        df: Time-series dataframe of the data
+        job_id: Job ID that the data is associated with
+
+    Returns:
+        str: Job ID
+
+    """
+    data_start = datetime.fromtimestamp(df["uts"].iloc[0], tz=timezone.utc).isoformat()
+    data_end = datetime.fromtimestamp(df["uts"].iloc[-1], tz=timezone.utc).isoformat()
+    modified = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cursor = conn.cursor()
+        # Check if there is already a job with this sample ID and data
+        cursor.execute(
+            "SELECT `Job ID` FROM dataframes WHERE `Sample ID` = ? AND `File stem` = ?",
+            (sample_id, file_stem),
+        )
+        result = cursor.fetchone()
+        # If the job ID does not match the provided job ID, there is a conflict
+        # e.g. user manually uploaded before data was found automatically
+        # Overwrite the manual job ID
+        conflicting_job_id = result[0] if result and result[0] != job_id else None
+        if conflicting_job_id:
+            # Overwrite with the known Job ID, and known source
+            cursor.execute(
+                "UPDATE dataframes SET `Job ID` = ?, `From known source` = ? WHERE `Sample ID` = ? AND `File stem` = ?",
+                (job_id, True, sample_id, file_stem),
+            )
+            # If there is no data left for the conflicting Job ID, remove it from the jobs table
+            cursor.execute(
+                "SELECT COUNT(*) FROM dataframes WHERE `Job ID` = ? AND `Sample ID` = ?",
+                (conflicting_job_id, sample_id),
+            )
+            if cursor.fetchone()[0] == 0:
+                cursor.execute(
+                    "DELETE FROM jobs WHERE `Job ID` = ? AND `Sample ID` = ?",
+                    (conflicting_job_id, sample_id),
+                )
+        # Add the rows if they dont exist
+        cursor.execute(
+            "INSERT OR IGNORE INTO dataframes (`Sample ID`, `File stem`, `Job ID`) VALUES (?, ?, ?)",
+            (sample_id, file_stem, job_id),
+        )
+        cursor.execute(
+            "INSERT OR IGNORE INTO jobs (`Job ID`, `Sample ID`) VALUES (?, ?)",
+            (job_id, sample_id),
+        )
+        # Update the data table entry
+        cursor.execute(
+            "UPDATE dataframes SET `From known source` = ?, `Data start` = ?, `Data end` = ?, `Modified` = ? "
+            "WHERE `Sample ID` = ? AND `File stem` = ?",
+            (True, data_start, data_end, modified, sample_id, file_stem),
+        )
+        cursor.close()
+    return job_id
+
+
+def add_data_to_db(sample_id: str, file_stem: str, df: pd.DataFrame, job_id: str | None = None) -> str:
+    """Add data to the database.
+
+    Args:
+        sample_id: Sample ID that the data is associated with
+        file_stem: Filename of the file uploaded without snapshot. or extension
+        df: Time-series dataframe of the data
+        job_id: Job ID that the data is associated with
+
+    Returns:
+        str: Job ID
+
+    """
+    if job_id:
+        return add_data_to_db_with_job(sample_id, file_stem, df, job_id)
+    return add_data_to_db_without_job(sample_id, file_stem, df)
+
+
+def add_protocol_to_job(job_id: str, protocol: dict | str, capacity: float | None = None) -> None:
+    """Attach a protocol to a job in the database."""
+    if isinstance(protocol, dict):
+        protocol = json.dumps(protocol)
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE jobs SET `Unicycler protocol` = ?, `Capacity (mAh)` = ? WHERE `Job ID` = ?",
+            (protocol, capacity, job_id),
+        )
         conn.commit()
