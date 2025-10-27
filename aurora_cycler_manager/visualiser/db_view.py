@@ -18,6 +18,7 @@ import dash_ag_grid as dag
 import dash_mantine_components as dmc
 import pandas as pd
 import paramiko
+from aurora_unicycler import Protocol
 from battinfoconverter_backend.json_convert import convert_excel_to_jsonld
 from dash import ALL, Dash, Input, NoUpdate, Output, State, callback, clientside_callback, dcc, html, no_update
 from dash import callback_context as ctx
@@ -26,15 +27,21 @@ from flask import abort, send_file
 from flask.typing import ResponseReturnValue
 
 from aurora_cycler_manager.analysis import analyse_sample, update_sample_metadata
-from aurora_cycler_manager.battinfo_utils import merge_battinfo_with_db_data
+from aurora_cycler_manager.battinfo_utils import (
+    generate_battery_test,
+    merge_battinfo_with_db_data,
+    merge_jsonld_on_type,
+)
 from aurora_cycler_manager.bdf_converter import aurora_to_bdf
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import (
+    add_protocol_to_job,
     add_samples_from_object,
     delete_samples,
     get_all_sampleids,
     get_batch_details,
     get_sample_data,
+    get_unicycler_protocols,
     update_sample_label,
 )
 from aurora_cycler_manager.eclab_harvester import convert_mpr
@@ -589,6 +596,7 @@ download_modal = dmc.Modal(
                         dmc.Checkbox(label="HDF5 time-series", id="download-hdf"),
                         dmc.Checkbox(label="BDF parquet time-series", id="download-bdf-parquet"),
                         dmc.Checkbox(label="JSON cycling summary", id="download-json-summary"),
+                        dmc.Checkbox(label="JSON-LD ontologised metadata", id="download-jsonld"),
                     ]
                 ),
             ),
@@ -599,6 +607,18 @@ download_modal = dmc.Modal(
                 disabled=True,
             ),
             dmc.Progress(value=0, id="process-progress"),
+            dmc.Alert(
+                title="Process status",
+                children="Waiting...",
+                color="gray",
+                id="download-alert",
+                style={
+                    "white-space": "pre-wrap",
+                    "minHeight": "200px",
+                    "maxHeight": "200px",
+                    "overflowY": "auto",
+                },
+            ),
             dmc.NavLink(
                 label="Download data",
                 id="download-yes-close",
@@ -614,6 +634,7 @@ download_modal = dmc.Modal(
     ),
     id="download-modal",
     centered=True,
+    size="lg",
 )
 
 upload_modal = dmc.Modal(
@@ -1467,6 +1488,8 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("download-modal", "opened"),
         Output("download-yes-close", "disabled", allow_duplicate=True),
         Output("process-progress", "value", allow_duplicate=True),
+        Output("download-alert", "children", allow_duplicate=True),
+        Output("download-alert", "color", allow_duplicate=True),
         Input("download-button", "n_clicks"),
         Input("download-yes-close", "n_clicks"),
         State("download-modal", "opened"),
@@ -1474,15 +1497,15 @@ def register_db_view_callbacks(app: Dash) -> None:
     )
     def download_data_open_modal(
         _download_clicks: int, _yes_clicks: int, is_open: bool
-    ) -> tuple[bool, bool, int | NoUpdate]:
+    ) -> tuple[bool, bool, int | NoUpdate, str | NoUpdate, str | NoUpdate]:
         if not ctx.triggered:
             raise PreventUpdate
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "download-button":
-            return True, True, 0
+            return True, True, 0, "Waiting...", "grey"
         if button_id == "download-yes-close":
-            return False, True, 0
-        return is_open, True, no_update
+            return False, True, 0, "Waiting...", "grey"
+        return is_open, True, no_update, no_update, no_update
 
     clientside_callback(
         """
@@ -1500,16 +1523,20 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("download-process-button", "disabled", allow_duplicate=True),
         Output("download-yes-close", "disabled", allow_duplicate=True),
         Output("process-progress", "value", allow_duplicate=True),
+        Output("download-alert", "children", allow_duplicate=True),
+        Output("download-alert", "color", allow_duplicate=True),
+        Input("download-button", "n_clicks"),
         Input("download-hdf", "checked"),
         Input("download-json-summary", "checked"),
         Input("download-bdf-parquet", "checked"),
+        Input("download-jsonld", "checked"),
         prevent_initial_call=True,
     )
-    def reset_process(*inputs: tuple) -> tuple[bool, bool, int]:
+    def reset_process(_n_clicks: int, *inputs: tuple) -> tuple[bool, bool, int, str, str]:
         """If filetypes change, disable download, enable process, reset progress bar."""
         if any(inputs):
-            return False, True, 0
-        return True, True, 0
+            return False, True, 0, "Waiting...", "grey"
+        return True, True, 0, "Waiting...", "grey"
 
     # When process is confirmed, process the data and store zip in temp folder
     @callback(
@@ -1517,7 +1544,6 @@ def register_db_view_callbacks(app: Dash) -> None:
             Output("download-yes-close", "href", allow_duplicate=True),
             Output("download-yes-close", "disabled", allow_duplicate=True),
             Output("download-process-button", "disabled", allow_duplicate=True),
-            Output("download-process-button", "loading"),
         ],
         inputs=[
             Input("download-process-button", "n_clicks"),
@@ -1527,13 +1553,22 @@ def register_db_view_callbacks(app: Dash) -> None:
             State("download-hdf", "checked"),
             State("download-json-summary", "checked"),
             State("download-bdf-parquet", "checked"),
+            State("download-jsonld", "checked"),
         ],
         running=[
+            (Output("download-hdf", "disabled"), True, False),
+            (Output("download-json-summary", "disabled"), True, False),
+            (Output("download-bdf-parquet", "disabled"), True, False),
+            (Output("download-jsonld", "disabled"), True, False),
             (Output("download-process-button", "disabled"), True, False),
             (Output("download-process-button", "loading"), True, False),
         ],
         cancel=Input("download-modal", "opened"),
-        progress=[Output("process-progress", "value", allow_duplicate=True)],
+        progress=[
+            Output("process-progress", "value", allow_duplicate=True),
+            Output("download-alert", "children", allow_duplicate=True),
+            Output("download-alert", "color", allow_duplicate=True),
+        ],
         background=True,
         prevent_initial_call=True,
     )
@@ -1544,72 +1579,246 @@ def register_db_view_callbacks(app: Dash) -> None:
         download_hdf: bool | None,
         download_json: bool | None,
         download_bdf: bool | None,
-    ) -> tuple[str, bool, bool, bool]:
+        download_jsonld: bool | None,
+    ) -> tuple[str, bool, bool]:
         """Batch process data from selected samples and store in zip in temp folder on server."""
         sample_ids = [s["Sample ID"] for s in selected_rows]
+        ccids = [s["Barcode"] for s in selected_rows]
 
         # Remove old download files
         cleanup_temp_folder()
 
+        rocrate = {
+            "@context": "https://w3id.org/ro/crate/1.1/context",
+            "@graph": [
+                {
+                    "@type": "CreativeWork",
+                    "@id": "ro-crate-metadata.json",
+                    "conformsTo": {"@id": "https://w3id.org/ro/crate/1.1"},
+                    "about": {"@id": "./"},
+                },
+                {
+                    "@id": "./",
+                    "@type": "Dataset",
+                    "name": "Aurora Battery Assembly & Cycling Experiments",
+                    "description": (
+                        "A collection of battery assembly and cycling experiments. "
+                        "Data processing, analysis, export, and ro-crate generation completed with "
+                        "aurora-cycler-manager (https://github.com/empaeconversion/aurora-cycler-manager)"
+                    ),
+                    "dateCreated": datetime.now().isoformat(),
+                    "hasPart": [],
+                },
+            ],
+        }
+
         # Number of files
-        n_files = len(sample_ids) * (int(download_hdf or 0) + int(download_json or 0) + int(download_bdf or 0))
+        n_files = len(sample_ids) * (
+            int(download_hdf or 0) + int(download_json or 0) + int(download_bdf or 0) + int(download_jsonld or 0)
+        )
         i = 0
-        set_progress(100 * i / n_files)
+        set_progress((100 * i / n_files, "Initializing...", "Grey"))
+        messages = ""
+        color = "green"
         # Create a new zip archive to populate
         temp_zip = tempfile.NamedTemporaryFile(dir=DOWNLOAD_DIR, delete=False, suffix=".zip")  # noqa: SIM115
         with zipfile.ZipFile(temp_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for sample in sample_ids:
+            for sample, ccid in zip(sample_ids, ccids, strict=True):
                 run_id = run_from_sample(sample)
                 data_folder = CONFIG["Processed snapshots folder path"]
                 sample_folder = str(data_folder / run_id / sample)
-
+                messages += f"{sample} - "
+                warnings = []
+                errors = []
                 if download_hdf:
                     i += 1
                     try:
                         hdf5_file = next(Path(sample_folder).glob("full.*.h5"))
+                        with hdf5_file.open("rb") as f:
+                            hdf5_bytes = f.read()
+                        zf.writestr(sample + "/" + hdf5_file.name, hdf5_bytes)
+                        rocrate["@graph"][1]["hasPart"].append({"@id": sample + "/" + hdf5_file.name})
+                        rocrate["@graph"].append(
+                            {
+                                "@id": sample + "/" + hdf5_file.name,
+                                "@type": "File",
+                                "about": {"@id": ccid if ccid else sample},
+                                "encodingFormat": "application/octet-stream",
+                                "description": (
+                                    f"Time-series battery cycling data for sample: '{sample}'"
+                                    + (f" with CCID: '{ccid}'. " if ccid else ". ")
+                                    + "Data is in HDF5 format, keys are 'data' and 'metadata'. "
+                                    "'data' contains an export from a Python Pandas dataframe. "
+                                    "'metadata' contains a JSON-string with information about the sample and experiment."
+                                ),
+                            }
+                        )
+                        messages += "✅"
+                        set_progress((100 * i / n_files, messages, color))
                     except StopIteration:
                         logger.warning("No HDF5 file found for %s", sample)
-                        set_progress(100 * i / n_files)
-                        continue
-                    with hdf5_file.open("rb") as f:
-                        hdf5_bytes = f.read()
-                    zf.writestr(sample + "/" + hdf5_file.name, hdf5_bytes)
-                    set_progress(100 * i / n_files)
+                        messages += "⚠️"
+                        warnings.append("HDF5")
+                        color = "orange"
+                        set_progress((100 * i / n_files, messages, color))
+                    except Exception:
+                        logger.exception("Unexpected error processing HDF5 for sample %s", sample)
+                        messages += "⁉️"
+                        errors.append("HDF5")
+                        color = "orange"
+                        set_progress((100 * i / n_files, messages, color))
 
                 if download_json:
                     i += 1
                     try:
                         json_file = next(Path(sample_folder).glob("cycles.*.json"))
+                        with json_file.open("rb") as f:
+                            json_bytes = f.read()
+                        zf.writestr(sample + "/" + json_file.name, json_bytes)
+                        messages += "✅"
+                        rocrate["@graph"][1]["hasPart"].append({"@id": sample + "/" + json_file.name})
+                        rocrate["@graph"].append(
+                            {
+                                "@id": sample + "/" + json_file.name,
+                                "@type": "File",
+                                "encodingFormat": "text/json",
+                                "about": {"@id": ccid if ccid else sample},
+                                "description": (
+                                    f"Summary data from battery cycling for sample: '{sample}'"
+                                    + (f" with CCID: '{ccid}'. " if ccid else ". ")
+                                    + "File is in JSON format, top level keys are 'data' and 'metadata'. "
+                                    "'data' contains lists with per-cycle summary stastics, e.g. discharge capacity. "
+                                    "'metadata' contains sample and experiment information."
+                                ),
+                            }
+                        )
+                        set_progress((100 * i / n_files, messages, color))
                     except StopIteration:
-                        logger.warning("No HDF5 file found for %s", sample)
-                        set_progress(100 * i / n_files)
-                        continue
-                    with json_file.open("rb") as f:
-                        json_bytes = f.read()
-                    zf.writestr(sample + "/" + json_file.name, json_bytes)
-                    set_progress(100 * i / n_files)
+                        logger.warning("No JSON summary file found for %s", sample)
+                        messages += "⚠️"
+                        warnings.append("JSON summary")
+                        color = "orange"
+                        set_progress((100 * i / n_files, messages, color))
+                    except Exception:
+                        logger.exception("Unexpected error processing JSON summary for sample %s", sample)
+                        messages += "⁉️"
+                        errors.append("JSON summary")
+                        color = "orange"
+                        set_progress((100 * i / n_files, messages, color))
 
                 if download_bdf:
                     i += 1
                     try:
                         hdf5_file = next(Path(sample_folder).glob("full.*.h5"))
+                        df = pd.read_hdf(hdf5_file)
+                        df = aurora_to_bdf(pd.DataFrame(df))
+                        # convert to parquet file and write to zip
+                        buffer = io.BytesIO()
+                        df.to_parquet(buffer, index=False)  # or index=True, depending on your needs
+                        buffer.seek(0)
+                        parquet_name = hdf5_file.with_suffix(".bdf.parquet").name
+                        zf.writestr(sample + "/" + parquet_name, buffer.read())
+                        messages += "✅"
+                        rocrate["@graph"][1]["hasPart"].append({"@id": sample + "/" + parquet_name})
+                        rocrate["@graph"].append(
+                            {
+                                "@id": sample + "/" + parquet_name,
+                                "@type": "File",
+                                "encodingFormat": "application/octet-stream",
+                                "about": {"@id": ccid if ccid else sample},
+                                "description": (
+                                    f"Time-series battery cycling data for sample: '{sample}'"
+                                    + (f" with CCID: '{ccid}'. " if ccid else ". ")
+                                    + "Data is in parquet format, and columns are 'battery data format' (BDF) compliant. "
+                                ),
+                            }
+                        )
+                        set_progress((100 * i / n_files, messages, color))
                     except StopIteration:
                         logger.warning("No HDF5 file found for %s", sample)
-                        set_progress(100 * i / n_files)
-                        continue
-                    df = pd.read_hdf(hdf5_file)
-                    df = aurora_to_bdf(pd.DataFrame(df))
-                    # convert to parquet file and write to zip
-                    buffer = io.BytesIO()
-                    df.to_parquet(buffer, index=False)  # or index=True, depending on your needs
-                    buffer.seek(0)
-                    parquet_name = hdf5_file.with_suffix(".bdf.parquet").name
-                    zf.writestr(sample + "/" + parquet_name, buffer.read())
-                    set_progress(100 * i / n_files)
+                        messages += "⚠️"
+                        warnings.append("BDF")
+                        color = "orange"
+                        set_progress((100 * i / n_files, messages, color))
+                    except Exception:
+                        logger.exception("Unexpected error processing BDF file for sample %s", sample)
+                        messages += "⁉️"
+                        errors.append("BDF")
+                        color = "orange"
+                        set_progress((100 * i / n_files, messages, color))
 
-        logger.info("Saved zip file in server temp folder: %s", temp_zip.name)
-        set_progress(100)
-        return (f"/download-temp/{temp_zip.name}", False, False, False)
+                if download_jsonld:
+                    i += 1
+                    try:
+                        battinfo_file = next(Path(sample_folder).glob("battinfo.*.jsonld"))
+                        with battinfo_file.open("r") as f:
+                            battinfo_json = json.load(f)
+                        aux_json = None
+                        try:
+                            aux_file = next(Path(sample_folder).glob("aux.*.jsonld"))
+                            with aux_file.open("r") as f:
+                                aux_json = json.load(f)
+                        except StopIteration:
+                            pass
+                        if aux_json:
+                            battinfo_json = merge_jsonld_on_type(battinfo_json, aux_json)
+                        db_jobs = get_unicycler_protocols(sample)
+                        if db_jobs:
+                            ontologized_protocols = []
+                            for db_job in db_jobs:
+                                protocol = Protocol.from_dict(json.loads(db_job["Unicycler protocol"]))
+                                ontologized_protocols.append(
+                                    protocol.to_battinfo_jsonld(capacity_mAh=db_job["Capacity (mAh)"])
+                                )
+                            test_jsonld = generate_battery_test(ontologized_protocols)
+                            battinfo_json = merge_jsonld_on_type(battinfo_json, test_jsonld)
+                        jsonld_name = f"metadata.{sample}.jsonld"
+                        zf.writestr(sample + "/" + jsonld_name, json.dumps(battinfo_json, indent=4))
+                        messages += "✅"
+                        rocrate["@graph"][1]["hasPart"].append({"@id": sample + "/" + jsonld_name})
+                        rocrate["@graph"].append(
+                            {
+                                "@id": sample + "/" + jsonld_name,
+                                "@type": "File",
+                                "encodingFormat": "text/json",
+                                "about": {"@id": ccid if ccid else sample},
+                                "description": (
+                                    f"Metadata for sample: '{sample}'"
+                                    + (f" with CCID: '{ccid}'. " if ccid else ". ")
+                                    + "File is a BattINFO JSON-LD, describing the sample and experiment."
+                                ),
+                            }
+                        )
+                        set_progress((100 * i / n_files, messages, color))
+                    except StopIteration:
+                        logger.warning("No BattINFO JSON-LD file found for %s", sample)
+                        messages += "⚠️"
+                        warnings.append("JSON-LD")
+                        color = "orange"
+                        set_progress((100 * i / n_files, messages, color))
+                    except Exception:
+                        logger.exception("Unexpected error processing JSON-LD file for sample %s", sample)
+                        messages += "⁉️"
+                        errors.append("JSON-LD")
+                        color = "orange"
+                        set_progress((100 * i / n_files, messages, color))
+                messages += "\n"
+                if warnings:
+                    messages += "No data for " + ", ".join(warnings) + "\n"
+                if errors:
+                    messages += "Error processing " + ", ".join(errors) + "\n"
+                set_progress((100 * i / n_files, messages, color))
+
+            # Check if zipfile contains anything
+            if zf.filelist:
+                zf.writestr("ro-crate-metadata.json", json.dumps(rocrate, indent=4))
+                logger.info("Saved zip file in server temp folder: %s", temp_zip.name)
+                messages += "\n✅ ZIP file ready to download"
+                set_progress((100 * i / n_files, messages, color))
+                return (f"/download-temp/{temp_zip.name}", False, True)
+            messages += "\n❌ No ZIP file created"
+            set_progress((100 * i / n_files, messages, "red"))
+            return ("", True, True)
 
     # This lets users download files from a URL
     @app.server.route("/download-temp/<path:filename>")
@@ -1682,7 +1891,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                     {"file": "samples-json", "data": data},
                 )
 
-            samples = [s.get("Sample ID") for s in selected_rows]
+            samples = [s.get("Sample ID") for s in selected_rows if s.get("Sample ID")]
             if is_battinfo_jsonld(data):
                 if not samples:
                     return (
@@ -1714,6 +1923,29 @@ def register_db_view_callbacks(app: Dash) -> None:
                     "green",
                     False,
                     {"file": "aux-jsonld", "data": data},
+                )
+            if is_unicycler_protocol(data):
+                jobs = [s.get("Job ID") for s in selected_rows if s.get("Job ID")]
+                if not jobs:
+                    return (
+                        "Got a unicycler protocol, but you must select jobs.",
+                        "red",
+                        True,
+                        {"file": None, "data": None},
+                    )
+                protocols = [s.get("Unicycer protocol") for s in selected_rows if s.get("Unicycer protocol")]
+                if protocols:
+                    return (
+                        "Got a unicycler protocol.\nWARNING - this will overwrite data",
+                        "orange",
+                        False,
+                        {"file": "unicycler-json", "data": data},
+                    )
+                return (
+                    "Got a unicycler protocol.",
+                    "green",
+                    False,
+                    {"file": "unicycler-json", "data": data},
                 )
 
         elif filename.endswith(".xlsx"):
@@ -1811,6 +2043,9 @@ def register_db_view_callbacks(app: Dash) -> None:
 
     def is_aux_jsonld(obj: list | str | dict) -> bool:
         return isinstance(obj, dict) and bool(obj.get("@context")) and (not is_battinfo_jsonld(obj))
+
+    def is_unicycler_protocol(obj: list | str | dict) -> bool:
+        return isinstance(obj, dict) and bool(obj.get("unicycler"))
 
     # If you leave the upload modal, wipe the contents
     @app.callback(
@@ -1926,14 +2161,36 @@ def register_db_view_callbacks(app: Dash) -> None:
                     )
                 return 1
 
+            case "unicycler-json":
+                try:
+                    protocol = data["data"]
+                    Protocol.from_dict(protocol)
+                    jobs = [s.get("Job ID") for s in selected_rows if s.get("Job ID")]
+                    for job in jobs:
+                        add_protocol_to_job(job, protocol)
+                    success_notification(
+                        "Protocols added",
+                        f"Protocols added to {len(jobs)} jobs",
+                        queue=True,
+                    )
+                except (ValueError, AttributeError, TypeError) as e:
+                    logger.exception("Error processing and uploading unicycler protocol")
+                    error_notification(
+                        "Error adding protocol",
+                        f"{e}",
+                        queue=True,
+                    )
+                return 1
+
             case "zip":
                 zip_buffer = io.BytesIO(base64.b64decode(content_string))
                 valid_files = data["data"]
                 successful_samples = set()
                 with zipfile.ZipFile(zip_buffer, "r") as zip_file:
-                    for filename, sample_id in valid_files.items():
+                    for filepath, sample_id in valid_files.items():
+                        filename = filepath.split("/")[-1]
                         try:
-                            with zip_file.open(filename) as file:
+                            with zip_file.open(filepath) as file:
                                 match filename.split(".")[-1]:
                                     case "mpr":
                                         # Check if there is an associated mpl file
@@ -1945,23 +2202,24 @@ def register_db_view_callbacks(app: Dash) -> None:
                                             mpl_file = None
                                         # Convert and save hdf from mpr file
                                         logger.info("Processing file: %s", filename)
-                                        convert_mpr(
+                                        _df, _metadata = convert_mpr(
                                             file.read(),
                                             mpl_file=mpl_file,
-                                            output_hdf5_file=True,
+                                            update_database=True,
                                             sample_id=sample_id,
+                                            file_name=filename,
                                         )
                                         successful_samples.add(sample_id)
                                         success_notification(
                                             "File processed",
-                                            f"{filename.split('/')[-1]}",
+                                            f"{filename}",
                                             queue=True,
                                         )
                         except Exception as e:
                             logger.exception("Error processing file: %s", filename)
                             error_notification(
                                 "Error processing file",
-                                f"{filename.split('/')[-1]}: {e!s}",
+                                f"{filename}: {e!s}",
                                 queue=True,
                             )
 
