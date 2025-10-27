@@ -43,13 +43,13 @@ def hash_dataframe(df: pd.DataFrame) -> str:
     sample ID is lost, data is converted between different formats, etc., it can
     still be associated with the same job.
     """
-    if "V (V)" not in df:
-        msg = "Dataframe must have V (V) column to hash"
+    if "V (V)" not in df or "I (A)" not in df:
+        msg = "Dataframe must have V (V) and I (A) column to hash"
         raise ValueError(msg)
     if len(df) < 10:
         msg = "Dataframe must have at least 10 points to hash"
         raise ValueError(msg)
-    formatted = [f"{v:.6g}" for v in df["V (V)"].iloc[:10]]
+    formatted = [f"{v:.6g}" for v in df["V (V)"].iloc[:10]] + [f"{v:.6g}" for v in df["I (A)"].iloc[:10]]
     canon_string = ",".join(formatted).encode("utf-8")
     return str(uuid.uuid5(NAMESPACE_UUID, canon_string))
 
