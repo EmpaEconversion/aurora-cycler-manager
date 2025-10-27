@@ -5,5 +5,5 @@ repos:
       - id: ruff-check
         # These rules are kept as warnings in an IDE and discouraged, but will not fail pre-commit
         # Rules that are fully ignored are in pyproject.toml
-        args: ["--fix", "--ignore=PTH,C901,PLR0911,PLR0912,PLR0913,PLR0915,PLW0603,BLE001,TRY400,PERF203,DTZ005,DTZ006,DTZ007,FIX002,FBT001,FBT002"]
+        args: ["--diff", "--ignore=PTH,C901,PLR0911,PLR0912,PLR0913,PLR0915,PLW0603,BLE001,TRY400,PERF203,DTZ005,DTZ006,DTZ007,FIX002,FBT001,FBT002"]
       - id: ruff-format
