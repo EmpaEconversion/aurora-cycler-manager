@@ -242,6 +242,8 @@ def create_database(force: bool = False) -> None:
             "`Job ID on server` VARCHAR(255), "
             "`Submitted` DATETIME, "
             "`Payload` TEXT, "
+            "`Unicycler protocol` TEXT, "
+            "`Capacity (mAh)` FLOAT, "
             "`Comment` TEXT, "
             "`Last checked` DATETIME, "
             "`Snapshot status` VARCHAR(3), "

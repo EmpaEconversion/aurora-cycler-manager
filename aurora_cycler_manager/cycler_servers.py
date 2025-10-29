@@ -737,24 +737,34 @@ class BiologicServer(CyclerServer):
     ) -> tuple[str, str, str]:
         """Submit a job to the server.
 
+        Payload can be
+        - a unicycler protocol (dict, or path to JSON file)
+        - a Biologic mps settings file (string, or path to mps file)
+
         Uses the start command on the aurora-biologic CLI.
         """
-        # Parse the input into an xml string
+        # Parse the input into an mps string
         if not isinstance(payload, str | Path | dict):
-            msg = "For Biologic, payload must be a unicycler protocol, either a dict, or path to a JSON file."
+            msg = "For Biologic, payload must be a string, path or dict of a unicycler protocol or mps settings file."
             raise TypeError(msg)
         if isinstance(payload, dict):  # assume unicycler dict
             mps_string = Protocol.from_dict(payload, sample, capacity_Ah * 1000).to_biologic_mps()
-        elif isinstance(payload, (Path, str)):  # it is a file path
-            payload = Path(payload)
-            if not payload.exists():
-                raise FileNotFoundError
-            if payload.suffix == ".json":
-                with payload.open(encoding="utf-8") as f:
-                    mps_string = Protocol.from_dict(json.load(f), sample, capacity_Ah * 1000).to_biologic_mps()
+        elif isinstance(payload, (Path, str)):  # it is a file path or mps string
+            if isinstance(payload, str) and payload.startswith("EC-LAB SETTING FILE"):
+                mps_string = payload
             else:
-                msg = "Payload must be a path to a unicycler json file or dict."
-                raise TypeError(msg)
+                payload = Path(payload)
+                if not payload.exists():
+                    raise FileNotFoundError
+                if payload.suffix == ".json":
+                    with payload.open(encoding="utf-8") as f:
+                        mps_string = Protocol.from_dict(json.load(f), sample, capacity_Ah * 1000).to_biologic_mps()
+                elif payload.suffix == ".mps":
+                    with payload.open(encoding="utf-8") as f:
+                        mps_string = f.read()
+                else:
+                    msg = "Payload path must be a path to a unicycler json file or dict, or path to an mps file."
+                    raise TypeError(msg)
 
         # Check the mps string is valid
         if not mps_string.startswith("EC-LAB SETTING FILE"):
