@@ -628,8 +628,8 @@ upload_modal = dmc.Modal(
                 [
                     dmc.ListItem("Samples as a .json file"),
                     dmc.ListItem("Data as a .zip - subfolders must be Sample ID"),
-                    dmc.ListItem("BattINFO .xlsx and .jsonld files"),
-                    dmc.ListItem("Auxiliary .jsonld files"),
+                    dmc.ListItem("BattINFO .xlsx and .jsonld and auxiliary .jsonld files"),
+                    dmc.ListItem("Unicycler protocols as a .json file"),
                 ]
             ),
             dcc.Upload(
