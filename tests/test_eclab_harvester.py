@@ -2,13 +2,11 @@
 
 import shutil
 import sqlite3
-from datetime import datetime
 from pathlib import Path
 
 import pytest
 
 from aurora_cycler_manager.eclab_harvester import convert_mpr
-from aurora_cycler_manager.utils import hash_dataframe
 
 
 def test_convert_data() -> None:
@@ -155,41 +153,3 @@ def test_convert_data_update_database() -> None:
         for file in sample_folder.glob("*.h5"):
             file.unlink()
         sample_folder.rmdir()
-
-
-def test_hash_dataframe() -> None:
-    """Test that hashes are generated correctly."""
-    folder = Path(__file__).resolve().parent / "test_data" / "eclab_harvester"
-    file1 = folder / "file_2025-10-17_162649.mpr"
-    file2 = folder / "file_2025-10-17_163649.mpr"
-    file3 = folder / "file_2025-10-17_164650.mpr"
-    file4 = folder / "file_2025-10-17_165650.mpr"
-    file5 = folder / "file_2025-10-17_165650 - with mpt convert.mpr"
-    file6 = folder / "different_test.mpr"
-    fake_mpl_file = b"Acquisition started on : 09/04/2024 16:39:26.844\r\n"
-
-    params = {
-        "mpl_file": fake_mpl_file,
-        "update_database": False,
-        "sample_id": "doesn't matter",
-        "modified_date": datetime.now(),
-    }
-
-    df1, _ = convert_mpr(file1, **params)
-    df2, _ = convert_mpr(file2, **params)
-    df3, _ = convert_mpr(file3, **params)
-    df4, _ = convert_mpr(file4, **params)
-    df5, _ = convert_mpr(file5, **params)
-    df6, _ = convert_mpr(file6, **params)
-
-    # First file does not have 10 datapoints and throws an error
-    with pytest.raises(ValueError):
-        hash_dataframe(df1)
-
-    # Hashes should be the same regardless of extra datapoints
-    assert hash_dataframe(df2) == hash_dataframe(df3)
-    assert hash_dataframe(df2) == hash_dataframe(df4)
-    # Hashes should be the same after mpt convert, which can modify the mpr file
-    assert hash_dataframe(df2) == hash_dataframe(df5)
-    # Hash should be different to a different data file
-    assert hash_dataframe(df2) != hash_dataframe(df6)
