@@ -29,6 +29,7 @@ def _read_config_file() -> dict:
         user_config_path = config_dir / "test_config.json"
     # Check if using a custom configuration, e.g. for testing
     elif custom_config_path:
+        logger.warning("Using custom config file %s", custom_config_path)
         user_config_path = Path(custom_config_path)
         config_dir = user_config_path.parent
         if not user_config_path.exists():
