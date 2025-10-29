@@ -156,6 +156,20 @@ def patch_database(config: dict) -> None:
             cursor.execute("ALTER TABLE jobs ADD COLUMN `Capacity (mAh)` FLOAT")
         if "Unicycler protocol" not in columns:
             cursor.execute("ALTER TABLE jobs ADD COLUMN `Unicycler protocol` TEXT")
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS dataframes ("
+            "`Sample ID` TEXT NOT NULL, "
+            "`File stem` TEXT NOT NULL, "
+            "`Job ID` TEXT, "
+            "`From known source` BOOLEAN, "
+            "`Data start` TIMESTAMP, "
+            "`Data end` TIMESTAMP, "
+            "`Modified` TIMESTAMP, "
+            "PRIMARY KEY (`Sample ID`, `File stem`), "
+            "FOREIGN KEY(`Sample ID`) REFERENCES samples(`Sample ID`), "
+            "FOREIGN KEY(`Job ID`) REFERENCES jobs(`Job ID`)"
+            ")",
+        )
         conn.commit()
 
 

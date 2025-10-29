@@ -677,6 +677,9 @@ class ServerManager:
             if not sample_id:
                 logger.warning("Job %s has no sample, skipping.", jobid)
                 continue
+            if not jobid_on_server:
+                logger.warning("Job %s has no job ID on server, skipping.", jobid)
+                continue
             # Check that sample is known
             if sample_id == "Unknown":
                 logger.warning("Job %s has no sample name or payload, skipping.", jobid)

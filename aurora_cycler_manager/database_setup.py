@@ -294,6 +294,20 @@ def create_database(force: bool = False) -> None:
             ")",
         )
         cursor.execute(
+            "CREATE TABLE IF NOT EXISTS dataframes ("
+            "`Sample ID` TEXT NOT NULL, "
+            "`File stem` TEXT NOT NULL, "
+            "`Job ID` TEXT, "
+            "`From known source` BOOLEAN, "
+            "`Data start` TIMESTAMP, "
+            "`Data end` TIMESTAMP, "
+            "`Modified` TIMESTAMP, "
+            "PRIMARY KEY (`Sample ID`, `File stem`), "
+            "FOREIGN KEY(`Sample ID`) REFERENCES samples(`Sample ID`), "
+            "FOREIGN KEY(`Job ID`) REFERENCES jobs(`Job ID`)"
+            ")",
+        )
+        cursor.execute(
             "CREATE TABLE IF NOT EXISTS harvester ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, "
             "`Server label` TEXT, "

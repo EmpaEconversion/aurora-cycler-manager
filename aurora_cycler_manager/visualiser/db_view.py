@@ -18,21 +18,28 @@ import dash_ag_grid as dag
 import dash_mantine_components as dmc
 import pandas as pd
 import paramiko
+from aurora_unicycler import Protocol
+from battinfoconverter_backend.json_convert import convert_excel_to_jsonld
 from dash import ALL, Dash, Input, NoUpdate, Output, State, callback, clientside_callback, dcc, html, no_update
 from dash import callback_context as ctx
 from dash.exceptions import PreventUpdate
 from flask import abort, send_file
 from flask.typing import ResponseReturnValue
 
-from aurora_cycler_manager.analysis import update_sample_metadata
+from aurora_cycler_manager.analysis import analyse_sample, update_sample_metadata
+from aurora_cycler_manager.battinfo_utils import merge_battinfo_with_db_data
 from aurora_cycler_manager.bdf_converter import aurora_to_bdf
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import (
+    add_protocol_to_job,
     add_samples_from_object,
     delete_samples,
+    get_all_sampleids,
     get_batch_details,
+    get_sample_data,
     update_sample_label,
 )
+from aurora_cycler_manager.eclab_harvester import convert_mpr
 from aurora_cycler_manager.server_manager import ServerManager
 from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.visualiser.db_batch_edit import (
@@ -83,7 +90,7 @@ def cleanup_temp_folder() -> None:
     for f in DOWNLOAD_DIR.iterdir():
         if f.is_file():
             creation_uts = f.stat().st_birthtime
-            now_uts = datetime.now().timestamp()  # noqa: DTZ005
+            now_uts = datetime.now().timestamp()
             age = now_uts - creation_uts
             if age > 3600:
                 f.unlink()
@@ -169,9 +176,9 @@ BUTTONS = [
     "snapshot-button",
     "create-batch-button",
     "delete-button",
-    "add-samples-button",
     "label-button",
     "download-button",
+    "upload-button",
 ]
 visibility_settings = {
     "batches": {
@@ -193,11 +200,13 @@ visibility_settings = {
         "label-button",
         "create-batch-button",
         "download-button",
+        "upload-button",
     },
     "jobs": {
         "table-container",
         "cancel-button",
         "snapshot-button",
+        "upload-button",
     },
     "results": {
         "table-container",
@@ -205,16 +214,17 @@ visibility_settings = {
         "label-button",
         "create-batch-button",
         "download-button",
+        "upload-button",
     },
     "samples": {
         "table-container",
         "view-button",
         "batch-button",
         "delete-button",
-        "add-samples-button",
         "label-button",
         "create-batch-button",
         "download-button",
+        "upload-button",
     },
 }
 
@@ -232,6 +242,7 @@ button_layout = dmc.Flex(
                     "Copy",
                     leftSection=html.I(className="bi bi-clipboard"),
                     id="copy-button",
+                    disabled=True,
                 ),
                 dmc.Button(
                     "Load",
@@ -292,22 +303,16 @@ button_layout = dmc.Flex(
                     color="red",
                 ),
                 dmc.Button(
+                    "Upload",
+                    leftSection=html.I(className="bi bi-upload"),
+                    id="upload-button",
+                    className="me-1",
+                ),
+                dmc.Button(
                     "Download",
                     leftSection=html.I(className="bi bi-download"),
                     id="download-button",
                     className="me-1",
-                ),
-                dcc.Upload(
-                    dmc.Button(
-                        "Add samples",
-                        leftSection=html.I(className="bi bi-database-add"),
-                        id="add-samples-button-element",
-                    ),
-                    id="add-samples-button",
-                    accept=".json",
-                    max_size=2 * 1024 * 1024,
-                    multiple=False,
-                    style_disabled={"opacity": "1"},
                 ),
             ],
         ),
@@ -613,6 +618,52 @@ download_modal = dmc.Modal(
     centered=True,
 )
 
+upload_modal = dmc.Modal(
+    title="Upload",
+    children=dmc.Stack(
+        [
+            dcc.Store(id="upload-store", data={"file": None, "data": None}),
+            dmc.Text("You can upload:"),
+            dmc.List(
+                [
+                    dmc.ListItem("Samples as a .json file"),
+                    dmc.ListItem("Data as a .zip - subfolders must be Sample ID"),
+                    dmc.ListItem("BattINFO .xlsx and .jsonld and auxiliary .jsonld files"),
+                    dmc.ListItem("Unicycler protocols as a .json file"),
+                ]
+            ),
+            dcc.Upload(
+                dmc.Button(
+                    "Drag & drop or select file",
+                    id="upload-data-button-element",
+                    fullWidth=True,
+                    style={"width": "100%"},
+                ),
+                id="upload-data-button",
+                accept=".json,.zip,.xlsx,.jsonld",
+                max_size=512 * 1024 * 1024,
+                multiple=False,
+                style={"display": "block", "width": "100%"},
+            ),
+            dmc.Alert(
+                title="File status",
+                children="You haven't uploaded anything",
+                color="gray",
+                id="upload-alert",
+                style={"white-space": "pre-wrap"},
+            ),
+            dmc.Button(
+                "Confirm",
+                id="upload-data-confirm-button",
+                disabled=True,
+            ),
+        ],
+    ),
+    id="upload-modal",
+    centered=True,
+    size="lg",
+)
+
 # ------------------------------- Main layout -------------------------------- #
 
 
@@ -669,6 +720,7 @@ db_view_layout = html.Div(
         delete_modal,
         label_modal,
         download_modal,
+        upload_modal,
     ],
 )
 
@@ -811,8 +863,8 @@ def register_db_view_callbacks(app: Dash) -> None:
     def enable_buttons(selected_rows: list, table: str) -> tuple[bool, ...]:
         enabled = set()
         # Add buttons to enabled set with union operator |=
-        if database_access and table == "samples":
-            enabled |= {"add-samples-button"}
+        if database_access:
+            enabled |= {"upload-button"}
         if selected_rows:
             enabled |= {"copy-button"}
             if len(selected_rows) <= 200:  # To avoid enormous zip files being stored
@@ -1375,46 +1427,6 @@ def register_db_view_callbacks(app: Dash) -> None:
         delete_samples(sample_ids)
         return 1
 
-    # Add samples button pop up
-    @app.callback(
-        Output("refresh-database", "n_clicks", allow_duplicate=True),
-        Output("add-samples-confirm", "displayed"),
-        Input("add-samples-button", "contents"),
-        State("add-samples-button", "filename"),
-        prevent_initial_call=True,
-    )
-    def upload_samples(contents: str, filename: str) -> tuple[int | NoUpdate, bool | NoUpdate]:
-        if contents:
-            _content_type, content_string = contents.split(",")
-            decoded = base64.b64decode(content_string).decode("utf-8")
-            samples = json.loads(decoded)
-            logger.info("Adding samples %s", filename)
-            try:
-                add_samples_from_object(samples)
-            except ValueError as e:
-                if "already exist" in str(e):
-                    logger.warning("Sample upload would overwrite existing samples")
-                    return no_update, True  # Open confirm dialog
-            return 1, no_update  # Refresh the database
-        raise PreventUpdate
-
-    @app.callback(
-        Output("refresh-database", "n_clicks", allow_duplicate=True),
-        Input("add-samples-confirm", "submit_n_clicks"),
-        State("add-samples-button", "contents"),
-        State("add-samples-button", "filename"),
-        prevent_initial_call=True,
-    )
-    def upload_overwrite_samples(submit_n_clicks: int, contents: str, filename: str) -> int:
-        if submit_n_clicks and contents:
-            _content_type, content_string = contents.split(",")
-            decoded = base64.b64decode(content_string).decode("utf-8")
-            samples = json.loads(decoded)
-            logger.info("Adding samples %s", filename)
-            add_samples_from_object(samples, overwrite=True)
-            return 1
-        raise PreventUpdate
-
     # Label button pop up
     @app.callback(
         Output("label-modal", "opened"),
@@ -1451,15 +1463,6 @@ def register_db_view_callbacks(app: Dash) -> None:
         logger.info("Updating metadata in cycles.*.json and full.*.h5 files")
         update_sample_metadata(sample_ids)
         return 1
-
-    # Synchronise add-samples button disabled state
-    @app.callback(
-        Output("add-samples-button-element", "disabled"),
-        Input("add-samples-button", "disabled"),
-        prevent_initial_call=True,
-    )
-    def disabled_sync(disabled: bool) -> bool:
-        return disabled
 
     # When download button is pressed, open the modal
     @app.callback(
@@ -1616,7 +1619,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         """Route to download files from the server."""
         try:
             file_path = (DOWNLOAD_DIR / filename).resolve()
-        except Exception:  # noqa: BLE001
+        except Exception:
             abort(400)
         if not str(file_path).startswith(str(DOWNLOAD_DIR)):  # Traversal attack
             abort(403)
@@ -1624,3 +1627,406 @@ def register_db_view_callbacks(app: Dash) -> None:
             return send_file(str(file_path), as_attachment=True, download_name="aurora-data.zip")
         abort(404)
         return None
+
+    # When upload button is pressed, open the modal
+    @app.callback(
+        Output("upload-modal", "opened", allow_duplicate=True),
+        Input("upload-button", "n_clicks"),
+        Input("upload-data-confirm-button", "n_clicks"),
+        State("upload-modal", "opened"),
+        prevent_initial_call=True,
+    )
+    def upload_data_open_modal(_n_clicks: int, _n_yes_clicks: int, is_open: bool) -> bool:
+        if not ctx.triggered:
+            raise PreventUpdate
+        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        if button_id in {"upload-button", "upload-data-confirm-button"}:
+            return not is_open
+        raise PreventUpdate
+
+    # Figure out what was just uploaded and tell the user
+    @app.callback(
+        Output("upload-alert", "children"),
+        Output("upload-alert", "color"),
+        Output("upload-data-confirm-button", "disabled"),
+        Output("upload-store", "data"),
+        Input("upload-data-button", "contents"),
+        State("upload-data-button", "filename"),
+        State("selected-rows-store", "data"),
+        prevent_initial_call=True,
+    )
+    def figure_out_files(contents: str, filename: str, selected_rows: list) -> tuple[str, str, bool, dict]:
+        _content_type, content_string = contents.split(",")
+        if not content_string:
+            return "Nothing uploaded", "grey", True, {"file": None, "data": None}
+
+        if filename.endswith((".jsonld", ".json")):
+            # It could be ontology or samples
+            decoded = base64.b64decode(content_string)
+            data = json.loads(decoded)
+            if is_samples_json(data):
+                samples = [d.get("Sample ID") for d in data]
+                known_samples = set(get_all_sampleids())
+                overwriting_samples = [s for s in samples if s in known_samples]
+                if overwriting_samples:
+                    return (
+                        f"Got a samples json\nContains{len(samples)} samples\n"
+                        f"WARNING - it will overwrite {len(overwriting_samples)} samples:\n"
+                        + "\n".join(overwriting_samples),
+                        "orange",
+                        False,
+                        {"file": "samples-json", "data": data},
+                    )
+                return (
+                    f"Got a samples json\nContains {len(samples)} samples",
+                    "green",
+                    False,
+                    {"file": "samples-json", "data": data},
+                )
+
+            samples = [s.get("Sample ID") for s in selected_rows if s.get("Sample ID")]
+            if is_battinfo_jsonld(data):
+                if not samples:
+                    return (
+                        "Got a BattINFO json-ld, but you must select samples.",
+                        "red",
+                        True,
+                        {"file": None, "data": None},
+                    )
+                return (
+                    "Got a BattINFO json-ld\n"
+                    "The metadata will be merged with info from the database\n"
+                    f"It will be applied to {len(samples)} samples:\n" + "\n".join(samples),
+                    "green",
+                    False,
+                    {"file": "battinfo-jsonld", "data": data},
+                )
+            if is_aux_jsonld(data):
+                if not samples:
+                    return (
+                        "Got an auxiliary json-ld, but you must select samples.",
+                        "red",
+                        True,
+                        {"file": None, "data": None},
+                    )
+                return (
+                    "Got an auxiliary json-ld\n"
+                    "Each sample can have one auxiliary file that is merged when outputting\n"
+                    f"I will apply it to {len(samples)} samples:\n" + "\n".join(samples),
+                    "green",
+                    False,
+                    {"file": "aux-jsonld", "data": data},
+                )
+            if is_unicycler_protocol(data):
+                jobs = [s.get("Job ID") for s in selected_rows if s.get("Job ID")]
+                if not jobs:
+                    return (
+                        "Got a unicycler protocol, but you must select jobs.",
+                        "red",
+                        True,
+                        {"file": None, "data": None},
+                    )
+                protocols = [s.get("Unicycer protocol") for s in selected_rows if s.get("Unicycer protocol")]
+                if protocols:
+                    return (
+                        "Got a unicycler protocol.\nWARNING - this will overwrite data",
+                        "orange",
+                        False,
+                        {"file": "unicycler-json", "data": data},
+                    )
+                return (
+                    "Got a unicycler protocol.",
+                    "green",
+                    False,
+                    {"file": "unicycler-json", "data": data},
+                )
+
+        elif filename.endswith(".xlsx"):
+            # It is probably a battinfo xlsx file
+            decoded = base64.b64decode(content_string)
+            excel_file = pd.ExcelFile(io.BytesIO(decoded))
+            sheet_names = [str(s) for s in excel_file.sheet_names]
+            expected_sheets = ["Schema", "@context-TopLevel", "@context-Connector", "Ontology - Unit", "Unique ID"]
+            if not all(sheet in expected_sheets for sheet in sheet_names):
+                return (
+                    "Excel file does not have the expected sheets"
+                    "Found: " + ", ".join(sheet_names) + "\n"
+                    "Expected: " + ", ".join(expected_sheets),
+                    "red",
+                    True,
+                    {"file": None, "data": None},
+                )
+            samples = [s.get("Sample ID") for s in selected_rows]
+            if not samples:
+                return "Got a BattINFO xlsx, but you must select samples.", "red", True, {"file": None, "data": None}
+            return (
+                "Got a BattINFO xlsx\n"
+                "The metadata will be merged with info from the database\n"
+                f"It will be applied to {len(samples)} samples:\n" + "\n".join(samples),
+                "green",
+                False,
+                {"file": "battinfo-xlsx", "data": None},  # Don't copy the content_string
+            )
+
+        elif filename.endswith(".zip"):
+            # It is probably data, look for mpr and ndax files
+            # Decode the base64 string
+            decoded = base64.b64decode(content_string)
+
+            # Wrap in BytesIO so we can use it like a file
+            zip_buffer = io.BytesIO(decoded)
+
+            # Open the zip archive
+            with zipfile.ZipFile(zip_buffer, "r") as zip_file:
+                # List the contents
+                valid_files = {}
+                invalid_files = {}
+                file_list = zip_file.namelist()
+                known_samples = set(get_all_sampleids())
+                for file in file_list:
+                    logger.info("Checking file %s", file)
+                    if file.endswith("/"):
+                        # Just a folder
+                        continue
+                    parts = file.split("/")
+                    if len(parts) < 2:
+                        invalid_files[file] = "File must be inside a Sample ID folder"
+                        continue
+                    folder = parts[-2]
+                    if folder not in known_samples:
+                        invalid_files[file] = f"Folder {folder} is not a Sample ID in the database"
+                        continue
+                    filetype = file.split(".")[-1]
+                    if filetype not in ["mpr"]:
+                        invalid_files[file] = f"Filetype {filetype} is not supported"
+                        continue
+                    if filetype in ["mpl"]:  # silently ignore - sidecar file
+                        continue
+                    valid_files[file] = folder
+            if valid_files:
+                msg = "Got a zip with valid files\nAdding data for the following samples:\n" + "\n".join(
+                    sorted(set(valid_files.values()))
+                )
+                if not invalid_files:
+                    return msg, "green", False, {"file": "zip", "data": valid_files}
+                if invalid_files:
+                    msg += "\n\nSKIPPING the following files:\n" + "\n".join(
+                        file + "\n" + reason for file, reason in invalid_files.items()
+                    )
+                    return msg, "orange", False, {"file": "zip", "data": valid_files}
+            if invalid_files:
+                msg = "No valid files found:\n" + "\n".join(
+                    file + "\n" + reason for file, reason in invalid_files.items()
+                )
+                return msg, "red", True, {"file": None, "data": None}
+            return "No files found in zip", "red", False, {"file": None, "data": None}
+
+        return "File not understood", "red", True, {"file": None, "data": None}
+
+    def is_samples_json(obj: list | str | dict) -> bool:
+        """Check if an uploaded json object is a samples file."""
+        return isinstance(obj, list) and all(isinstance(s, dict) for s in obj) and all(s.get("Sample ID") for s in obj)
+
+    def is_battinfo_jsonld(obj: list | str | dict) -> bool:
+        """Check if an uploaded jsonld object is a battinfo file."""
+        if isinstance(obj, dict) and obj.get("@context"):
+            comments = obj.get("rdfs:comment")
+            return isinstance(comments, list) and len(comments) >= 1 and comments[0].startswith("BattINFO")
+        return False
+
+    def is_aux_jsonld(obj: list | str | dict) -> bool:
+        return isinstance(obj, dict) and bool(obj.get("@context")) and (not is_battinfo_jsonld(obj))
+
+    def is_unicycler_protocol(obj: list | str | dict) -> bool:
+        return isinstance(obj, dict) and bool(obj.get("unicycler"))
+
+    # If you leave the upload modal, wipe the contents
+    @app.callback(
+        Output("upload-data-button", "contents"),
+        Output("upload-data-button", "filename"),
+        Input("upload-modal", "opened"),
+        prevent_initial_call=True,
+    )
+    def wipe_upload(is_open: bool) -> tuple[str, str]:
+        if not is_open:
+            return ",", ""
+        raise PreventUpdate
+
+    # When hitting confirm, process the file
+    @app.callback(
+        Output("refresh-database", "n_clicks", allow_duplicate=True),
+        Input("upload-data-confirm-button", "n_clicks"),
+        State("upload-store", "data"),
+        State("upload-data-button", "contents"),
+        State("selected-rows-store", "data"),
+        running=[
+            (Output("loading-message-store", "data"), "Processing data...", ""),
+            (Output("notify-interval", "interval"), active_time, idle_time),
+        ],
+        prevent_initial_call=True,
+    )
+    def process_file(n_clicks: int, data: dict, contents: str, selected_rows: list) -> int:
+        if not n_clicks:
+            raise PreventUpdate
+        _content_type, content_string = contents.split(",")
+        if not content_string:
+            msg = "No contents"
+            raise ValueError(msg)
+        match data.get("file"):
+            case "samples-json":
+                logger.info("Adding samples from file")
+                samples = data["data"]
+                try:
+                    logger.info("Adding samples %s", ", ".join(s.get("Sample ID") for s in samples))
+                    add_samples_from_object(samples, overwrite=True)
+                except Exception as e:
+                    logger.exception("Error adding samples")
+                    error_notification(
+                        "Error adding samples",
+                        f"{e!s}",
+                        queue=True,
+                    )
+                    return 0
+                success_notification(
+                    "Samples added",
+                    f"{len(samples)} added to database",
+                    queue=True,
+                )
+                return 1
+
+            case "battinfo-jsonld" | "battinfo-xlsx":
+                try:
+                    # If xlsx, first convert to dict
+                    battinfo_jsonld = (
+                        convert_excel_to_jsonld(io.BytesIO(base64.b64decode(content_string)))
+                        if data["file"] == "battinfo-xlsx"
+                        else data["data"]
+                    )
+
+                    # Merge json with database info and save
+                    samples = [s.get("Sample ID") for s in selected_rows if s.get("Sample ID")]
+                    for s in samples:
+                        sample_data = get_sample_data(s)
+                        merged_jsonld = merge_battinfo_with_db_data(battinfo_jsonld, sample_data)
+                        run_id = run_from_sample(s)
+                        save_path = CONFIG["Processed snapshots folder path"] / run_id / s / f"battinfo.{s}.jsonld"
+                        logger.info("Saving battinfo json-ld file to %s", save_path)
+                        save_path.parent.mkdir(parents=True, exist_ok=True)
+                        with save_path.open("w", encoding="utf-8") as f:
+                            json.dump(merged_jsonld, f, indent=4)
+                    success_notification(
+                        "BattINFO json-ld uploaded",
+                        f"JSON-LD merged with data from {len(samples)} samples",
+                        queue=True,
+                    )
+                except Exception as e:
+                    logger.exception("Failed to convert, merge, save BattINFO json-ld")
+                    error_notification(
+                        "Error saving BattINFO json-ld",
+                        f"{e!s}",
+                        queue=True,
+                    )
+                return 1
+
+            case "aux-jsonld":
+                # No need to convert or add anything, just save the file
+                try:
+                    aux_jsonld = data["data"]
+                    samples = [s.get("Sample ID") for s in selected_rows if s.get("Sample ID")]
+                    for s in samples:
+                        run_id = run_from_sample(s)
+                        save_path = CONFIG["Processed snapshots folder path"] / run_id / s / f"aux.{s}.jsonld"
+                        logger.info("Saving auxiliary json-ld to %s", save_path)
+                        save_path.parent.mkdir(parents=True, exist_ok=True)
+                        with save_path.open("w", encoding="utf-8") as f:
+                            json.dump(aux_jsonld, f, indent=4)
+                    success_notification(
+                        "Aux json-ld uploaded",
+                        f"Aux JSON-LD added to {len(samples)} samples",
+                        queue=True,
+                    )
+                except Exception as e:
+                    logger.exception("Failed to upload auxiliary json-ld")
+                    error_notification(
+                        "Error saving aux json-ld",
+                        f"{e!s}",
+                        queue=True,
+                    )
+                return 1
+
+            case "unicycler-json":
+                try:
+                    protocol = data["data"]
+                    Protocol.from_dict(protocol)
+                    jobs = [s.get("Job ID") for s in selected_rows if s.get("Job ID")]
+                    for job in jobs:
+                        add_protocol_to_job(job, protocol)
+                    success_notification(
+                        "Protocols added",
+                        f"Protocols added to {len(jobs)} jobs",
+                        queue=True,
+                    )
+                except (ValueError, AttributeError, TypeError) as e:
+                    logger.exception("Error processing and uploading unicycler protocol")
+                    error_notification(
+                        "Error adding protocol",
+                        f"{e}",
+                        queue=True,
+                    )
+                return 1
+
+            case "zip":
+                zip_buffer = io.BytesIO(base64.b64decode(content_string))
+                valid_files = data["data"]
+                successful_samples = set()
+                with zipfile.ZipFile(zip_buffer, "r") as zip_file:
+                    for filepath, sample_id in valid_files.items():
+                        filename = filepath.split("/")[-1]
+                        try:
+                            with zip_file.open(filepath) as file:
+                                match filename.split(".")[-1]:
+                                    case "mpr":
+                                        # Check if there is an associated mpl file
+                                        mpl_filename = filename.replace(".mpr", ".mpl")
+                                        if mpl_filename in zip_file.namelist():
+                                            with zip_file.open(mpl_filename) as f:
+                                                mpl_file = f.read()
+                                        else:
+                                            mpl_file = None
+                                        # Convert and save hdf from mpr file
+                                        logger.info("Processing file: %s", filename)
+                                        convert_mpr(
+                                            file.read(),
+                                            mpl_file=mpl_file,
+                                            update_database=True,
+                                            sample_id=sample_id,
+                                            file_name=filename,
+                                        )
+                                        successful_samples.add(sample_id)
+                                        success_notification(
+                                            "File processed",
+                                            f"{filename}",
+                                            queue=True,
+                                        )
+                        except Exception as e:
+                            logger.exception("Error processing file: %s", filename)
+                            error_notification(
+                                "Error processing file",
+                                f"{filename}: {e!s}",
+                                queue=True,
+                            )
+
+                for sample_id in successful_samples:
+                    logger.info("Analysing sample: %s", sample_id)
+                    analyse_sample(sample_id)
+                    success_notification("Sample analysed", f"{sample_id}", queue=True)
+                success_notification(
+                    "All data processed and analysed",
+                    f"{len(valid_files)} files added to database",
+                    queue=True,
+                )
+                return 1
+
+            case _:
+                error_notification("Oh no", f"Could not understand filetype {data}")
+                return 0
