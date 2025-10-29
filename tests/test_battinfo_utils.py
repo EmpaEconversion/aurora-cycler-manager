@@ -165,12 +165,20 @@ def test_merge_battinfo_with_db() -> None:
     assert "240709_svfe_gen8_01" in result["schema:productID"]
     assert "empa__ccid000605" in result["schema:productID"]
     assert result["schema:dateCreated"] == "2024-07-11"
-    assert result["hasNegativeElectrode"]["hasMeasuredProperty"][-1] == {
+    assert (
+        result["hasNegativeElectrode"]["hasCoating"]["hasActiveMaterial"]["hasMeasuredProperty"]["@type"]
+        == "MassLoading"
+    )
+    assert result["hasNegativeElectrode"]["hasMeasuredProperty"] == {
         "@type": "Diameter",
         "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 15.0},
         "hasMeasurementUnit": "unit:MilliM",
     }
-    assert result["hasPositiveElectrode"]["hasMeasuredProperty"][-1] == {
+    assert (
+        result["hasPositiveElectrode"]["hasCoating"]["hasActiveMaterial"]["hasMeasuredProperty"]["@type"]
+        == "MassLoading"
+    )
+    assert result["hasPositiveElectrode"]["hasMeasuredProperty"] == {
         "@type": "Diameter",
         "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 14.0},
         "hasMeasurementUnit": "unit:MilliM",
@@ -185,11 +193,19 @@ def test_merge_battinfo_with_db() -> None:
     assert "240709_svfe_gen8_01" in result["schema:productID"]
     assert "empa__ccid000605" in result["schema:productID"]
     assert result["schema:dateCreated"] == "2024-07-11"
+    assert (
+        result["hasNegativeElectrode"]["hasCoating"]["hasActiveMaterial"]["hasMeasuredProperty"][-1]["@type"]
+        == "MassLoading"
+    )
     assert result["hasNegativeElectrode"]["hasMeasuredProperty"][-1] == {
         "@type": "Diameter",
         "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 15.0},
         "hasMeasurementUnit": "unit:MilliM",
     }
+    assert (
+        result["hasPositiveElectrode"]["hasCoating"]["hasActiveMaterial"]["hasMeasuredProperty"][-1]["@type"]
+        == "MassLoading"
+    )
     assert result["hasPositiveElectrode"]["hasMeasuredProperty"][-1] == {
         "@type": "Diameter",
         "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 14.0},
@@ -207,3 +223,69 @@ def test_merge_battinfo_with_db() -> None:
         },
     )
     assert result == battinfo_jsonld
+
+    battinfo_jsonld = {
+        "@context": ["stuff"],
+        "@type": "CoinCell",
+        "schema:version": "1.2.0",
+        "schema:productID": "this gets deleted",
+        "schema:dateCreated": "27/03/2024 this also gets deleted",
+        "schema:creator": {"@type": "schema:Person", "schema:name": "Mr Blobby"},
+        "schema:manufacturer": {
+            "@type": "schema:Organization",
+            "@id": "https://www.wikidata.org/wiki/Q683116",
+            "schema:name": "Empa",
+        },
+        "rdfs:comment": [
+            "BattINFO Converter version: 1.2.0",
+            "Software credit: blah blah blah",
+            "BattINFO CoinCellSchema version: 1.2.0",
+            "Project: some pytest stuff",
+            "Assembled manually or by robot: coneptually",
+        ],
+        "hasNegativeElectrode": {
+            "@type": "Electrode",
+            "hasCoating": {
+                "@type": "Coating",
+                "hasActiveMaterial": {
+                    "hasMeasuredProperty": {
+                        "some": "dict",
+                    },
+                },
+            },
+            "hasMeasuredProperty": {"some": "dict"},
+        },
+        "hasPositiveElectrode": {
+            "@type": "Electrode",
+            "hasMeasuredProperty": [
+                {"a": "list"},
+                {"of": "dicts"},
+            ],
+            "hasCoating": {
+                "@type": "Coating",
+                "hasActiveMaterial": {
+                    "hasMeasuredProperty": [
+                        {"another": "list"},
+                        {"of": "dicts"},
+                    ],
+                },
+            },
+        },
+    }
+    sample_data = get_sample_data("240709_svfe_gen8_01")
+    result = merge_battinfo_with_db_data(battinfo_jsonld, sample_data)
+
+    # Should be able to handle dicts and lists
+    assert "240709_svfe_gen8_01" in result["schema:productID"]
+    assert "empa__ccid000605" in result["schema:productID"]
+    assert result["schema:dateCreated"] == "2024-07-11"
+    assert result["hasNegativeElectrode"]["hasMeasuredProperty"][-1] == {
+        "@type": "Diameter",
+        "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 15.0},
+        "hasMeasurementUnit": "unit:MilliM",
+    }
+    assert result["hasPositiveElectrode"]["hasMeasuredProperty"][-1] == {
+        "@type": "Diameter",
+        "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 14.0},
+        "hasMeasurementUnit": "unit:MilliM",
+    }

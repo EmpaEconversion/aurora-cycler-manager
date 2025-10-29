@@ -7,6 +7,102 @@ from copy import deepcopy
 logger = logging.getLogger(__name__)
 
 
+def _deep_merge_dicts(target: dict, source: dict) -> dict:
+    """Recursively merge source into target."""
+    for k, v in source.items():
+        if k in target and isinstance(target[k], dict) and isinstance(v, dict):
+            _deep_merge_dicts(target[k], v)
+        elif k in target and isinstance(target[k], list) and isinstance(v, list):
+            target[k].extend(v)
+        else:
+            target[k] = v
+    return target
+
+
+def insert_dict_in_jsonld(
+    obj: dict | list,
+    keys: list[tuple],
+    new_dict: dict,
+    *,
+    merge: bool = True,
+) -> None:
+    """Insert a dict into a nested jsonld.
+
+    Args:
+        obj: The JSON-LD object to put the thing in.
+        keys: list of tuples with the key and optional exptected type, e.g.
+            [
+                ("hasPositiveElectrode", "Electrode"),
+                ("hasCoating", "Coating"),
+                ("hasActiveMaterial", None),
+                ("hasMeasuredProperty", "MassLoading"),
+            ]
+        new_dict: The dict to insert
+        merge (optional): Whether to merge or replace, default True (merge)
+
+    """
+    if not keys:
+        msg = "Keys list cannot be empty"
+        raise ValueError(msg)
+
+    key, expected_type = keys[0]
+
+    # At the end of the chain - could by empty, a dict, or a list
+    if len(keys) == 1:
+        if key not in obj or obj[key] is None:
+            obj[key] = new_dict
+        elif isinstance(obj[key], list):
+            for i, o in enumerate(obj[key]):
+                if isinstance(o, dict) and o.get("@type") == new_dict.get("@type"):
+                    if merge:
+                        _deep_merge_dicts(o, new_dict)
+                    else:
+                        obj[key][i] = new_dict
+                    break
+            else:
+                obj[key].append(new_dict)
+        elif isinstance(obj[key], dict):
+            if obj[key].get("@type") == new_dict.get("@type"):
+                if merge:
+                    _deep_merge_dicts(obj[key], new_dict)
+                else:
+                    obj[key] = new_dict
+            else:
+                obj[key] = [obj[key], new_dict]
+        else:
+            msg = f"Unexpected type at end of path: {type(obj[key])}"
+            raise TypeError(msg)
+        return
+
+    # Otherwise, recursively descend
+    if key not in obj or obj[key] is None:
+        obj[key] = {}
+
+    val = obj[key]
+
+    # If dict, descend directly
+    if isinstance(val, dict):
+        insert_dict_in_jsonld(val, keys[1:], new_dict, merge=merge)
+
+    # If list, select the dict with the expected type
+    elif isinstance(val, list):
+        target = None
+        if expected_type:
+            for el in val:
+                if isinstance(el, dict) and el.get("@type") == expected_type:
+                    target = el
+                    break
+        if not target:
+            # If no match found, create a new dict with that type
+            target = {"@type": expected_type} if expected_type else {}
+            val.append(target)
+        insert_dict_in_jsonld(target, keys[1:], new_dict, merge=merge)
+
+    else:
+        msg = f"Unexpected type in path: {type(val)}"
+        raise TypeError(msg)
+
+
 def merge_battinfo_with_db_data(battinfo_jsonld: dict, sample_data: dict) -> dict:
     """Merge info from the database with BattINFO ontology."""
     coin_cell = find_coin_cell(battinfo_jsonld)
@@ -56,18 +152,6 @@ def merge_battinfo_with_db_data(battinfo_jsonld: dict, sample_data: dict) -> dic
     # Electrode mass loading
     for xode in ("Anode", "Cathode"):
         key = "hasPositiveElectrode" if xode == "Cathode" else "hasNegativeElectrode"
-        if key not in coin_cell and sample_data.get(f"{xode} diameter (mm)"):
-            coin_cell[key] = {
-                "@type": "Electrode",
-                "hasCoating": {
-                    "@type": "Coating",
-                    "hasActiveMaterial": {
-                        "hasMeasuredProperty": [],
-                    },
-                },
-                "hasMeasuredProperty": [],
-            }
-
         if sample_data.get(f"{xode} active material mass (mg)") and sample_data.get(f"{xode} diameter (mm)"):
             mass_g = sample_data[f"{xode} active material mass (mg)"] / 1000
             area_cm = 3.14159 * (sample_data[f"{xode} diameter (mm)"] / 10) ** 2
@@ -77,40 +161,31 @@ def merge_battinfo_with_db_data(battinfo_jsonld: dict, sample_data: dict) -> dic
                 "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": mass_loading_g_per_cm2},
                 "hasMeasurementUnit": "unit:MilliGM-PER-CentiM2",
             }
-            props = coin_cell[key]["hasCoating"]["hasActiveMaterial"]["hasMeasuredProperty"]
-            if isinstance(props, dict):
-                props = mass_dict if props.get("@type") == "MassLoading" else [props.copy(), mass_dict]
-            elif isinstance(props, list):
-                for p in props:
-                    # Replace existing value
-                    if p.get("@type") == "MassLoading":
-                        p = mass_dict  # noqa: PLW2901
-                        break
-                else:
-                    # Add new value
-                    props.append(mass_dict)
+            insert_dict_in_jsonld(
+                coin_cell,
+                [
+                    (key, "Electrode"),
+                    ("hasCoating", "Coating"),
+                    ("hasActiveMaterial", None),
+                    ("hasMeasuredProperty", "MassLoading"),
+                ],
+                mass_dict,
+            )
             logger.info("Added: %s mass loading", xode)
         else:
             logger.info("Skipped: %s mass loading", xode)
 
         if sample_data.get(f"{xode} diameter (mm)"):
-            props = coin_cell[key]["hasMeasuredProperty"]
             diameter_dict = {
                 "@type": "Diameter",
                 "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": sample_data[f"{xode} diameter (mm)"]},
                 "hasMeasurementUnit": "unit:MilliM",
             }
-            if isinstance(props, dict):
-                props = diameter_dict if props.get("@type") == "Diameter" else [props.copy(), diameter_dict]
-            elif isinstance(props, list):
-                for p in props:
-                    # Replace existing value
-                    if p.get("@type") == "Diameter":
-                        p = diameter_dict  # noqa: PLW2901
-                        break
-                else:
-                    # Add new value
-                    props.append(diameter_dict)
+            insert_dict_in_jsonld(
+                coin_cell,
+                [(key, "Electrode"), ("hasMeasuredProperty", "Diameter")],
+                diameter_dict,
+            )
             logger.info("Added: %s diameter", xode)
         else:
             logger.info("Skipped: %s diameter", xode)
