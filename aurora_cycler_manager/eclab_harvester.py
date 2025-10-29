@@ -276,10 +276,10 @@ def check_mpr_uts(
                 msg = "Could not get acquisition start time from mpr, cannot find associated mpl file."
                 raise ValueError(msg)
         if isinstance(mpl_file, (str, Path)):
-            with Path(mpl_file).open(encoding="ANSI") as f:
+            with Path(mpl_file).open(encoding="cp1252") as f:
                 lines = f.readlines()
         elif isinstance(mpl_file, bytes):  # file-like object
-            text = mpl_file.decode("ANSI", errors="replace")
+            text = mpl_file.decode("cp1252", errors="replace")
             lines = text.splitlines()
         else:
             msg = "Cannot get start time from mpr or mpl file."
