@@ -18,6 +18,7 @@ import dash_ag_grid as dag
 import dash_mantine_components as dmc
 import pandas as pd
 import paramiko
+from aurora_unicycler import Protocol
 from battinfoconverter_backend.json_convert import convert_excel_to_jsonld
 from dash import ALL, Dash, Input, NoUpdate, Output, State, callback, clientside_callback, dcc, html, no_update
 from dash import callback_context as ctx
@@ -30,6 +31,7 @@ from aurora_cycler_manager.battinfo_utils import merge_battinfo_with_db_data
 from aurora_cycler_manager.bdf_converter import aurora_to_bdf
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import (
+    add_protocol_to_job,
     add_samples_from_object,
     delete_samples,
     get_all_sampleids,
@@ -1682,7 +1684,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                     {"file": "samples-json", "data": data},
                 )
 
-            samples = [s.get("Sample ID") for s in selected_rows]
+            samples = [s.get("Sample ID") for s in selected_rows if s.get("Sample ID")]
             if is_battinfo_jsonld(data):
                 if not samples:
                     return (
@@ -1714,6 +1716,29 @@ def register_db_view_callbacks(app: Dash) -> None:
                     "green",
                     False,
                     {"file": "aux-jsonld", "data": data},
+                )
+            if is_unicycler_protocol(data):
+                jobs = [s.get("Job ID") for s in selected_rows if s.get("Job ID")]
+                if not jobs:
+                    return (
+                        "Got a unicycler protocol, but you must select jobs.",
+                        "red",
+                        True,
+                        {"file": None, "data": None},
+                    )
+                protocols = [s.get("Unicycer protocol") for s in selected_rows if s.get("Unicycer protocol")]
+                if protocols:
+                    return (
+                        "Got a unicycler protocol.\nWARNING - this will overwrite data",
+                        "orange",
+                        False,
+                        {"file": "unicycler-json", "data": data},
+                    )
+                return (
+                    "Got a unicycler protocol.",
+                    "green",
+                    False,
+                    {"file": "unicycler-json", "data": data},
                 )
 
         elif filename.endswith(".xlsx"):
@@ -1811,6 +1836,9 @@ def register_db_view_callbacks(app: Dash) -> None:
 
     def is_aux_jsonld(obj: list | str | dict) -> bool:
         return isinstance(obj, dict) and bool(obj.get("@context")) and (not is_battinfo_jsonld(obj))
+
+    def is_unicycler_protocol(obj: list | str | dict) -> bool:
+        return isinstance(obj, dict) and bool(obj.get("unicycler"))
 
     # If you leave the upload modal, wipe the contents
     @app.callback(
@@ -1922,6 +1950,27 @@ def register_db_view_callbacks(app: Dash) -> None:
                     error_notification(
                         "Error saving aux json-ld",
                         f"{e!s}",
+                        queue=True,
+                    )
+                return 1
+
+            case "unicycler-json":
+                try:
+                    protocol = data["data"]
+                    Protocol.from_dict(protocol)
+                    jobs = [s.get("Job ID") for s in selected_rows if s.get("Job ID")]
+                    for job in jobs:
+                        add_protocol_to_job(job, protocol)
+                    success_notification(
+                        "Protocols added",
+                        f"Protocols added to {len(jobs)} jobs",
+                        queue=True,
+                    )
+                except (ValueError, AttributeError, TypeError) as e:
+                    logger.exception("Error processing and uploading unicycler protocol")
+                    error_notification(
+                        "Error adding protocol",
+                        f"{e}",
                         queue=True,
                     )
                 return 1
