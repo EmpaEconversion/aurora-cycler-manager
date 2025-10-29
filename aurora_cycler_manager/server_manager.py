@@ -10,6 +10,7 @@ Server manager takes functions like load, submit, snapshot, update etc. sends
 commands to the appropriate server, and handles the database updates.
 """
 
+import contextlib
 import json
 import logging
 import sqlite3
@@ -22,6 +23,7 @@ from typing import Literal
 
 import pandas as pd
 import paramiko
+from aurora_unicycler import Protocol
 
 from aurora_cycler_manager import analysis, config, cycler_servers
 from aurora_cycler_manager.utils import run_from_sample
@@ -534,8 +536,11 @@ class ServerManager:
             sample : str
                 The sample ID to submit the job for, must exist in samples table of database
             payload : str or dict
-                (tomato) A .json path, json string, or dictionary with payload to submit to the server
-                (Neware) A .xml path or xml string with payload to submit to the server
+                Preferably an aurora-unicycler dictionary - this is auto-converted to the right format for each cycler
+                In addition, different cyclers can accept different payload formats
+                (tomato) A .json path, json string, or dictionary with a tomato payload
+                (Neware) A .xml path or xml string with a Neware protocol
+                (Biologic) A .mps path or mps string with a Biologic protocol
             capacity_Ah : float or str
                 The capacity of the sample in Ah, if 'areal', 'mass', or 'nominal', the capacity is
                 calculated from the sample information
@@ -561,6 +566,16 @@ class ServerManager:
         server = self.find_server(result[0][0])
         pipeline = result[0][1]
 
+        # Check if the payload is a unicycler protocol
+        unicycler_protocol: str | None = None
+        if isinstance(payload, dict):
+            with contextlib.suppress(ValueError, AttributeError, KeyError):
+                unicycler_protocol = Protocol.from_dict(
+                    payload,
+                    sample_name=sample,
+                    sample_capacity_mAh=capacity_Ah * 1000,
+                ).model_dump_json(exclude_none=True)
+
         logger.info("Submitting job to %s with capacity %.5f Ah", sample, capacity_Ah)
         full_jobid, jobid_on_server, json_string = server.submit(sample, capacity_Ah, payload, pipeline)
         dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -569,7 +584,8 @@ class ServerManager:
         if full_jobid and jobid_on_server:
             self.execute_sql(
                 "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Server hostname`, `Job ID on server`, "
-                "`Pipeline`, `Submitted`, `Payload`, `Comment`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "`Pipeline`, `Submitted`, `Payload`, `Unicycler protocol`, `Capacity (mAh)`, `Comment`) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     full_jobid,
                     sample,
@@ -579,6 +595,8 @@ class ServerManager:
                     pipeline,
                     dt,
                     json_string,
+                    unicycler_protocol,
+                    capacity_Ah * 1000,
                     comment,
                 ),
             )
