@@ -239,7 +239,12 @@ def get_mpr_data(
             logger.warning("Incorrect start time in %s and no mpl file found.", mpr_file)
 
     # Only keep certain columns in dataframe
-    df["V (V)"] = data.data_vars["Ewe"].to_numpy()
+    try:
+        voltage_col = next(col for col in ("Ewe", "<Ewe>") if col in data.data_vars)
+    except StopIteration as e:
+        msg = "No voltage column found in data"
+        raise KeyError(msg) from e
+    df["V (V)"] = data.data_vars[voltage_col].to_numpy()
     I_units = {"A": 1, "mA": 1e-3, "uA": 1e-6}
     dq_units = {"mA·h": 3600 / 1000, "A·h": 3600}
     if "I" in data.data_vars:
