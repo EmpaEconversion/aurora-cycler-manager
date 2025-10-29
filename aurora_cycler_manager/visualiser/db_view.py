@@ -1931,9 +1931,10 @@ def register_db_view_callbacks(app: Dash) -> None:
                 valid_files = data["data"]
                 successful_samples = set()
                 with zipfile.ZipFile(zip_buffer, "r") as zip_file:
-                    for filename, sample_id in valid_files.items():
+                    for filepath, sample_id in valid_files.items():
+                        filename = filepath.split("/")[-1]
                         try:
-                            with zip_file.open(filename) as file:
+                            with zip_file.open(filepath) as file:
                                 match filename.split(".")[-1]:
                                     case "mpr":
                                         # Check if there is an associated mpl file
@@ -1948,20 +1949,21 @@ def register_db_view_callbacks(app: Dash) -> None:
                                         convert_mpr(
                                             file.read(),
                                             mpl_file=mpl_file,
-                                            output_hdf5_file=True,
+                                            update_database=True,
                                             sample_id=sample_id,
+                                            file_name=filename,
                                         )
                                         successful_samples.add(sample_id)
                                         success_notification(
                                             "File processed",
-                                            f"{filename.split('/')[-1]}",
+                                            f"{filename}",
                                             queue=True,
                                         )
                         except Exception as e:
                             logger.exception("Error processing file: %s", filename)
                             error_notification(
                                 "Error processing file",
-                                f"{filename.split('/')[-1]}: {e!s}",
+                                f"{filename}: {e!s}",
                                 queue=True,
                             )
 
