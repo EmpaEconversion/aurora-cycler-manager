@@ -75,7 +75,7 @@ def get_db_last_update() -> str:
     db_path = Path(CONFIG["Database path"])
     modified_uts = db_path.stat().st_mtime
     modified_datetime = datetime.fromtimestamp(int(modified_uts), tz=CONFIG["tz"])
-    return modified_datetime.strftime("%Y-%m-%d %H:%M:%S %z")
+    return modified_datetime.isoformat()
 
 
 def make_pipelines_comparable(pipelines: list[str | None]) -> list[str | None]:

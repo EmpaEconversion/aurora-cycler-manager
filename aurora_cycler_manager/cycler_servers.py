@@ -179,7 +179,7 @@ class NewareServer(CyclerServer):
         xml_string = xml_string.replace("$CAPACITY", str(capacity_mA_s))
 
         # Write the xml string to a temporary file
-        current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        current_datetime = datetime.now(CONFIG["tz"]).isoformat()
         try:
             with Path("./temp.xml").open("w", encoding="utf-8") as f:
                 f.write(xml_string)

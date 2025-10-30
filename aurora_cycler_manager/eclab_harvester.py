@@ -79,9 +79,8 @@ def get_mprs(
         force_copy (bool, optional): Copy all files regardless of modification date
 
     """
-    if force_copy:  # Set cutoff date to 1970
-        cutoff_datetime = datetime.fromtimestamp(0, tz=CONFIG["tz"])
-    else:  # Set cutoff date to last snapshot from database
+    cutoff_datetime = datetime.fromtimestamp(0, tz=CONFIG["tz"])  # Set default cutoff date
+    if not force_copy:  # Set cutoff date to last snapshot from database
         with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -90,7 +89,9 @@ def get_mprs(
             )
             result = cursor.fetchone()
             cursor.close()
-        cutoff_datetime = datetime.strptime(result[0], "%Y-%m-%d %H:%M:%S") if result else datetime.fromtimestamp(0)
+        if result:
+            cutoff_datetime = datetime.strptime(result[0], "%Y-%m-%d %H:%M:%S")
+    # Cannot use timezone or ISO8061 - not supported in PowerShell 5.1
     cutoff_date_str = cutoff_datetime.strftime("%Y-%m-%d %H:%M:%S")
 
     # Connect to the server and copy the files
@@ -132,7 +133,7 @@ def get_mprs(
         logger.info("Found %d modified files since %s", len(modified_files), cutoff_date_str)
 
         # Copy the files using SFTP
-        current_datetime = datetime.now()  # Keep time of copying for database
+        current_datetime = datetime.now(CONFIG["tz"])  # Keep time of copying for database
         new_files = []
         with ssh.open_sftp() as sftp:
             for file in modified_files:
@@ -157,7 +158,7 @@ def get_mprs(
             "UPDATE harvester "
             "SET `Last snapshot` = ? "
             "WHERE `Server label` = ? AND `Server hostname` = ? AND `Folder` = ?",
-            (current_datetime.strftime("%Y-%m-%d %H:%M:%S"), server_label, server_hostname, server_copy_folder),
+            (current_datetime.isoformat(), server_label, server_hostname, server_copy_folder),
         )
         cursor.close()
 
@@ -374,7 +375,7 @@ def convert_mpr(
                     "repo_url": __url__,
                     "repo_version": __version__,
                     "method": "eclab_harvester.convert_mpr",
-                    "datetime": datetime.now(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z"),
+                    "datetime": datetime.now(CONFIG["tz"]).isoformat(),
                 },
             },
         },
@@ -433,7 +434,7 @@ def convert_mpr(
             )
             cursor.execute(
                 "UPDATE results SET `Last snapshot` = ? WHERE `Sample ID` = ?",
-                (modified_date.strftime("%Y-%m-%d %H:%M:%S") if modified_date else None, sample_id),
+                (modified_date.isoformat() if modified_date else None, sample_id),
             )
             cursor.close()
     return df, metadata
