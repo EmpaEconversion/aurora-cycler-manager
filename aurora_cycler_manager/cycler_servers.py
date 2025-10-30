@@ -90,19 +90,13 @@ class CyclerServer:
         logger.info("Succesfully connected to %s", self.label)
         return True
 
-    def eject(self, pipeline: str) -> str:
-        """Remove a sample from a pipeline."""
-        raise NotImplementedError
-
-    def load(self, sample: str, pipeline: str) -> str:
-        """Load a sample into a pipeline."""
-        raise NotImplementedError
-
-    def submit(self, sample: str, capacity_Ah: float, payload: str | dict, pipeline: str) -> tuple[str, str, str]:
+    def submit(
+        self, sample: str, capacity_Ah: float, payload: str | dict | Path, pipeline: str
+    ) -> tuple[str, str, str]:
         """Submit a job to the server."""
         raise NotImplementedError
 
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
+    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
         """Cancel a job on the server."""
         raise NotImplementedError
 
@@ -114,21 +108,8 @@ class CyclerServer:
         """Get all jobs from server."""
         raise NotImplementedError
 
-    def snapshot(
-        self,
-        sample_id: str,
-        jobid: str,
-        jobid_on_server: str,
-    ) -> str | None:
+    def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
         """Save a snapshot of a job on the server and download it to the local machine."""
-        raise NotImplementedError
-
-    def get_last_data(self, job_id_on_server: str) -> dict:
-        """Get the last data from a job."""
-        raise NotImplementedError
-
-    def get_job_data(self, jobid_on_server: str) -> dict:
-        """Get the jobdata dict for a job."""
         raise NotImplementedError
 
 
@@ -142,22 +123,6 @@ class NewareServer(CyclerServer):
     use the 'command_prefix' in the shared config to add it to the PATH.
 
     """
-
-    @override
-    def eject(self, pipeline: str) -> str:
-        """Remove a sample from a pipeline.
-
-        Do not need to actually change anything on Neware client, just update the database.
-        """
-        return f"Ejecting {pipeline}"
-
-    @override
-    def load(self, sample: str, pipeline: str) -> str:
-        """Load a sample onto a pipeline.
-
-        Do not need to actually change anything on Neware client, just update the database.
-        """
-        return f"Loading {sample} onto {pipeline}"
 
     @override
     def submit(
@@ -251,7 +216,7 @@ class NewareServer(CyclerServer):
         return jobid, jobid_on_server, xml_string
 
     @override
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
+    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.
@@ -282,7 +247,6 @@ class NewareServer(CyclerServer):
                 "Check the Neware client logs for more information."
             )
             raise ValueError(output)
-        return f"Stopped pipeline {pipeline} on Neware"
 
     @override
     def get_pipelines(self) -> dict:
@@ -310,29 +274,13 @@ class NewareServer(CyclerServer):
         return {}
 
     @override
-    def snapshot(
-        self,
-        sample_id: str,
-        jobid: str,
-        jobid_on_server: str,
-    ) -> str | None:
+    def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
         """Save a snapshot of a job on the server and download it to the local machine."""
         ndax_path = snapshot_raw_data(jobid)
         if ndax_path:
             convert_neware_data(ndax_path, sample_id, output_hdf5_file=True)
 
         return None  # Neware does not have a snapshot status
-
-    @override
-    def get_job_data(self, jobid_on_server: str) -> dict:
-        """Get the jobdata dict for a job."""
-        # TODO: This is problematic because Neware XMLs don't easily translate to a dict.
-        raise NotImplementedError
-
-    @override
-    def get_last_data(self, job_id_on_server: str) -> dict:
-        """Get the last data from a job snapshot."""
-        raise NotImplementedError
 
     def _get_job_id(self, pipeline: str) -> str:
         """Get the testid for a pipeline."""
@@ -357,22 +305,6 @@ class BiologicServer(CyclerServer):
         self.biologic_data_path = PureWindowsPath(
             server_config.get("biologic_data_path", "C:/aurora/data/"),
         )
-
-    @override
-    def eject(self, pipeline: str) -> str:
-        """Remove a sample from a pipeline.
-
-        Do not need to actually change anything on Biologic client, just update the database.
-        """
-        return f"Ejecting {pipeline}"
-
-    @override
-    def load(self, sample: str, pipeline: str) -> str:
-        """Load a sample onto a pipeline.
-
-        Do not need to actually change anything on Biologic client, just update the database.
-        """
-        return f"Loading {sample} onto {pipeline}"
 
     @override
     def submit(
@@ -463,7 +395,7 @@ class BiologicServer(CyclerServer):
         return jobid, jobid_on_server, mps_string
 
     @override
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
+    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.
@@ -485,7 +417,6 @@ class BiologicServer(CyclerServer):
         if output:
             msg = f"Command 'biologic stop {pipeline}' failed with response:\n{output}\n"
             raise ValueError(output)
-        return f"Stopped pipeline {pipeline} on Biologic"
 
     @override
     def get_pipelines(self) -> dict:
@@ -518,12 +449,7 @@ class BiologicServer(CyclerServer):
         return {}
 
     @override
-    def snapshot(
-        self,
-        sample_id: str,
-        jobid: str,
-        jobid_on_server: str,
-    ) -> str | None:
+    def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
         """Save a snapshot of a job on the server and download it to the local machine."""
         # We know where the job will be on the remote PC
         run_id = run_from_sample(sample_id)
@@ -573,17 +499,6 @@ class BiologicServer(CyclerServer):
                     convert_mpr(local_file, job_id=jobid, update_database=True)
 
         return None
-
-    @override
-    def get_job_data(self, jobid_on_server: str) -> dict:
-        """Get the jobdata dict for a job."""
-        # TODO: Implement getting job data from mps file
-        raise NotImplementedError
-
-    @override
-    def get_last_data(self, job_id_on_server: str) -> dict:
-        """Get the last data from a job snapshot."""
-        raise NotImplementedError
 
     def _get_job_id(self, pipeline: str) -> str:
         """Get the testid for a pipeline."""

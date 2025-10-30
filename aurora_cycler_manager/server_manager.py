@@ -11,11 +11,9 @@ commands to the appropriate server, and handles the database updates.
 """
 
 import contextlib
-import json
 import logging
 import sqlite3
 import traceback
-import warnings
 from datetime import datetime
 from pathlib import Path
 from time import sleep, time
@@ -211,7 +209,6 @@ class ServerManager:
         self.update_pipelines()
         self.update_jobs()
         self.update_flags()
-        self.update_all_payloads()
 
     def execute_sql(self, query: str, params: tuple | None = None) -> list[tuple]:
         """Execute a query on the database.
@@ -394,7 +391,7 @@ class ServerManager:
         except (ValueError, TypeError):
             return None
 
-    def load(self, sample: str, pipeline: str) -> str:
+    def load(self, sample: str, pipeline: str) -> None:
         """Load a sample on a pipeline.
 
         The appropriate server is found based on the pipeline, and the sample is loaded.
@@ -405,9 +402,6 @@ class ServerManager:
             pipeline (str):
                 The pipeline to load the sample on. Must exist in pipelines table of database
 
-        Returns:
-            The output from the server load command as a string
-
         """
         # Check if sample exists in database
         result = self.execute_sql("SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?", (sample,))
@@ -415,49 +409,27 @@ class ServerManager:
         result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
         server = self.find_server(result[0][0])
         logger.info("Loading sample %s on server %s", sample, server.label)
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            output = server.load(sample, pipeline)
-            if w:
-                for warning in w:
-                    logger.warning(warning.message)
-            else:
-                # Update database preemtively if no warnings were caught
-                self.execute_sql(
-                    "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
-                    (sample, pipeline),
-                )
-        return output
+        self.execute_sql(
+            "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
+            (sample, pipeline),
+        )
 
-    def eject(self, pipeline: str) -> str:
+    def eject(self, pipeline: str) -> None:
         """Eject a sample from a pipeline.
 
         Args:
             pipeline (str):
                 The pipeline to eject the sample from, must exist in pipelines table of database
 
-        Returns:
-            The output from the server eject command as a string
-
         """
         # Find server associated with pipeline
         result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
         server = self.find_server(result[0][0])
         logger.info("Ejecting %s on server: %s", pipeline, server.label)
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            output = server.eject(pipeline)
-            if w:
-                for warning in w:
-                    logger.warning(warning.message)
-            else:
-                # Update database preemtively if no warnings were caught
-                ready = server.server_type in ["neware", "biologic"]  # Neware/Biologic -> ready if no sample
-                self.execute_sql(
-                    "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = ? WHERE `Pipeline` = ?",
-                    (ready, pipeline),
-                )
-        return output
+        self.execute_sql(
+            "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = ? WHERE `Pipeline` = ?",
+            (True, pipeline),
+        )
 
     def submit(
         self,
@@ -544,7 +516,7 @@ class ServerManager:
                     (full_jobid, jobid_on_server, pipeline),
                 )
 
-    def cancel(self, jobid: str) -> str:
+    def cancel(self, jobid: str) -> None:
         """Cancel a job on a server.
 
         Args:
@@ -572,7 +544,6 @@ class ServerManager:
     def snapshot(
         self,
         samp_or_jobid: str,
-        get_raw: bool = False,
         mode: Literal["always", "new_data", "if_not_exists"] = "new_data",
     ) -> None:
         """Snapshot sample or job, download data, process, and save.
@@ -580,8 +551,6 @@ class ServerManager:
         Args:
             samp_or_jobid : str
                 The sample ID or (aurora) job ID to snapshot.
-            get_raw : bool, optional
-                If True, also download the raw data as a zip.
             mode : str, optional
                 When to make a new snapshot. Can be one of the following:
                     - 'always': Force a snapshot even if job is already done and data is downloaded.
@@ -646,7 +615,7 @@ class ServerManager:
 
             # Snapshot the job
             try:
-                new_snapshot_status = server.snapshot(sample_id, jobid, jobid_on_server, get_raw=get_raw)
+                new_snapshot_status = server.snapshot(sample_id, jobid, jobid_on_server)
             except FileNotFoundError as e:
                 msg = (
                     f"Error snapshotting {jobid}: {e}\n"
@@ -736,75 +705,6 @@ class ServerManager:
             time_remaining = time_elapsed / (i + 1) * (total_jobs - i - 1)
             sleep(10)  # to not overload the server
             logger.info("%d/%d jobs done. Approx %d minutes remaining", i + 1, total_jobs, int(time_remaining / 60))
-
-    def get_last_data(self, samp_or_jobid: str) -> dict:
-        """Get the last data from a sample or job.
-
-        Args:
-            samp_or_jobid : str
-                The sample ID or job ID (with server label) to get the last data for
-
-        Returns:
-            str: The filename of the last json
-            dict: The last data as a dictionary
-
-        """
-        # check if the input is a sample ID
-        result = self.execute_sql("SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?", (samp_or_jobid,))
-        if result:  # it's a sample
-            result = self.execute_sql(
-                "SELECT `Job ID on server`, `Server label` FROM jobs WHERE `Sample ID` = ? "
-                "ORDER BY `Submitted` DESC LIMIT 1",
-                (samp_or_jobid,),
-            )
-        else:  # it's a job ID
-            result = self.execute_sql(
-                "SELECT `Job ID on server`, `Server label` FROM jobs WHERE `Job ID` = ?",
-                (samp_or_jobid,),
-            )
-        if not result:
-            msg = f"Job {samp_or_jobid} not found in the database"
-            raise ValueError(msg)
-
-        jobid_on_server, server_label = result[0]
-        server = self.find_server(server_label)
-        return server.get_last_data(jobid_on_server)
-
-    def update_payload(self, jobid: str) -> None:
-        """Get the payload information from a job ID."""
-        result = self.execute_sql("SELECT `Job ID on server`, `Server label` FROM jobs WHERE `Job ID` = ?", (jobid,))
-        jobid_on_server, server_label = result[0]
-        server = self.find_server(server_label)
-        try:
-            jobdata = server.get_job_data(jobid_on_server)
-        except FileNotFoundError:
-            logger.exception("Job data not found on remote PC for %s", jobid)
-            self.execute_sql(
-                "UPDATE jobs SET `Payload` = ?, `Sample ID` = ? WHERE `Job ID` = ?",
-                (json.dumps("Unknown"), "Unknown", jobid),
-            )
-            raise
-        except NotImplementedError as e:
-            msg = f"Server type {server.server_type} not supported for getting job data."
-            raise NotImplementedError(msg) from e
-        payload = jobdata["payload"]
-        sampleid = jobdata["payload"]["sample"]["name"]
-        self.execute_sql(
-            "UPDATE jobs SET `Payload` = ?, `Sample ID` = ? WHERE `Job ID` = ?",
-            (json.dumps(payload), sampleid, jobid),
-        )
-
-    def update_all_payloads(self, force_retry: bool = False) -> None:
-        """Update the payload information for all jobs in the database."""
-        if force_retry:
-            result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE `Payload` IS NULL OR `Payload` = '\"Unknown\"'")
-        else:
-            result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE `Payload` IS NULL")
-        for (jobid,) in result:
-            try:
-                self.update_payload(jobid)
-            except Exception as e:
-                logger.error("Error updating payload for job %s: %s", jobid, e)
 
     def _update_neware_jobids(self) -> None:
         """Update all Job IDs on Neware servers.
