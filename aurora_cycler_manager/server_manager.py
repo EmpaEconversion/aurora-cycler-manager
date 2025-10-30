@@ -29,7 +29,6 @@ from aurora_cycler_manager import analysis, config, cycler_servers
 from aurora_cycler_manager.utils import run_from_sample
 
 SERVER_CORRESPONDENCE = {
-    "tomato": cycler_servers.TomatoServer,
     "neware": cycler_servers.NewareServer,
     "biologic": cycler_servers.BiologicServer,
 }
@@ -178,19 +177,14 @@ class ServerManager:
                             "WHERE `Pipeline` = ?",
                             (ready, dt, label, server.hostname, server.server_type, pipeline),
                         )
-                        # Need to treat nulls from tomato and Neware/Biologic differently
-                        # Tomato null means sample removed, Neware/Biologic means no update
-                        if server.server_type == "tomato" or sampleid is not None:
+                        if sampleid is not None:
                             cursor.execute(
                                 "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
                                 (sampleid, pipeline),
                             )
-                        if (
-                            server.server_type == "tomato"
-                            or jobid_on_server is not None
-                            or (server.server_type == "neware" and ready == 1)
-                            or (server.server_type == "biologic" and ready == 1)
-                        ):
+                        # Job ID means something running, Ready = nothing running
+                        # No job ID and not ready means previous job is still running, do not update
+                        if jobid_on_server is not None or ready == 1:
                             jobid = f"{label}-{jobid_on_server}" if jobid_on_server else None
                             cursor.execute(
                                 "UPDATE pipelines SET `Job ID on server` = ?, `Job ID` = ? WHERE `Pipeline` = ?",
@@ -538,7 +532,6 @@ class ServerManager:
             payload : str or dict
                 Preferably an aurora-unicycler dictionary - this is auto-converted to the right format for each cycler
                 In addition, different cyclers can accept different payload formats
-                (tomato) A .json path, json string, or dictionary with a tomato payload
                 (Neware) A .xml path or xml string with a Neware protocol
                 (Biologic) A .mps path or mps string with a Biologic protocol
             capacity_Ah : float or str

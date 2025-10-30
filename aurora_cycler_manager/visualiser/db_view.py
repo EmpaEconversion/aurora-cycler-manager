@@ -895,7 +895,6 @@ def register_db_view_callbacks(app: Dash) -> None:
                 elif table == "pipelines":
                     all_samples = all(s.get("Sample ID") is not None for s in selected_rows)
                     all_servers = all(s.get("Server label") in accessible_servers for s in selected_rows)
-                    all_tomato = all(s.get("Server type") == "tomato" for s in selected_rows)
                     no_samples = all(s.get("Sample ID") is None for s in selected_rows)
                     if all_samples:
                         enabled |= {"label-button", "create-batch-button"}
@@ -903,8 +902,6 @@ def register_db_view_callbacks(app: Dash) -> None:
                             enabled |= {"submit-button", "snapshot-button"}
                             if all(s["Job ID"] is None for s in selected_rows):
                                 enabled |= {"eject-button"}
-                                if all_tomato:
-                                    enabled |= {"ready-button", "unready-button"}
                             elif all(s.get("Job ID") is not None for s in selected_rows):
                                 enabled |= {"cancel-button"}
                     elif all_servers and no_samples:
@@ -1211,14 +1208,6 @@ def register_db_view_callbacks(app: Dash) -> None:
                 return f"❌ {filename} couldn't be read as xml file: {e}", {}
         else:
             return f"❌ {filename} is not a valid file type", {}
-
-        if any(s["Server type"] == "tomato" for s in selected_rows):
-            # Should be a tomato JSON or unicycler JSON
-            if not isinstance(payload, dict):
-                return "❌ cannot submit .xml to tomato", {}
-            if "tomato" not in payload and "unicycler" not in payload:
-                msg = f"❌ {filename} is not a tomato json or unicycler json"
-                return msg, {}
 
         if any(s["Server type"] == "neware" for s in selected_rows):
             # Should be an XML file or universal JSON file
