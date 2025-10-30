@@ -34,7 +34,6 @@ import h5py
 import NewareNDA
 import pandas as pd
 import paramiko
-import pytz
 import xmltodict
 
 from aurora_cycler_manager.analysis import analyse_sample
@@ -46,7 +45,6 @@ from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
 CONFIG = get_config()
-tz = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
 logger = logging.getLogger(__name__)
 
 
@@ -820,7 +818,7 @@ def convert_neware_data(
 
     # Metadata to add
     job_data["Technique codes"] = state_dict
-    current_datetime = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+    current_datetime = datetime.now(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S")
     metadata = {
         "provenance": {
             "snapshot_file": str(file_path),

@@ -8,6 +8,7 @@ import logging
 import os
 import sqlite3
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import platformdirs
 
@@ -125,6 +126,13 @@ def _read_config_file() -> dict:
 
     if not config.get("Database path"):
         raise ValueError(err_msg)
+
+    # Set timezone
+    try:
+        config["tz"] = ZoneInfo(config.get("Time zone", "Europe/Zurich"))
+    except KeyError:
+        logger.exception("Time zone '%s' not understood, using default: Europe/Zurich", config.get("Time zone"))
+        config["tz"] = ZoneInfo("Europe/Zurich")
 
     # Patch the database in case users are using an old version
     if config.get("Database path").exists():

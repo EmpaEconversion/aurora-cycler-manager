@@ -20,7 +20,6 @@ from typing import Literal
 import h5py
 import numpy as np
 import pandas as pd
-import pytz
 from tsdownsample import MinMaxLTTBDownsampler
 
 from aurora_cycler_manager.config import get_config
@@ -153,7 +152,6 @@ def combine_jobs(
             cycle += 1
 
     # Add provenance to the metadatas
-    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     # Replace sample data with latest from database
     sample_data = get_sample_data(sampleids[0])
     # Merge glossary dicts
@@ -168,7 +166,7 @@ def combine_jobs(
                     "repo_url": __url__,
                     "repo_version": __version__,
                     "method": "analysis.combine_jobs",
-                    "datetime": datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S %z"),
+                    "datetime": datetime.now(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z"),
                 },
             },
             "original_file_provenance": {str(f): m["provenance"] for f, m in zip(job_files, metadatas, strict=False)},
@@ -427,7 +425,6 @@ def analyse_cycles(
     df, metadata = combine_jobs(job_files)
 
     # update metadata
-    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     metadata.setdefault("provenance", {}).setdefault("aurora_metadata", {})
     metadata["provenance"]["aurora_metadata"].update(
         {
@@ -435,7 +432,7 @@ def analyse_cycles(
                 "repo_url": __url__,
                 "repo_version": __version__,
                 "method": "analysis.analyse_cycles",
-                "datetime": datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S %z"),
+                "datetime": datetime.now(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z"),
             },
         },
     )
@@ -1009,14 +1006,13 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
         raise ValueError(msg)
 
     # update the metadata
-    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     metadata["provenance"] = {
         "aurora_metadata": {
             "batch_analysis": {
                 "repo_url": __url__,
                 "repo_version": __version__,
                 "method": "analysis.analyse_batch",
-                "datetime": datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S %z"),
+                "datetime": datetime.now(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z"),
             },
         },
     }

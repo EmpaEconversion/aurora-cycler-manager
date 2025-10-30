@@ -11,7 +11,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from pytz import timezone
 
 from aurora_cycler_manager.config import get_config
 
@@ -75,8 +74,7 @@ def get_db_last_update() -> str:
     """Get the last update time of the database."""
     db_path = Path(CONFIG["Database path"])
     modified_uts = db_path.stat().st_mtime
-    tz = timezone(CONFIG.get("Time zone", "Europe/Zurich"))
-    modified_datetime = datetime.fromtimestamp(int(modified_uts), tz=tz)
+    modified_datetime = datetime.fromtimestamp(int(modified_uts), tz=CONFIG["tz"])
     return modified_datetime.strftime("%Y-%m-%d %H:%M:%S %z")
 
 
