@@ -6,22 +6,22 @@
     
     "Servers" : [
         {
-            "label": "fakeltomato",
+            "label": "fakebiologic",
             "hostname": "fakehostname",
             "username": "fakeuser",
-            "server_type": "tomato",
+            "server_type": "biologic",
             "shell_type": "cmd",
-            "command_prefix" : "conda activate tomato && ",
+            "command_prefix" : "conda activate biologic && ",
             "command_suffix" : "",
-            "tomato_scripts_path": "",
-            "tomato_data_path": "C:/fake/path/to/tomato/0.2.3/Jobs"
+            "data_path": "C:/aurora/data/"
         },
         {
 			"label": "fakeneware",
 			"hostname": "fakehostname",
 			"username": "fakeuser",
 			"server_type": "neware",
-			"shell_type": "cmd"
+			"shell_type": "cmd",
+            "data_path": "C:/aurora/data/"
 		}
     ],
     
@@ -49,7 +49,7 @@
             {
                 "label" : "fakeneware",
                 "hostname": "fakehostname",
-                "username": "lfakeuser",
+                "username": "fakeuser",
                 "Neware folder location": "C:/Neware data/",
                 "shell_type": "cmd"
             }

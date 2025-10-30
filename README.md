@@ -25,7 +25,7 @@ Experiments can use C-rates and the program will automatically calculate the cur
 
 ### Data harvesting
 
-Data is automatically gathered from cyclers, all incoming files are converted to one open standard - accepts Biologic .mpr, Neware .ndax, Neware .xlsx, and tomato .json. Raw time-series data is converted to a hdf5 file including provenance tracked metadata.
+Data is automatically gathered from cyclers, all incoming files are converted to one open standard - accepts Biologic .mpr, Neware .ndax, Neware .xlsx. Raw time-series data is converted to a hdf5 file including provenance tracked metadata.
 
 Data is converted using [`NewareNDA`](https://github.com/d-cogswell/NewareNDA) and [`yadg`](https://github.com/dgbowl/yadg), processing the raw binary data directly. This is much faster and more space efficient than exporting to text or Excel formats from these cyclers.
 
@@ -35,7 +35,7 @@ The time-series hdf5 data is analysed to extract per-cycle summary data such as 
 
 ### Visualisation
 
-A web-app based on `Plotly Dash` allows rapid, interactive viewing of time-series and per-cycle data, as well as the ability to control experiments on tomato cyclers through the graphical interface.
+A web-app based on `Plotly Dash` allows rapid, interactive viewing of time-series and per-cycle data, as well as the ability to control experiments on cyclers through the graphical interface.
 
 ## Installation
 
@@ -66,12 +66,11 @@ aurora-setup init --project-dir="path\to\your\setup"
 ```
 - This generates subfolders within the directory, a database, and a configuation file
 - Fill in the configuration file with details about e.g. Neware and EC-Lab servers, examples are left in the default config
-- In `Servers`, the `server_type` must be `neware`, `biologic`, or `tomato`
+- In `Servers`, the `server_type` must be `neware` or `biologic`
 - The `server_label` should be short and only letters and numbers, no special characters like `-_/\`
 - The `shell_type` is the default shell when SSH-ing into the machine, it must be `cmd` or `powershell`
 - To set up a `neware` server, follow the instructions from [`aurora-neware`](https://github.com/empaeconversion/aurora-neware)
 - To set up a `biologic` server, follow the instructions from [`aurora-biologic`](https://github.com/empaeconversion/aurora-biologic)
-- To set up a `tomato` server, follow instructions from [`tomato-0.2.3`](https://dgbowl.github.io/tomato/0.2.3/)
 - If you change database columns in the shared configuration file, you can update the database with `aurora-setup update`, use the option `--force` if you want to permanetly delete columns and their data.
 
 ## Updating

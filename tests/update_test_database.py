@@ -94,6 +94,8 @@ if __name__ == "__main__":
         "240606_svfe_gen1_16",
         "240701_svfe_gen6_01",
         "240709_svfe_gen8_01",
+        "250116_kigr_gen6_01",
+        "commercial_cell_009",
     ]
     jobs = [
         "tt1-68",

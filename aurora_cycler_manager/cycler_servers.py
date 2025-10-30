@@ -3,7 +3,6 @@
 Server classes used by server_manager, including:
 - Neware server, designed for Neware BTS 8.0 with aurora-neware CLI
 - Biologic server, designed for Biologic EC-lab with aurora-biologic CLI
-- Tomato server, designed for tomato 0.2.3
 
 Unlike the harvester modules, which can only download the latest data, cycler
 servers can be used to interact with the server directly, e.g. to submit a job
@@ -15,7 +14,6 @@ These classes are used by server_manager.
 import base64
 import json
 import logging
-import warnings
 from datetime import datetime
 from pathlib import Path, PureWindowsPath
 
@@ -27,7 +25,6 @@ from typing_extensions import override
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.eclab_harvester import convert_mpr, get_eclab_snapshot_folder
 from aurora_cycler_manager.neware_harvester import convert_neware_data, snapshot_raw_data
-from aurora_cycler_manager.tomato_converter import convert_tomato_json, get_tomato_snapshot_folder, puree_tomato
 from aurora_cycler_manager.utils import run_from_sample, ssh_connect
 
 logger = logging.getLogger(__name__)
@@ -93,27 +90,13 @@ class CyclerServer:
         logger.info("Succesfully connected to %s", self.label)
         return True
 
-    def eject(self, pipeline: str) -> str:
-        """Remove a sample from a pipeline."""
-        raise NotImplementedError
-
-    def load(self, sample: str, pipeline: str) -> str:
-        """Load a sample into a pipeline."""
-        raise NotImplementedError
-
-    def ready(self, pipeline: str) -> str:
-        """Ready a pipeline for use."""
-        raise NotImplementedError
-
-    def unready(self, pipeline: str) -> str:
-        """Mark a pipeline not ready for use."""
-        raise NotImplementedError
-
-    def submit(self, sample: str, capacity_Ah: float, payload: str | dict, pipeline: str) -> tuple[str, str, str]:
+    def submit(
+        self, sample: str, capacity_Ah: float, payload: str | dict | Path, pipeline: str
+    ) -> tuple[str, str, str]:
         """Submit a job to the server."""
         raise NotImplementedError
 
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
+    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
         """Cancel a job on the server."""
         raise NotImplementedError
 
@@ -125,353 +108,9 @@ class CyclerServer:
         """Get all jobs from server."""
         raise NotImplementedError
 
-    def snapshot(
-        self,
-        sample_id: str,
-        jobid: str,
-        jobid_on_server: str,
-        get_raw: bool = False,
-    ) -> str | None:
+    def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
         """Save a snapshot of a job on the server and download it to the local machine."""
         raise NotImplementedError
-
-    def get_last_data(self, job_id_on_server: str) -> dict:
-        """Get the last data from a job."""
-        raise NotImplementedError
-
-    def get_job_data(self, jobid_on_server: str) -> dict:
-        """Get the jobdata dict for a job."""
-        raise NotImplementedError
-
-
-class TomatoServer(CyclerServer):
-    """Server class for Tomato servers, implements all the methods in CyclerServer.
-
-    Used by server_manager to interact with Tomato servers, should not be instantiated directly.
-
-    Attributes:
-        save_location (str): The location on the server where snapshots are saved.
-
-    """
-
-    def __init__(self, server_config: dict) -> None:
-        """Initialise server object."""
-        super().__init__(server_config)
-        self.tomato_scripts_path = server_config.get("tomato_scripts_path")
-        self.save_location = "C:/tomato/aurora_scratch"
-        self.tomato_data_path = server_config.get("tomato_data_path")
-
-    @override
-    def eject(self, pipeline: str) -> str:
-        """Eject any sample from the pipeline."""
-        return self.command(f"{self.tomato_scripts_path}ketchup eject {pipeline}")
-
-    @override
-    def load(self, sample: str, pipeline: str) -> str:
-        """Load a sample into a pipeline."""
-        return self.command(f"{self.tomato_scripts_path}ketchup load {sample} {pipeline}")
-
-    @override
-    def ready(self, pipeline: str) -> str:
-        """Ready a pipeline for use."""
-        return self.command(f"{self.tomato_scripts_path}ketchup ready {pipeline}")
-
-    @override
-    def unready(self, pipeline: str) -> str:
-        """Unready a pipeline - only works if no job submitted yet, otherwise use cancel."""
-        return self.command(f"{self.tomato_scripts_path}ketchup unready {pipeline}")
-
-    @override
-    def submit(
-        self,
-        sample: str,
-        capacity_Ah: float,
-        payload: str | Path | dict,
-        pipeline: str = "",
-        send_file: bool = False,
-    ) -> tuple[str, str, str]:
-        """Submit a job to the server.
-
-        Args:
-            sample (str): The name of the sample to be tested
-            capacity_Ah (float): The capacity of the sample in Ah
-            payload (str | Path | dict): The JSON protocol to be submitted, either unicycler or tomato
-                can be a path to a file or a dictionary
-            pipeline (str, optional): The pipeline to submit the job to (not necessary for Tomato servers)
-            send_file (bool, default = False): If True, the payload is written to a file and sent to the server
-
-        Returns:
-            str: The jobid of the submitted job with the server prefix
-            str: The jobid of the submitted job on the server (without the prefix)
-            str: The JSON string of the submitted payload
-
-        """
-        # Check if json_file is a string that could be a file path or a JSON string
-        if isinstance(payload, (str, Path)):
-            try:
-                # Attempt to load json_file as JSON string
-                payload = json.loads(payload)
-            except json.JSONDecodeError:
-                with Path(payload).open(encoding="utf-8") as f:  # type: ignore[arg-type]
-                    payload = json.load(f)
-
-        # If json_file is already a dictionary, use it directly
-        elif not isinstance(payload, dict):
-            msg = "json_file must be a file path, a JSON string, or a dictionary"
-            raise TypeError(msg)
-
-        assert isinstance(payload, dict)  # noqa: S101 for mypy type checking
-
-        # Check if payload is unicycler
-        if "tomato" in payload:  # It is already a tomato payload
-            # Add the sample name and capacity to the payload
-            payload["sample"]["name"] = sample
-            payload["sample"]["capacity"] = capacity_Ah
-            # Convert the payload to a json string
-            json_string = json.dumps(payload)
-            # Change all other instances of $NAME to the sample name
-            json_string = json_string.replace("$NAME", sample)
-        else:
-            try:
-                json_string = Protocol.from_dict(payload).to_tomato_mpg2(
-                    sample_name=sample,
-                    capacity_mAh=capacity_Ah * 1000,
-                )
-            except Exception as e:
-                msg = "Payload must be a unicycler protocol or a valid Tomato MPG2 protocol"
-                raise ValueError(msg) from e
-
-        if send_file:  # Write the json string to a file, send it, run it on the server
-            # Write file locally
-            with Path("temp.json").open("w", encoding="utf-8") as f:
-                f.write(json_string)
-
-            # Send file to server
-            with paramiko.SSHClient() as ssh:
-                ssh_connect(ssh, self.username, self.hostname)
-                with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
-                    scp.put("temp.json", f"{self.save_location}/temp.json")
-
-            # Submit the file on the server
-            output = self.command(f"{self.tomato_scripts_path}ketchup submit {self.save_location}/temp.json")
-
-            # Remove the file locally
-            Path("temp.json").unlink()
-
-        else:  # Encode the json string to base64 and submit it directly
-            encoded_json_string = base64.b64encode(json_string.encode()).decode()
-            output = self.command(f"{self.tomato_scripts_path}ketchup submit -J {encoded_json_string}")
-        if "jobid: " in output:
-            jobid = output.split("jobid: ")[1].splitlines()[0]
-            logger.info("Sample %s submitted on server %s with jobid %s", sample, self.label, jobid)
-            full_jobid = f"{self.label}-{jobid}"
-            logger.info("Full jobid: %s", full_jobid)
-            return full_jobid, jobid, json_string
-
-        msg = f"Error submitting job: {output}"
-        raise ValueError(msg)
-
-    @override
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
-        """Cancel a job on the server."""
-        return self.command(f"{self.tomato_scripts_path}ketchup cancel {job_id_on_server}")
-
-    @override
-    def get_pipelines(self) -> dict:
-        """Get the status of all pipelines on the server."""
-        output = self.command(f"{self.tomato_scripts_path}ketchup status -J")
-        status_dict = json.loads(output)
-        self.last_status = status_dict
-        return status_dict
-
-    def get_queue(self) -> dict:
-        """Get running and queued jobs from server."""
-        output = self.command(f"{self.tomato_scripts_path}ketchup status queue -J")
-        queue_dict = json.loads(output)
-        self.last_queue = queue_dict
-        return queue_dict
-
-    @override
-    def get_jobs(self) -> dict:
-        """Get all jobs from server."""
-        output = self.command(f"{self.tomato_scripts_path}ketchup status queue -v -J")
-        queue_all_dict = json.loads(output)
-        self.last_queue_all = queue_all_dict
-        return queue_all_dict
-
-    @override
-    def snapshot(
-        self,
-        sample_id: str,
-        jobid: str,
-        jobid_on_server: str,
-        get_raw: bool = False,
-    ) -> str | None:
-        """Save a snapshot of a job on the server and download it to the local machine.
-
-        Args:
-            sample_id (str): The Sample ID of the sample running
-            jobid (str): The jobid of the job on the local machine
-            jobid_on_server (str): The jobid of the job on the server
-            local_save_location (str): The directory to save the snapshot data to
-            get_raw (bool): If True, download the raw data as well as the snapshot data
-
-        Returns:
-            str: The status of the snapshot (e.g. "c", "r", "ce", "cd")
-
-        """
-        # Save a snapshot on the remote machine
-        remote_save_location = f"{self.save_location}/{jobid_on_server}"
-        run_id = run_from_sample(sample_id)
-        local_save_location = get_tomato_snapshot_folder() / run_id / sample_id
-
-        if self.shell_type == "powershell":
-            self.command(
-                f'if (!(Test-Path "{remote_save_location}")) '
-                f'{{ New-Item -ItemType Directory -Path "{remote_save_location}" }}',
-            )
-        elif self.shell_type == "cmd":
-            self.command(
-                f'if not exist "{remote_save_location}" mkdir "{remote_save_location}"',
-            )
-        else:
-            msg = "Shell type not recognised, must be 'powershell' or 'cmd', check config.json"
-            raise ValueError(msg)
-        output = self.command(f"{self.tomato_scripts_path}ketchup status -J {jobid_on_server}")
-        logger.info("Got job status on remote server %s", self.label)
-        json_output = json.loads(output)
-        snapshot_status = json_output["status"][0]
-        # Catch errors
-        try:
-            with warnings.catch_warnings(record=True) as w:
-                if self.shell_type == "powershell":
-                    self.command(
-                        f"cd {remote_save_location} ; {self.tomato_scripts_path}ketchup snapshot {jobid_on_server}",
-                    )
-                elif self.shell_type == "cmd":
-                    self.command(
-                        f"cd {remote_save_location} && {self.tomato_scripts_path}ketchup snapshot {jobid_on_server}",
-                    )
-                for warning in w:
-                    if "out-of-date version" in str(warning.message) or "has been completed" in str(warning.message):
-                        continue  # Ignore these warnings
-                    logger.warning("Warning: %s", warning.message)
-        except ValueError as e:
-            emsg = str(e)
-            if "AssertionError" in emsg and "os.path.isdir(jobdir)" in emsg:
-                raise FileNotFoundError from e  # TODO: make this error more deterministic up the chain
-            raise
-        logger.info("Snapshotted file on remote server %s", self.label)
-        # Get local directory to save the snapshot data
-        if not Path(local_save_location).exists():
-            Path(local_save_location).mkdir(parents=True)
-
-        # Use SCPClient to transfer the file from the remote machine
-        with paramiko.SSHClient() as ssh:
-            ssh_connect(ssh, self.username, self.hostname)
-            logger.info(
-                "Downloading file %s/snapshot.%s.json to %s/snapshot.%s.json",
-                remote_save_location,
-                jobid_on_server,
-                local_save_location,
-                jobid,
-            )
-            with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
-                scp.get(
-                    f"{remote_save_location}/snapshot.{jobid_on_server}.json",
-                    f"{local_save_location}/snapshot.{jobid}.json",
-                )
-                if get_raw:
-                    logger.info("Downloading shapshot raw data to %s/snapshot.%s.zip", local_save_location, jobid)
-                    scp.get(
-                        f"{remote_save_location}/snapshot.{jobid_on_server}.zip",
-                        f"{local_save_location}/snapshot.{jobid}.zip",
-                    )
-
-        # Compress the local snapshot file
-        puree_tomato(f"{local_save_location}/snapshot.{jobid}.json")
-
-        # Convert the snapshot file to hdf5
-        convert_tomato_json(
-            f"{local_save_location}/snapshot.{jobid}.json",
-            output_hdf_file=True,
-        )
-
-        return snapshot_status
-
-    @override
-    def get_last_data(self, job_id_on_server: str) -> dict:
-        """Get the last data from a job snapshot.
-
-        Args:
-            job_id_on_server : str
-                The job ID on the server (an integer for tomato)
-
-        Returns:
-            dict: the latest data
-
-        """
-        if not self.tomato_data_path:
-            msg = "tomato_data_path not set for this server in config file"
-            raise ValueError(msg)
-
-        # get the last data file in the job folder and read out the json string
-        ps_command = (
-            f"$file = Get-ChildItem -Path '{self.tomato_data_path}\\{job_id_on_server}' -Filter 'MPG2*data.json' "
-            f"| Sort-Object LastWriteTime -Descending "
-            f"| Select-Object -First 1; "
-            f"if ($file) {{ Write-Output $file.FullName; Get-Content $file.FullName }}"
-        )
-        if self.shell_type not in ["powershell", "cmd"]:
-            msg = "Shell type not recognised, must be 'powershell' or 'cmd'"
-            raise ValueError(msg)
-        if self.shell_type == "powershell":
-            command = ps_command
-        elif self.shell_type == "cmd":
-            command = f'powershell.exe -Command "{ps_command}"'
-
-        with paramiko.SSHClient() as ssh:
-            ssh_connect(ssh, self.username, self.hostname)
-            _stdin, stdout, stderr = ssh.exec_command(command)
-            if stderr.read():
-                raise ValueError(stderr.read())
-        file_name = stdout.readline().strip()
-        file_content = stdout.readline().strip()
-        file_content_json = json.loads(file_content)
-        file_content_json["file_name"] = file_name
-        return file_content_json
-
-    @override
-    def get_job_data(self, jobid_on_server: str) -> dict:
-        """Get the jobdata dict for a job."""
-        if not self.tomato_data_path:
-            msg = "tomato_data_path not set for this server in config file"
-            raise ValueError(msg)
-        ps_command = (
-            f"if (Test-Path -Path '{self.tomato_data_path}\\{jobid_on_server}\\jobdata.json') {{ "
-            f"Get-Content '{self.tomato_data_path}\\{jobid_on_server}\\jobdata.json' "
-            f"}} else {{ "
-            f"Write-Output 'File not found.' "
-            f"}}"
-        )
-        if self.shell_type not in ["powershell", "cmd"]:
-            msg = "Shell type not recognised, must be 'powershell' or 'cmd'"
-            raise ValueError(msg)
-        if self.shell_type == "powershell":
-            command = ps_command
-        elif self.shell_type == "cmd":
-            command = f'powershell.exe -Command "{ps_command}"'
-        with paramiko.SSHClient() as ssh:
-            ssh_connect(ssh, self.username, self.hostname)
-            _stdin, stdout, stderr = ssh.exec_command(command)
-            stdout = stdout.read().decode("utf-8")
-            stderr = stderr.read().decode("utf-8")
-        if stderr:
-            raise ValueError(stderr)
-        if "File not found." in stdout:
-            msg = f"jobdata.json not found for job {jobid_on_server}"
-            raise FileNotFoundError(msg)
-        return json.loads(stdout)
 
 
 class NewareServer(CyclerServer):
@@ -484,27 +123,6 @@ class NewareServer(CyclerServer):
     use the 'command_prefix' in the shared config to add it to the PATH.
 
     """
-
-    @override
-    def eject(self, pipeline: str) -> str:
-        """Remove a sample from a pipeline.
-
-        Do not need to actually change anything on Neware client, just update the database.
-        """
-        return f"Ejecting {pipeline}"
-
-    @override
-    def load(self, sample: str, pipeline: str) -> str:
-        """Load a sample onto a pipeline.
-
-        Do not need to actually change anything on Neware client, just update the database.
-        """
-        return f"Loading {sample} onto {pipeline}"
-
-    @override
-    def ready(self, pipeline: str) -> str:
-        """Readying and unreadying does not exist on Neware."""
-        raise NotImplementedError
 
     @override
     def submit(
@@ -598,7 +216,7 @@ class NewareServer(CyclerServer):
         return jobid, jobid_on_server, xml_string
 
     @override
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
+    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.
@@ -629,7 +247,6 @@ class NewareServer(CyclerServer):
                 "Check the Neware client logs for more information."
             )
             raise ValueError(output)
-        return f"Stopped pipeline {pipeline} on Neware"
 
     @override
     def get_pipelines(self) -> dict:
@@ -657,30 +274,13 @@ class NewareServer(CyclerServer):
         return {}
 
     @override
-    def snapshot(
-        self,
-        sample_id: str,
-        jobid: str,
-        jobid_on_server: str,
-        get_raw: bool = False,
-    ) -> str | None:
+    def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
         """Save a snapshot of a job on the server and download it to the local machine."""
         ndax_path = snapshot_raw_data(jobid)
         if ndax_path:
             convert_neware_data(ndax_path, sample_id, output_hdf5_file=True)
 
-        return None  # Neware does not have a snapshot status like tomato
-
-    @override
-    def get_job_data(self, jobid_on_server: str) -> dict:
-        """Get the jobdata dict for a job."""
-        # TODO: This is problematic because Neware XMLs don't easily translate to a dict.
-        raise NotImplementedError
-
-    @override
-    def get_last_data(self, job_id_on_server: str) -> dict:
-        """Get the last data from a job snapshot."""
-        raise NotImplementedError
+        return None  # Neware does not have a snapshot status
 
     def _get_job_id(self, pipeline: str) -> str:
         """Get the testid for a pipeline."""
@@ -705,27 +305,6 @@ class BiologicServer(CyclerServer):
         self.biologic_data_path = PureWindowsPath(
             server_config.get("biologic_data_path", "C:/aurora/data/"),
         )
-
-    @override
-    def eject(self, pipeline: str) -> str:
-        """Remove a sample from a pipeline.
-
-        Do not need to actually change anything on Biologic client, just update the database.
-        """
-        return f"Ejecting {pipeline}"
-
-    @override
-    def load(self, sample: str, pipeline: str) -> str:
-        """Load a sample onto a pipeline.
-
-        Do not need to actually change anything on Biologic client, just update the database.
-        """
-        return f"Loading {sample} onto {pipeline}"
-
-    @override
-    def ready(self, pipeline: str) -> str:
-        """Readying and unreadying does not exist on Biologic."""
-        raise NotImplementedError
 
     @override
     def submit(
@@ -816,7 +395,7 @@ class BiologicServer(CyclerServer):
         return jobid, jobid_on_server, mps_string
 
     @override
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
+    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.
@@ -838,7 +417,6 @@ class BiologicServer(CyclerServer):
         if output:
             msg = f"Command 'biologic stop {pipeline}' failed with response:\n{output}\n"
             raise ValueError(output)
-        return f"Stopped pipeline {pipeline} on Biologic"
 
     @override
     def get_pipelines(self) -> dict:
@@ -871,13 +449,7 @@ class BiologicServer(CyclerServer):
         return {}
 
     @override
-    def snapshot(
-        self,
-        sample_id: str,
-        jobid: str,
-        jobid_on_server: str,
-        get_raw: bool = False,
-    ) -> str | None:
+    def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
         """Save a snapshot of a job on the server and download it to the local machine."""
         # We know where the job will be on the remote PC
         run_id = run_from_sample(sample_id)
@@ -927,17 +499,6 @@ class BiologicServer(CyclerServer):
                     convert_mpr(local_file, job_id=jobid, update_database=True)
 
         return None
-
-    @override
-    def get_job_data(self, jobid_on_server: str) -> dict:
-        """Get the jobdata dict for a job."""
-        # TODO: Implement getting job data from mps file
-        raise NotImplementedError
-
-    @override
-    def get_last_data(self, job_id_on_server: str) -> dict:
-        """Get the last data from a job snapshot."""
-        raise NotImplementedError
 
     def _get_job_id(self, pipeline: str) -> str:
         """Get the testid for a pipeline."""

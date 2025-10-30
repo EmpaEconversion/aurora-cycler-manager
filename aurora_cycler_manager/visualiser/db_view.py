@@ -173,8 +173,6 @@ CONTAINERS = [
 BUTTONS = [
     "load-button",
     "eject-button",
-    "ready-button",
-    "unready-button",
     "submit-button",
     "cancel-button",
     "view-button",
@@ -196,8 +194,6 @@ visibility_settings = {
         "table-container",
         "load-button",
         "eject-button",
-        "ready-button",
-        "unready-button",
         "submit-button",
         "cancel-button",
         "view-button",
@@ -258,16 +254,6 @@ button_layout = dmc.Flex(
                     "Eject",
                     leftSection=html.I(className="bi bi-arrow-90deg-right"),
                     id="eject-button",
-                ),
-                dmc.Button(
-                    "Ready",
-                    leftSection=html.I(className="bi bi-play"),
-                    id="ready-button",
-                ),
-                dmc.Button(
-                    "Unready",
-                    leftSection=html.I(className="bi bi-slash-circle"),
-                    id="unready-button",
                 ),
                 dmc.Button(
                     "Submit",
@@ -406,37 +392,6 @@ load_modal = dmc.Modal(
         dcc.Store(id="load-modal-store", data={}),
     ],
     id="load-modal",
-    centered=True,
-)
-
-ready_modal = dmc.Modal(
-    title="Ready",
-    children=dmc.Stack(
-        [
-            dmc.Text("Are you sure you want to ready the selected pipelines?"),
-            dmc.Text("You may need to update the database afterwards to check if jobs have started."),
-            dmc.Button(
-                "Ready",
-                id="ready-yes-close",
-            ),
-        ],
-    ),
-    id="ready-modal",
-    centered=True,
-)
-
-unready_modal = dmc.Modal(
-    title="Unready",
-    children=dmc.Stack(
-        [
-            dmc.Text("Are you sure you want to un-ready the selected pipelines?"),
-            dmc.Button(
-                "Unready",
-                id="unready-yes-close",
-            ),
-        ],
-    ),
-    id="unready-modal",
     centered=True,
 )
 
@@ -730,8 +685,6 @@ db_view_layout = html.Div(
         # Pop ups after clicking buttons
         eject_modal,
         load_modal,
-        ready_modal,
-        unready_modal,
         submit_modal,
         cancel_modal,
         snapshot_modal,
@@ -895,7 +848,6 @@ def register_db_view_callbacks(app: Dash) -> None:
                 elif table == "pipelines":
                     all_samples = all(s.get("Sample ID") is not None for s in selected_rows)
                     all_servers = all(s.get("Server label") in accessible_servers for s in selected_rows)
-                    all_tomato = all(s.get("Server type") == "tomato" for s in selected_rows)
                     no_samples = all(s.get("Sample ID") is None for s in selected_rows)
                     if all_samples:
                         enabled |= {"label-button", "create-batch-button"}
@@ -903,8 +855,6 @@ def register_db_view_callbacks(app: Dash) -> None:
                             enabled |= {"submit-button", "snapshot-button"}
                             if all(s["Job ID"] is None for s in selected_rows):
                                 enabled |= {"eject-button"}
-                                if all_tomato:
-                                    enabled |= {"ready-button", "unready-button"}
                             elif all(s.get("Job ID") is not None for s in selected_rows):
                                 enabled |= {"cancel-button"}
                     elif all_servers and no_samples:
@@ -1075,77 +1025,6 @@ def register_db_view_callbacks(app: Dash) -> None:
             sm.load(sample, pipeline)
         return 1
 
-    # Ready button pop up
-    @app.callback(
-        Output("ready-modal", "opened"),
-        Input("ready-button", "n_clicks"),
-        Input("ready-yes-close", "n_clicks"),
-        State("ready-modal", "opened"),
-        prevent_initial_call=True,
-    )
-    def ready_pipeline_button(_ready_clicks: int, yes_clicks: int, is_open: bool) -> bool:
-        if not ctx.triggered:
-            return is_open
-        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-        if button_id == "ready-button":
-            return True
-        if button_id == "ready-yes-close" and yes_clicks:
-            return False
-        return is_open
-
-    # When ready button confirmed, ready pipelines and refresh the database
-    @app.callback(
-        Output("refresh-database", "n_clicks", allow_duplicate=True),
-        Input("ready-yes-close", "n_clicks"),
-        State("selected-rows-store", "data"),
-        running=[
-            (Output("loading-message-store", "data"), "Readying pipelines...", ""),
-            (Output("notify-interval", "interval"), active_time, idle_time),
-        ],
-        prevent_initial_call=True,
-    )
-    def ready_pipeline(yes_clicks: int, selected_rows: list) -> int:
-        if not yes_clicks:
-            return 0
-        for row in selected_rows:
-            sm.ready(row["Pipeline"])
-            success_notification("", f"Pipeline {row['Pipeline']} ready", queue=True)
-        return 1
-
-    # Unready button pop up
-    @app.callback(
-        Output("unready-modal", "opened"),
-        Input("unready-button", "n_clicks"),
-        Input("unready-yes-close", "n_clicks"),
-        State("unready-modal", "opened"),
-        prevent_initial_call=True,
-    )
-    def unready_pipeline_button(_unready_clicks: int, yes_clicks: int, is_open: bool) -> bool:
-        if not ctx.triggered:
-            return is_open
-        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-        if button_id == "unready-button":
-            return True
-        if button_id == "unready-yes-close" and yes_clicks:
-            return False
-        return is_open
-
-    # When unready button confirmed, unready pipelines and refresh the database
-    @app.callback(
-        Output("refresh-database", "n_clicks", allow_duplicate=True),
-        Input("unready-yes-close", "n_clicks"),
-        State("selected-rows-store", "data"),
-        running=[(Output("loading-message-store", "data"), "Unreadying pipelines...", "")],
-        prevent_initial_call=True,
-    )
-    def unready_pipeline(yes_clicks: int, selected_rows: list) -> int:
-        if not yes_clicks:
-            return 0
-        for row in selected_rows:
-            logger.info("Unreadying %s", row["Pipeline"])
-            _output = sm.unready(row["Pipeline"])
-        return 1
-
     # Submit button pop up
     @app.callback(
         Output("submit-modal", "opened"),
@@ -1211,14 +1090,6 @@ def register_db_view_callbacks(app: Dash) -> None:
                 return f"❌ {filename} couldn't be read as xml file: {e}", {}
         else:
             return f"❌ {filename} is not a valid file type", {}
-
-        if any(s["Server type"] == "tomato" for s in selected_rows):
-            # Should be a tomato JSON or unicycler JSON
-            if not isinstance(payload, dict):
-                return "❌ cannot submit .xml to tomato", {}
-            if "tomato" not in payload and "unicycler" not in payload:
-                msg = f"❌ {filename} is not a tomato json or unicycler json"
-                return msg, {}
 
         if any(s["Server type"] == "neware" for s in selected_rows):
             # Should be an XML file or universal JSON file

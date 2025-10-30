@@ -26,7 +26,6 @@ from tsdownsample import MinMaxLTTBDownsampler
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_batch_details, get_sample_data
 from aurora_cycler_manager.utils import (
-    c_to_float,
     json_dump_compress_lists,
     max_with_none,
     min_with_none,
@@ -200,71 +199,13 @@ def extract_voltage_crates(job_data: dict) -> dict:
     new_current = None
     rate = None
     new_rate = None
-    is_already_rate = False
 
     # Iterate through jobs, behave differently depending on the job type
     for job in job_data:
         job_type = job.get("job_type")
 
-        # TOMATO 0.2.3 using biologic driver
-        if job_type == "tomato_0_2_biologic":
-            try:
-                capacity = float(job.get("Payload", {}).get("sample", {}).get("capacity", 0))  # in Ah
-            except ValueError:
-                capacity = 0
-            for method in job.get("Payload", {}).get("method", []):
-                if not isinstance(method, dict):
-                    continue
-                if method.get("technique") == "constant_current":
-                    try:
-                        new_current = abs(c_to_float(method.get("current")))
-                        is_already_rate = True
-                    except ValueError:
-                        with contextlib.suppress(ValueError, TypeError):
-                            new_current = float(method.get("current"))
-                            is_already_rate = False
-                    if new_current:
-                        current = new_current
-
-                    with contextlib.suppress(ValueError, TypeError):
-                        voltage = method.get("limit_voltage_min")
-                    min_V = min_with_none([min_V, voltage])
-                    with contextlib.suppress(ValueError, TypeError):
-                        voltage = method.get("limit_voltage_max")
-                    max_V = max_with_none([max_V, voltage])
-                    global_max_V = max_with_none([global_max_V, voltage])
-                if method.get("technique") == "loop":
-                    if method.get("n_gotos", 9) < 9:
-                        if not form_C and current:
-                            if is_already_rate:
-                                form_C = round_c_rate(current, 10)
-                            elif capacity:
-                                form_C = round_c_rate(current / capacity, 10)
-                        if not form_max_V and max_V:
-                            form_max_V = max_V
-                        if not form_min_V and min_V:
-                            form_min_V = min_V
-                        if not form_cycle_count:
-                            form_cycle_count = method["n_gotos"] + 1  # Ec-lab ngotos is cycles-1
-
-                    elif method.get("n_gotos", 0) > 9:
-                        if not cycle_C and current:
-                            if is_already_rate:
-                                cycle_C = round_c_rate(current, 10)
-                            elif capacity:
-                                cycle_C = round_c_rate(current / capacity, 10)
-                        if not cycle_max_V and max_V:
-                            cycle_max_V = max_V
-                        if not cycle_min_V and min_V:
-                            cycle_min_V = min_V
-
-                    if (form_C and cycle_C) or (form_max_V and cycle_max_V):
-                        break
-                    max_V, min_V = None, None
-                    current, new_current = None, None
-
         # Neware xlsx or ndax
-        elif job_type in ("neware_xlsx", "neware_ndax"):
+        if job_type in ("neware_xlsx", "neware_ndax"):
             try:
                 capacity = float(job.get("MultCap", 0))  # in mAs
             except ValueError:
@@ -502,7 +443,6 @@ def analyse_cycles(
     sample_data = metadata.get("sample_data", {})
     sampleid = sample_data.get("Sample ID")
     job_data = metadata.get("job_data")
-    snapshot_status = job_data[-1].get("Snapshot status") if job_data else None  # Used in tomato
     finished = job_data[-1].get("Finished") if job_data else None  # Used in Newares
     snapshot_pipeline = job_data[-1].get("Pipeline") if job_data else None
     last_snapshot = job_data[-1].get("Last snapshot") if job_data else None
@@ -595,11 +535,7 @@ def analyse_cycles(
     # A row is added if charge data is complete and discharge started, but it may have incomplete discharge data
     # If the job is not complete but a discharge has started, set the last discharge data to NaN
     complete = 1
-    if (
-        started_charge
-        and started_discharge
-        and (snapshot_status in ["r", "cd", "ce"] or finished is False)  # job is still running
-    ):
+    if started_charge and started_discharge and finished is False:  # job is still running
         discharge_capacity_mAh[-1] = np.nan
         complete = 0
 
@@ -774,7 +710,6 @@ def analyse_cycles(
             "Last analysis": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             # Only add the following keys if they are not None, otherwise they set to NULL in database
             **({"Last snapshot": last_snapshot} if last_snapshot else {}),
-            **({"Snapshot status": snapshot_status} if snapshot_status else {}),
             **({"Snapshot pipeline": snapshot_pipeline} if snapshot_pipeline else {}),
         }
 
