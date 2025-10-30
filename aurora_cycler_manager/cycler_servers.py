@@ -98,14 +98,6 @@ class CyclerServer:
         """Load a sample into a pipeline."""
         raise NotImplementedError
 
-    def ready(self, pipeline: str) -> str:
-        """Ready a pipeline for use."""
-        raise NotImplementedError
-
-    def unready(self, pipeline: str) -> str:
-        """Mark a pipeline not ready for use."""
-        raise NotImplementedError
-
     def submit(self, sample: str, capacity_Ah: float, payload: str | dict, pipeline: str) -> tuple[str, str, str]:
         """Submit a job to the server."""
         raise NotImplementedError
@@ -166,11 +158,6 @@ class NewareServer(CyclerServer):
         Do not need to actually change anything on Neware client, just update the database.
         """
         return f"Loading {sample} onto {pipeline}"
-
-    @override
-    def ready(self, pipeline: str) -> str:
-        """Readying and unreadying does not exist on Neware."""
-        raise NotImplementedError
 
     @override
     def submit(
@@ -386,11 +373,6 @@ class BiologicServer(CyclerServer):
         Do not need to actually change anything on Biologic client, just update the database.
         """
         return f"Loading {sample} onto {pipeline}"
-
-    @override
-    def ready(self, pipeline: str) -> str:
-        """Readying and unreadying does not exist on Biologic."""
-        raise NotImplementedError
 
     @override
     def submit(

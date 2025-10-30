@@ -459,64 +459,6 @@ class ServerManager:
                 )
         return output
 
-    def ready(self, pipeline: str) -> str:
-        """Ready a pipeline for a new job.
-
-        Args:
-            pipeline (str):
-                The pipeline to ready, must exist in pipelines table of database
-
-        Returns:
-            The output from the server ready command as a string
-
-        """
-        # find server with pipeline, if there is more than one throw an error
-        result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
-        server = self.find_server(result[0][0])
-        logger.info("Readying %s on server: %s", pipeline, server.label)
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            output = server.ready(pipeline)
-            if w:
-                for warning in w:
-                    logger.warning(warning.message)
-            else:
-                # Update database preemtively if no warnings caught
-                self.execute_sql(
-                    "UPDATE pipelines SET `Ready` = 1 WHERE `Pipeline` = ?",
-                    (pipeline,),
-                )
-        return output
-
-    def unready(self, pipeline: str) -> str:
-        """Unready a pipeline, only works if no job running, if job is running user must cancel.
-
-        Args:
-            pipeline (str):
-                The pipeline to unready, must exist in pipelines table of database
-
-        Returns:
-            The output from the server unready command as a string
-
-        """
-        # Find server with pipeline, if there is more than one throw an error
-        result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
-        server = self.find_server(result[0][0])
-        logger.info("Unreadying %s on server: %s", pipeline, server.label)
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            output = server.unready(pipeline)
-            if w:
-                for warning in w:
-                    logger.warning(warning.message)
-            else:
-                # Update database preemtively if no warnings caught
-                self.execute_sql(
-                    "UPDATE pipelines SET `Ready` = 0 WHERE `Pipeline` = ?",
-                    (pipeline,),
-                )
-        return output
-
     def submit(
         self,
         sample: str,
