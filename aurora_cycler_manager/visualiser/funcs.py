@@ -70,12 +70,11 @@ def get_database() -> dict[str, Any]:
     return {"data": db_data, "column_defs": db_columns}
 
 
-def get_db_last_update() -> str:
+def get_db_last_update() -> datetime:
     """Get the last update time of the database."""
     db_path = Path(CONFIG["Database path"])
     modified_uts = db_path.stat().st_mtime
-    modified_datetime = datetime.fromtimestamp(int(modified_uts), tz=timezone.utc)
-    return modified_datetime.isoformat()
+    return datetime.fromtimestamp(int(modified_uts), tz=timezone.utc)
 
 
 def make_pipelines_comparable(pipelines: list[str | None]) -> list[str | None]:

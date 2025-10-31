@@ -800,8 +800,8 @@ def register_db_view_callbacks(app: Dash) -> None:
     )
     def refresh_database(_n_clicks: int, _n_intervals: int) -> tuple:
         db_data = get_database()
-        dt_string = datetime.now(timezone.utc).isoformat()
-        last_checked = get_db_last_update()
+        dt_string = datetime.now(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z")
+        last_checked = get_db_last_update().astimezone(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z")
         samples = [s["Sample ID"] for s in db_data["data"]["samples"]]
         batches = get_batch_details()
         return (
