@@ -104,10 +104,6 @@ class CyclerServer:
         """Get the status of all pipelines on the server."""
         raise NotImplementedError
 
-    def get_jobs(self) -> dict:
-        """Get all jobs from server."""
-        raise NotImplementedError
-
     def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
         """Save a snapshot of a job on the server and download it to the local machine."""
         raise NotImplementedError
@@ -264,14 +260,6 @@ class NewareServer(CyclerServer):
                 sampleids.append(None)
                 readys.append(True)
         return {"pipeline": pipelines, "sampleid": sampleids, "jobid": [None] * len(pipelines), "ready": readys}
-
-    @override
-    def get_jobs(self) -> dict:
-        """Get all jobs from server.
-
-        Not implemented, could use inquiredf but very slow. Return empty dict for now.
-        """
-        return {}
 
     @override
     def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
@@ -439,14 +427,6 @@ class BiologicServer(CyclerServer):
             "jobid": [None] * len(pipelines),
             "ready": readys,
         }
-
-    @override
-    def get_jobs(self) -> dict:
-        """Get all jobs from server.
-
-        Not implemented, could use get-job-id but very slow. Return empty dict for now.
-        """
-        return {}
 
     @override
     def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
