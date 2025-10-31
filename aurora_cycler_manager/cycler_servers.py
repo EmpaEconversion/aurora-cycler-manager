@@ -96,7 +96,7 @@ class CyclerServer:
         """Submit a job to the server."""
         raise NotImplementedError
 
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
+    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
         """Cancel a job on the server."""
         raise NotImplementedError
 
@@ -216,7 +216,7 @@ class NewareServer(CyclerServer):
         return jobid, jobid_on_server, xml_string
 
     @override
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
+    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.
@@ -395,7 +395,7 @@ class BiologicServer(CyclerServer):
         return jobid, jobid_on_server, mps_string
 
     @override
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
+    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.

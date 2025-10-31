@@ -533,7 +533,7 @@ class ServerManager:
         )
         server_label, jobid_on_server, sampleid, pipeline = result[0]
         server = self.find_server(server_label)
-        output = server.cancel(jobid_on_server, sampleid, pipeline)
+        output = server.cancel(jobid, jobid_on_server, sampleid, pipeline)
         # If no error, assume job is cancelled and update the database
         self.execute_sql(
             "UPDATE jobs SET `Status` = 'cd' WHERE `Job ID` = ?",
