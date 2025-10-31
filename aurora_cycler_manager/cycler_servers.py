@@ -14,6 +14,7 @@ These classes are used by server_manager.
 import base64
 import json
 import logging
+import uuid
 from datetime import datetime
 from pathlib import Path, PureWindowsPath
 
@@ -345,7 +346,8 @@ class BiologicServer(CyclerServer):
         # EC-lab has no concept of job IDs - we use the folder as the job ID
         # Job ID is sample ID + unix timestamp in seconds
         run_id = run_from_sample(sample)
-        jobid_on_server = f"{sample}__{int(datetime.now().timestamp())}"
+        jobid_on_server = str(uuid.uuid4())
+        jobid = jobid_on_server  # Do not need separate IDs
         try:
             with Path("./temp.mps").open("w", encoding="utf-8") as f:
                 f.write(mps_string)
@@ -376,7 +378,6 @@ class BiologicServer(CyclerServer):
                     f"Try manually loading the mps file at {remote_output_path}."
                 )
                 raise ValueError(msg)
-            jobid = f"{self.label}-{jobid_on_server}"
             logger.info("Job started on Biologic server with ID %s", jobid)
         finally:
             Path("temp.mps").unlink()  # Remove the file on local machine
