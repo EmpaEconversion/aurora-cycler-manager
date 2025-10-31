@@ -159,7 +159,7 @@ def get_mprs(
             "UPDATE harvester "
             "SET `Last snapshot` = ? "
             "WHERE `Server label` = ? AND `Server hostname` = ? AND `Folder` = ?",
-            (current_datetime.isoformat(), server_label, server_hostname, server_copy_folder),
+            (current_datetime.isoformat(timespec="seconds"), server_label, server_hostname, server_copy_folder),
         )
         cursor.close()
 
@@ -377,7 +377,7 @@ def convert_mpr(
                     "repo_url": __url__,
                     "repo_version": __version__,
                     "method": "eclab_harvester.convert_mpr",
-                    "datetime": datetime.now(timezone.utc).isoformat(),
+                    "datetime": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 },
             },
         },
@@ -436,7 +436,7 @@ def convert_mpr(
             )
             cursor.execute(
                 "UPDATE results SET `Last snapshot` = ? WHERE `Sample ID` = ?",
-                (modified_date.isoformat() if modified_date else None, sample_id),
+                (modified_date.isoformat(timespec="seconds") if modified_date else None, sample_id),
             )
             cursor.close()
     return df, metadata

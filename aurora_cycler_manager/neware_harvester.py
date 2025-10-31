@@ -167,7 +167,7 @@ def harvest_neware_files(
             "UPDATE harvester "
             "SET `Last snapshot` = ? "
             "WHERE `Server label` = ? AND `Server hostname` = ? AND `Folder` = ?",
-            (current_datetime.isoformat(), server_label, server_hostname, server_copy_folder),
+            (current_datetime.isoformat(timespec="seconds"), server_label, server_hostname, server_copy_folder),
         )
         cursor.close()
 
@@ -739,7 +739,7 @@ def update_database_job(
     submitted = metadata.get("Start time")
     payload = json.dumps(metadata.get("Payload"))
     last_snapshot_uts = filepath.stat().st_birthtime
-    last_snapshot = datetime.fromtimestamp(last_snapshot_uts, tz=timezone.utc).isoformat()
+    last_snapshot = datetime.fromtimestamp(last_snapshot_uts, tz=timezone.utc).isoformat(timespec="seconds")
     server_hostname = next(
         (
             server["hostname"]
@@ -821,7 +821,7 @@ def convert_neware_data(
 
     # Metadata to add
     job_data["Technique codes"] = state_dict
-    current_datetime = datetime.now(timezone.utc).isoformat()
+    current_datetime = datetime.now(timezone.utc).isoformat(timespec="seconds")
     metadata = {
         "provenance": {
             "snapshot_file": str(file_path),
@@ -872,7 +872,7 @@ def convert_neware_data(
                 f.create_dataset("metadata", data=json.dumps(metadata))
 
         # Update the database
-        creation_date = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc).isoformat()
+        creation_date = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc).isoformat(timespec="seconds")
         with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(

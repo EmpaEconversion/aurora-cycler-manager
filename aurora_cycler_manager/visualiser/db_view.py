@@ -1477,7 +1477,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                         "Data processing, analysis, export, and ro-crate generation completed with "
                         "aurora-cycler-manager (https://github.com/empaeconversion/aurora-cycler-manager)"
                     ),
-                    "dateCreated": datetime.now(timezone.utc).isoformat(),
+                    "dateCreated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                     "hasPart": [],
                 },
             ],
