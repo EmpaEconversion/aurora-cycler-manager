@@ -155,7 +155,10 @@ def parse_datetime(datetime_str: str | float) -> datetime:
     """
     if isinstance(datetime_str, str):
         with suppress(ValueError):
-            return datetime.fromisoformat(datetime_str)
+            dt = datetime.fromisoformat(datetime_str)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=CONFIG["tz"])
+            return dt.astimezone(timezone.utc)
         with suppress(ValueError):
             return datetime.fromtimestamp(float(datetime_str), tz=timezone.utc)
         with suppress(ValueError):
