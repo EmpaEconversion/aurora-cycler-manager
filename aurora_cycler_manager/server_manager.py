@@ -29,6 +29,7 @@ from aurora_cycler_manager.utils import run_from_sample
 SERVER_CORRESPONDENCE = {
     "neware": cycler_servers.NewareServer,
     "biologic": cycler_servers.BiologicServer,
+    "neware-aiida": cycler_servers.NewareAiidaServer,
 }
 
 CONFIG = config.get_config()
@@ -488,7 +489,8 @@ class ServerManager:
         dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         # Update the job table in the database
-        if full_jobid and jobid_on_server:
+        if full_jobid:
+            print("Putting things in the database...")
             self.execute_sql(
                 "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Server hostname`, `Job ID on server`, "
                 "`Pipeline`, `Submitted`, `Payload`, `Unicycler protocol`, `Capacity (mAh)`, `Comment`) "
@@ -510,11 +512,13 @@ class ServerManager:
             # Neware and Biologic servers have very expensive job id retrieval
             # It costs around 1 second to get the job id for one channel, so cannot do this in update_pipelines
             # Just do it once on job submission and don't update until job is finished
-            if isinstance(server, (cycler_servers.NewareServer, cycler_servers.BiologicServer)):
-                self.execute_sql(
-                    "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ?, `Ready` = 0 WHERE `Pipeline` = ?",
-                    (full_jobid, jobid_on_server, pipeline),
-                )
+            self.execute_sql(
+                "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ?, `Ready` = 0 WHERE `Pipeline` = ?",
+                (full_jobid, jobid_on_server, pipeline),
+            )
+        else:
+            msg = "Submission did not return a job ID."
+            raise ValueError(msg)
 
     def cancel(self, jobid: str) -> None:
         """Cancel a job on a server.
