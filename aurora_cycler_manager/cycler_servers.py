@@ -357,7 +357,7 @@ class BiologicServer(CyclerServer):
         # EC-lab has no concept of job IDs - we use the folder as the job ID
         # Job ID is sample ID + unix timestamp in seconds
         run_id = run_from_sample(sample)
-        jobid_on_server = f"{sample}__{int(datetime.now().timestamp())}"
+        jobid_on_server = f"{sample}__{int(datetime.now(CONFIG['tz']).timestamp())}"
         try:
             with Path("./temp.mps").open("w", encoding="utf-8") as f:
                 f.write(mps_string)

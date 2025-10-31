@@ -34,7 +34,7 @@ jobs:
           uv pip install -e .
 
       - name: Lint with ruff
-        run: ruff check --ignore=PTH,C901,PLR0911,PLR0912,PLR0913,PLR0915,PLW0603,BLE001,TRY400,PERF203,DTZ005,DTZ006,DTZ007,FIX002,FBT001,FBT002
+        run: ruff check --ignore=PTH,C901,PLR0911,PLR0912,PLR0913,PLR0915,PLW0603,BLE001,TRY400,PERF203,FIX002,FBT001,FBT002
 
       - name: Run tests with pytest
         run: pytest --cov=aurora_cycler_manager --cov-report=term

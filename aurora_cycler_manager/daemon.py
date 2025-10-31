@@ -98,9 +98,8 @@ def daemon_loop(
 def get_next_run_time(snapshot_times: list[str]) -> datetime:
     """Get the next datetime to run the snapshotting and analysing."""
     now = datetime.now(CONFIG["tz"])
-    snapshot_datetimes = [
-        datetime.combine(now.date(), datetime.strptime(t, "%H:%M").time(), tzinfo=CONFIG["tz"]) for t in snapshot_times
-    ]
+    snapshot_datetimes = [datetime.strptime(t, "%H:%M").time() for t in snapshot_times]  # noqa: DTZ007
+    snapshot_datetimes = [datetime.combine(now.date(), t, tzinfo=CONFIG["tz"]) for t in snapshot_datetimes]
     snapshot_datetimes = [t if t > now else t + timedelta(days=1) for t in snapshot_datetimes]
     return min(snapshot_datetimes)
 

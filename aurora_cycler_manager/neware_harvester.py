@@ -664,7 +664,7 @@ def get_neware_xlsx_data(file_path: Path) -> pd.DataFrame:
         & df["Step Type"].str.contains(r" Chg", regex=True)
     ).cumsum()
     # convert date string from df["Date"] in format YYYY-MM-DD HH:MM:SS to uts timestamp in seconds
-    output_df["uts"] = df["Date"].apply(lambda x: datetime.strptime(x, "%Y-%m-%d %H:%M:%S").timestamp())
+    output_df["uts"] = df["Date"].apply(lambda x: datetime.strptime(x, "%Y-%m-%d %H:%M:%S").timestamp())  # noqa: DTZ007
     # add 1e-6 to Timestamp where Time is 0 - negligible and avoids errors when sorting
     output_df["uts"] = output_df["uts"] + (df["Time"] == 0) * 1e-6
     return output_df

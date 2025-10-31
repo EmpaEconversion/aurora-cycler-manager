@@ -289,7 +289,7 @@ def check_mpr_uts(
                 if line.startswith("Acquisition started on : "):
                     datetime_str = line.split(":", 1)[1].strip()
                     # EC-lab mpl has no timezone info - assume it is in the same timezone
-                    datetime_object = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")
+                    datetime_object = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")  # noqa: DTZ007
                     uts_timestamp = datetime_object.replace(tzinfo=CONFIG["tz"]).timestamp()
                     df["uts"] = df["uts"] + uts_timestamp
                     break
