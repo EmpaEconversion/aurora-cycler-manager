@@ -27,7 +27,7 @@ import re
 import sqlite3
 import tempfile
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import h5py
@@ -87,7 +87,8 @@ def harvest_neware_files(
         list of new files copied
 
     """
-    cutoff_datetime = datetime.fromtimestamp(0, tz=CONFIG["tz"])  # Set default cutoff date
+    # Set default cutoff date, use local timezone
+    cutoff_datetime = datetime.fromtimestamp(0, tz=CONFIG["tz"])
     if not force_copy:  # Set cutoff date to last snapshot from database
         with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
@@ -139,7 +140,7 @@ def harvest_neware_files(
         logger.info("Found %d files modified since %s", len(modified_files), cutoff_date_str)
 
         # Copy the files using SFTP
-        current_datetime = datetime.now(CONFIG["tz"])  # Keep time of copying for database
+        current_datetime = datetime.now(timezone.utc)  # Keep time of copying for database
         new_files = []
         with ssh.open_sftp() as sftp:
             for file in modified_files:
@@ -738,7 +739,7 @@ def update_database_job(
     submitted = metadata.get("Start time")
     payload = json.dumps(metadata.get("Payload"))
     last_snapshot_uts = filepath.stat().st_birthtime
-    last_snapshot = datetime.fromtimestamp(last_snapshot_uts, tz=CONFIG["tz"]).isoformat()
+    last_snapshot = datetime.fromtimestamp(last_snapshot_uts, tz=timezone.utc).isoformat()
     server_hostname = next(
         (
             server["hostname"]
@@ -820,7 +821,7 @@ def convert_neware_data(
 
     # Metadata to add
     job_data["Technique codes"] = state_dict
-    current_datetime = datetime.now(CONFIG["tz"]).isoformat()
+    current_datetime = datetime.now(timezone.utc).isoformat()
     metadata = {
         "provenance": {
             "snapshot_file": str(file_path),
@@ -871,7 +872,7 @@ def convert_neware_data(
                 f.create_dataset("metadata", data=json.dumps(metadata))
 
         # Update the database
-        creation_date = datetime.fromtimestamp(file_path.stat().st_mtime, tz=CONFIG["tz"]).isoformat()
+        creation_date = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc).isoformat()
         with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(

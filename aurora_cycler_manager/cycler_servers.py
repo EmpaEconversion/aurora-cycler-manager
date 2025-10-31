@@ -14,7 +14,7 @@ These classes are used by server_manager.
 import base64
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
 
 import paramiko
@@ -179,7 +179,7 @@ class NewareServer(CyclerServer):
         xml_string = xml_string.replace("$CAPACITY", str(capacity_mA_s))
 
         # Write the xml string to a temporary file
-        current_datetime = datetime.now(CONFIG["tz"]).isoformat()
+        current_datetime = datetime.now(timezone.utc).isoformat()
         try:
             with Path("./temp.xml").open("w", encoding="utf-8") as f:
                 f.write(xml_string)

@@ -10,7 +10,7 @@ import logging
 import tempfile
 import zipfile
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -95,7 +95,7 @@ def cleanup_temp_folder() -> None:
     for f in DOWNLOAD_DIR.iterdir():
         if f.is_file():
             creation_uts = f.stat().st_birthtime
-            now_uts = datetime.now(CONFIG["tz"]).timestamp()
+            now_uts = datetime.now(timezone.utc).timestamp()
             age = now_uts - creation_uts
             if age > 3600:
                 f.unlink()
@@ -800,7 +800,7 @@ def register_db_view_callbacks(app: Dash) -> None:
     )
     def refresh_database(_n_clicks: int, _n_intervals: int) -> tuple:
         db_data = get_database()
-        dt_string = datetime.now(CONFIG["tz"]).isoformat()
+        dt_string = datetime.now(timezone.utc).isoformat()
         last_checked = get_db_last_update()
         samples = [s["Sample ID"] for s in db_data["data"]["samples"]]
         batches = get_batch_details()
@@ -1477,7 +1477,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                         "Data processing, analysis, export, and ro-crate generation completed with "
                         "aurora-cycler-manager (https://github.com/empaeconversion/aurora-cycler-manager)"
                     ),
-                    "dateCreated": datetime.now(CONFIG["tz"]).isoformat(),
+                    "dateCreated": datetime.now(timezone.utc).isoformat(),
                     "hasPart": [],
                 },
             ],

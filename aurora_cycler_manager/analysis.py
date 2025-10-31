@@ -13,7 +13,7 @@ import json
 import logging
 import sqlite3
 import warnings
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -167,7 +167,7 @@ def combine_jobs(
                     "repo_url": __url__,
                     "repo_version": __version__,
                     "method": "analysis.combine_jobs",
-                    "datetime": datetime.now(CONFIG["tz"]).isoformat(),
+                    "datetime": datetime.now(timezone.utc).isoformat(),
                 },
             },
             "original_file_provenance": {str(f): m["provenance"] for f, m in zip(job_files, metadatas, strict=False)},
@@ -433,7 +433,7 @@ def analyse_cycles(
                 "repo_url": __url__,
                 "repo_version": __version__,
                 "method": "analysis.analyse_cycles",
-                "datetime": datetime.now(CONFIG["tz"]).isoformat(),
+                "datetime": datetime.now(timezone.utc).isoformat(),
             },
         },
     )
@@ -705,7 +705,7 @@ def analyse_cycles(
             "Initial efficiency (%)": cycle_dict["Initial coulombic efficiency (%)"],
             "Last specific discharge capacity (mAh/g)": cycle_dict["Last specific discharge capacity (mAh/g)"],
             "Last efficiency (%)": cycle_dict["Last coulombic efficiency (%)"],
-            "Last analysis": datetime.now(CONFIG["tz"]).isoformat(),
+            "Last analysis": datetime.now(timezone.utc).isoformat(),
             # Only add the following keys if they are not None, otherwise they set to NULL in database
             **({"Last snapshot": last_snapshot} if last_snapshot else {}),
             **({"Snapshot pipeline": snapshot_pipeline} if snapshot_pipeline else {}),
@@ -813,7 +813,7 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
         cursor = conn.cursor()
         cursor.execute(
             "UPDATE results SET `Last analysis` = ? WHERE `Sample ID` = ?",
-            (datetime.now(CONFIG["tz"]).isoformat(), sample),
+            (datetime.now(timezone.utc).isoformat(), sample),
         )
     return df, cycle_dict, metadata
 
@@ -1010,7 +1010,7 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
                 "repo_url": __url__,
                 "repo_version": __version__,
                 "method": "analysis.analyse_batch",
-                "datetime": datetime.now(CONFIG["tz"]).isoformat(),
+                "datetime": datetime.now(timezone.utc).isoformat(),
             },
         },
     }

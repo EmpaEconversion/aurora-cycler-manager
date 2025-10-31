@@ -5,7 +5,7 @@ Useful functions for the visualiser app.
 
 import sqlite3
 from contextlib import suppress
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -74,7 +74,7 @@ def get_db_last_update() -> str:
     """Get the last update time of the database."""
     db_path = Path(CONFIG["Database path"])
     modified_uts = db_path.stat().st_mtime
-    modified_datetime = datetime.fromtimestamp(int(modified_uts), tz=CONFIG["tz"])
+    modified_datetime = datetime.fromtimestamp(int(modified_uts), tz=timezone.utc)
     return modified_datetime.isoformat()
 
 

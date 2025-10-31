@@ -23,7 +23,7 @@ import json
 import logging
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import h5py
@@ -79,7 +79,8 @@ def get_mprs(
         force_copy (bool, optional): Copy all files regardless of modification date
 
     """
-    cutoff_datetime = datetime.fromtimestamp(0, tz=CONFIG["tz"])  # Set default cutoff date
+    # Set default cutoff date, use local timezone
+    cutoff_datetime = datetime.fromtimestamp(0, tz=CONFIG["tz"])
     if not force_copy:  # Set cutoff date to last snapshot from database
         with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
@@ -133,7 +134,7 @@ def get_mprs(
         logger.info("Found %d modified files since %s", len(modified_files), cutoff_date_str)
 
         # Copy the files using SFTP
-        current_datetime = datetime.now(CONFIG["tz"])  # Keep time of copying for database
+        current_datetime = datetime.now(timezone.utc)  # Keep time of copying for database
         new_files = []
         with ssh.open_sftp() as sftp:
             for file in modified_files:
@@ -343,7 +344,7 @@ def convert_mpr(
         else:
             run_id = run_from_sample(sample_id)
         if not modified_date:
-            modified_date = datetime.fromtimestamp(mpr_file.stat().st_mtime, tz=CONFIG["tz"])
+            modified_date = datetime.fromtimestamp(mpr_file.stat().st_mtime, tz=timezone.utc)
     elif isinstance(mpr_file, bytes):  # file-like object
         if not sample_id:
             msg = "Sample ID is required if reading from bytes"
@@ -376,7 +377,7 @@ def convert_mpr(
                     "repo_url": __url__,
                     "repo_version": __version__,
                     "method": "eclab_harvester.convert_mpr",
-                    "datetime": datetime.now(CONFIG["tz"]).isoformat(),
+                    "datetime": datetime.now(timezone.utc).isoformat(),
                 },
             },
         },

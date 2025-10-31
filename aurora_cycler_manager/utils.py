@@ -6,7 +6,7 @@ Utility functions for the Aurora Cycler Manager.
 import json
 import uuid
 from contextlib import suppress
-from datetime import datetime
+from datetime import datetime, timezone
 from fractions import Fraction
 from io import TextIOWrapper
 
@@ -157,14 +157,24 @@ def parse_datetime(datetime_str: str | float) -> datetime:
         with suppress(ValueError):
             return datetime.fromisoformat(datetime_str)
         with suppress(ValueError):
-            return datetime.fromtimestamp(float(datetime_str), tz=CONFIG["tz"])
+            return datetime.fromtimestamp(float(datetime_str), tz=timezone.utc)
         with suppress(ValueError):
-            return datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=CONFIG["tz"])
+            # Assume local timezone, convert to UTC
+            return (
+                datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
+                .replace(tzinfo=CONFIG["tz"])
+                .astimezone(timezone.utc)
+            )
         with suppress(ValueError):
             return datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S %z")
         with suppress(ValueError):
-            return datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=CONFIG["tz"])
+            # Assume local timezone, convert to UTC
+            return (
+                datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S.%f")
+                .replace(tzinfo=CONFIG["tz"])
+                .astimezone(timezone.utc)
+            )
     if isinstance(datetime_str, float):
-        return datetime.fromtimestamp(datetime_str, tz=CONFIG["tz"])
+        return datetime.fromtimestamp(datetime_str, tz=timezone.utc)
     msg = f"Invalid datetime string: {datetime_str}"
     raise ValueError(msg)
