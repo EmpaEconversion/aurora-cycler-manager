@@ -27,26 +27,24 @@ import re
 import sqlite3
 import tempfile
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import h5py
 import NewareNDA
 import pandas as pd
 import paramiko
-import pytz
 import xmltodict
 
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.setup_logging import setup_logging
-from aurora_cycler_manager.utils import run_from_sample, ssh_connect
+from aurora_cycler_manager.utils import parse_datetime, run_from_sample, ssh_connect
 from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
 CONFIG = get_config()
-tz = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
 logger = logging.getLogger(__name__)
 
 
@@ -89,7 +87,8 @@ def harvest_neware_files(
         list of new files copied
 
     """
-    cutoff_datetime = datetime.fromtimestamp(0)  # Set default cutoff date
+    # Set default cutoff date, use local timezone
+    cutoff_datetime = datetime.fromtimestamp(0, tz=CONFIG["tz"])
     if not force_copy:  # Set cutoff date to last snapshot from database
         with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
@@ -100,7 +99,9 @@ def harvest_neware_files(
             result = cursor.fetchone()
             cursor.close()
         if result:
-            cutoff_datetime = datetime.strptime(result[0], "%Y-%m-%d %H:%M:%S")
+            cutoff_datetime = parse_datetime(result[0])
+
+    # Cannot use timezone or ISO8061 - not supported in PowerShell 5.1
     cutoff_date_str = cutoff_datetime.strftime("%Y-%m-%d %H:%M:%S")
 
     # Connect to the server and copy the files
@@ -139,7 +140,7 @@ def harvest_neware_files(
         logger.info("Found %d files modified since %s", len(modified_files), cutoff_date_str)
 
         # Copy the files using SFTP
-        current_datetime = datetime.now()  # Keep time of copying for database
+        current_datetime = datetime.now(timezone.utc)  # Keep time of copying for database
         new_files = []
         with ssh.open_sftp() as sftp:
             for file in modified_files:
@@ -166,7 +167,7 @@ def harvest_neware_files(
             "UPDATE harvester "
             "SET `Last snapshot` = ? "
             "WHERE `Server label` = ? AND `Server hostname` = ? AND `Folder` = ?",
-            (current_datetime.strftime("%Y-%m-%d %H:%M:%S"), server_label, server_hostname, server_copy_folder),
+            (current_datetime.isoformat(timespec="seconds"), server_label, server_hostname, server_copy_folder),
         )
         cursor.close()
 
@@ -664,7 +665,7 @@ def get_neware_xlsx_data(file_path: Path) -> pd.DataFrame:
         & df["Step Type"].str.contains(r" Chg", regex=True)
     ).cumsum()
     # convert date string from df["Date"] in format YYYY-MM-DD HH:MM:SS to uts timestamp in seconds
-    output_df["uts"] = df["Date"].apply(lambda x: datetime.strptime(x, "%Y-%m-%d %H:%M:%S").timestamp())
+    output_df["uts"] = df["Date"].apply(lambda x: datetime.strptime(x, "%Y-%m-%d %H:%M:%S").timestamp())  # noqa: DTZ007
     # add 1e-6 to Timestamp where Time is 0 - negligible and avoids errors when sorting
     output_df["uts"] = output_df["uts"] + (df["Time"] == 0) * 1e-6
     return output_df
@@ -738,7 +739,7 @@ def update_database_job(
     submitted = metadata.get("Start time")
     payload = json.dumps(metadata.get("Payload"))
     last_snapshot_uts = filepath.stat().st_birthtime
-    last_snapshot = datetime.fromtimestamp(last_snapshot_uts).strftime("%Y-%m-%d %H:%M:%S")
+    last_snapshot = datetime.fromtimestamp(last_snapshot_uts, tz=timezone.utc).isoformat(timespec="seconds")
     server_hostname = next(
         (
             server["hostname"]
@@ -820,7 +821,7 @@ def convert_neware_data(
 
     # Metadata to add
     job_data["Technique codes"] = state_dict
-    current_datetime = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+    current_datetime = datetime.now(timezone.utc).isoformat(timespec="seconds")
     metadata = {
         "provenance": {
             "snapshot_file": str(file_path),
@@ -871,9 +872,7 @@ def convert_neware_data(
                 f.create_dataset("metadata", data=json.dumps(metadata))
 
         # Update the database
-        creation_date = datetime.fromtimestamp(
-            file_path.stat().st_mtime,
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        creation_date = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc).isoformat(timespec="seconds")
         with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(

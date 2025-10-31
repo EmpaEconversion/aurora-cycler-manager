@@ -16,11 +16,12 @@ from time import sleep
 
 from aurora_cycler_manager import server_manager
 from aurora_cycler_manager.analysis import analyse_all_batches, analyse_all_samples
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.eclab_harvester import main as harvest_eclab
 from aurora_cycler_manager.neware_harvester import main as harvest_neware
 
-# Set up logging
-# Get the root logger
+# Set up config and logging
+CONFIG = get_config()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -70,10 +71,7 @@ def daemon_loop(
     else:
         logger.info("Snapshotting and plotting at %s each day", snapshot_times)
 
-    now = datetime.now()
-    snapshot_datetimes = [datetime.combine(now, datetime.strptime(t, "%H:%M").time()) for t in snapshot_times]
-    snapshot_datetimes = [t if t > now else t + timedelta(days=1) for t in snapshot_datetimes]
-    next_run_time = min(snapshot_datetimes)  # Find the earliest next run time
+    next_run_time = get_next_run_time(snapshot_times)
     logger.info("Next snapshot at %s", next_run_time)
 
     sm = server_manager.ServerManager()
@@ -82,7 +80,7 @@ def daemon_loop(
     # Main loop
     while True:
         sleep(update_time)
-        now = datetime.now()
+        now = datetime.now(CONFIG["tz"])
         logger.info("Updating database...")
 
         handle_exceptions(sm.update_db)
@@ -93,13 +91,17 @@ def daemon_loop(
             handle_exceptions(harvest_eclab)
             handle_exceptions(analyse_all_samples)
             handle_exceptions(analyse_all_batches)
-
-            # Calculate the next run time for the snapshotting and analysing
-            now = datetime.now()
-            snapshot_datetimes = [datetime.combine(now, datetime.strptime(t, "%H:%M").time()) for t in snapshot_times]
-            snapshot_datetimes = [t if t > now else t + timedelta(days=1) for t in snapshot_datetimes]
-            next_run_time = min(snapshot_datetimes)
+            next_run_time = get_next_run_time(snapshot_times)
             logger.info("Next snapshot at %s", next_run_time)
+
+
+def get_next_run_time(snapshot_times: list[str]) -> datetime:
+    """Get the next datetime to run the snapshotting and analysing."""
+    now = datetime.now(CONFIG["tz"])
+    snapshot_datetimes = [datetime.strptime(t, "%H:%M").time() for t in snapshot_times]  # noqa: DTZ007
+    snapshot_datetimes = [datetime.combine(now.date(), t, tzinfo=CONFIG["tz"]) for t in snapshot_datetimes]
+    snapshot_datetimes = [t if t > now else t + timedelta(days=1) for t in snapshot_datetimes]
+    return min(snapshot_datetimes)
 
 
 def main() -> None:

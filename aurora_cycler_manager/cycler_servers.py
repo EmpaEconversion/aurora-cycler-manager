@@ -14,7 +14,7 @@ These classes are used by server_manager.
 import base64
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
 
 import paramiko
@@ -179,7 +179,7 @@ class NewareServer(CyclerServer):
         xml_string = xml_string.replace("$CAPACITY", str(capacity_mA_s))
 
         # Write the xml string to a temporary file
-        current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        current_datetime = datetime.now(timezone.utc).isoformat(timespec="seconds")
         try:
             with Path("./temp.xml").open("w", encoding="utf-8") as f:
                 f.write(xml_string)
@@ -357,7 +357,7 @@ class BiologicServer(CyclerServer):
         # EC-lab has no concept of job IDs - we use the folder as the job ID
         # Job ID is sample ID + unix timestamp in seconds
         run_id = run_from_sample(sample)
-        jobid_on_server = f"{sample}__{int(datetime.now().timestamp())}"
+        jobid_on_server = f"{sample}__{int(datetime.now(CONFIG['tz']).timestamp())}"
         try:
             with Path("./temp.mps").open("w", encoding="utf-8") as f:
                 f.write(mps_string)

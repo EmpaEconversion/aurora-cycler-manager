@@ -8,8 +8,10 @@ import logging
 import os
 import sqlite3
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import platformdirs
+from tzlocal import get_localzone_name
 
 logger = logging.getLogger(__name__)
 CONFIG = None
@@ -125,6 +127,12 @@ def _read_config_file() -> dict:
 
     if not config.get("Database path"):
         raise ValueError(err_msg)
+
+    # Set timezone
+    if config.get("Time zone"):
+        config["tz"] = ZoneInfo(config["Time zone"])
+    else:
+        config["tz"] = ZoneInfo(get_localzone_name())
 
     # Patch the database in case users are using an old version
     if config.get("Database path").exists():
