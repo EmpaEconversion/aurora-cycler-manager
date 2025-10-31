@@ -11,6 +11,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import platformdirs
+from tzlocal import get_localzone_name
 
 logger = logging.getLogger(__name__)
 CONFIG = None
@@ -128,11 +129,10 @@ def _read_config_file() -> dict:
         raise ValueError(err_msg)
 
     # Set timezone
-    try:
-        config["tz"] = ZoneInfo(config.get("Time zone", "Europe/Zurich"))
-    except KeyError:
-        logger.exception("Time zone '%s' not understood, using default: Europe/Zurich", config.get("Time zone"))
-        config["tz"] = ZoneInfo("Europe/Zurich")
+    if config.get("Time zone"):
+        config["tz"] = ZoneInfo(config["Time zone"])
+    else:
+        config["tz"] = ZoneInfo(get_localzone_name())
 
     # Patch the database in case users are using an old version
     if config.get("Database path").exists():

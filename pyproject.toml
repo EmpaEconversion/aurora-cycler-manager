@@ -29,6 +29,7 @@ dependencies = [
     "tables>=3.10.1",
     "tsdownsample>=0.1.4.1",
     "typing-extensions>=4.15.0",
+    "tzlocal>=5.3.1",
     "waitress>=3.0.2",
     "xmltodict>=0.14.2",
     "yadg>=6.2.2",
