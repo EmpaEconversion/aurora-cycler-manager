@@ -36,7 +36,7 @@ from dgbowl_schemas.yadg.dataschema import ExtractorFactory
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import add_data_to_db, get_sample_data
 from aurora_cycler_manager.setup_logging import setup_logging
-from aurora_cycler_manager.utils import run_from_sample, ssh_connect
+from aurora_cycler_manager.utils import parse_datetime, run_from_sample, ssh_connect
 from aurora_cycler_manager.version import __url__, __version__
 
 CONFIG = get_config()
@@ -90,7 +90,7 @@ def get_mprs(
             result = cursor.fetchone()
             cursor.close()
         if result:
-            cutoff_datetime = datetime.strptime(result[0], "%Y-%m-%d %H:%M:%S")
+            cutoff_datetime = parse_datetime(result[0])
     # Cannot use timezone or ISO8061 - not supported in PowerShell 5.1
     cutoff_date_str = cutoff_datetime.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -288,6 +288,7 @@ def check_mpr_uts(
             for line in lines:
                 if line.startswith("Acquisition started on : "):
                     datetime_str = line.split(":", 1)[1].strip()
+                    # EC-lab mpl has no timezone info - assume it is in the same timezone
                     datetime_object = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")
                     uts_timestamp = datetime_object.replace(tzinfo=CONFIG["tz"]).timestamp()
                     df["uts"] = df["uts"] + uts_timestamp

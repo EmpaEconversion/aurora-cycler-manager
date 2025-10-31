@@ -5,6 +5,8 @@ Utility functions for the Aurora Cycler Manager.
 
 import json
 import uuid
+from contextlib import suppress
+from datetime import datetime
 from fractions import Fraction
 from io import TextIOWrapper
 
@@ -144,3 +146,25 @@ def round_c_rate(x: float, round_to: int, max_denominator: int = 100, tolerance:
     if abs(float(frac) - x) <= tolerance:
         return round(float(frac), round_to)
     return round(x, round_to)
+
+
+def parse_datetime(datetime_str: str | float) -> datetime:
+    """Parse a datetime string.
+
+    Could be ISO8601 format, timestamp, %Y-%m-%d %H:%M:%S, %Y-%m-%d %H:%M:%S %z, or %Y-%m-%d %H:%M:%S.%f
+    """
+    if isinstance(datetime_str, str):
+        with suppress(ValueError):
+            return datetime.fromisoformat(datetime_str)
+        with suppress(ValueError):
+            return datetime.fromtimestamp(float(datetime_str), tz=CONFIG["tz"])
+        with suppress(ValueError):
+            return datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=CONFIG["tz"])
+        with suppress(ValueError):
+            return datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S %z")
+        with suppress(ValueError):
+            return datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=CONFIG["tz"])
+    if isinstance(datetime_str, float):
+        return datetime.fromtimestamp(datetime_str, tz=CONFIG["tz"])
+    msg = f"Invalid datetime string: {datetime_str}"
+    raise ValueError(msg)

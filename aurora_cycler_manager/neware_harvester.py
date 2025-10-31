@@ -40,7 +40,7 @@ from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.setup_logging import setup_logging
-from aurora_cycler_manager.utils import run_from_sample, ssh_connect
+from aurora_cycler_manager.utils import parse_datetime, run_from_sample, ssh_connect
 from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
@@ -98,7 +98,7 @@ def harvest_neware_files(
             result = cursor.fetchone()
             cursor.close()
         if result:
-            cutoff_datetime = datetime.strptime(result[0], "%Y-%m-%d %H:%M:%S")
+            cutoff_datetime = parse_datetime(result[0])
 
     # Cannot use timezone or ISO8061 - not supported in PowerShell 5.1
     cutoff_date_str = cutoff_datetime.strftime("%Y-%m-%d %H:%M:%S")

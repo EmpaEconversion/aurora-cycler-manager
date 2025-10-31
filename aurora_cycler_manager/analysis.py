@@ -28,6 +28,7 @@ from aurora_cycler_manager.utils import (
     json_dump_compress_lists,
     max_with_none,
     min_with_none,
+    parse_datetime,
     round_c_rate,
     run_from_sample,
     weighted_median,
@@ -941,11 +942,8 @@ def analyse_all_samples(
             cursor = conn.cursor()
             cursor.execute("SELECT `Sample ID`, `Last snapshot`, `Last analysis` FROM results")
             results = cursor.fetchall()
-        dtformat = "%Y-%m-%d %H:%M:%S"
         samples_to_analyse = [
-            r[0]
-            for r in results
-            if r[0] and (not r[1] or not r[2] or datetime.strptime(r[1], dtformat) > datetime.strptime(r[2], dtformat))
+            r[0] for r in results if r[0] and (not r[1] or not r[2] or parse_datetime(r[1]) > parse_datetime(r[2]))
         ]
     elif mode == "if_not_exists":
         with sqlite3.connect(CONFIG["Database path"]) as conn:
