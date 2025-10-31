@@ -762,7 +762,8 @@ def update_database_job(
             "UPDATE jobs SET "
             "`Job ID on server` = ?, `Pipeline` = ?, `Sample ID` = ?, "
             "`Server Label` = ?, `Server Hostname` = ?, `Submitted` = ?, "
-            "`Payload` = ?, `Last Snapshot` = ?, `Job ID on server` = ? "
+            "`Payload` = ?, `Last Snapshot` = ?, `Job ID on server` = ?, "
+            "`modified_uts` = ? "
             "WHERE `Job ID` = ?",
             (
                 job_id_on_server,
@@ -774,6 +775,7 @@ def update_database_job(
                 payload,
                 last_snapshot,
                 job_id_on_server,
+                datetime.now(timezone.utc).timestamp(),
                 full_job_id,
             ),
         )
@@ -880,8 +882,8 @@ def convert_neware_data(
                 (sampleid,),
             )
             cursor.execute(
-                "UPDATE results SET `Last snapshot` = ? WHERE `Sample ID` = ?",
-                (creation_date, sampleid),
+                "UPDATE results SET `Last snapshot` = ?, `modified_uts` = ? WHERE `Sample ID` = ?",
+                (creation_date, datetime.now(timezone.utc).timestamp(), sampleid),
             )
             cursor.close()
 

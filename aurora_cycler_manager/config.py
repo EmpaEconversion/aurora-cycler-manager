@@ -157,13 +157,22 @@ def patch_database(config: dict) -> None:
     """Add missing columns to database, in case users are coming from an older version."""
     with sqlite3.connect(config["Database path"]) as conn:
         cursor = conn.cursor()
-        # Make columns in the jobs table if it doesn't exist
+        # Add modified_uts column to tables if it doesn't exist
+        for table in ["samples", "jobs", "results", "pipelines"]:
+            cursor.execute(f"PRAGMA table_info({table})")
+            columns = [col[1] for col in cursor.fetchall()]
+            if "modified_uts" not in columns:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN `modified_uts` FLOAT DEFAULT 0")
+
+        # Make columns in the jobs table if they don't exist
         cursor.execute("PRAGMA table_info(jobs)")
         columns = [col[1] for col in cursor.fetchall()]
         if "Capacity (mAh)" not in columns:
             cursor.execute("ALTER TABLE jobs ADD COLUMN `Capacity (mAh)` FLOAT")
         if "Unicycler protocol" not in columns:
             cursor.execute("ALTER TABLE jobs ADD COLUMN `Unicycler protocol` TEXT")
+
+        # Add dataframes table if it doesn't exist
         cursor.execute(
             "CREATE TABLE IF NOT EXISTS dataframes ("
             "`Sample ID` TEXT NOT NULL, "

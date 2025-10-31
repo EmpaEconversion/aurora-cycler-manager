@@ -15,31 +15,54 @@ import pandas as pd
 from aurora_cycler_manager.config import get_config
 
 ArrayLike = list | np.ndarray | pd.Series
-
 CONFIG = get_config()
 
 
-def get_database() -> dict[str, Any]:
+def _fetch_table(
+    table_name: str,
+    since_modified_uts: float = 0,
+    exclude_cols: list[str] | None = None,
+) -> pd.DataFrame:
+    """Get all columns from a table, exluding certain columns, modified after some unix timestamp.
+
+    Must get from samples, results, jobs, or pipelines table.
+    """
+    # Validate inputs
+    if exclude_cols is None:
+        exclude_cols = []
+
+    if table_name not in {"samples", "results", "jobs", "pipelines"}:
+        msg = f"Invalid table name: {table_name}"
+        raise ValueError(msg)
+
+    if not isinstance(since_modified_uts, (int, float)):
+        msg = f"Invalid since_modified_uts: {since_modified_uts}"
+        raise TypeError(msg)
+
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        # Get all column names
+        cur = conn.cursor()
+        cur.execute(f"PRAGMA table_info({table_name})")
+        # Exclude certain columns
+        columns = [row[1] for row in cur.fetchall() if row[1] not in exclude_cols]
+        cols_str = ", ".join(f"`{c}`" for c in columns)
+        # Get the data as pandas DataFrame
+        return pd.read_sql_query(
+            f"SELECT {cols_str} FROM {table_name} WHERE `modified_uts` >= {since_modified_uts}",  # noqa: S608
+            conn,
+        )
+
+
+def get_database(since_modified_uts: float = 0) -> dict[str, Any]:
     """Get all data from the database.
 
     Formatted for viewing in Dash AG Grid.
     """
-    db_path = CONFIG["Database path"]
-    unused_pipelines = CONFIG.get("Unused pipelines", [])
+    pipelines_df = _fetch_table("pipelines", since_modified_uts=since_modified_uts)
+    samples_df = _fetch_table("samples", since_modified_uts=since_modified_uts)
+    results_df = _fetch_table("results", since_modified_uts=since_modified_uts)
+    jobs_df = _fetch_table("jobs", since_modified_uts=since_modified_uts)
 
-    with sqlite3.connect(db_path) as conn:
-        if unused_pipelines:
-            not_like_conditions = " OR ".join(["Pipeline LIKE ?"] * len(unused_pipelines))
-            pipelines_df = pd.read_sql_query(
-                "SELECT * FROM pipelines WHERE NOT (" + not_like_conditions + ")",  # noqa: S608 - injection safe
-                conn,
-                params=unused_pipelines,
-            )
-        else:
-            pipelines_df = pd.read_sql_query("SELECT * FROM pipelines", conn)
-        samples_df = pd.read_sql_query("SELECT * FROM samples", conn)
-        results_df = pd.read_sql_query("SELECT * FROM results", conn)
-        jobs_df = pd.read_sql_query("SELECT * FROM jobs", conn)
     pipelines_df["Ready"] = pipelines_df["Ready"].astype(bool)
     db_data = {
         "samples": samples_df.to_dict("records"),

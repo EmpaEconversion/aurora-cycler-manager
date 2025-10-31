@@ -709,6 +709,7 @@ def analyse_cycles(
             # Only add the following keys if they are not None, otherwise they set to NULL in database
             **({"Last snapshot": last_snapshot} if last_snapshot else {}),
             **({"Snapshot pipeline": snapshot_pipeline} if snapshot_pipeline else {}),
+            "modified_uts": datetime.now(timezone.utc).timestamp(),
         }
 
         # round any floats to 3 decimal places
@@ -812,8 +813,8 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
     with sqlite3.connect(CONFIG["Database path"]) as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE results SET `Last analysis` = ? WHERE `Sample ID` = ?",
-            (datetime.now(timezone.utc).isoformat(), sample),
+            "UPDATE results SET `Last analysis` = ?, `modified_uts` = ? WHERE `Sample ID` = ?",
+            (datetime.now(timezone.utc).isoformat(), datetime.now(timezone.utc).timestamp(), sample),
         )
     return df, cycle_dict, metadata
 

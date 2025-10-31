@@ -157,9 +157,15 @@ def get_mprs(
         )
         cursor.execute(
             "UPDATE harvester "
-            "SET `Last snapshot` = ? "
+            "SET `Last snapshot` = ?, `modified_uts` = ?"
             "WHERE `Server label` = ? AND `Server hostname` = ? AND `Folder` = ?",
-            (current_datetime.isoformat(), server_label, server_hostname, server_copy_folder),
+            (
+                current_datetime.isoformat(),
+                datetime.now(timezone.utc).timestamp(),
+                server_label,
+                server_hostname,
+                server_copy_folder,
+            ),
         )
         cursor.close()
 
@@ -435,8 +441,12 @@ def convert_mpr(
                 (sample_id,),
             )
             cursor.execute(
-                "UPDATE results SET `Last snapshot` = ? WHERE `Sample ID` = ?",
-                (modified_date.isoformat() if modified_date else None, sample_id),
+                "UPDATE results SET `Last snapshot` = ?, `modified_uts` = ? WHERE `Sample ID` = ?",
+                (
+                    modified_date.isoformat() if modified_date else None,
+                    datetime.now(timezone.utc).timestamp(),
+                    sample_id,
+                ),
             )
             cursor.close()
     return df, metadata

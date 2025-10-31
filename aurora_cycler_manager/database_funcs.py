@@ -51,6 +51,7 @@ def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
 
     # Recalculate some values
     df = _recalculate_sample_data(df)
+    df["modified_uts"] = datetime.now(timezone.utc).timestamp()
 
     # Insert into database
     with sqlite3.connect(CONFIG["Database path"]) as conn:
@@ -197,7 +198,10 @@ def update_sample_label(sample_ids: str | list[str], label: str | None) -> None:
     with sqlite3.connect(CONFIG["Database path"]) as conn:
         cursor = conn.cursor()
         for sample_id in sample_ids:
-            cursor.execute("UPDATE samples SET `Label` = ? WHERE `Sample ID` = ?", (label, sample_id))
+            cursor.execute(
+                "UPDATE samples SET `Label` = ?, `modified_uts` = ? WHERE `Sample ID` = ?",
+                (label, datetime.now(timezone.utc).timestamp(), sample_id),
+            )
         conn.commit()
 
 
@@ -387,8 +391,8 @@ def add_data_to_db_without_job(sample_id: str, file_stem: str, df: pd.DataFrame)
         )
         # Create the Jobs table entry if it doesn't exist, otherwise leave as is (could have manually be altered)
         cursor.execute(
-            "INSERT OR IGNORE INTO jobs (`Job ID`, `Sample ID`, `Comment`) VALUES (?, ?, ?)",
-            (job_id, sample_id, f"Source unknown, uploaded as: {file_stem}"),
+            "INSERT OR IGNORE INTO jobs (`Job ID`, `Sample ID`, `Comment`, `modified_uts`) VALUES (?, ?, ?, ?)",
+            (job_id, sample_id, f"Source unknown, uploaded as: {file_stem}", datetime.now(timezone.utc).timestamp()),
         )
         cursor.close()
     return job_id
@@ -446,8 +450,8 @@ def add_data_to_db_with_job(sample_id: str, file_stem: str, df: pd.DataFrame, jo
             (sample_id, file_stem, job_id),
         )
         cursor.execute(
-            "INSERT OR IGNORE INTO jobs (`Job ID`, `Sample ID`) VALUES (?, ?)",
-            (job_id, sample_id),
+            "INSERT OR IGNORE INTO jobs (`Job ID`, `Sample ID`, `modified_uts`) VALUES (?, ?, ?)",
+            (job_id, sample_id, datetime.now(timezone.utc).timestamp()),
         )
         # Update the data table entry
         cursor.execute(
@@ -485,7 +489,7 @@ def add_protocol_to_job(job_id: str, protocol: dict | str, capacity: float | Non
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
         cur.execute(
-            "UPDATE jobs SET `Unicycler protocol` = ?, `Capacity (mAh)` = ? WHERE `Job ID` = ?",
-            (protocol, capacity, job_id),
+            "UPDATE jobs SET `Unicycler protocol` = ?, `Capacity (mAh)` = ?, `modified_uts` = ? WHERE `Job ID` = ?",
+            (protocol, capacity, datetime.now(timezone.utc).timestamp(), job_id),
         )
         conn.commit()

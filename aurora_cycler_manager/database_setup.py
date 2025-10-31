@@ -246,6 +246,7 @@ def create_database(force: bool = False) -> None:
             "`Last checked` DATETIME, "
             "`Snapshot status` VARCHAR(3), "
             "`Last snapshot` DATETIME, "
+            "`modified_uts` FLOAT, "
             "FOREIGN KEY(`Sample ID`) REFERENCES samples(`Sample ID`),"
             "FOREIGN KEY(`Pipeline`) REFERENCES pipelines(`Pipeline`)"
             ")",
@@ -262,6 +263,7 @@ def create_database(force: bool = False) -> None:
             "`Server type` VARCHAR(50), "
             "`Server hostname` VARCHAR(255), "
             "`Job ID on server` VARCHAR(255), "
+            "`modified_uts` FLOAT, "
             "FOREIGN KEY(`Sample ID`) REFERENCES samples(`Sample ID`), "
             "FOREIGN KEY(`Job ID`) REFERENCES jobs(`Job ID`)"
             ")",
@@ -286,6 +288,7 @@ def create_database(force: bool = False) -> None:
             "`Last analysis` DATETIME,"
             "`Snapshot status` VARCHAR(3),"
             "`Snapshot pipeline` VARCHAR(50),"
+            "`modified_uts` FLOAT, "
             "FOREIGN KEY(`Sample ID`) REFERENCES samples(`Sample ID`), "
             "FOREIGN KEY(`Pipeline`) REFERENCES pipelines(`Pipeline`)"
             ")",

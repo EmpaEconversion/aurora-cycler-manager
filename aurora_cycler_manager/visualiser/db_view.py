@@ -72,8 +72,9 @@ from aurora_cycler_manager.visualiser.notifications import (
 # If user cannot ssh connect then disable features that require it
 logger = logging.getLogger(__name__)
 CONFIG = get_config()
+LAST_DB_REFRESH = 0.0
 accessible_servers = []
-database_access = False
+database_access = True
 sm: ServerManager | None = None
 try:
     sm = ServerManager()
@@ -799,11 +800,23 @@ def register_db_view_callbacks(app: Dash) -> None:
         running=[(Output("loading-message-store", "data"), "Reading database...", "")],
     )
     def refresh_database(_n_clicks: int, _n_intervals: int) -> tuple:
-        db_data = get_database()
-        dt_string = datetime.now(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z")
-        last_checked = get_db_last_update().astimezone(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z")
+        global LAST_DB_REFRESH
+        # Get current timestamp
+        now = datetime.now(CONFIG["tz"])
+        now_uts = now.timestamp()
+
+        # Get all db changes since last refresh
+        db_data = get_database(LAST_DB_REFRESH)
         samples = [s["Sample ID"] for s in db_data["data"]["samples"]]
         batches = get_batch_details()
+
+        # Update the labels
+        dt_string = now.strftime("%Y-%m-%d %H:%M:%S %z")
+        last_checked = get_db_last_update().astimezone(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z")
+
+        # Update last refresh time
+        LAST_DB_REFRESH = now_uts
+
         return (
             db_data,
             f"Refresh database, last refreshed: {dt_string}",

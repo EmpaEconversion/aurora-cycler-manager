@@ -121,16 +121,24 @@ class ServerManager:
                             cursor.execute(
                                 "UPDATE jobs "
                                 "SET `Status` = ?, `Jobname` = ?, `Server label` = ?, "
-                                "`Server hostname` = ?, `Last checked` = ? "
+                                "`Server hostname` = ?, `Last checked` = ?, `modified_uts` = ? "
                                 "WHERE `Job ID` = ?",
-                                (status, jobname, label, server.hostname, dt, full_jobid),
+                                (
+                                    status,
+                                    jobname,
+                                    label,
+                                    server.hostname,
+                                    dt,
+                                    datetime.now(timezone.utc).timestamp(),
+                                    full_jobid,
+                                ),
                             )
                         else:
                             cursor.execute(
                                 "UPDATE jobs "
                                 "SET `Status` = ?, `Pipeline` = ?, `Jobname` = ?, `Server label` = ?, "
-                                "`Server Hostname` = ?, `Job ID on server` = ?, "
-                                "`Last Checked` = ? "
+                                "`Server Hostname` = ?, `Job ID on server` = ?, `Last Checked` = ?, "
+                                "`modified_uts` = ? "
                                 "WHERE `Job ID` = ?",
                                 (
                                     status,
@@ -140,6 +148,7 @@ class ServerManager:
                                     server.hostname,
                                     jobid_on_server,
                                     dt,
+                                    datetime.now(timezone.utc).timestamp(),
                                     full_jobid,
                                 ),
                             )
@@ -171,9 +180,17 @@ class ServerManager:
                         cursor.execute(
                             "UPDATE pipelines "
                             "SET `Ready` = ?, `Last checked` = ?, `Server label` = ?, "
-                            "`Server hostname` = ?, `Server type` = ? "
+                            "`Server hostname` = ?, `Server type` = ?, `modified_uts` = ?"
                             "WHERE `Pipeline` = ?",
-                            (ready, dt, label, server.hostname, server.server_type, pipeline),
+                            (
+                                ready,
+                                dt,
+                                label,
+                                server.hostname,
+                                server.server_type,
+                                datetime.now(timezone.utc).timestamp(),
+                                pipeline,
+                            ),
                         )
                         if sampleid is not None:
                             cursor.execute(
@@ -199,8 +216,8 @@ class ServerManager:
             results = cursor.fetchall()
             for pipeline, flag, sampleid in results:
                 cursor.execute(
-                    "UPDATE pipelines SET `Flag` = ? WHERE `Pipeline` = ? AND `Sample ID` = ?",
-                    (flag, pipeline, sampleid),
+                    "UPDATE pipelines SET `Flag` = ?, `modified_uts` = ? WHERE `Pipeline` = ? AND `Sample ID` = ?",
+                    (flag, datetime.now(timezone.utc).timestamp(), pipeline, sampleid),
                 )
             conn.commit()
 
@@ -410,8 +427,8 @@ class ServerManager:
         server = self.find_server(result[0][0])
         logger.info("Loading sample %s on server %s", sample, server.label)
         self.execute_sql(
-            "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
-            (sample, pipeline),
+            "UPDATE pipelines SET `Sample ID` = ?, `modified_uts` = ? WHERE `Pipeline` = ?",
+            (sample, datetime.now(timezone.utc).timestamp(), pipeline),
         )
 
     def eject(self, pipeline: str) -> None:
@@ -427,8 +444,9 @@ class ServerManager:
         server = self.find_server(result[0][0])
         logger.info("Ejecting %s on server: %s", pipeline, server.label)
         self.execute_sql(
-            "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = ? WHERE `Pipeline` = ?",
-            (True, pipeline),
+            "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = ?, `modified_uts` = ? "
+            "WHERE `Pipeline` = ?",
+            (True, datetime.now(timezone.utc).timestamp(), pipeline),
         )
 
     def submit(
@@ -490,9 +508,10 @@ class ServerManager:
         # Update the job table in the database
         if full_jobid and jobid_on_server:
             self.execute_sql(
-                "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Server hostname`, `Job ID on server`, "
-                "`Pipeline`, `Submitted`, `Payload`, `Unicycler protocol`, `Capacity (mAh)`, `Comment`) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Server hostname`, "
+                "`Job ID on server`, `Pipeline`, `Submitted`, `Payload`, `Unicycler protocol`, "
+                "`Capacity (mAh)`, `Comment`, `modified_uts`) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     full_jobid,
                     sample,
@@ -505,6 +524,7 @@ class ServerManager:
                     unicycler_protocol,
                     capacity_Ah * 1000,
                     comment,
+                    datetime.now(timezone.utc).timestamp(),
                 ),
             )
             # Neware and Biologic servers have very expensive job id retrieval
@@ -512,8 +532,9 @@ class ServerManager:
             # Just do it once on job submission and don't update until job is finished
             if isinstance(server, (cycler_servers.NewareServer, cycler_servers.BiologicServer)):
                 self.execute_sql(
-                    "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ?, `Ready` = 0 WHERE `Pipeline` = ?",
-                    (full_jobid, jobid_on_server, pipeline),
+                    "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ?, `Ready` = 0, `modified_uts` = ? "
+                    "WHERE `Pipeline` = ?",
+                    (full_jobid, jobid_on_server, datetime.now(timezone.utc).timestamp(), pipeline),
                 )
 
     def cancel(self, jobid: str) -> None:
@@ -536,8 +557,8 @@ class ServerManager:
         output = server.cancel(jobid_on_server, sampleid, pipeline)
         # If no error, assume job is cancelled and update the database
         self.execute_sql(
-            "UPDATE jobs SET `Status` = 'cd' WHERE `Job ID` = ?",
-            (jobid,),
+            "UPDATE jobs SET `Status` = 'cd', `modified_uts` = ? WHERE `Job ID` = ?",
+            (datetime.now(timezone.utc).timestamp(), jobid),
         )
         return output
 
@@ -623,8 +644,8 @@ class ServerManager:
                     "Setting `Snapshot Status` to 'ce' in the database."
                 )
                 self.execute_sql(
-                    "UPDATE jobs SET `Snapshot status` = 'ce' WHERE `Job ID` = ?",
-                    (jobid,),
+                    "UPDATE jobs SET `Snapshot status` = 'ce', `modified_uts` = ? WHERE `Job ID` = ?",
+                    (datetime.now(timezone.utc).timestamp(), jobid),
                 )
                 raise FileNotFoundError(msg) from e
 
@@ -635,12 +656,12 @@ class ServerManager:
                 (sample_id,),
             )
             self.execute_sql(
-                "UPDATE results SET `Last snapshot` = ? WHERE `Sample ID` = ?",
-                (dt, sample_id),
+                "UPDATE results SET `Last snapshot` = ?, `modified_uts` = ? WHERE `Sample ID` = ?",
+                (dt, datetime.now(timezone.utc).timestamp(), sample_id),
             )
             self.execute_sql(
-                "UPDATE jobs SET `Snapshot status` = ?, `Last snapshot` = ? WHERE `Job ID` = ?",
-                (new_snapshot_status, dt, jobid),
+                "UPDATE jobs SET `Snapshot status` = ?, `Last snapshot` = ?, `modified_uts` = ? WHERE `Job ID` = ?",
+                (new_snapshot_status, dt, datetime.now(timezone.utc).timestamp(), jobid),
             )
 
         # Analyse the new data (only once per sample)
@@ -727,6 +748,6 @@ class ServerManager:
             jobid_on_server = server._get_job_id(pipeline)  # noqa: SLF001
             full_jobid = f"{server.label}-{jobid_on_server}"
             self.execute_sql(
-                "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ? WHERE `Pipeline` = ?",
-                (full_jobid, jobid_on_server, pipeline),
+                "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ?, `modified_uts` = ? WHERE `Pipeline` = ?",
+                (full_jobid, jobid_on_server, datetime.now(timezone.utc).timestamp(), pipeline),
             )
