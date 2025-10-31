@@ -48,7 +48,7 @@ class CyclerServer:
         self.last_queue_all = None
         self.check_connection()
 
-    def command(self, command: str, timeout: float = 300) -> str:
+    def _command(self, command: str, timeout: float = 300) -> str:
         """Send a command to the server and return the output.
 
         The command is prefixed with the command_prefix specified in the server_config, is run on
@@ -83,7 +83,7 @@ class CyclerServer:
 
         """
         test_phrase = "hellothere"
-        output = self.command(f"echo {test_phrase}", timeout=5).strip()
+        output = self._command(f"echo {test_phrase}", timeout=5).strip()
         if output != test_phrase:
             msg = f"Connection error, expected output '{test_phrase}', got '{output}'"
             raise ValueError(msg)
@@ -197,7 +197,7 @@ class NewareServer(CyclerServer):
                     scp.put("./temp.xml", remote_xml_path)
 
             # Submit the file on the remote PC
-            output = self.command(f"neware start {pipeline} {sample} {remote_xml_path}")
+            output = self._command(f"neware start {pipeline} {sample} {remote_xml_path}")
             # Expect the output to be empty if successful, otherwise raise error
             if output:
                 msg = (
@@ -222,7 +222,7 @@ class NewareServer(CyclerServer):
         Use the STOP command on the Neware-api.
         """
         # Check that sample ID matches
-        output = self.command(f"neware status {pipeline}")
+        output = self._command(f"neware status {pipeline}")
         barcode = json.loads(output).get(pipeline, {}).get("barcode")
         if barcode != sampleid:
             msg = "Barcode on server does not match Sample ID being cancelled"
@@ -233,13 +233,13 @@ class NewareServer(CyclerServer):
             msg = "Pipeline is not running, cannot cancel job"
             raise ValueError(msg)
         # Check that job ID matches
-        output = self.command(f"neware testid {pipeline}")
+        output = self._command(f"neware testid {pipeline}")
         full_test_id = self._get_job_id(pipeline)
         if full_test_id != job_id_on_server:
             msg = "Job ID on server does not match Job ID being cancelled"
             raise ValueError(msg)
         # Stop the pipeline
-        output = self.command(f"neware stop {pipeline}")
+        output = self._command(f"neware stop {pipeline}")
         # Expect the output to be empty if successful, otherwise raise error
         if output:
             msg = (
@@ -251,7 +251,7 @@ class NewareServer(CyclerServer):
     @override
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
-        result = json.loads(self.command("neware status"))
+        result = json.loads(self._command("neware status"))
         # result is a dict with keys=pipeline and value a dict of stuff
         # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
         pipelines, sampleids, readys = [], [], []
@@ -284,7 +284,7 @@ class NewareServer(CyclerServer):
 
     def _get_job_id(self, pipeline: str) -> str:
         """Get the testid for a pipeline."""
-        output = self.command(f"neware get-job-id {pipeline} --full-id")
+        output = self._command(f"neware get-job-id {pipeline} --full-id")
         return json.loads(output).get(pipeline)
 
 
@@ -378,7 +378,7 @@ class BiologicServer(CyclerServer):
                     scp.put("./temp.mps", remote_output_path.as_posix())  # SCP hates Windows \
 
             # Submit the file on the remote PC
-            output = self.command(f"biologic start {pipeline} {remote_output_path!s} {remote_output_path!s} --ssh")
+            output = self._command(f"biologic start {pipeline} {remote_output_path!s} {remote_output_path!s} --ssh")
             # Expect the output to be empty if successful, otherwise raise error
             if output:
                 msg = (
@@ -401,7 +401,7 @@ class BiologicServer(CyclerServer):
         Use the STOP command on the Neware-api.
         """
         # Get job ID on server
-        output = self.command(f"biologic get-job-id {pipeline} --ssh")
+        output = self._command(f"biologic get-job-id {pipeline} --ssh")
         job_id_on_biologic = json.loads(output).get(pipeline, {})
         # Check that a job is running
         if not job_id_on_biologic:
@@ -412,7 +412,7 @@ class BiologicServer(CyclerServer):
             msg = "Job ID on server does not match job ID being cancelled"
             raise ValueError(msg)
         # Stop the pipeline
-        output = self.command(f"biologic stop {pipeline} --ssh")
+        output = self._command(f"biologic stop {pipeline} --ssh")
         # Expect the output to be empty if successful, otherwise raise error
         if output:
             msg = f"Command 'biologic stop {pipeline}' failed with response:\n{output}\n"
@@ -421,7 +421,7 @@ class BiologicServer(CyclerServer):
     @override
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
-        result = json.loads(self.command("biologic status --ssh"))
+        result = json.loads(self._command("biologic status --ssh"))
         # Result is a dict with keys=pipeline and value a dict of stuff
         # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
         # Biologic does not give sample ID or job IDs from status
@@ -502,5 +502,5 @@ class BiologicServer(CyclerServer):
 
     def _get_job_id(self, pipeline: str) -> str:
         """Get the testid for a pipeline."""
-        output = self.command(f"biologic get-job-id {pipeline} --ssh")
+        output = self._command(f"biologic get-job-id {pipeline} --ssh")
         return json.loads(output).get(pipeline)
