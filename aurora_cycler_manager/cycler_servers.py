@@ -14,6 +14,7 @@ These classes are used by server_manager.
 import base64
 import json
 import logging
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
 
@@ -102,10 +103,6 @@ class CyclerServer:
 
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
-        raise NotImplementedError
-
-    def get_jobs(self) -> dict:
-        """Get all jobs from server."""
         raise NotImplementedError
 
     def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
@@ -266,14 +263,6 @@ class NewareServer(CyclerServer):
         return {"pipeline": pipelines, "sampleid": sampleids, "jobid": [None] * len(pipelines), "ready": readys}
 
     @override
-    def get_jobs(self) -> dict:
-        """Get all jobs from server.
-
-        Not implemented, could use inquiredf but very slow. Return empty dict for now.
-        """
-        return {}
-
-    @override
     def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
         """Save a snapshot of a job on the server and download it to the local machine."""
         ndax_path = snapshot_raw_data(jobid)
@@ -357,7 +346,8 @@ class BiologicServer(CyclerServer):
         # EC-lab has no concept of job IDs - we use the folder as the job ID
         # Job ID is sample ID + unix timestamp in seconds
         run_id = run_from_sample(sample)
-        jobid_on_server = f"{sample}__{int(datetime.now(CONFIG['tz']).timestamp())}"
+        jobid_on_server = str(uuid.uuid4())
+        jobid = jobid_on_server  # Do not need separate IDs
         try:
             with Path("./temp.mps").open("w", encoding="utf-8") as f:
                 f.write(mps_string)
@@ -388,7 +378,6 @@ class BiologicServer(CyclerServer):
                     f"Try manually loading the mps file at {remote_output_path}."
                 )
                 raise ValueError(msg)
-            jobid = f"{self.label}-{jobid_on_server}"
             logger.info("Job started on Biologic server with ID %s", jobid)
         finally:
             Path("temp.mps").unlink()  # Remove the file on local machine
@@ -439,14 +428,6 @@ class BiologicServer(CyclerServer):
             "jobid": [None] * len(pipelines),
             "ready": readys,
         }
-
-    @override
-    def get_jobs(self) -> dict:
-        """Get all jobs from server.
-
-        Not implemented, could use get-job-id but very slow. Return empty dict for now.
-        """
-        return {}
 
     @override
     def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
