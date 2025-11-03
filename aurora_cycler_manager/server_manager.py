@@ -14,7 +14,7 @@ import contextlib
 import logging
 import sqlite3
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from time import sleep, time
 from typing import Literal
@@ -98,7 +98,7 @@ class ServerManager:
             except Exception as e:
                 logger.error("Error getting pipeline status from %s: %s", label, e)
                 continue
-            dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            dt = datetime.now(timezone.utc).isoformat(timespec="seconds")
             if status:
                 with sqlite3.connect(self.config["Database path"]) as conn:
                     cursor = conn.cursor()
@@ -446,7 +446,7 @@ class ServerManager:
 
         logger.info("Submitting job to %s with capacity %.5f Ah", sample, capacity_Ah)
         full_jobid, jobid_on_server, json_string = server.submit(sample, capacity_Ah, payload, pipeline)
-        dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        dt = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
         # Update the job table in the database
         if full_jobid and jobid_on_server:
@@ -494,7 +494,7 @@ class ServerManager:
         )
         server_label, jobid_on_server, sampleid, pipeline = result[0]
         server = self.find_server(server_label)
-        output = server.cancel(jobid_on_server, sampleid, pipeline)
+        output = server.cancel(jobid, jobid_on_server, sampleid, pipeline)
         # If no error, assume job is cancelled and update the database
         self.execute_sql(
             "UPDATE jobs SET `Status` = 'cd' WHERE `Job ID` = ?",
@@ -590,7 +590,7 @@ class ServerManager:
                 raise FileNotFoundError(msg) from e
 
             # Update the snapshot status in the database
-            dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            dt = datetime.now(timezone.utc).isoformat(timespec="seconds")
             self.execute_sql(
                 "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
                 (sample_id,),

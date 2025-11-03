@@ -15,7 +15,7 @@ import base64
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
 
 import paramiko
@@ -97,7 +97,7 @@ class CyclerServer:
         """Submit a job to the server."""
         raise NotImplementedError
 
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
+    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
         """Cancel a job on the server."""
         raise NotImplementedError
 
@@ -176,7 +176,7 @@ class NewareServer(CyclerServer):
         xml_string = xml_string.replace("$CAPACITY", str(capacity_mA_s))
 
         # Write the xml string to a temporary file
-        current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        current_datetime = datetime.now(timezone.utc).isoformat(timespec="seconds")
         try:
             with Path("./temp.xml").open("w", encoding="utf-8") as f:
                 f.write(xml_string)
@@ -213,7 +213,7 @@ class NewareServer(CyclerServer):
         return jobid, jobid_on_server, xml_string
 
     @override
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
+    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.
@@ -384,7 +384,7 @@ class BiologicServer(CyclerServer):
         return jobid, jobid_on_server, mps_string
 
     @override
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
+    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.
