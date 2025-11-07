@@ -500,10 +500,6 @@ class NewareAiidaServer(CyclerServer):
 
     """
 
-    # def command - should make internal to the class?
-
-    # def check_connection - is it needed at all?
-
     @override
     def submit(
         self, sample: str, capacity_Ah: float, payload: str | dict | Path, pipeline: str
@@ -542,7 +538,7 @@ class NewareAiidaServer(CyclerServer):
 
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
-        result = json.loads(self.command("neware status"))
+        result = json.loads(self._command("neware status"))
         # result is a dict with keys=pipeline and value a dict of stuff
         # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
         pipelines, sampleids, readys = [], [], []
@@ -555,13 +551,6 @@ class NewareAiidaServer(CyclerServer):
                 sampleids.append(None)
                 readys.append(True)
         return {"pipeline": pipelines, "sampleid": sampleids, "jobid": [None] * len(pipelines), "ready": readys}
-
-    def get_jobs(self) -> dict:
-        """Get all jobs from server.
-
-        Not implemented, could use inquiredf but very slow. Return empty dict for now.
-        """
-        return {}
 
     @override
     def snapshot(
