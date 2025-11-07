@@ -172,3 +172,6 @@ uv.lock
 
 # diskcache cache folder
 cache/
+
+# Backup files
+*.bak

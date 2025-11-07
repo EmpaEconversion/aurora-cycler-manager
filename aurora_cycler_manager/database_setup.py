@@ -284,7 +284,6 @@ def create_database(force: bool = False) -> None:
             "`Cycling C` FLOAT,"
             "`Last snapshot` DATETIME,"
             "`Last analysis` DATETIME,"
-            "`Last plotted` DATETIME,"
             "`Snapshot status` VARCHAR(3),"
             "`Snapshot pipeline` VARCHAR(50),"
             "FOREIGN KEY(`Sample ID`) REFERENCES samples(`Sample ID`), "

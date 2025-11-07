@@ -13,14 +13,13 @@ import json
 import logging
 import sqlite3
 import warnings
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
 import h5py
 import numpy as np
 import pandas as pd
-import pytz
 from tsdownsample import MinMaxLTTBDownsampler
 
 from aurora_cycler_manager.config import get_config
@@ -29,6 +28,7 @@ from aurora_cycler_manager.utils import (
     json_dump_compress_lists,
     max_with_none,
     min_with_none,
+    parse_datetime,
     round_c_rate,
     run_from_sample,
     weighted_median,
@@ -153,7 +153,6 @@ def combine_jobs(
             cycle += 1
 
     # Add provenance to the metadatas
-    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     # Replace sample data with latest from database
     sample_data = get_sample_data(sampleids[0])
     # Merge glossary dicts
@@ -168,7 +167,7 @@ def combine_jobs(
                     "repo_url": __url__,
                     "repo_version": __version__,
                     "method": "analysis.combine_jobs",
-                    "datetime": datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S %z"),
+                    "datetime": datetime.now(timezone.utc).isoformat(),
                 },
             },
             "original_file_provenance": {str(f): m["provenance"] for f, m in zip(job_files, metadatas, strict=False)},
@@ -427,7 +426,6 @@ def analyse_cycles(
     df, metadata = combine_jobs(job_files)
 
     # update metadata
-    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     metadata.setdefault("provenance", {}).setdefault("aurora_metadata", {})
     metadata["provenance"]["aurora_metadata"].update(
         {
@@ -435,7 +433,7 @@ def analyse_cycles(
                 "repo_url": __url__,
                 "repo_version": __version__,
                 "method": "analysis.analyse_cycles",
-                "datetime": datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S %z"),
+                "datetime": datetime.now(timezone.utc).isoformat(),
             },
         },
     )
@@ -707,7 +705,7 @@ def analyse_cycles(
             "Initial efficiency (%)": cycle_dict["Initial coulombic efficiency (%)"],
             "Last specific discharge capacity (mAh/g)": cycle_dict["Last specific discharge capacity (mAh/g)"],
             "Last efficiency (%)": cycle_dict["Last coulombic efficiency (%)"],
-            "Last analysis": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Last analysis": datetime.now(timezone.utc).isoformat(),
             # Only add the following keys if they are not None, otherwise they set to NULL in database
             **({"Last snapshot": last_snapshot} if last_snapshot else {}),
             **({"Snapshot pipeline": snapshot_pipeline} if snapshot_pipeline else {}),
@@ -815,7 +813,7 @@ def analyse_sample(sample: str) -> tuple[pd.DataFrame, dict, dict]:
         cursor = conn.cursor()
         cursor.execute(
             "UPDATE results SET `Last analysis` = ? WHERE `Sample ID` = ?",
-            (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), sample),
+            (datetime.now(timezone.utc).isoformat(), sample),
         )
     return df, cycle_dict, metadata
 
@@ -944,11 +942,8 @@ def analyse_all_samples(
             cursor = conn.cursor()
             cursor.execute("SELECT `Sample ID`, `Last snapshot`, `Last analysis` FROM results")
             results = cursor.fetchall()
-        dtformat = "%Y-%m-%d %H:%M:%S"
         samples_to_analyse = [
-            r[0]
-            for r in results
-            if r[0] and (not r[1] or not r[2] or datetime.strptime(r[1], dtformat) > datetime.strptime(r[2], dtformat))
+            r[0] for r in results if r[0] and (not r[1] or not r[2] or parse_datetime(r[1]) > parse_datetime(r[2]))
         ]
     elif mode == "if_not_exists":
         with sqlite3.connect(CONFIG["Database path"]) as conn:
@@ -1009,14 +1004,13 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
         raise ValueError(msg)
 
     # update the metadata
-    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     metadata["provenance"] = {
         "aurora_metadata": {
             "batch_analysis": {
                 "repo_url": __url__,
                 "repo_version": __version__,
                 "method": "analysis.analyse_batch",
-                "datetime": datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S %z"),
+                "datetime": datetime.now(timezone.utc).isoformat(),
             },
         },
     }

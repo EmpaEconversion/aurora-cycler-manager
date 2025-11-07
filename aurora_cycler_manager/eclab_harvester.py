@@ -23,21 +23,20 @@ import json
 import logging
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import h5py
 import numpy as np
 import pandas as pd
 import paramiko
-import pytz
 import yadg
 from dgbowl_schemas.yadg.dataschema import ExtractorFactory
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import add_data_to_db, get_sample_data
 from aurora_cycler_manager.setup_logging import setup_logging
-from aurora_cycler_manager.utils import run_from_sample, ssh_connect
+from aurora_cycler_manager.utils import parse_datetime, run_from_sample, ssh_connect
 from aurora_cycler_manager.version import __url__, __version__
 
 CONFIG = get_config()
@@ -80,9 +79,9 @@ def get_mprs(
         force_copy (bool, optional): Copy all files regardless of modification date
 
     """
-    if force_copy:  # Set cutoff date to 1970
-        cutoff_datetime = datetime.fromtimestamp(0)
-    else:  # Set cutoff date to last snapshot from database
+    # Set default cutoff date, use local timezone
+    cutoff_datetime = datetime.fromtimestamp(0, tz=CONFIG["tz"])
+    if not force_copy:  # Set cutoff date to last snapshot from database
         with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -91,7 +90,9 @@ def get_mprs(
             )
             result = cursor.fetchone()
             cursor.close()
-        cutoff_datetime = datetime.strptime(result[0], "%Y-%m-%d %H:%M:%S") if result else datetime.fromtimestamp(0)
+        if result:
+            cutoff_datetime = parse_datetime(result[0])
+    # Cannot use timezone or ISO8061 - not supported in PowerShell 5.1
     cutoff_date_str = cutoff_datetime.strftime("%Y-%m-%d %H:%M:%S")
 
     # Connect to the server and copy the files
@@ -133,7 +134,7 @@ def get_mprs(
         logger.info("Found %d modified files since %s", len(modified_files), cutoff_date_str)
 
         # Copy the files using SFTP
-        current_datetime = datetime.now()  # Keep time of copying for database
+        current_datetime = datetime.now(timezone.utc)  # Keep time of copying for database
         new_files = []
         with ssh.open_sftp() as sftp:
             for file in modified_files:
@@ -158,7 +159,7 @@ def get_mprs(
             "UPDATE harvester "
             "SET `Last snapshot` = ? "
             "WHERE `Server label` = ? AND `Server hostname` = ? AND `Folder` = ?",
-            (current_datetime.strftime("%Y-%m-%d %H:%M:%S"), server_label, server_hostname, server_copy_folder),
+            (current_datetime.isoformat(timespec="seconds"), server_label, server_hostname, server_copy_folder),
         )
         cursor.close()
 
@@ -288,13 +289,13 @@ def check_mpr_uts(
             for line in lines:
                 if line.startswith("Acquisition started on : "):
                     datetime_str = line.split(":", 1)[1].strip()
-                    datetime_object = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")
-                    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
-                    uts_timestamp = timezone.localize(datetime_object).timestamp()
+                    # EC-lab mpl has no timezone info - assume it is in the same timezone
+                    datetime_object = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")  # noqa: DTZ007
+                    uts_timestamp = datetime_object.replace(tzinfo=CONFIG["tz"]).timestamp()
                     df["uts"] = df["uts"] + uts_timestamp
                     break
             else:
-                msg = "Incorrect start time in {mpr_file} and no start time in found {mpl_file}"
+                msg = f"Incorrect start time in {mpr_file} and no start time in found {mpl_file}"
                 raise ValueError(msg)
         except FileNotFoundError as e:
             msg = "Incorrect start time in mpr file, cannot find associated mpl file"
@@ -343,10 +344,7 @@ def convert_mpr(
         else:
             run_id = run_from_sample(sample_id)
         if not modified_date:
-            modified_date = datetime.fromtimestamp(
-                mpr_file.stat().st_mtime,
-                tz=pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich")),
-            )
+            modified_date = datetime.fromtimestamp(mpr_file.stat().st_mtime, tz=timezone.utc)
     elif isinstance(mpr_file, bytes):  # file-like object
         if not sample_id:
             msg = "Sample ID is required if reading from bytes"
@@ -369,7 +367,6 @@ def convert_mpr(
         sample_data = {}
 
     # Metadata to add to file
-    timezone = pytz.timezone(CONFIG.get("Time zone", "Europe/Zurich"))
     technique_codes = {1: "Constant current", 2: "Constant voltage", 3: "Open circuit voltage"}
     metadata = {
         "provenance": {
@@ -380,7 +377,7 @@ def convert_mpr(
                     "repo_url": __url__,
                     "repo_version": __version__,
                     "method": "eclab_harvester.convert_mpr",
-                    "datetime": datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S %z"),
+                    "datetime": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 },
             },
         },
@@ -439,7 +436,7 @@ def convert_mpr(
             )
             cursor.execute(
                 "UPDATE results SET `Last snapshot` = ? WHERE `Sample ID` = ?",
-                (modified_date.strftime("%Y-%m-%d %H:%M:%S") if modified_date else None, sample_id),
+                (modified_date.isoformat(timespec="seconds") if modified_date else None, sample_id),
             )
             cursor.close()
     return df, metadata

@@ -16,7 +16,8 @@ import json
 import logging
 import subprocess
 import tempfile
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
 
 import paramiko
@@ -50,7 +51,7 @@ class CyclerServer:
         self.last_queue_all = None
         self.check_connection()
 
-    def command(self, command: str, timeout: float = 300) -> str:
+    def _command(self, command: str, timeout: float = 300) -> str:
         """Send a command to the server and return the output.
 
         The command is prefixed with the command_prefix specified in the server_config, is run on
@@ -85,7 +86,7 @@ class CyclerServer:
 
         """
         test_phrase = "hellothere"
-        output = self.command(f"echo {test_phrase}", timeout=5).strip()
+        output = self._command(f"echo {test_phrase}", timeout=5).strip()
         if output != test_phrase:
             msg = f"Connection error, expected output '{test_phrase}', got '{output}'"
             raise ValueError(msg)
@@ -98,16 +99,12 @@ class CyclerServer:
         """Submit a job to the server."""
         raise NotImplementedError
 
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
+    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
         """Cancel a job on the server."""
         raise NotImplementedError
 
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
-        raise NotImplementedError
-
-    def get_jobs(self) -> dict:
-        """Get all jobs from server."""
         raise NotImplementedError
 
     def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
@@ -181,7 +178,7 @@ class NewareServer(CyclerServer):
         xml_string = xml_string.replace("$CAPACITY", str(capacity_mA_s))
 
         # Write the xml string to a temporary file
-        current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        current_datetime = datetime.now(timezone.utc).isoformat(timespec="seconds")
         try:
             with Path("./temp.xml").open("w", encoding="utf-8") as f:
                 f.write(xml_string)
@@ -199,7 +196,7 @@ class NewareServer(CyclerServer):
                     scp.put("./temp.xml", remote_xml_path)
 
             # Submit the file on the remote PC
-            output = self.command(f"neware start {pipeline} {sample} {remote_xml_path}")
+            output = self._command(f"neware start {pipeline} {sample} {remote_xml_path}")
             # Expect the output to be empty if successful, otherwise raise error
             if output:
                 msg = (
@@ -218,13 +215,13 @@ class NewareServer(CyclerServer):
         return jobid, jobid_on_server, xml_string
 
     @override
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
+    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.
         """
         # Check that sample ID matches
-        output = self.command(f"neware status {pipeline}")
+        output = self._command(f"neware status {pipeline}")
         barcode = json.loads(output).get(pipeline, {}).get("barcode")
         if barcode != sampleid:
             msg = "Barcode on server does not match Sample ID being cancelled"
@@ -235,13 +232,13 @@ class NewareServer(CyclerServer):
             msg = "Pipeline is not running, cannot cancel job"
             raise ValueError(msg)
         # Check that job ID matches
-        output = self.command(f"neware testid {pipeline}")
+        output = self._command(f"neware testid {pipeline}")
         full_test_id = self._get_job_id(pipeline)
         if full_test_id != job_id_on_server:
             msg = "Job ID on server does not match Job ID being cancelled"
             raise ValueError(msg)
         # Stop the pipeline
-        output = self.command(f"neware stop {pipeline}")
+        output = self._command(f"neware stop {pipeline}")
         # Expect the output to be empty if successful, otherwise raise error
         if output:
             msg = (
@@ -253,7 +250,7 @@ class NewareServer(CyclerServer):
     @override
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
-        result = json.loads(self.command("neware status"))
+        result = json.loads(self._command("neware status"))
         # result is a dict with keys=pipeline and value a dict of stuff
         # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
         pipelines, sampleids, readys = [], [], []
@@ -268,14 +265,6 @@ class NewareServer(CyclerServer):
         return {"pipeline": pipelines, "sampleid": sampleids, "jobid": [None] * len(pipelines), "ready": readys}
 
     @override
-    def get_jobs(self) -> dict:
-        """Get all jobs from server.
-
-        Not implemented, could use inquiredf but very slow. Return empty dict for now.
-        """
-        return {}
-
-    @override
     def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
         """Save a snapshot of a job on the server and download it to the local machine."""
         ndax_path = snapshot_raw_data(jobid)
@@ -286,7 +275,7 @@ class NewareServer(CyclerServer):
 
     def _get_job_id(self, pipeline: str) -> str:
         """Get the testid for a pipeline."""
-        output = self.command(f"neware get-job-id {pipeline} --full-id")
+        output = self._command(f"neware get-job-id {pipeline} --full-id")
         return json.loads(output).get(pipeline)
 
 
@@ -359,7 +348,8 @@ class BiologicServer(CyclerServer):
         # EC-lab has no concept of job IDs - we use the folder as the job ID
         # Job ID is sample ID + unix timestamp in seconds
         run_id = run_from_sample(sample)
-        jobid_on_server = f"{sample}__{int(datetime.now().timestamp())}"
+        jobid_on_server = str(uuid.uuid4())
+        jobid = jobid_on_server  # Do not need separate IDs
         try:
             with Path("./temp.mps").open("w", encoding="utf-8") as f:
                 f.write(mps_string)
@@ -380,7 +370,7 @@ class BiologicServer(CyclerServer):
                     scp.put("./temp.mps", remote_output_path.as_posix())  # SCP hates Windows \
 
             # Submit the file on the remote PC
-            output = self.command(f"biologic start {pipeline} {remote_output_path!s} {remote_output_path!s} --ssh")
+            output = self._command(f"biologic start {pipeline} {remote_output_path!s} {remote_output_path!s} --ssh")
             # Expect the output to be empty if successful, otherwise raise error
             if output:
                 msg = (
@@ -390,20 +380,19 @@ class BiologicServer(CyclerServer):
                     f"Try manually loading the mps file at {remote_output_path}."
                 )
                 raise ValueError(msg)
-            jobid = f"{self.label}-{jobid_on_server}"
             logger.info("Job started on Biologic server with ID %s", jobid)
         finally:
             Path("temp.mps").unlink()  # Remove the file on local machine
         return jobid, jobid_on_server, mps_string
 
     @override
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
+    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.
         """
         # Get job ID on server
-        output = self.command(f"biologic get-job-id {pipeline} --ssh")
+        output = self._command(f"biologic get-job-id {pipeline} --ssh")
         job_id_on_biologic = json.loads(output).get(pipeline, {})
         # Check that a job is running
         if not job_id_on_biologic:
@@ -414,7 +403,7 @@ class BiologicServer(CyclerServer):
             msg = "Job ID on server does not match job ID being cancelled"
             raise ValueError(msg)
         # Stop the pipeline
-        output = self.command(f"biologic stop {pipeline} --ssh")
+        output = self._command(f"biologic stop {pipeline} --ssh")
         # Expect the output to be empty if successful, otherwise raise error
         if output:
             msg = f"Command 'biologic stop {pipeline}' failed with response:\n{output}\n"
@@ -423,7 +412,7 @@ class BiologicServer(CyclerServer):
     @override
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
-        result = json.loads(self.command("biologic status --ssh"))
+        result = json.loads(self._command("biologic status --ssh"))
         # Result is a dict with keys=pipeline and value a dict of stuff
         # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
         # Biologic does not give sample ID or job IDs from status
@@ -441,14 +430,6 @@ class BiologicServer(CyclerServer):
             "jobid": [None] * len(pipelines),
             "ready": readys,
         }
-
-    @override
-    def get_jobs(self) -> dict:
-        """Get all jobs from server.
-
-        Not implemented, could use get-job-id but very slow. Return empty dict for now.
-        """
-        return {}
 
     @override
     def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
@@ -504,7 +485,7 @@ class BiologicServer(CyclerServer):
 
     def _get_job_id(self, pipeline: str) -> str:
         """Get the testid for a pipeline."""
-        output = self.command(f"biologic get-job-id {pipeline} --ssh")
+        output = self._command(f"biologic get-job-id {pipeline} --ssh")
         return json.loads(output).get(pipeline)
 
 

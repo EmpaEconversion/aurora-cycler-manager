@@ -14,7 +14,7 @@ import contextlib
 import logging
 import sqlite3
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from time import sleep, time
 from typing import Literal
@@ -91,61 +91,6 @@ class ServerManager:
 
         return servers
 
-    def update_jobs(self) -> None:
-        """Update the jobs table in the database with the current job status."""
-        for label, server in self.servers.items():
-            try:
-                jobs = server.get_jobs()
-            except Exception as e:
-                logger.error("Error getting job status from %s: %s", label, e)
-                continue
-            dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            if jobs:
-                with sqlite3.connect(self.config["Database path"]) as conn:
-                    cursor = conn.cursor()
-                    for jobid_on_server, jobname, status, pipeline in zip(
-                        jobs["jobid"],
-                        jobs["jobname"],
-                        jobs["status"],
-                        jobs["pipeline"],
-                        strict=True,
-                    ):
-                        # Get full job ID, TODO: replace so empty job ID on server / UUID can be used
-                        full_jobid = f"{label}-{jobid_on_server}"
-                        # Insert the job if it does not exist
-                        cursor.execute(
-                            "INSERT OR IGNORE INTO jobs (`Job ID`,`Job ID on server`) VALUES (?,?)",
-                            (full_jobid, jobid_on_server),
-                        )
-                        # If pipeline is none, do not update (keep old value)
-                        if pipeline is None:
-                            cursor.execute(
-                                "UPDATE jobs "
-                                "SET `Status` = ?, `Jobname` = ?, `Server label` = ?, "
-                                "`Server hostname` = ?, `Last checked` = ? "
-                                "WHERE `Job ID` = ?",
-                                (status, jobname, label, server.hostname, dt, full_jobid),
-                            )
-                        else:
-                            cursor.execute(
-                                "UPDATE jobs "
-                                "SET `Status` = ?, `Pipeline` = ?, `Jobname` = ?, `Server label` = ?, "
-                                "`Server Hostname` = ?, `Job ID on server` = ?, "
-                                "`Last Checked` = ? "
-                                "WHERE `Job ID` = ?",
-                                (
-                                    status,
-                                    pipeline,
-                                    jobname,
-                                    label,
-                                    server.hostname,
-                                    jobid_on_server,
-                                    dt,
-                                    full_jobid,
-                                ),
-                            )
-                    conn.commit()
-
     def update_pipelines(self) -> None:
         """Update the pipelines table in the database with the current status."""
         for label, server in self.servers.items():
@@ -154,7 +99,7 @@ class ServerManager:
             except Exception as e:
                 logger.error("Error getting pipeline status from %s: %s", label, e)
                 continue
-            dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            dt = datetime.now(timezone.utc).isoformat(timespec="seconds")
             if status:
                 with sqlite3.connect(self.config["Database path"]) as conn:
                     cursor = conn.cursor()
@@ -181,14 +126,31 @@ class ServerManager:
                                 "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
                                 (sampleid, pipeline),
                             )
-                        # Job ID means something running, Ready = nothing running
-                        # No job ID and not ready means previous job is still running, do not update
-                        if jobid_on_server is not None or ready == 1:
-                            jobid = f"{label}-{jobid_on_server}" if jobid_on_server else None
+                        # There is no job running - remove job ids from pipeline
+                        if ready == 1:
                             cursor.execute(
                                 "UPDATE pipelines SET `Job ID on server` = ?, `Job ID` = ? WHERE `Pipeline` = ?",
-                                (jobid_on_server, jobid, pipeline),
+                                (None, None, pipeline),
                             )
+                        # Update the job id (if it is None, then ignore rather than remove)
+                        elif jobid_on_server is not None:
+                            cursor.execute(
+                                "SELECT `Job ID` FROM jobs "
+                                "WHERE `Job ID on server` = ? AND `Sample ID` = ? AND `Pipeline` = ?",
+                                (jobid_on_server, sampleid, pipeline),
+                            )
+                            result = cursor.fetchone()
+                            if result:
+                                cursor.execute(
+                                    "UPDATE pipelines SET `Job ID on server` = ?, `Job ID` = ? WHERE `Pipeline` = ?",
+                                    (jobid_on_server, result[0], pipeline),
+                                )
+                            else:
+                                logger.warning(
+                                    "No matching Job ID found in database for server '%s' Job ID '%s'.",
+                                    label,
+                                    jobid_on_server,
+                                )
                     conn.commit()
 
     def update_flags(self) -> None:
@@ -208,7 +170,6 @@ class ServerManager:
     def update_db(self) -> None:
         """Update all tables in the database."""
         self.update_pipelines()
-        self.update_jobs()
         self.update_flags()
 
     def execute_sql(self, query: str, params: tuple | None = None) -> list[tuple]:
@@ -486,7 +447,7 @@ class ServerManager:
 
         logger.info("Submitting job to %s with capacity %.5f Ah", sample, capacity_Ah)
         full_jobid, jobid_on_server, json_string = server.submit(sample, capacity_Ah, payload, pipeline)
-        dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        dt = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
         # Update the job table in the database
         if full_jobid:
@@ -537,7 +498,7 @@ class ServerManager:
         )
         server_label, jobid_on_server, sampleid, pipeline = result[0]
         server = self.find_server(server_label)
-        output = server.cancel(jobid_on_server, sampleid, pipeline)
+        output = server.cancel(jobid, jobid_on_server, sampleid, pipeline)
         # If no error, assume job is cancelled and update the database
         self.execute_sql(
             "UPDATE jobs SET `Status` = 'cd' WHERE `Job ID` = ?",
@@ -633,7 +594,7 @@ class ServerManager:
                 raise FileNotFoundError(msg) from e
 
             # Update the snapshot status in the database
-            dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            dt = datetime.now(timezone.utc).isoformat(timespec="seconds")
             self.execute_sql(
                 "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
                 (sample_id,),
