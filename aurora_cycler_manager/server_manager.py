@@ -227,41 +227,11 @@ class ServerManager:
         df = df.sort_values(by="Pipeline", key=lambda x: x.map(custom_sort))
         return df.reset_index(drop=True)
 
-    @staticmethod
-    def sort_job(df: pd.DataFrame) -> pd.DataFrame:
-        """Sort jobs so servers are grouped together and jobs are sorted by number."""
-
-        def custom_sort(x: str) -> tuple[str, int]:
-            try:
-                server, number = x.rsplit("-", 1)
-                return (server, int(number))
-            except ValueError:
-                return (x, 0)
-
-        return df.sort_values(by="Job ID", key=lambda x: x.map(custom_sort))
-
     def get_pipelines(self) -> pd.DataFrame:
         """Return the status of all pipelines as a DataFrame."""
         columns = ["Pipeline", "Sample ID", "Job ID on server", "Server label"]
         result = self.execute_sql("SELECT `Pipeline`, `Sample ID`, `Job ID on server`, `Server label` FROM pipelines")
         return self.sort_pipeline(pd.DataFrame(result, columns=columns))
-
-    def get_queue(self) -> pd.DataFrame:
-        """Return all running and queued jobs as a DataFrame."""
-        columns = ["Job ID", "Sample ID", "Status", "Server label"]
-        result = self.execute_sql(
-            "SELECT `Job ID`, `Sample ID`, `Status`, `Server label` FROM jobs WHERE `Status` IN ('q', 'qw', 'r', 'rd')",
-        )
-        return self.sort_job(pd.DataFrame(result, columns=columns))
-
-    def get_jobs(self) -> pd.DataFrame:
-        """Return all jobs as a DataFrame."""
-        columns = ["Job ID", "Sample ID", "Status", "Server label"]
-        result = self.execute_sql(
-            "SELECT `Job ID`, `Sample ID`, `Status`, `Server label` FROM jobs "
-            "WHERE `Status` IN ('q', 'qw', 'r', 'rd', 'c', 'cd')",
-        )
-        return self.sort_job(pd.DataFrame(result, columns=columns))
 
     def get_sample_capacity(
         self,
