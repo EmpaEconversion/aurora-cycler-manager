@@ -16,6 +16,33 @@ from aurora_cycler_manager.utils import run_from_sample
 
 CONFIG = get_config()
 
+
+def execute_sql(query: str, params: tuple | None = None) -> list[tuple]:
+    """Execute a query on the database.
+
+    Args:
+        query : str
+            The query to execute
+        params : tuple, optional
+            The parameters to pass to the query
+
+    Returns:
+        list[tuple] : the result of the query
+
+    """
+    commit_keywords = ["UPDATE", "INSERT", "DELETE", "REPLACE", "CREATE", "DROP", "ALTER"]
+    commit = any(keyword in query.upper() for keyword in commit_keywords)
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cursor = conn.cursor()
+        if params is not None:
+            cursor.execute(query, params)
+        else:
+            cursor.execute(query)
+        if commit:
+            conn.commit()
+        return cursor.fetchall()
+
+
 ### SAMPLES ###
 
 
