@@ -504,6 +504,7 @@ class NewareAiidaServer(CyclerServer):
 
     # def check_connection - is it needed at all?
 
+    @override
     def submit(
         self, sample: str, capacity_Ah: float, payload: str | dict | Path, pipeline: str
     ) -> tuple[str, str, str]:
@@ -511,8 +512,6 @@ class NewareAiidaServer(CyclerServer):
 
         Use the start command on the aurora-neware CLI installed on Neware machine.
         """
-        print("Submitting job to Neware server...")
-
         # Open a temporary folder and dump the content of payload to a json file there
         with tempfile.TemporaryDirectory() as tmpdirname:
             json_path = Path(tmpdirname) / "payload.json"
@@ -523,23 +522,25 @@ class NewareAiidaServer(CyclerServer):
             shell_command = f"aiida-neware neware@neware-001 {json_path} {pipeline}"
             activate_script = Path("/home/lab131/aiida-venv") / "bin" / "activate"
             command_to_run = f"source {activate_script} && {shell_command}"
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S602
                 command_to_run, check=False, shell=True, executable="/bin/bash", capture_output=True, text=True
             )
             unique_uuid = result.stdout.split()[0]
 
         return unique_uuid, None, json.dumps(payload)
 
-    def cancel(self, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
+    @override
+    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.
         """
-        print(f"Cancelling job on Neware server... {job_id_on_server}, {sampleid}, {pipeline}")
-        return f"Stopped pipeline {pipeline} on Neware"
+        activate_script = Path("/home/lab131/aiida-venv") / "bin" / "activate"
+        command_to_run = f"source {activate_script} && verdi process kill {jobid}"
+        subprocess.run(command_to_run, check=False, shell=True, executable="/bin/bash", capture_output=True)  # noqa: S602
+        return f"Request to stop pipeline {pipeline} on Neware was sent."
 
     def get_pipelines(self) -> dict:
-        """Get the status of all pipelines on the server."""
         """Get the status of all pipelines on the server."""
         result = json.loads(self.command("neware status"))
         # result is a dict with keys=pipeline and value a dict of stuff
@@ -562,12 +563,13 @@ class NewareAiidaServer(CyclerServer):
         """
         return {}
 
+    @override
     def snapshot(
         self,
         sample_id: str,
         jobid: str,
-        jobid_on_server: str,  # noqa: ARG002
-        get_raw: bool = False,  # noqa: ARG002
+        jobid_on_server: str,
+        get_raw: bool = False,
     ) -> str | None:
         """Save a snapshot of a job on the server and download it to the local machine."""
         return None  # Neware does not have a snapshot status like tomato
