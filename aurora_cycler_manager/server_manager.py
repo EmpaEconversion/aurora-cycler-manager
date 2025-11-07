@@ -35,6 +35,49 @@ CONFIG = config.get_config()
 logger = logging.getLogger(__name__)
 
 
+class Job:
+    """A class representing a job in the database."""
+
+    def __init__(
+        self,
+        job_id: str,
+        sample_id: str,
+        pipeline: str,
+        status: str | None,
+        job_name: str,
+        server_label: str,
+        server_hostname: str,
+        jobid_on_server: str,
+        submitted: str,
+        payload: str,
+        unicycler_protocol: str | None,
+        capacity_mah: float,
+        comment: str,
+        snapshot_status: str | None = None,
+        last_snapshot: str | None = None,
+    ) -> None:
+        """Initialize the Job object."""
+        self.job_id = job_id
+        self.sample_id = sample_id
+        self.pipeline = pipeline
+        self.status = status
+        self.job_name = job_name
+        self.server_label = server_label
+        self.server_hostname = server_hostname
+        self.jobid_on_server = jobid_on_server
+        self.submitted = submitted
+        self.payload = payload
+        self.unicycler_protocol = unicycler_protocol
+        self.capacity_mah = capacity_mah
+        self.comment = comment
+        self.snapshot_status = snapshot_status
+        self.last_snapshot = last_snapshot
+
+    def submit(self) -> None:
+        """Submit the job to the server."""
+        # Implementation would go here
+
+
 class ServerManager:
     """The ServerManager class manages the database and cycling servers.
 
