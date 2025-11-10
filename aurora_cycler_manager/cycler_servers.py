@@ -325,10 +325,10 @@ class BiologicServer(CyclerServer):
                 if not payload.exists():
                     raise FileNotFoundError
                 if payload.suffix == ".json":
-                    with payload.open(encoding="utf-8") as f:
+                    with payload.open() as f:
                         mps_string = Protocol.from_dict(json.load(f), sample, capacity_Ah * 1000).to_biologic_mps()
                 elif payload.suffix == ".mps":
-                    with payload.open(encoding="utf-8") as f:
+                    with payload.open(encoding="cp1252") as f:
                         mps_string = f.read()
                 else:
                     msg = "Payload path must be a path to a unicycler json file or dict, or path to an mps file."
