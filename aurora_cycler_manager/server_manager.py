@@ -395,7 +395,7 @@ class ServerManager:
     def submit(
         self,
         sample: str,
-        payload: str | dict,
+        payload: str | Path | dict,
         capacity_Ah: float | Literal["areal", "mass", "nominal"],
         comment: str = "",
     ) -> None:
