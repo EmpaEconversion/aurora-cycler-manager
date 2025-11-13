@@ -477,7 +477,10 @@ class BiologicServer(CyclerServer):
             # Convert copied files to hdf5
             for local_file in local_files:
                 if local_file.suffix == ".mpr":
-                    convert_mpr(local_file, job_id=jobid, update_database=True)
+                    try:
+                        convert_mpr(local_file, job_id=jobid, update_database=True)
+                    except Exception:
+                        logger.exception("Error converting %s", local_file.name)
 
         return None
 
