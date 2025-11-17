@@ -66,6 +66,7 @@ def _read_config_file() -> dict:
 
     # if there is no user config file, create one
     if not user_config_path.exists():
+        config_dir.mkdir(parents=True, exist_ok=True)
         with user_config_path.open("w", encoding="utf-8") as f:
             f.write(
                 json.dumps(
