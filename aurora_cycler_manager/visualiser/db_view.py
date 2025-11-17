@@ -172,6 +172,7 @@ CONTAINERS = [
     "protocol-container",
 ]
 BUTTONS = [
+    "copy-button",
     "load-button",
     "eject-button",
     "submit-button",
@@ -193,6 +194,7 @@ visibility_settings = {
     },
     "pipelines": {
         "table-container",
+        "copy-button",
         "load-button",
         "eject-button",
         "submit-button",
@@ -206,12 +208,14 @@ visibility_settings = {
     },
     "jobs": {
         "table-container",
+        "copy-button",
         "cancel-button",
         "snapshot-button",
         "upload-button",
     },
     "results": {
         "table-container",
+        "copy-button",
         "view-button",
         "label-button",
         "create-batch-button",
@@ -220,6 +224,7 @@ visibility_settings = {
     },
     "samples": {
         "table-container",
+        "copy-button",
         "view-button",
         "batch-button",
         "delete-button",
@@ -863,7 +868,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                 elif table == "jobs":
                     if all(s.get("Server label") in accessible_servers for s in selected_rows):
                         enabled |= {"snapshot-button"}
-                        if all(s.get("Status") in ["r", "q", "qw"] for s in selected_rows):
+                        if all(s.get("Job ID") for s in selected_rows):
                             enabled |= {"cancel-button"}
                 elif table == "results" and all(s.get("Sample ID") is not None for s in selected_rows):
                     enabled |= {"label-button", "create-batch-button"}
