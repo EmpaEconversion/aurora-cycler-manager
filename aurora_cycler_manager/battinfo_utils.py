@@ -416,8 +416,19 @@ def merge_jsonld_on_type(json1: dict, json2: dict, target_type: str = "CoinCell"
 
 def generate_battery_test(ontologized_protocols: dict | list[dict]) -> dict:
     """Generate test json-ld based on protocols."""
-    if isinstance(ontologized_protocols, list) and len(ontologized_protocols) == 1:
-        ontologized_protocols = ontologized_protocols[0]
+    if isinstance(ontologized_protocols, dict):
+        ontologized_protocols = [ontologized_protocols]
+
+    def recursive_protocol(ontologized_protocols: list[dict]) -> dict:
+        test = {
+            "@type": ["ConstantCurrentConstantVoltageCycling", "IterativeWorkflow"],
+            "rdfs:label": "GeneratedBatteryTestProcedure",
+            "hasTask": ontologized_protocols[0],
+        }
+        if len(ontologized_protocols) > 1:
+            test["hasNext"] = recursive_protocol(ontologized_protocols[1:])
+        return test
+
     return {
         "@context": [
             "https://w3id.org/emmo/domain/battery/context",
@@ -432,14 +443,10 @@ def generate_battery_test(ontologized_protocols: dict | list[dict]) -> dict:
             },
         ],
         "@type": "BatteryTest",
-        "hasMeasurementParameter": {
-            "@type": ["ConstantCurrentConstantVoltageCycling", "IterativeWorkflow"],
-            "rdfs:label": "GeneratedBatteryTestProcedure",
-            "hasLab": {
-                "@type": "Laboratory",
-                "@id": "https://www.wikidata.org/wiki/Q683116",
-                "rdfs:label": "Empa",
-            },
-            "hasTask": ontologized_protocols,
+        "hasLab": {
+            "@type": "Laboratory",
+            "@id": "https://www.wikidata.org/wiki/Q683116",
+            "rdfs:label": "Empa",
         },
+        "hasMeasurementParameter": recursive_protocol(ontologized_protocols),
     }
