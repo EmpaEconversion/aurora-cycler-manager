@@ -35,50 +35,430 @@ SERVER_CORRESPONDENCE = {
 logger = logging.getLogger(__name__)
 
 
-class Job:
+def get_servers() -> dict[str, cycler_servers.CyclerServer]:
+    """Create the cycler server objects from the config file."""
+    servers: dict[str, cycler_servers.CyclerServer] = {}
+    for server_config in config.get_config()["Servers"]:
+        if server_config["server_type"] not in SERVER_CORRESPONDENCE:
+            logger.error("Server type %s not recognized, skipping", server_config["server_type"])
+            continue
+        try:
+            server_class = SERVER_CORRESPONDENCE[server_config["server_type"]]
+            servers[server_config["label"]] = server_class(server_config)
+        except (OSError, ValueError, TimeoutError, paramiko.SSHException):
+            logger.exception("Server %s could not be created, skipping", server_config["label"])
+    return servers
+
+
+def find_server(label: str) -> cycler_servers.CyclerServer:
+    """Get the server object from the label."""
+    if not label:
+        msg = (
+            "No server label found from query, there is probably a mistake in the query. "
+            "E.g. if you are searching for a sample ID, the ID might be wrong."
+        )
+        raise ValueError(msg)
+    server = get_servers().get(label, None)
+    if not server:
+        msg = (
+            f"Server with label {label} not found. "
+            "Either there is a mistake in the label name or you do not have access to the server."
+        )
+        raise KeyError(msg)
+    return server
+
+
+class Sample:
+    """A class representing a sample in the database."""
+
+    def __init__(self, sample_id: str, server_id: str = None, pipeline: str = None) -> None:
+        """Initialize the Sample object."""
+        self.id = sample_id
+        self.server = None
+        self.pipeline = None
+
+    def load(self, server, pipeline: str) -> None:
+        """Load the sample on a pipeline.
+
+        The appropriate server is found based on the pipeline, and the sample is loaded.
+
+        Args:
+            pipeline (str):
+                The pipeline to load the sample on. Must exist in pipelines table of database
+
+        """
+        if self.server or self.pipeline:
+            msg = f"Sample {self.id} is already loaded on server {self.server.label} pipeline {self.pipeline}."
+            raise ValueError(msg)
+
+        self.server = server
+        self.pipeline = pipeline
+        # Get pipeline and load
+        logger.info("Loading sample %s on server %s", self.id, self.server.label)
+        dbf.execute_sql(
+            "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
+            (self.id, self.pipeline),
+        )
+
+    def eject(self) -> None:
+        """Eject the sample from a pipeline."""
+        # Find server associated with pipeline
+        logger.info("Ejecting %s on server: %s", self.pipeline, self.server.label)
+        dbf.execute_sql(
+            "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = ? WHERE `Pipeline` = ?",
+            (True, self.pipeline),
+        )
+        self.server = None
+        self.pipeline = None
+
+    def get_sample_capacity(
+        self,
+        mode: Literal["areal", "mass", "nominal"],
+        ignore_anode: bool = True,
+    ) -> float:
+        """Get the capacity of a sample in Ah based on the mode.
+
+        Args:
+            mode : str
+                The mode to calculate the capacity. Must be 'areal', 'mass', or 'nominal'
+                areal: calculate from anode/cathode C-rate definition areal capacity (mAh/cm2) and
+                    anode/cathode Diameter (mm)
+                mass: calculate from anode/cathode C-rate definition specific capacity (mAh/g) and
+                    anode/cathode active material mass (mg)
+                nominal: use C-rate definition capacity (mAh)
+            ignore_anode : bool, optional
+                If True, only use the cathode capacity. Default is True.
+
+        Returns:
+            float: The capacity of the sample in Ah
+
+        """
+        if mode == "mass":
+            result = dbf.execute_sql(
+                "SELECT "
+                "`Anode C-rate definition specific capacity (mAh/g)`, "
+                "`Anode active material mass (mg)`, "
+                "`Anode diameter (mm)`, "
+                "`Cathode C-rate definition specific capacity (mAh/g)`, "
+                "`Cathode active material mass (mg)`, "
+                "`Cathode diameter (mm)` "
+                "FROM samples WHERE `Sample ID` = ?",
+                (self.id,),
+            )
+        elif mode == "areal":
+            result = dbf.execute_sql(
+                "SELECT "
+                "`Anode C-rate definition areal capacity (mAh/cm2)`, "
+                "`Anode diameter (mm)`, "
+                "`Cathode C-rate definition areal capacity (mAh/cm2)`, "
+                "`Cathode diameter (mm)` "
+                "FROM samples WHERE `Sample ID` = ?",
+                (self.id,),
+            )
+        elif mode == "nominal":
+            result = dbf.execute_sql(
+                "SELECT `C-rate definition capacity (mAh)` FROM samples WHERE `Sample ID` = ?",
+                (self.id,),
+            )
+        if not result:
+            msg = f"Sample '{self.id}' not found in the database."
+            raise ValueError(msg)
+        if mode == "mass":
+            an_cap_mAh_g, an_mass_mg, an_diam_mm, cat_cap_mAh_g, cat_mass_mg, cat_diam_mm = result[0]
+            cat_frac_used = min(1, an_diam_mm**2 / cat_diam_mm**2)
+            cat_cap_Ah = cat_frac_used * (cat_cap_mAh_g * cat_mass_mg * 1e-6)
+            capacity_Ah = cat_cap_Ah
+            if not ignore_anode:
+                an_frac_used = min(1, cat_diam_mm**2 / an_diam_mm**2)
+                an_cap_Ah = an_frac_used * (an_cap_mAh_g * an_mass_mg * 1e-6)
+                capacity_Ah = min(an_cap_Ah, cat_cap_Ah)
+        elif mode == "areal":
+            an_cap_mAh_cm2, an_diam_mm, cat_cap_mAh_cm2, cat_diam_mm = result[0]
+            cat_frac_used = min(1, an_diam_mm**2 / cat_diam_mm**2)
+            cat_cap_Ah = cat_frac_used * cat_cap_mAh_cm2 * (cat_diam_mm / 2) ** 2 * 3.14159 * 1e-5
+            capacity_Ah = cat_cap_Ah
+            if not ignore_anode:
+                an_frac_used = min(1, cat_diam_mm**2 / an_diam_mm**2)
+                an_cap_Ah = an_frac_used * an_cap_mAh_cm2 * (an_diam_mm / 2) ** 2 * 3.14159 * 1e-5
+                capacity_Ah = min(an_cap_Ah, cat_cap_Ah)
+        elif mode == "nominal":
+            capacity_Ah = result[0][0] * 1e-3
+        return capacity_Ah
+
+    @classmethod
+    def from_id(cls, sample_id: str) -> "Sample":
+        """Create a Sample object from the database.
+
+        Args:
+            sample_id : str
+                The sample ID to create the object for.
+
+        Returns:
+            Sample: The Sample object.
+
+        """
+        # Check if sample exists in database
+        result = dbf.execute_sql(
+            "SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?",
+            (sample_id,),
+        )
+        if not result:
+            msg = f"Sample '{sample_id}' not found in the database."
+            raise ValueError(msg)
+
+        # Check if the sample is loaded on a pipeline
+        result = dbf.execute_sql(
+            "SELECT `Server label`, `Pipeline` FROM pipelines WHERE `Sample ID` = ?",
+            (sample_id,),
+        )
+        if result:
+            server_label, pipeline = result[0]
+            sample = cls(sample_id)
+            sample.server = find_server(server_label)
+            sample.pipeline = pipeline
+            return sample
+        return cls(sample_id)
+
+    def safe_get_sample_capacity(
+        self,
+        mode: Literal["areal", "mass", "nominal"],
+        ignore_anode: bool = True,
+    ) -> float | None:
+        """Get the capacity of a sample in Ah based on the mode. Returns None if failed."""
+        try:
+            return self.get_sample_capacity(mode, ignore_anode)
+        except (ValueError, TypeError):
+            return None
+
+
+class CyclingJob:
     """A class representing a job in the database."""
 
     def __init__(
         self,
         job_id: str,
-        sample_id: str,
-        pipeline: str,
         status: str | None,
         job_name: str,
-        server_label: str,
-        server_hostname: str,
-        jobid_on_server: str,
         submitted: str,
-        payload: str,
         unicycler_protocol: str | None,
         capacity_mah: float,
         comment: str,
-        snapshot_status: str | None = None,
-        last_snapshot: str | None = None,
     ) -> None:
         """Initialize the Job object."""
         self.job_id = job_id
-        self.sample_id = sample_id
-        self.pipeline = pipeline
         self.status = status
         self.job_name = job_name
-        self.server_label = server_label
-        self.server_hostname = server_hostname
-        self.jobid_on_server = jobid_on_server
         self.submitted = submitted
-        self.payload = payload
         self.unicycler_protocol = unicycler_protocol
         self.capacity_mah = capacity_mah
         self.comment = comment
-        self.snapshot_status = snapshot_status
-        self.last_snapshot = last_snapshot
 
-    def submit(self) -> None:
-        """Submit the job to the server."""
-        # Implementation would go here
+        # The parameters below are set when the job is submitted
+        self.jobid_on_server = None
+        self.pipeline = None
+        self.snapshot_status = None
+        self.last_snapshot = None
+
+    def add_sample(self, sample: Sample) -> None:
+        """Add a sample to the job.
+
+        Args:
+            sample : Sample
+                The sample object to add to the job
+
+        """
+        self.sample = sample
+
+    def add_payload(self, payload: str | Path | dict) -> None:
+        """Add a payload to the job.
+
+        Args:
+            payload : str or Path or dict
+                Preferably an aurora-unicycler dictionary - this is auto-converted to the right format for each cycler
+                In addition, different cyclers can accept different payload formats
+                (Neware) A .xml path or xml string with a Neware protocol
+                (Biologic) A .mps path or mps string with a Biologic protocol
+
+        """
+        # Check if the payload is a unicycler protocol
+        if isinstance(payload, dict):
+            with contextlib.suppress(ValueError, AttributeError, KeyError):
+                unicycler_protocol = Protocol.from_dict(
+                    payload,
+                    sample_name=self.sample.id,
+                    sample_capacity_mAh=capacity_Ah * 1000,
+                ).model_dump_json(exclude_none=True)
+        self.payload = payload
+        self.unicycler_protocol = unicycler_protocol
+
+    def cancel(self) -> None:
+        """Cancel this job on a server.
+
+        Returns:
+            str: The output from the server cancel command
+
+        """
+        output = self.sample.server.cancel(self.job_id, self.jobid_on_server, self.sample_id, self.pipeline)
+
+        # If no error, assume job is cancelled and update the database
+        dbf.execute_sql(
+            "UPDATE jobs SET `Status` = 'cd' WHERE `Job ID` = ?",
+            (self.job_id,),
+        )
+        return output
 
 
 class ServerManager:
+    def __init__(self) -> None:
+        """Initialize the server manager object."""
+        logger.info("Creating cycler server objects")
+        self.config = config.get_config()
+        if not self.config.get("Snapshots folder path"):
+            msg = "'Snapshots folder path' not found in config file. Cannot save snapshots."
+            raise ValueError(msg)
+        self.servers = get_servers()
+        if not self.servers:
+            msg = "No servers found in config file, please check the config file."
+            raise ValueError(msg)
+        logger.info("Server manager initialised, consider updating database with update_db()")
+
+    def update_db(self) -> None:
+        """Update all tables in the database."""
+        self.update_pipelines()
+        self.update_flags()
+
+    def update_pipelines(self) -> None:
+        """Update the pipelines table in the database with the current status."""
+        for label, server in self.servers.items():
+            try:
+                status = server.get_pipelines()
+            except Exception as e:
+                logger.error("Error getting pipeline status from %s: %s", label, e)
+                continue
+            dt = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            if status:
+                with sqlite3.connect(self.config["Database path"]) as conn:
+                    cursor = conn.cursor()
+                    for ready, pipeline, sampleid, jobid_on_server in zip(
+                        status["ready"],
+                        status["pipeline"],
+                        status["sampleid"],
+                        status["jobid"],
+                        strict=True,
+                    ):
+                        cursor.execute(
+                            "INSERT OR IGNORE INTO pipelines (`Pipeline`) VALUES (?)",
+                            (pipeline,),
+                        )
+                        cursor.execute(
+                            "UPDATE pipelines "
+                            "SET `Ready` = ?, `Last checked` = ?, `Server label` = ?, "
+                            "`Server hostname` = ?, `Server type` = ? "
+                            "WHERE `Pipeline` = ?",
+                            (ready, dt, label, server.hostname, server.server_type, pipeline),
+                        )
+                        if sampleid is not None:
+                            cursor.execute(
+                                "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
+                                (sampleid, pipeline),
+                            )
+                        # There is no job running - remove job ids from pipeline
+                        if ready == 1:
+                            cursor.execute(
+                                "UPDATE pipelines SET `Job ID on server` = ?, `Job ID` = ? WHERE `Pipeline` = ?",
+                                (None, None, pipeline),
+                            )
+                        # Update the job id (if it is None, then ignore rather than remove)
+                        elif jobid_on_server is not None:
+                            cursor.execute(
+                                "SELECT `Job ID` FROM jobs "
+                                "WHERE `Job ID on server` = ? AND `Sample ID` = ? AND `Pipeline` = ?",
+                                (jobid_on_server, sampleid, pipeline),
+                            )
+                            result = cursor.fetchone()
+                            if result:
+                                cursor.execute(
+                                    "UPDATE pipelines SET `Job ID on server` = ?, `Job ID` = ? WHERE `Pipeline` = ?",
+                                    (jobid_on_server, result[0], pipeline),
+                                )
+                            else:
+                                logger.warning(
+                                    "No matching Job ID found in database for server '%s' Job ID '%s'.",
+                                    label,
+                                    jobid_on_server,
+                                )
+                    conn.commit()
+
+    def update_flags(self) -> None:
+        """Update the flags in the pipelines table from the results table."""
+        with sqlite3.connect(self.config["Database path"]) as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE pipelines SET `Flag` = NULL")
+            cursor.execute("SELECT `Pipeline`, `Flag`, `Sample ID` FROM results")
+            results = cursor.fetchall()
+            for pipeline, flag, sampleid in results:
+                cursor.execute(
+                    "UPDATE pipelines SET `Flag` = ? WHERE `Pipeline` = ? AND `Sample ID` = ?",
+                    (flag, pipeline, sampleid),
+                )
+            conn.commit()
+
+    def load(self, sample_id: str, server_id: str, pipeline: str) -> None:
+        """Load a sample on a pipeline.
+
+        The appropriate server is found based on the pipeline, and the sample is loaded.
+
+        Args:
+            sample (str):
+                The sample ID to load. Must exist in samples table of database
+            pipeline (str):
+                The pipeline to load the sample on. Must exist in pipelines table of database
+
+        """
+        sample = Sample.from_id(sample_id)
+        server = find_server(server_id)
+        print("Will load sample", sample_id, "on server", server.label, "pipeline", pipeline)
+        sample.load(server, pipeline)
+
+    def eject(self, sample_id, pipeline: str) -> None:
+        """Eject a sample from a pipeline.
+
+        Args:
+            pipeline (str):
+                The pipeline to eject the sample from, must exist in pipelines table of database
+
+        """
+        sample_obj = Sample.from_db(sample_id)
+        sample_obj.eject()
+
+    def submit(
+        self,
+        sample_id: str,
+        payload: str | Path | dict,
+        capacity_Ah: float | Literal["areal", "mass", "nominal"],
+        comment: str = "",
+    ) -> None:
+        """Submit a job to a server.
+
+        Args:
+            sample : str
+                The sample ID to submit the job for, must exist in samples table of database
+            payload : str or dict
+                Preferably an aurora-unicycler dictionary - this is auto-converted to the right format for each cycler
+                In addition, different cyclers can accept different payload formats
+                (Neware) A .xml path or xml string with a Neware protocol
+                (Biologic) A .mps path or mps string with a Biologic protocol
+            capacity_Ah : float or str
+                The capacity of the sample in Ah, if 'areal', 'mass', or 'nominal', the capacity is
+                calculated from the sample information
+            comment : str, optional
+                A comment to add to the job in the database
+
+        """
+        sample = Sample.from_id(sample_id)
+
+
+class ServerManagerX:
     """The ServerManager class manages the database and cycling servers.
 
     This class is used in the app and the daemon. The class can also be used
@@ -252,95 +632,6 @@ class ServerManager:
             "SELECT `Pipeline`, `Sample ID`, `Job ID on server`, `Server label` FROM pipelines",
         )
         return self.sort_pipeline(pd.DataFrame(result, columns=columns))
-
-    def get_sample_capacity(
-        self,
-        sample: str,
-        mode: Literal["areal", "mass", "nominal"],
-        ignore_anode: bool = True,
-    ) -> float:
-        """Get the capacity of a sample in Ah based on the mode.
-
-        Args:
-            sample : str
-                The sample ID to get the capacity for
-            mode : str
-                The mode to calculate the capacity. Must be 'areal', 'mass', or 'nominal'
-                areal: calculate from anode/cathode C-rate definition areal capacity (mAh/cm2) and
-                    anode/cathode Diameter (mm)
-                mass: calculate from anode/cathode C-rate definition specific capacity (mAh/g) and
-                    anode/cathode active material mass (mg)
-                nominal: use C-rate definition capacity (mAh)
-            ignore_anode : bool, optional
-                If True, only use the cathode capacity. Default is True.
-
-        Returns:
-            float: The capacity of the sample in Ah
-
-        """
-        if mode == "mass":
-            result = dbf.execute_sql(
-                "SELECT "
-                "`Anode C-rate definition specific capacity (mAh/g)`, "
-                "`Anode active material mass (mg)`, "
-                "`Anode diameter (mm)`, "
-                "`Cathode C-rate definition specific capacity (mAh/g)`, "
-                "`Cathode active material mass (mg)`, "
-                "`Cathode diameter (mm)` "
-                "FROM samples WHERE `Sample ID` = ?",
-                (sample,),
-            )
-        elif mode == "areal":
-            result = dbf.execute_sql(
-                "SELECT "
-                "`Anode C-rate definition areal capacity (mAh/cm2)`, "
-                "`Anode diameter (mm)`, "
-                "`Cathode C-rate definition areal capacity (mAh/cm2)`, "
-                "`Cathode diameter (mm)` "
-                "FROM samples WHERE `Sample ID` = ?",
-                (sample,),
-            )
-        elif mode == "nominal":
-            result = dbf.execute_sql(
-                "SELECT `C-rate definition capacity (mAh)` FROM samples WHERE `Sample ID` = ?",
-                (sample,),
-            )
-        if not result:
-            msg = f"Sample '{sample}' not found in the database."
-            raise ValueError(msg)
-        if mode == "mass":
-            an_cap_mAh_g, an_mass_mg, an_diam_mm, cat_cap_mAh_g, cat_mass_mg, cat_diam_mm = result[0]
-            cat_frac_used = min(1, an_diam_mm**2 / cat_diam_mm**2)
-            cat_cap_Ah = cat_frac_used * (cat_cap_mAh_g * cat_mass_mg * 1e-6)
-            capacity_Ah = cat_cap_Ah
-            if not ignore_anode:
-                an_frac_used = min(1, cat_diam_mm**2 / an_diam_mm**2)
-                an_cap_Ah = an_frac_used * (an_cap_mAh_g * an_mass_mg * 1e-6)
-                capacity_Ah = min(an_cap_Ah, cat_cap_Ah)
-        elif mode == "areal":
-            an_cap_mAh_cm2, an_diam_mm, cat_cap_mAh_cm2, cat_diam_mm = result[0]
-            cat_frac_used = min(1, an_diam_mm**2 / cat_diam_mm**2)
-            cat_cap_Ah = cat_frac_used * cat_cap_mAh_cm2 * (cat_diam_mm / 2) ** 2 * 3.14159 * 1e-5
-            capacity_Ah = cat_cap_Ah
-            if not ignore_anode:
-                an_frac_used = min(1, cat_diam_mm**2 / an_diam_mm**2)
-                an_cap_Ah = an_frac_used * an_cap_mAh_cm2 * (an_diam_mm / 2) ** 2 * 3.14159 * 1e-5
-                capacity_Ah = min(an_cap_Ah, cat_cap_Ah)
-        elif mode == "nominal":
-            capacity_Ah = result[0][0] * 1e-3
-        return capacity_Ah
-
-    def safe_get_sample_capacity(
-        self,
-        sample: str,
-        mode: Literal["areal", "mass", "nominal"],
-        ignore_anode: bool = True,
-    ) -> float | None:
-        """Get the capacity of a sample in Ah based on the mode. Returns None if failed."""
-        try:
-            return self.get_sample_capacity(sample, mode, ignore_anode)
-        except (ValueError, TypeError):
-            return None
 
     def load(self, sample: str, pipeline: str) -> None:
         """Load a sample on a pipeline.
