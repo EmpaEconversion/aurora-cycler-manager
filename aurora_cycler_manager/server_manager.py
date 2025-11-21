@@ -24,6 +24,7 @@ import paramiko
 from aurora_unicycler import Protocol
 
 from aurora_cycler_manager import analysis, config, cycler_servers
+from aurora_cycler_manager import database_funcs as dbf
 from aurora_cycler_manager.utils import run_from_sample
 
 SERVER_CORRESPONDENCE = {
@@ -31,7 +32,6 @@ SERVER_CORRESPONDENCE = {
     "biologic": cycler_servers.BiologicServer,
 }
 
-CONFIG = config.get_config()
 logger = logging.getLogger(__name__)
 
 
@@ -108,7 +108,7 @@ class ServerManager:
     def __init__(self) -> None:
         """Initialize the server manager object."""
         logger.info("Creating cycler server objects")
-        self.config = CONFIG
+        self.config = config.get_config()
         if not self.config.get("Snapshots folder path"):
             msg = "'Snapshots folder path' not found in config file. Cannot save snapshots."
             raise ValueError(msg)
@@ -214,31 +214,6 @@ class ServerManager:
         self.update_pipelines()
         self.update_flags()
 
-    def execute_sql(self, query: str, params: tuple | None = None) -> list[tuple]:
-        """Execute a query on the database.
-
-        Args:
-            query : str
-                The query to execute
-            params : tuple, optional
-                The parameters to pass to the query
-
-        Returns:
-            list[tuple] : the result of the query
-
-        """
-        commit_keywords = ["UPDATE", "INSERT", "DELETE", "REPLACE", "CREATE", "DROP", "ALTER"]
-        commit = any(keyword in query.upper() for keyword in commit_keywords)
-        with sqlite3.connect(self.config["Database path"]) as conn:
-            cursor = conn.cursor()
-            if params is not None:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            if commit:
-                conn.commit()
-            return cursor.fetchall()
-
     def find_server(self, label: str) -> cycler_servers.CyclerServer:
         """Get the server object from the label."""
         if not label:
@@ -270,41 +245,13 @@ class ServerManager:
         df = df.sort_values(by="Pipeline", key=lambda x: x.map(custom_sort))
         return df.reset_index(drop=True)
 
-    @staticmethod
-    def sort_job(df: pd.DataFrame) -> pd.DataFrame:
-        """Sort jobs so servers are grouped together and jobs are sorted by number."""
-
-        def custom_sort(x: str) -> tuple[str, int]:
-            try:
-                server, number = x.rsplit("-", 1)
-                return (server, int(number))
-            except ValueError:
-                return (x, 0)
-
-        return df.sort_values(by="Job ID", key=lambda x: x.map(custom_sort))
-
     def get_pipelines(self) -> pd.DataFrame:
         """Return the status of all pipelines as a DataFrame."""
         columns = ["Pipeline", "Sample ID", "Job ID on server", "Server label"]
-        result = self.execute_sql("SELECT `Pipeline`, `Sample ID`, `Job ID on server`, `Server label` FROM pipelines")
+        result = dbf.execute_sql(
+            "SELECT `Pipeline`, `Sample ID`, `Job ID on server`, `Server label` FROM pipelines",
+        )
         return self.sort_pipeline(pd.DataFrame(result, columns=columns))
-
-    def get_queue(self) -> pd.DataFrame:
-        """Return all running and queued jobs as a DataFrame."""
-        columns = ["Job ID", "Sample ID", "Status", "Server label"]
-        result = self.execute_sql(
-            "SELECT `Job ID`, `Sample ID`, `Status`, `Server label` FROM jobs WHERE `Status` IN ('q', 'qw', 'r', 'rd')",
-        )
-        return self.sort_job(pd.DataFrame(result, columns=columns))
-
-    def get_jobs(self) -> pd.DataFrame:
-        """Return all jobs as a DataFrame."""
-        columns = ["Job ID", "Sample ID", "Status", "Server label"]
-        result = self.execute_sql(
-            "SELECT `Job ID`, `Sample ID`, `Status`, `Server label` FROM jobs "
-            "WHERE `Status` IN ('q', 'qw', 'r', 'rd', 'c', 'cd')",
-        )
-        return self.sort_job(pd.DataFrame(result, columns=columns))
 
     def get_sample_capacity(
         self,
@@ -332,7 +279,7 @@ class ServerManager:
 
         """
         if mode == "mass":
-            result = self.execute_sql(
+            result = dbf.execute_sql(
                 "SELECT "
                 "`Anode C-rate definition specific capacity (mAh/g)`, "
                 "`Anode active material mass (mg)`, "
@@ -344,7 +291,7 @@ class ServerManager:
                 (sample,),
             )
         elif mode == "areal":
-            result = self.execute_sql(
+            result = dbf.execute_sql(
                 "SELECT "
                 "`Anode C-rate definition areal capacity (mAh/cm2)`, "
                 "`Anode diameter (mm)`, "
@@ -354,7 +301,7 @@ class ServerManager:
                 (sample,),
             )
         elif mode == "nominal":
-            result = self.execute_sql(
+            result = dbf.execute_sql(
                 "SELECT `C-rate definition capacity (mAh)` FROM samples WHERE `Sample ID` = ?",
                 (sample,),
             )
@@ -408,12 +355,12 @@ class ServerManager:
 
         """
         # Check if sample exists in database
-        result = self.execute_sql("SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?", (sample,))
+        result = dbf.execute_sql("SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?", (sample,))
         # Get pipeline and load
-        result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
+        result = dbf.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
         server = self.find_server(result[0][0])
         logger.info("Loading sample %s on server %s", sample, server.label)
-        self.execute_sql(
+        dbf.execute_sql(
             "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
             (sample, pipeline),
         )
@@ -427,10 +374,10 @@ class ServerManager:
 
         """
         # Find server associated with pipeline
-        result = self.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
+        result = dbf.execute_sql("SELECT `Server label` FROM pipelines WHERE `Pipeline` = ?", (pipeline,))
         server = self.find_server(result[0][0])
         logger.info("Ejecting %s on server: %s", pipeline, server.label)
-        self.execute_sql(
+        dbf.execute_sql(
             "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = ? WHERE `Pipeline` = ?",
             (True, pipeline),
         )
@@ -438,7 +385,7 @@ class ServerManager:
     def submit(
         self,
         sample: str,
-        payload: str | dict,
+        payload: str | Path | dict,
         capacity_Ah: float | Literal["areal", "mass", "nominal"],
         comment: str = "",
     ) -> None:
@@ -470,7 +417,7 @@ class ServerManager:
             raise ValueError(msg)
 
         # Find the server with the sample loaded, if there is more than one throw an error
-        result = self.execute_sql("SELECT `Server label`, `Pipeline` FROM pipelines WHERE `Sample ID` = ?", (sample,))
+        result = dbf.execute_sql("SELECT `Server label`, `Pipeline` FROM pipelines WHERE `Sample ID` = ?", (sample,))
         if len(result) > 1:
             msg = f"Sample {sample} is loaded on more than one server, cannot submit job."
             raise ValueError(msg)
@@ -493,7 +440,7 @@ class ServerManager:
 
         # Update the job table in the database
         if full_jobid and jobid_on_server:
-            self.execute_sql(
+            dbf.execute_sql(
                 "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Server hostname`, `Job ID on server`, "
                 "`Pipeline`, `Submitted`, `Payload`, `Unicycler protocol`, `Capacity (mAh)`, `Comment`) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -515,7 +462,7 @@ class ServerManager:
             # It costs around 1 second to get the job id for one channel, so cannot do this in update_pipelines
             # Just do it once on job submission and don't update until job is finished
             if isinstance(server, (cycler_servers.NewareServer, cycler_servers.BiologicServer)):
-                self.execute_sql(
+                dbf.execute_sql(
                     "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ?, `Ready` = 0 WHERE `Pipeline` = ?",
                     (full_jobid, jobid_on_server, pipeline),
                 )
@@ -531,7 +478,7 @@ class ServerManager:
             str: The output from the server cancel command
 
         """
-        result = self.execute_sql(
+        result = dbf.execute_sql(
             "SELECT `Server label`, `Job ID on server`, `Sample ID`, `Pipeline` FROM jobs WHERE `Job ID` = ?",
             (jobid,),
         )
@@ -539,7 +486,7 @@ class ServerManager:
         server = self.find_server(server_label)
         output = server.cancel(jobid, jobid_on_server, sampleid, pipeline)
         # If no error, assume job is cancelled and update the database
-        self.execute_sql(
+        dbf.execute_sql(
             "UPDATE jobs SET `Status` = 'cd' WHERE `Job ID` = ?",
             (jobid,),
         )
@@ -564,15 +511,15 @@ class ServerManager:
 
         """
         # check if the input is a sample ID
-        result = self.execute_sql("SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?", (samp_or_jobid,))
+        result = dbf.execute_sql("SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?", (samp_or_jobid,))
         if result:  # it's a sample
-            result = self.execute_sql(
+            result = dbf.execute_sql(
                 "SELECT `Sample ID`, `Status`, `Job ID`, `Job ID on server`, `Server label`, `Snapshot Status` "
                 "FROM jobs WHERE `Sample ID` = ? ",
                 (samp_or_jobid,),
             )
         else:  # it's a job ID
-            result = self.execute_sql(
+            result = dbf.execute_sql(
                 "SELECT `Sample ID`, `Status`, `Job ID`, `Job ID on server`, `Server label`, `Snapshot Status` "
                 "FROM jobs WHERE `Job ID` = ?",
                 (samp_or_jobid,),
@@ -626,7 +573,7 @@ class ServerManager:
                     "Likely the job was cancelled before starting. "
                     "Setting `Snapshot Status` to 'ce' in the database."
                 )
-                self.execute_sql(
+                dbf.execute_sql(
                     "UPDATE jobs SET `Snapshot status` = 'ce' WHERE `Job ID` = ?",
                     (jobid,),
                 )
@@ -634,15 +581,15 @@ class ServerManager:
 
             # Update the snapshot status in the database
             dt = datetime.now(timezone.utc).isoformat(timespec="seconds")
-            self.execute_sql(
+            dbf.execute_sql(
                 "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
                 (sample_id,),
             )
-            self.execute_sql(
+            dbf.execute_sql(
                 "UPDATE results SET `Last snapshot` = ? WHERE `Sample ID` = ?",
                 (dt, sample_id),
             )
-            self.execute_sql(
+            dbf.execute_sql(
                 "UPDATE jobs SET `Snapshot status` = ?, `Last snapshot` = ? WHERE `Job ID` = ?",
                 (new_snapshot_status, dt, jobid),
             )
@@ -678,12 +625,12 @@ class ServerManager:
         if mode in ["new_data"]:
             where += " AND (`Snapshot status` NOT LIKE 'c%' OR `Snapshot status` IS NULL)"
         if sampleid_contains:
-            result = self.execute_sql(
+            result = dbf.execute_sql(
                 "SELECT `Job ID` FROM jobs WHERE " + where + " AND `Sample ID` LIKE ?",  # noqa: S608
                 (f"%{sampleid_contains}%",),
             )
         else:
-            result = self.execute_sql("SELECT `Job ID` FROM jobs WHERE " + where)  # noqa: S608
+            result = dbf.execute_sql("SELECT `Job ID` FROM jobs WHERE " + where)  # noqa: S608
         total_jobs = len(result)
         logger.info("Snapshotting %d jobs with mode '%s'", total_jobs, mode)
         t0 = time()
@@ -718,7 +665,7 @@ class ServerManager:
         per channel.
 
         """
-        result = self.execute_sql(
+        result = dbf.execute_sql(
             "SELECT `Pipeline`, `Server label` FROM pipelines WHERE "
             "`Sample ID` NOT NULL AND `Ready` = 0 AND `Server type` = 'neware'",
         )
@@ -730,7 +677,7 @@ class ServerManager:
             assert isinstance(server, cycler_servers.NewareServer)  # noqa: S101
             jobid_on_server = server._get_job_id(pipeline)  # noqa: SLF001
             full_jobid = f"{server.label}-{jobid_on_server}"
-            self.execute_sql(
+            dbf.execute_sql(
                 "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ? WHERE `Pipeline` = ?",
                 (full_jobid, jobid_on_server, pipeline),
             )

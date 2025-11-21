@@ -29,6 +29,7 @@ from flask.typing import ResponseReturnValue
 from aurora_cycler_manager.analysis import analyse_sample, update_sample_metadata
 from aurora_cycler_manager.battinfo_utils import (
     generate_battery_test,
+    make_test_object,
     merge_battinfo_with_db_data,
     merge_jsonld_on_type,
 )
@@ -171,6 +172,7 @@ CONTAINERS = [
     "protocol-container",
 ]
 BUTTONS = [
+    "copy-button",
     "load-button",
     "eject-button",
     "submit-button",
@@ -192,6 +194,7 @@ visibility_settings = {
     },
     "pipelines": {
         "table-container",
+        "copy-button",
         "load-button",
         "eject-button",
         "submit-button",
@@ -205,12 +208,14 @@ visibility_settings = {
     },
     "jobs": {
         "table-container",
+        "copy-button",
         "cancel-button",
         "snapshot-button",
         "upload-button",
     },
     "results": {
         "table-container",
+        "copy-button",
         "view-button",
         "label-button",
         "create-batch-button",
@@ -219,6 +224,7 @@ visibility_settings = {
     },
     "samples": {
         "table-container",
+        "copy-button",
         "view-button",
         "batch-button",
         "delete-button",
@@ -862,7 +868,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                 elif table == "jobs":
                     if all(s.get("Server label") in accessible_servers for s in selected_rows):
                         enabled |= {"snapshot-button"}
-                        if all(s.get("Status") in ["r", "q", "qw"] for s in selected_rows):
+                        if all(s.get("Job ID") for s in selected_rows):
                             enabled |= {"cancel-button"}
                 elif table == "results" and all(s.get("Sample ID") is not None for s in selected_rows):
                     enabled |= {"label-button", "create-batch-button"}
@@ -1624,6 +1630,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                         battinfo_file = next(Path(sample_folder).glob("battinfo.*.jsonld"))
                         with battinfo_file.open("r") as f:
                             battinfo_json = json.load(f)
+                        battinfo_json = make_test_object(battinfo_json)
                         aux_json = None
                         try:
                             aux_file = next(Path(sample_folder).glob("aux.*.jsonld"))
@@ -1632,7 +1639,10 @@ def register_db_view_callbacks(app: Dash) -> None:
                         except StopIteration:
                             pass
                         if aux_json:
-                            battinfo_json = merge_jsonld_on_type(battinfo_json, aux_json)
+                            try:
+                                merge_jsonld_on_type(battinfo_json, aux_json, target_type="BatteryTest")
+                            except ValueError:
+                                merge_jsonld_on_type(battinfo_json["hasTestObject"], aux_json, target_type="CoinCell")
                         db_jobs = get_unicycler_protocols(sample)
                         if db_jobs:
                             ontologized_protocols = []
@@ -1642,7 +1652,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                                     protocol.to_battinfo_jsonld(capacity_mAh=db_job["Capacity (mAh)"])
                                 )
                             test_jsonld = generate_battery_test(ontologized_protocols)
-                            battinfo_json = merge_jsonld_on_type(battinfo_json, test_jsonld)
+                            battinfo_json = merge_jsonld_on_type(battinfo_json, test_jsonld, target_type="BatteryTest")
                         jsonld_name = f"metadata.{sample}.jsonld"
                         zf.writestr(sample + "/" + jsonld_name, json.dumps(battinfo_json, indent=4))
                         messages += "✅"

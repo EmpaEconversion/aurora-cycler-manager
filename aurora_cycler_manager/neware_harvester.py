@@ -203,7 +203,8 @@ def snapshot_raw_data(job_id: str) -> Path | None:
     if not row:
         msg = f"No job found with ID '{job_id}' in database."
         raise ValueError(msg)
-    submitted = row[0].split(" ")[0].replace("-", "")  # Get YYYYMMDD format
+    logger.debug("Found job with submission date '%s', server label %s", row[0], row[1])
+    submitted = datetime.fromisoformat(row[0]).strftime("%Y%m%d")  # Get YYYYMMDD format
     server_label = row[1]
 
     # Get the server from the config
