@@ -406,9 +406,15 @@ def get_unicycler_protocols(sample_id: str) -> list[dict]:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
         cur.execute(
-            "SELECT `Job ID`, `Unicycler protocol`, `Capacity (mAh)` "
-            "FROM jobs "
-            "WHERE `Sample ID` = ? AND `Unicycler protocol` IS NOT NULL",
+            "SELECT j.`Job ID`, j.`Unicycler protocol`, j.`Capacity (mAh)`, "
+            "COALESCE("
+            "j.`Submitted`, "
+            "(SELECT MIN(d.`Data start`) FROM dataframes d WHERE d.`Job ID` = j.`Job ID`), "
+            "9999"  # fallback
+            ") AS sort_timestamp "
+            "FROM jobs j "
+            "WHERE j.`Sample ID` = ? AND j.`Unicycler protocol` IS NOT NULL "
+            "ORDER BY sort_timestamp ASC",
             (sample_id,),
         )
         rows = cur.fetchall()
