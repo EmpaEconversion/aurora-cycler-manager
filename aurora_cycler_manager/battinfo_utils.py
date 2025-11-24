@@ -407,11 +407,16 @@ def merge_jsonld(json1: dict, json2: dict) -> dict:
     return recursive_merge(json1, json2)
 
 
-def merge_jsonld_on_type(json1: dict, json2: dict, target_type: str = "CoinCell") -> dict:
+def merge_jsonld_on_type(jsons: list[dict], target_type: str = "BatteryTest") -> dict:
     """Transform two json-ld, make target_type parent and merge."""
-    json1 = make_type_parent(json1, target_type)
-    json2 = make_type_parent(json2, target_type)
-    return merge_jsonld(json1, json2)
+    jsons = [make_type_parent(json, target_type) for json in jsons]
+
+    def repeated_merge(jsons: list[dict]) -> dict:
+        if len(jsons) == 1:
+            return jsons[0]
+        return recursive_merge(jsons[0], repeated_merge(jsons[1:]))
+
+    return repeated_merge(jsons)
 
 
 def generate_battery_test(ontologized_protocols: dict | list[dict]) -> dict:
