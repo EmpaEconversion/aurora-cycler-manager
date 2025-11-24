@@ -1642,9 +1642,9 @@ def register_db_view_callbacks(app: Dash) -> None:
                             pass
                         if aux_json:
                             try:
-                                merge_jsonld_on_type(battinfo_json, aux_json, target_type="BatteryTest")
+                                merge_jsonld_on_type([battinfo_json, aux_json])
                             except ValueError:
-                                merge_jsonld_on_type(battinfo_json["hasTestObject"], aux_json, target_type="CoinCell")
+                                merge_jsonld_on_type([battinfo_json["hasTestObject"], aux_json], target_type="CoinCell")
                         db_jobs = get_unicycler_protocols(sample)
                         if db_jobs:
                             ontologized_protocols = []
@@ -1654,7 +1654,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                                     protocol.to_battinfo_jsonld(capacity_mAh=db_job["Capacity (mAh)"])
                                 )
                             test_jsonld = generate_battery_test(ontologized_protocols)
-                            battinfo_json = merge_jsonld_on_type(battinfo_json, test_jsonld, target_type="BatteryTest")
+                            battinfo_json = merge_jsonld_on_type([battinfo_json, test_jsonld])
                         jsonld_name = f"metadata.{sample}.jsonld"
                         zf.writestr(sample + "/" + jsonld_name, json.dumps(battinfo_json, indent=4))
                         messages += "✅"
