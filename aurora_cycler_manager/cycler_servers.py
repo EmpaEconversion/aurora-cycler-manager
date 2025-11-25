@@ -416,10 +416,11 @@ class BiologicServer(CyclerServer):
         pipelines, readys = [], []
         for pip, data in result.items():
             pipelines.append(pip)
-            if data["Status"] in ["Run", "Pause", "Sync"]:  # working\stop\finish\protect\pause
-                readys.append(False)  # Job is running - not ready
-            else:
-                readys.append(True)  # Job is not running - ready
+            # Biologic status can be:
+            # Stop/Run/Pause/Sync/Stop_rec1/Stop_rec2/Pause_rec
+            # _rec means it is still recording data
+            # Pipeline is only ready is status is 'Stop'
+            readys.append(data["Status"] == "Stop")
         return {
             "pipeline": pipelines,
             "sampleid": [None] * len(pipelines),
