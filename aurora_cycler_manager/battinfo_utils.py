@@ -361,7 +361,10 @@ def recursive_merge(left: dict, right: dict) -> dict:
         else:
             lv = left[k]
             if isinstance(lv, dict) and isinstance(rv, dict):
-                left[k] = recursive_merge(lv, rv)
+                if lv.get("@id") and rv.get("@id") and lv["@id"] != rv["@id"]:
+                    left[k] = dedupe_jsonld_list([lv, rv])
+                else:
+                    left[k] = recursive_merge(lv, rv)
             elif isinstance(lv, list) and isinstance(rv, list):
                 left[k] = dedupe_jsonld_list([*lv, *rv])
             elif isinstance(lv, list):
