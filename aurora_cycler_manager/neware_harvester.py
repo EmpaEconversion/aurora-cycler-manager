@@ -583,9 +583,13 @@ def get_neware_metadata_from_db(job_id: str) -> dict:
         raise ValueError(msg)
     row = dict(row)
     # convert string to xml then to dict
-
-    xml_payload = xmltodict.parse(row["Payload"], attr_prefix="")
-    metadata = _clean_ndax_step(xml_payload)
+    if row["Payload"].startswith("<"):  # It is an xml string
+        xml_payload = xmltodict.parse(row["Payload"], attr_prefix="")
+        metadata = _clean_ndax_step(xml_payload)
+    elif row["Payload"].startswith("["):  # It is JSON list of steps
+        metadata = {"Payload": json.loads(row["Payload"])}
+    else:
+        metadata = {}
     _server_label, Device_ID, Subdevice_ID, Channel_ID, Test_ID = job_id.split("-")
     metadata["Device ID"] = Device_ID
     metadata["Subdevice ID"] = Subdevice_ID
