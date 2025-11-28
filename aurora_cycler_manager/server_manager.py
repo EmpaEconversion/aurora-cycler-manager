@@ -236,38 +236,49 @@ class CyclingJob:
 
     def __init__(
         self,
-        job_id: str,
-        status: str | None,
+        sample: Sample,
         job_name: str,
-        submitted: str,
-        unicycler_protocol: str | None,
-        capacity_mah: float,
+        capacity_Ah: float,
         comment: str,
     ) -> None:
         """Initialize the Job object."""
-        self.job_id = job_id
-        self.status = status
-        self.job_name = job_name
-        self.submitted = submitted
-        self.unicycler_protocol = unicycler_protocol
-        self.capacity_mah = capacity_mah
-        self.comment = comment
-
-        # The parameters below are set when the job is submitted
-        self.jobid_on_server = None
-        self.pipeline = None
-        self.snapshot_status = None
-        self.last_snapshot = None
-
-    def add_sample(self, sample: Sample) -> None:
-        """Add a sample to the job.
-
-        Args:
-            sample : Sample
-                The sample object to add to the job
-
-        """
+        self.job_id: str | None = None
+        self.jobid_on_server: str | None = None
         self.sample = sample
+        self.server = sample.server
+        self.pipeline = sample.pipeline
+        self.capacity_Ah = capacity_Ah
+        self.comment = comment
+        self.unicycler_protocol: str | None = None
+        self.payload: str | Path | dict | None = None
+
+    def submit(self) -> None:
+        """Submit the job to the server."""
+        # Update the job table in the database
+
+        self.job_id, self.jobid_on_server, json_string = self.server.submit(
+            self.sample.id, self.capacity_Ah, self.payload, self.pipeline
+        )
+
+        if self.job_id and self.jobid_on_server:
+            dbf.execute_sql(
+                "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Server hostname`, `Job ID on server`, "
+                "`Pipeline`, `Submitted`, `Payload`, `Unicycler protocol`, `Capacity (mAh)`, `Comment`) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    self.job_id,
+                    self.sample.id,
+                    self.server.label,
+                    self.server.hostname,
+                    self.jobid_on_server,
+                    self.pipeline,
+                    datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    json_string,
+                    self.unicycler_protocol,
+                    self.capacity_Ah * 1000,
+                    self.comment,
+                ),
+            )
 
     def add_payload(self, payload: str | Path | dict) -> None:
         """Add a payload to the job.
@@ -283,13 +294,12 @@ class CyclingJob:
         # Check if the payload is a unicycler protocol
         if isinstance(payload, dict):
             with contextlib.suppress(ValueError, AttributeError, KeyError):
-                unicycler_protocol = Protocol.from_dict(
+                self.unicycler_protocol = Protocol.from_dict(
                     payload,
                     sample_name=self.sample.id,
-                    sample_capacity_mAh=capacity_Ah * 1000,
+                    sample_capacity_mAh=self.capacity_Ah * 1000,
                 ).model_dump_json(exclude_none=True)
         self.payload = payload
-        self.unicycler_protocol = unicycler_protocol
 
     def cancel(self) -> None:
         """Cancel this job on a server.
@@ -298,14 +308,41 @@ class CyclingJob:
             str: The output from the server cancel command
 
         """
-        output = self.sample.server.cancel(self.job_id, self.jobid_on_server, self.sample_id, self.pipeline)
-
-        # If no error, assume job is cancelled and update the database
-        dbf.execute_sql(
-            "UPDATE jobs SET `Status` = 'cd' WHERE `Job ID` = ?",
-            (self.job_id,),
-        )
+        output = self.sample.server.cancel(self.job_id, self.jobid_on_server, self.sample.id, self.sample.pipeline)
         return output
+
+    @classmethod
+    def from_id(cls, job_id: str) -> "CyclingJob":
+        """Create a CyclingJob object from the database.
+
+        Args:
+            job_id : str
+                The job ID to create the object for.
+
+        Returns:
+            CyclingJob: The CyclingJob object.
+
+        """
+        result = dbf.execute_sql(
+            "SELECT `Sample ID`, `Server label`, `Pipeline`, `Capacity (mAh)`, `Job ID On Server`, `Comment` "
+            "FROM jobs WHERE `Job ID` = ?",
+            (job_id,),
+        )
+        if not result:
+            msg = f"Job '{job_id}' not found in the database."
+            raise ValueError(msg)
+        sample_id, server_label, pipeline, capacity_mAh, jobid_on_server, comment = result[0]
+        sample = Sample.from_id(sample_id)
+        job = cls(
+            sample=sample,
+            job_name=f"Job for sample {sample.id}",
+            capacity_Ah=capacity_mAh * 1e-3,
+            comment=comment,
+        )
+        job.job_id = job_id
+        job.jobid_on_server = jobid_on_server
+
+        return job
 
 
 class ServerManager:
@@ -417,7 +454,6 @@ class ServerManager:
         """
         sample = Sample.from_id(sample_id)
         server = find_server(server_id)
-        print("Will load sample", sample_id, "on server", server.label, "pipeline", pipeline)
         sample.load(server, pipeline)
 
     def eject(self, sample_id, pipeline: str) -> None:
@@ -456,6 +492,27 @@ class ServerManager:
 
         """
         sample = Sample.from_id(sample_id)
+        cycling_job = CyclingJob(
+            sample=sample,
+            job_name=f"Job for sample {sample.id}",
+            capacity_Ah=capacity_Ah,
+            comment=comment,
+        )
+        cycling_job.add_payload(payload)
+        cycling_job.submit()
+
+    def cancel(self, jobid: str) -> None:
+        """Cancel a job on a server.
+
+        Args:
+            jobid : str
+                The job ID to cancel, must exist in jobs table of database
+
+        Returns:
+            str: The output from the server cancel command
+
+        """
+        return CyclingJob.from_id(jobid).cancel()
 
 
 class ServerManagerX:
