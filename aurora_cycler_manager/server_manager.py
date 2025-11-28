@@ -105,6 +105,20 @@ class Sample:
         """Initialize the Sample object."""
         self.id = sample_id
         self.pipeline = None
+        self._properties = {}
+
+    def get_property(self, property_name: str) -> str | None:
+        """Get a property of the sample from the database.
+
+        Args:
+            property_name : str
+                The property name to get.
+
+        Returns:
+            str or None: The property value, or None if not found.
+
+        """
+        return self._properties.get(property_name)
 
     def load(self, pipeline: Pipeline) -> None:
         """Load the sample on a pipeline.
@@ -238,12 +252,18 @@ class Sample:
             "SELECT `Server label`, `Pipeline` FROM pipelines WHERE `Sample ID` = ?",
             (sample_id,),
         )
+
         if result:
             server_label, pipeline = result[0]
             sample = cls(sample_id)
             sample.pipeline = Pipeline.from_id(pipeline)
-            return sample
-        return cls(sample_id)
+        else:
+            sample = cls(sample_id)
+
+        # TODO: Load sample properties into _properties dict
+        sample._properties = {}
+
+        return sample
 
     def safe_get_sample_capacity(
         self,
