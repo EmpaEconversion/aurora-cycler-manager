@@ -68,16 +68,45 @@ def find_server(label: str) -> cycler_servers.CyclerServer:
     return server
 
 
+class Pipeline:
+    """A class representing a pipeline in the database."""
+
+    def __init__(self, pipeline_name: str, server_label: str) -> None:
+        """Initialize the Pipeline object."""
+        self.name = pipeline_name
+        self.server = find_server(server_label)
+
+    @classmethod
+    def from_id(cls, pipeline_name: str) -> "Pipeline":
+        """Create a Pipeline object from the database.
+
+        Args:
+            pipeline_name : str
+                The pipeline name to create the object for.
+
+        Returns:
+            Pipeline: The Pipeline object.
+
+        """
+        result = dbf.execute_sql(
+            "SELECT `Pipeline`, `Server label` FROM pipelines WHERE `Pipeline` = ?",
+            (pipeline_name,),
+        )
+        if not result:
+            msg = f"Pipeline '{pipeline_name}' not found in the database."
+            raise ValueError(msg)
+        return cls(pipeline_name, result[0][1])
+
+
 class Sample:
     """A class representing a sample in the database."""
 
-    def __init__(self, sample_id: str, server_id: str = None, pipeline: str = None) -> None:
+    def __init__(self, sample_id: str) -> None:
         """Initialize the Sample object."""
         self.id = sample_id
-        self.server = None
         self.pipeline = None
 
-    def load(self, server, pipeline: str) -> None:
+    def load(self, pipeline: Pipeline) -> None:
         """Load the sample on a pipeline.
 
         The appropriate server is found based on the pipeline, and the sample is loaded.
@@ -87,28 +116,26 @@ class Sample:
                 The pipeline to load the sample on. Must exist in pipelines table of database
 
         """
-        if self.server or self.pipeline:
-            msg = f"Sample {self.id} is already loaded on server {self.server.label} pipeline {self.pipeline}."
+        if self.pipeline:
+            msg = f"Sample {self.id} is already loaded on server {self.pipeline.server.label} pipeline {self.pipeline}."
             raise ValueError(msg)
 
-        self.server = server
         self.pipeline = pipeline
         # Get pipeline and load
-        logger.info("Loading sample %s on server %s", self.id, self.server.label)
+        logger.info("Loading sample %s on server %s", self.id, self.pipeline.server.label)
         dbf.execute_sql(
             "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
-            (self.id, self.pipeline),
+            (self.id, self.pipeline.name),
         )
 
     def eject(self) -> None:
         """Eject the sample from a pipeline."""
         # Find server associated with pipeline
-        logger.info("Ejecting %s on server: %s", self.pipeline, self.server.label)
+        logger.info("Ejecting %s on server: %s", self.pipeline, self.pipeline.server.label)
         dbf.execute_sql(
             "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = ? WHERE `Pipeline` = ?",
-            (True, self.pipeline),
+            (True, self.pipeline.name),
         )
-        self.server = None
         self.pipeline = None
 
     def get_sample_capacity(
@@ -214,8 +241,7 @@ class Sample:
         if result:
             server_label, pipeline = result[0]
             sample = cls(sample_id)
-            sample.server = find_server(server_label)
-            sample.pipeline = pipeline
+            sample.pipeline = Pipeline.from_id(pipeline)
             return sample
         return cls(sample_id)
 
@@ -245,7 +271,7 @@ class CyclingJob:
         self.job_id: str | None = None
         self.jobid_on_server: str | None = None
         self.sample = sample
-        self.server = sample.server
+        self.job_name = job_name
         self.pipeline = sample.pipeline
         self.capacity_Ah = capacity_Ah
         self.comment = comment
@@ -256,8 +282,8 @@ class CyclingJob:
         """Submit the job to the server."""
         # Update the job table in the database
 
-        self.job_id, self.jobid_on_server, json_string = self.server.submit(
-            self.sample.id, self.capacity_Ah, self.payload, self.pipeline
+        self.job_id, self.jobid_on_server, json_string = self.pipeline.server.submit(
+            self.sample.id, self.capacity_Ah, self.payload, self.pipeline.name
         )
 
         if self.job_id and self.jobid_on_server:
@@ -268,10 +294,10 @@ class CyclingJob:
                 (
                     self.job_id,
                     self.sample.id,
-                    self.server.label,
-                    self.server.hostname,
+                    self.pipeline.server.label,
+                    self.pipeline.server.hostname,
                     self.jobid_on_server,
-                    self.pipeline,
+                    self.pipeline.name,
                     datetime.now(timezone.utc).isoformat(timespec="seconds"),
                     json_string,
                     self.unicycler_protocol,
@@ -308,8 +334,9 @@ class CyclingJob:
             str: The output from the server cancel command
 
         """
-        output = self.sample.server.cancel(self.job_id, self.jobid_on_server, self.sample.id, self.sample.pipeline)
-        return output
+        return self.sample.pipeline.server.cancel(
+            self.job_id, self.jobid_on_server, self.sample.id, self.sample.pipeline.name
+        )
 
     @classmethod
     def from_id(cls, job_id: str) -> "CyclingJob":
@@ -346,6 +373,8 @@ class CyclingJob:
 
 
 class ServerManager:
+    """The ServerManager class manages the cycling servers."""
+
     def __init__(self) -> None:
         """Initialize the server manager object."""
         logger.info("Creating cycler server objects")
@@ -440,31 +469,33 @@ class ServerManager:
                 )
             conn.commit()
 
-    def load(self, sample_id: str, server_id: str, pipeline: str) -> None:
+    def load(self, sample_id: str, pipeline: str) -> None:
         """Load a sample on a pipeline.
 
         The appropriate server is found based on the pipeline, and the sample is loaded.
 
         Args:
-            sample (str):
+            sample_id (str):
                 The sample ID to load. Must exist in samples table of database
             pipeline (str):
                 The pipeline to load the sample on. Must exist in pipelines table of database
 
         """
         sample = Sample.from_id(sample_id)
-        server = find_server(server_id)
-        sample.load(server, pipeline)
+        pipeline = Pipeline.from_id(pipeline)
+        sample.load(pipeline)
 
-    def eject(self, sample_id, pipeline: str) -> None:
+    def eject(self, sample_id: str, pipeline: str) -> None:
         """Eject a sample from a pipeline.
 
         Args:
+            sample_id (str):
+                The sample ID to eject. Must exist in samples table of database
             pipeline (str):
                 The pipeline to eject the sample from, must exist in pipelines table of database
 
         """
-        sample_obj = Sample.from_db(sample_id)
+        sample_obj = Sample.from_id(sample_id)
         sample_obj.eject()
 
     def submit(
@@ -477,9 +508,9 @@ class ServerManager:
         """Submit a job to a server.
 
         Args:
-            sample : str
+            sample_id : str
                 The sample ID to submit the job for, must exist in samples table of database
-            payload : str or dict
+            payload : str or Path or dict
                 Preferably an aurora-unicycler dictionary - this is auto-converted to the right format for each cycler
                 In addition, different cyclers can accept different payload formats
                 (Neware) A .xml path or xml string with a Neware protocol

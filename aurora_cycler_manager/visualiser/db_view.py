@@ -1023,13 +1023,12 @@ def register_db_view_callbacks(app: Dash) -> None:
         if not yes_clicks:
             return 0
         pipelines = [s["Pipeline"] for s in selected_rows]
-        server_labels = [s["Server label"] for s in selected_rows]
         pipelines = [s for _, s in sorted(zip(make_pipelines_comparable(pipelines), pipelines, strict=True))]
-        for sample, pipeline, server_label in zip(selected_samples, pipelines, server_labels, strict=True):
+        for sample, pipeline in zip(selected_samples, pipelines, strict=True):
             if not sample:
                 continue
             logger.info("Loading %s to %s", sample, pipeline)
-            sm.load(sample, server_label, pipeline)
+            sm.load(sample, pipeline)
         return 1
 
     # Submit button pop up
