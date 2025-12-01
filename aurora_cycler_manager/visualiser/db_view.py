@@ -26,13 +26,8 @@ from dash.exceptions import PreventUpdate
 from flask import abort, send_file
 from flask.typing import ResponseReturnValue
 
+import aurora_cycler_manager.battinfo_utils as bu
 from aurora_cycler_manager.analysis import analyse_sample, update_sample_metadata
-from aurora_cycler_manager.battinfo_utils import (
-    generate_battery_test,
-    make_test_object,
-    merge_battinfo_with_db_data,
-    merge_jsonld_on_type,
-)
 from aurora_cycler_manager.bdf_converter import aurora_to_bdf
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import (
@@ -555,6 +550,43 @@ download_modal = dmc.Modal(
                         dmc.Checkbox(label="JSON-LD ontologised metadata", id="download-jsonld"),
                     ]
                 ),
+            ),
+            html.Div(
+                children=[
+                    dmc.Group(
+                        children=[
+                            dmc.Button(
+                                "Download Zenodo xlsx template",
+                                id="download-zenodo-info-button-element",
+                                leftSection=html.I(className="bi bi-download"),
+                            ),
+                            dcc.Upload(
+                                dmc.Button(
+                                    "Add Zenodo xlsx info",
+                                    id="upload-zenodo-info-button-element",
+                                    leftSection=html.I(className="bi bi-upload"),
+                                    fullWidth=True,
+                                    style={"width": "100%"},
+                                ),
+                                id="upload-zenodo-info-button",
+                                accept=".json,.xlsx",
+                                max_size=512 * 1024 * 1024,
+                                multiple=False,
+                                style={"display": "block", "width": "100%"},
+                            ),
+                        ],
+                        grow=True,
+                    ),
+                    dmc.Text(
+                        "Fill and upload xlsx template to add extra metadata",
+                        id="upload-zenodo-status",
+                    ),
+                    dcc.Download(
+                        id="download-zenodo-info-link",
+                    ),
+                ],
+                id="upload-zenodo-group",
+                style={"display": "none"},
             ),
             dmc.Button(
                 "Process",
@@ -1397,6 +1429,21 @@ def register_db_view_callbacks(app: Dash) -> None:
         prevent_initial_call=True,
     )
 
+    # If the download template button is pressed, generate a xlsx template for zenodo info and send it
+    @app.callback(
+        Output("download-zenodo-info-link", "data"),
+        Input("download-zenodo-info-button-element", "n_clicks"),
+        State("selected-rows-store", "data"),
+        prevent_initial_call=True,
+    )
+    def generate_zenodo_info_template(_n_clicks: int, selected_rows: list) -> dict:
+        """Generate a zenodo info xlsx template and return as data uri."""
+        template_bytes = bu.generate_zenodo_info_xlsx_template(
+            sample_ids=[s.get("Sample ID") for s in selected_rows],
+            ccids=[s.get("Barcode") for s in selected_rows],
+        )
+        return dcc.send_bytes(template_bytes.getvalue(), "aurora_zenodo_template.xlsx")
+
     # If the file type is changed, allow reprocessing
     @app.callback(
         Output("download-process-button", "disabled", allow_duplicate=True),
@@ -1404,18 +1451,39 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("process-progress", "value", allow_duplicate=True),
         Output("download-alert", "children", allow_duplicate=True),
         Output("download-alert", "color", allow_duplicate=True),
+        Output("upload-zenodo-group", "style"),
         Input("download-button", "n_clicks"),
+        Input("upload-zenodo-info-button", "contents"),
+        Input("download-jsonld", "checked"),
         Input("download-hdf", "checked"),
         Input("download-json-summary", "checked"),
         Input("download-bdf-parquet", "checked"),
-        Input("download-jsonld", "checked"),
         prevent_initial_call=True,
     )
-    def reset_process(_n_clicks: int, *inputs: tuple) -> tuple[bool, bool, int, str, str]:
+    def reset_process(
+        _n_clicks: int, _zenodo_info: str, jsonld: bool, *inputs: tuple
+    ) -> tuple[bool, bool, int, str, str, dict]:
         """If filetypes change, disable download, enable process, reset progress bar."""
-        if any(inputs):
-            return False, True, 0, "Waiting...", "grey"
-        return True, True, 0, "Waiting...", "grey"
+        if jsonld or any(inputs):
+            return False, True, 0, "Waiting...", "grey", {"display": "inline-block"} if jsonld else {"display": "none"}
+        return True, True, 0, "Waiting...", "grey", {"display": "none"}
+
+    # If a zenodo info file is uploaded, check if it is valid and show message
+    @app.callback(
+        Output("upload-zenodo-status", "children"),
+        Input("upload-zenodo-info-button", "contents"),
+        prevent_initial_call=True,
+    )
+    def check_zenodo_info(contents: str | None) -> str:
+        """Check if uploaded zenodo info file is valid."""
+        if not contents:
+            return "Fill and upload xlsx template to add extra metadata"
+        try:
+            bu.parse_zenodo_info_xlsx(contents)
+        except Exception as e:
+            logger.error("Error parsing zenodo info file: %s", e)
+            return f"❌ Error parsing zenodo info file: {e}"
+        return "✅ Zenodo info file loaded"
 
     # When process is confirmed, process the data and store zip in temp folder
     @callback(
@@ -1433,6 +1501,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             State("download-json-summary", "checked"),
             State("download-bdf-parquet", "checked"),
             State("download-jsonld", "checked"),
+            State("upload-zenodo-info-button", "contents"),
         ],
         running=[
             (Output("download-hdf", "disabled"), True, False),
@@ -1459,6 +1528,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         download_json: bool | None,
         download_bdf: bool | None,
         download_jsonld: bool | None,
+        zenodo_info: str | None,
     ) -> tuple[str, bool, bool]:
         """Batch process data from selected samples and store in zip in temp folder on server."""
         sample_ids = [s["Sample ID"] for s in selected_rows]
@@ -1491,6 +1561,8 @@ def register_db_view_callbacks(app: Dash) -> None:
             ],
         }
 
+        pub_info = bu.parse_zenodo_info_xlsx(zenodo_info) if zenodo_info else {}
+
         # Number of files
         n_files = len(sample_ids) * (
             int(download_hdf or 0) + int(download_json or 0) + int(download_bdf or 0) + int(download_jsonld or 0)
@@ -1506,6 +1578,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                 run_id = run_from_sample(sample)
                 data_folder = CONFIG["Processed snapshots folder path"]
                 sample_folder = str(data_folder / run_id / sample)
+                battinfo_files = []
                 messages += f"{sample} - "
                 warnings = []
                 errors = []
@@ -1515,11 +1588,12 @@ def register_db_view_callbacks(app: Dash) -> None:
                         hdf5_file = next(Path(sample_folder).glob("full.*.h5"))
                         with hdf5_file.open("rb") as f:
                             hdf5_bytes = f.read()
-                        zf.writestr(sample + "/" + hdf5_file.name, hdf5_bytes)
-                        rocrate["@graph"][1]["hasPart"].append({"@id": sample + "/" + hdf5_file.name})
+                        rel_file_path = sample + "/" + hdf5_file.name
+                        zf.writestr(rel_file_path, hdf5_bytes)
+                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
                         rocrate["@graph"].append(
                             {
-                                "@id": sample + "/" + hdf5_file.name,
+                                "@id": rel_file_path,
                                 "@type": "File",
                                 "about": {"@id": ccid if ccid else sample},
                                 "encodingFormat": "application/octet-stream",
@@ -1532,6 +1606,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                                 ),
                             }
                         )
+                        battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
                         messages += "✅"
                         set_progress((100 * i / n_files, messages, color))
                     except StopIteration:
@@ -1553,12 +1628,13 @@ def register_db_view_callbacks(app: Dash) -> None:
                         json_file = next(Path(sample_folder).glob("cycles.*.json"))
                         with json_file.open("rb") as f:
                             json_bytes = f.read()
-                        zf.writestr(sample + "/" + json_file.name, json_bytes)
+                        rel_file_path = sample + "/" + json_file.name
+                        zf.writestr(rel_file_path, json_bytes)
                         messages += "✅"
-                        rocrate["@graph"][1]["hasPart"].append({"@id": sample + "/" + json_file.name})
+                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
                         rocrate["@graph"].append(
                             {
-                                "@id": sample + "/" + json_file.name,
+                                "@id": rel_file_path,
                                 "@type": "File",
                                 "encodingFormat": "text/json",
                                 "about": {"@id": ccid if ccid else sample},
@@ -1571,6 +1647,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                                 ),
                             }
                         )
+                        battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
                         set_progress((100 * i / n_files, messages, color))
                     except StopIteration:
                         logger.warning("No JSON summary file found for %s", sample)
@@ -1596,22 +1673,24 @@ def register_db_view_callbacks(app: Dash) -> None:
                         df.to_parquet(buffer, index=False)  # or index=True, depending on your needs
                         buffer.seek(0)
                         parquet_name = hdf5_file.with_suffix(".bdf.parquet").name
-                        zf.writestr(sample + "/" + parquet_name, buffer.read())
+                        rel_file_path = sample + "/" + parquet_name
+                        zf.writestr(rel_file_path, buffer.read())
                         messages += "✅"
-                        rocrate["@graph"][1]["hasPart"].append({"@id": sample + "/" + parquet_name})
+                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
                         rocrate["@graph"].append(
                             {
-                                "@id": sample + "/" + parquet_name,
+                                "@id": rel_file_path,
                                 "@type": "File",
-                                "encodingFormat": "application/octet-stream",
+                                "encodingFormat": "application/vnd.apache.parquet",
                                 "about": {"@id": ccid if ccid else sample},
                                 "description": (
                                     f"Time-series battery cycling data for sample: '{sample}'"
-                                    + (f" with CCID: '{ccid}'. " if ccid else ". ")
+                                    + (f" with barcode: '{ccid}'. " if ccid else ". ")
                                     + "Data is parquet format, columns are 'battery data format' (BDF) compliant."
                                 ),
                             }
                         )
+                        battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
                         set_progress((100 * i / n_files, messages, color))
                     except StopIteration:
                         logger.warning("No HDF5 file found for %s", sample)
@@ -1629,10 +1708,13 @@ def register_db_view_callbacks(app: Dash) -> None:
                 if download_jsonld:
                     i += 1
                     try:
+                        # Get the BattINFO file
                         battinfo_file = next(Path(sample_folder).glob("battinfo.*.jsonld"))
                         with battinfo_file.open("r") as f:
                             battinfo_json = json.load(f)
-                        battinfo_json = make_test_object(battinfo_json)
+                        battinfo_json = bu.make_test_object(battinfo_json)
+
+                        # Check for auxiliary jsonld file
                         aux_json = None
                         try:
                             aux_file = next(Path(sample_folder).glob("aux.*.jsonld"))
@@ -1642,9 +1724,13 @@ def register_db_view_callbacks(app: Dash) -> None:
                             pass
                         if aux_json:
                             try:
-                                merge_jsonld_on_type([battinfo_json, aux_json])
+                                bu.merge_jsonld_on_type([battinfo_json, aux_json])
                             except ValueError:
-                                merge_jsonld_on_type([battinfo_json["hasTestObject"], aux_json], target_type="CoinCell")
+                                bu.merge_jsonld_on_type(
+                                    [battinfo_json["hasTestObject"], aux_json], target_type="CoinCell"
+                                )
+
+                        # Add unicycler protocols
                         db_jobs = get_unicycler_protocols(sample)
                         if db_jobs:
                             ontologized_protocols = []
@@ -1653,15 +1739,50 @@ def register_db_view_callbacks(app: Dash) -> None:
                                 ontologized_protocols.append(
                                     protocol.to_battinfo_jsonld(capacity_mAh=db_job["Capacity (mAh)"])
                                 )
-                            test_jsonld = generate_battery_test(ontologized_protocols)
-                            battinfo_json = merge_jsonld_on_type([battinfo_json, test_jsonld])
+                            test_jsonld = bu.generate_battery_test(ontologized_protocols)
+                            battinfo_json = bu.merge_jsonld_on_type([battinfo_json, test_jsonld])
+
+                        # Add data files
+                        if battinfo_files:
+                            battinfo_json = bu.merge_jsonld_on_type([battinfo_json, *battinfo_files])
+
+                        # Add ccid to output
+                        if ccid:
+                            battinfo_json = bu.merge_jsonld_on_type([battinfo_json, bu.add_ccid_output(ccid)])
+
+                        # Add citation string
+                        if pub_info.get("citation_string"):
+                            battinfo_json = bu.merge_jsonld_on_type(
+                                [
+                                    battinfo_json,
+                                    bu.add_citation(pub_info["citation_string"]),
+                                ]
+                            )
+
+                        # Add authors and institutions
+                        if pub_info.get("authors") and pub_info.get("institutions"):
+                            authors = bu.add_authors(pub_info["authors"], pub_info["institutions"])
+                            battinfo_json = bu.merge_jsonld_on_type([battinfo_json, authors])
+
+                        # Add publication info
+                        if pub_info.get("publication_doi_url") and pub_info.get("sample_to_fig") and (ccid or sample):
+                            publication_extras = bu.add_associated_media(
+                                pub_info["publication_doi_url"],
+                                pub_info["sample_to_fig"],
+                                ccid,
+                                sample,
+                            )
+                            battinfo_json = bu.merge_jsonld_on_type([battinfo_json, publication_extras])
+
+                        # Save the JSON-LD
                         jsonld_name = f"metadata.{sample}.jsonld"
-                        zf.writestr(sample + "/" + jsonld_name, json.dumps(battinfo_json, indent=4))
+                        rel_file_path = sample + "/" + jsonld_name
+                        zf.writestr(rel_file_path, json.dumps(battinfo_json, indent=4))
                         messages += "✅"
-                        rocrate["@graph"][1]["hasPart"].append({"@id": sample + "/" + jsonld_name})
+                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
                         rocrate["@graph"].append(
                             {
-                                "@id": sample + "/" + jsonld_name,
+                                "@id": rel_file_path,
                                 "@type": "File",
                                 "encodingFormat": "text/json",
                                 "about": {"@id": ccid if ccid else sample},
@@ -1920,8 +2041,13 @@ def register_db_view_callbacks(app: Dash) -> None:
     def is_battinfo_jsonld(obj: list | str | dict) -> bool:
         """Check if an uploaded jsonld object is a battinfo file."""
         if isinstance(obj, dict) and obj.get("@context"):
-            comments = obj.get("rdfs:comment")
-            return isinstance(comments, list) and len(comments) >= 1 and comments[0].startswith("BattINFO")
+            logger.critical("Is object with @context")
+            coincell = bu.find_coin_cell(obj)
+            logger.critical("Is coincell: %s", coincell)
+            if coincell:
+                comments = coincell.get("rdfs:comment")
+                logger.critical("Comments: %s", comments)
+                return isinstance(comments, list) and len(comments) >= 1 and comments[0].startswith("BattINFO")
         return False
 
     def is_aux_jsonld(obj: list | str | dict) -> bool:
@@ -1997,7 +2123,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                     samples = [s.get("Sample ID") for s in selected_rows if s.get("Sample ID")]
                     for s in samples:
                         sample_data = get_sample_data(s)
-                        merged_jsonld = merge_battinfo_with_db_data(battinfo_jsonld, sample_data)
+                        merged_jsonld = bu.merge_battinfo_with_db_data(battinfo_jsonld, sample_data)
                         run_id = run_from_sample(s)
                         save_path = CONFIG["Processed snapshots folder path"] / run_id / s / f"battinfo.{s}.jsonld"
                         logger.info("Saving battinfo json-ld file to %s", save_path)
