@@ -399,11 +399,16 @@ def dedupe_jsonld_list(lst: list) -> list:
 
 def make_test_object(battinfo_jsonld: dict) -> dict:
     """Put BattINFO coin cell description inside a BatteryTest object."""
-    return {
-        "@context": battinfo_jsonld.pop("@context"),
-        "@type": "BatteryTest",
-        "hasTestObject": battinfo_jsonld,
-    }
+    if battinfo_jsonld.get("@type") == "CoinCell":
+        return {
+            "@context": battinfo_jsonld.pop("@context"),
+            "@type": "BatteryTest",
+            "hasTestObject": battinfo_jsonld,
+        }
+    if battinfo_jsonld.get("@type") == "BatteryTest":
+        return battinfo_jsonld
+    msg = "BattINFO JSON-LD must have CoinCell or BatteryTest as top level @type"
+    raise ValueError(msg)
 
 
 def merge_jsonld(json1: dict, json2: dict) -> dict:
