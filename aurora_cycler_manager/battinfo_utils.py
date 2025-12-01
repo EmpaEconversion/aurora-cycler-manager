@@ -353,7 +353,7 @@ def merge_contexts_strict(ctx1: str | list | dict, ctx2: str | list | dict) -> l
     return merged_context
 
 
-def recursive_merge(left: dict, right: dict) -> dict:
+def recursive_merge(left: dict, right: dict, *, default_right: bool = True) -> dict:
     """Recursively merge dicts."""
     for k, rv in right.items():
         if k not in left:
@@ -364,7 +364,7 @@ def recursive_merge(left: dict, right: dict) -> dict:
                 if lv.get("@id") and rv.get("@id") and lv["@id"] != rv["@id"]:
                     left[k] = dedupe_jsonld_list([lv, rv])
                 else:
-                    left[k] = recursive_merge(lv, rv)
+                    left[k] = recursive_merge(lv, rv, default_right=default_right)
             elif isinstance(lv, list) and isinstance(rv, list):
                 left[k] = dedupe_jsonld_list([*lv, *rv])
             elif isinstance(lv, list):
@@ -372,7 +372,13 @@ def recursive_merge(left: dict, right: dict) -> dict:
             elif isinstance(rv, list):
                 left[k] = dedupe_jsonld_list([lv, *rv])
             elif lv != rv:
-                logger.warning("JSON-LD merge conflict at %s: left - %s, right - %s, defaulting to left", k, lv, rv)
+                if default_right:
+                    left[k] = rv
+                    logger.warning(
+                        "JSON-LD merge conflict at %s: left - %s, right - %s, defaulting to right", k, lv, rv
+                    )
+                else:
+                    logger.warning("JSON-LD merge conflict at %s: left - %s, right - %s, defaulting to left", k, lv, rv)
             else:
                 left[k] = lv  # unchanged
     return left
