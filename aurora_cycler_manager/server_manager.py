@@ -158,20 +158,20 @@ class _Sample:
         """Initialize the _Sample object."""
         self.id = sample_id
         self.pipeline = None
-        self._properties = {}
+        self._data = {}
 
-    def get_property(self, property_name: str) -> str | None:
+    def get(self, key: str) -> str | None:
         """Get a property of the sample from the database.
 
         Args:
-            property_name : str
+            key : str
                 The property name to get.
 
         Returns:
             str or None: The property value, or None if not found.
 
         """
-        return self._properties.get(property_name)
+        return self._data.get(key)
 
     def get_sample_capacity(
         self,
@@ -196,37 +196,13 @@ class _Sample:
 
         """
         if mode == "mass":
-            result = dbf.execute_sql(
-                "SELECT "
-                "`Anode C-rate definition specific capacity (mAh/g)`, "
-                "`Anode active material mass (mg)`, "
-                "`Anode diameter (mm)`, "
-                "`Cathode C-rate definition specific capacity (mAh/g)`, "
-                "`Cathode active material mass (mg)`, "
-                "`Cathode diameter (mm)` "
-                "FROM samples WHERE `Sample ID` = ?",
-                (self.id,),
-            )
-        elif mode == "areal":
-            result = dbf.execute_sql(
-                "SELECT "
-                "`Anode C-rate definition areal capacity (mAh/cm2)`, "
-                "`Anode diameter (mm)`, "
-                "`Cathode C-rate definition areal capacity (mAh/cm2)`, "
-                "`Cathode diameter (mm)` "
-                "FROM samples WHERE `Sample ID` = ?",
-                (self.id,),
-            )
-        elif mode == "nominal":
-            result = dbf.execute_sql(
-                "SELECT `C-rate definition capacity (mAh)` FROM samples WHERE `Sample ID` = ?",
-                (self.id,),
-            )
-        if not result:
-            msg = f"Sample '{self.id}' not found in the database."
-            raise ValueError(msg)
-        if mode == "mass":
-            an_cap_mAh_g, an_mass_mg, an_diam_mm, cat_cap_mAh_g, cat_mass_mg, cat_diam_mm = result[0]
+            an_cap_mAh_g = self.get("Anode C-rate definition specific capacity (mAh/g)")
+            an_mass_mg = self.get("Anode active material mass (mg)")
+            an_diam_mm = self.get("Anode diameter (mm)")
+            cat_cap_mAh_g = self.get("Cathode C-rate definition specific capacity (mAh/g)")
+            cat_mass_mg = self.get("Cathode active material mass (mg)")
+            cat_diam_mm = self.get("Cathode diameter (mm)")
+
             cat_frac_used = min(1, an_diam_mm**2 / cat_diam_mm**2)
             cat_cap_Ah = cat_frac_used * (cat_cap_mAh_g * cat_mass_mg * 1e-6)
             capacity_Ah = cat_cap_Ah
@@ -234,17 +210,24 @@ class _Sample:
                 an_frac_used = min(1, cat_diam_mm**2 / an_diam_mm**2)
                 an_cap_Ah = an_frac_used * (an_cap_mAh_g * an_mass_mg * 1e-6)
                 capacity_Ah = min(an_cap_Ah, cat_cap_Ah)
+
         elif mode == "areal":
-            an_cap_mAh_cm2, an_diam_mm, cat_cap_mAh_cm2, cat_diam_mm = result[0]
+            an_cap_mAh_cm2 = self.get("Anode C-rate definition areal capacity (mAh/cm2)")
+            an_diam_mm = self.get("Anode diameter (mm)")
+            cat_cap_mAh_cm2 = self.get("Cathode C-rate definition areal capacity (mAh/cm2)")
+            cat_diam_mm = self.get("Cathode diameter (mm)")
             cat_frac_used = min(1, an_diam_mm**2 / cat_diam_mm**2)
             cat_cap_Ah = cat_frac_used * cat_cap_mAh_cm2 * (cat_diam_mm / 2) ** 2 * 3.14159 * 1e-5
             capacity_Ah = cat_cap_Ah
+
             if not ignore_anode:
                 an_frac_used = min(1, cat_diam_mm**2 / an_diam_mm**2)
                 an_cap_Ah = an_frac_used * an_cap_mAh_cm2 * (an_diam_mm / 2) ** 2 * 3.14159 * 1e-5
                 capacity_Ah = min(an_cap_Ah, cat_cap_Ah)
+
         elif mode == "nominal":
-            capacity_Ah = result[0][0] * 1e-3
+            capacity_Ah = self.get("C-rate definition capacity (mAh)") * 1e-3
+
         return capacity_Ah
 
     @classmethod
@@ -259,30 +242,19 @@ class _Sample:
             _Sample: The _Sample object.
 
         """
-        # Check if sample exists in database
-        result = dbf.execute_sql(
-            "SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?",
-            (sample_id,),
-        )
-        if not result:
-            msg = f"Sample '{sample_id}' not found in the database."
-            raise ValueError(msg)
+        sample = cls(sample_id)
 
-        # Check if the sample is loaded on a pipeline
+        # Check if the sample is loaded on a pipeline.
         result = dbf.execute_sql(
             "SELECT `Pipeline` FROM pipelines WHERE `Sample ID` = ?",
             (sample_id,),
         )
 
         if result:
-            pipeline = result[0][0]
-            sample = cls(sample_id)
-            sample.pipeline = _Pipeline.from_id(pipeline)
-        else:
-            sample = cls(sample_id)
+            sample.pipeline = _Pipeline.from_id(result[0][0])
 
-        # TODO: Load sample properties into _properties dict
-        sample._properties = {}
+        # Load sample properties into _data dict
+        sample._data = dbf.get_sample_data(sample_id)
 
         return sample
 
