@@ -313,6 +313,9 @@ class CyclingJob:
         self.jobid_on_server: str | None = None
         self.sample = sample
         self.job_name = job_name
+        if not sample.pipeline:
+            msg = f"Sample {sample.id} is not loaded on any pipeline."
+            raise ValueError(msg)
         self.pipeline = sample.pipeline
         self.capacity_Ah = capacity_Ah
         self.comment = comment
