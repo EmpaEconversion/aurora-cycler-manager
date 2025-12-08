@@ -118,7 +118,7 @@ class Pipeline:
         if sample.pipeline:
             msg = (
                 f"Sample {sample.id} is already loaded on pipeline {sample.pipeline.name}, "
-                f"server {sample.pipeline.server.label} ."
+                f"server {sample.pipeline.server.label}."
             )
             raise ValueError(msg)
 
@@ -270,12 +270,12 @@ class Sample:
 
         # Check if the sample is loaded on a pipeline
         result = dbf.execute_sql(
-            "SELECT `Server label`, `Pipeline` FROM pipelines WHERE `Sample ID` = ?",
+            "SELECT `Pipeline` FROM pipelines WHERE `Sample ID` = ?",
             (sample_id,),
         )
 
         if result:
-            server_label, pipeline = result[0]
+            pipeline = result[0][0]
             sample = cls(sample_id)
             sample.pipeline = Pipeline.from_id(pipeline)
         else:
@@ -395,14 +395,13 @@ class CyclingJob:
 
         """
         result = dbf.execute_sql(
-            "SELECT `Sample ID`, `Server label`, `Pipeline`, `Capacity (mAh)`, `Job ID On Server`, `Comment` "
-            "FROM jobs WHERE `Job ID` = ?",
+            "SELECT `Sample ID`, `Capacity (mAh)`, `Job ID On Server`, `Comment` FROM jobs WHERE `Job ID` = ?",
             (job_id,),
         )
         if not result:
             msg = f"Job '{job_id}' not found in the database."
             raise ValueError(msg)
-        sample_id, server_label, pipeline, capacity_mAh, jobid_on_server, comment = result[0]
+        sample_id, capacity_mAh, jobid_on_server, comment = result[0]
         sample = Sample.from_id(sample_id)
         job = cls(
             sample=sample,
