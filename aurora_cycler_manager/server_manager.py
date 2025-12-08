@@ -32,6 +32,8 @@ SERVER_CORRESPONDENCE = {
     "biologic": cycler_servers.BiologicServer,
 }
 
+SERVER_OBJECTS: dict[str, cycler_servers.CyclerServer] = {}
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,7 +60,8 @@ def find_server(label: str) -> cycler_servers.CyclerServer:
             "E.g. if you are searching for a sample ID, the ID might be wrong."
         )
         raise ValueError(msg)
-    server = get_servers().get(label, None)
+    servers = SERVER_OBJECTS or get_servers()
+    server = servers.get(label, None)
     if not server:
         msg = (
             f"Server with label {label} not found. "
