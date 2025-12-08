@@ -78,6 +78,7 @@ class Pipeline:
         """Initialize the Pipeline object."""
         self.name = pipeline_name
         self.server = find_server(server_label)
+        self.sample: Sample | None = None
 
     @classmethod
     def from_id(cls, pipeline_name: str) -> "Pipeline":
@@ -99,6 +100,55 @@ class Pipeline:
             msg = f"Pipeline '{pipeline_name}' not found in the database."
             raise ValueError(msg)
         return cls(pipeline_name, result[0][1])
+
+    def load(self, sample: "Sample") -> None:
+        """Load the sample on a pipeline.
+
+        The appropriate server is found based on the pipeline, and the sample is loaded.
+
+        Args:
+            sample (Sample):
+                The sample to load on the pipeline.
+
+        """
+        if self.sample:
+            msg = f"The pipeline {self.name} on server {self.server} already has a sample loaded ({self.sample.id})."
+            raise ValueError(msg)
+
+        if sample.pipeline:
+            msg = (
+                f"Sample {sample.id} is already loaded on pipeline {sample.pipeline.name}, "
+                f"server {sample.pipeline.server.label} ."
+            )
+            raise ValueError(msg)
+
+        self.sample = sample
+        sample.pipeline = self
+
+        # Get pipeline and load
+        logger.info("Loading sample %s on server %s", self.sample.id, self.server.label)
+        dbf.execute_sql(
+            "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
+            (self.sample.id, self.name),
+        )
+
+    def eject(self, sample: "Sample | None" = None) -> None:
+        """Eject the sample from a pipeline."""
+        # Find server associated with pipeline
+        logger.info("Ejecting sample from the pipeline %s on server: %s", self.name, self.server.label)
+        dbf.execute_sql(
+            "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = ? WHERE `Pipeline` = ?",
+            (True, self.name),
+        )
+        if self.sample:
+            if sample and self.sample.id != sample.id:
+                msg = (
+                    f"The pipeline {self.name} on server {self.server.label} has"
+                    f" sample {self.sample.id} loaded, not {sample.id}."
+                )
+                raise ValueError(msg)
+            self.sample.pipeline = None
+            self.sample = None
 
 
 class Sample:
@@ -122,38 +172,6 @@ class Sample:
 
         """
         return self._properties.get(property_name)
-
-    def load(self, pipeline: Pipeline) -> None:
-        """Load the sample on a pipeline.
-
-        The appropriate server is found based on the pipeline, and the sample is loaded.
-
-        Args:
-            pipeline (str):
-                The pipeline to load the sample on. Must exist in pipelines table of database
-
-        """
-        if self.pipeline:
-            msg = f"Sample {self.id} is already loaded on server {self.pipeline.server.label} pipeline {self.pipeline}."
-            raise ValueError(msg)
-
-        self.pipeline = pipeline
-        # Get pipeline and load
-        logger.info("Loading sample %s on server %s", self.id, self.pipeline.server.label)
-        dbf.execute_sql(
-            "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
-            (self.id, self.pipeline.name),
-        )
-
-    def eject(self) -> None:
-        """Eject the sample from a pipeline."""
-        # Find server associated with pipeline
-        logger.info("Ejecting %s on server: %s", self.pipeline, self.pipeline.server.label)
-        dbf.execute_sql(
-            "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = ? WHERE `Pipeline` = ?",
-            (True, self.pipeline.name),
-        )
-        self.pipeline = None
 
     def get_sample_capacity(
         self,
@@ -506,20 +524,21 @@ class ServerManager:
         """
         sample = Sample.from_id(sample_id)
         pipeline = Pipeline.from_id(pipeline)
-        sample.load(pipeline)
+        pipeline.load(sample)
 
-    def eject(self, sample_id: str, pipeline: str) -> None:
+    def eject(self, sample_id: str, pipeline_id: str) -> None:
         """Eject a sample from a pipeline.
 
         Args:
             sample_id (str):
                 The sample ID to eject. Must exist in samples table of database
-            pipeline (str):
+            pipeline_id (str):
                 The pipeline to eject the sample from, must exist in pipelines table of database
 
         """
-        sample_obj = Sample.from_id(sample_id)
-        sample_obj.eject()
+        sample = Sample.from_id(sample_id)
+        pipeline = Pipeline.from_id(pipeline_id)
+        pipeline.eject(sample)
 
     def submit(
         self,
