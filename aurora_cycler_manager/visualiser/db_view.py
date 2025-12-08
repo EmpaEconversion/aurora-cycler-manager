@@ -46,7 +46,7 @@ from aurora_cycler_manager.database_funcs import (
     update_sample_label,
 )
 from aurora_cycler_manager.eclab_harvester import convert_mpr
-from aurora_cycler_manager.server_manager import Sample, ServerManager
+from aurora_cycler_manager.server_manager import ServerManager, _Sample
 from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.visualiser.db_batch_edit import (
     batch_edit_layout,
@@ -1054,7 +1054,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         if button_id == "submit-button":
             samples = [s.get("Sample ID") for s in selected_rows]
             capacities = {
-                mode: {s: Sample.from_id(s).safe_get_sample_capacity(mode) for s in samples}
+                mode: {s: _Sample.from_id(s).safe_get_sample_capacity(mode) for s in samples}
                 for mode in ["areal", "mass", "nominal"]
             }
             folder = CONFIG.get("Protocols folder path")

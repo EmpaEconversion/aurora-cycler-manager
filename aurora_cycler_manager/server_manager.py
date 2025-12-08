@@ -71,25 +71,25 @@ def find_server(label: str) -> cycler_servers.CyclerServer:
     return server
 
 
-class Pipeline:
+class _Pipeline:
     """A class representing a pipeline in the database."""
 
     def __init__(self, pipeline_name: str, server_label: str) -> None:
-        """Initialize the Pipeline object."""
+        """Initialize the _Pipeline object."""
         self.name = pipeline_name
         self.server = find_server(server_label)
-        self.sample: Sample | None = None
+        self.sample: _Sample | None = None
 
     @classmethod
-    def from_id(cls, pipeline_name: str) -> "Pipeline":
-        """Create a Pipeline object from the database.
+    def from_id(cls, pipeline_name: str) -> "_Pipeline":
+        """Create a _Pipeline object from the database.
 
         Args:
             pipeline_name : str
                 The pipeline name to create the object for.
 
         Returns:
-            Pipeline: The Pipeline object.
+            _Pipeline: The Pipeline object.
 
         """
         result = dbf.execute_sql(
@@ -101,13 +101,13 @@ class Pipeline:
             raise ValueError(msg)
         return cls(pipeline_name, result[0][1])
 
-    def load(self, sample: "Sample") -> None:
+    def load(self, sample: "_Sample") -> None:
         """Load the sample on a pipeline.
 
         The appropriate server is found based on the pipeline, and the sample is loaded.
 
         Args:
-            sample (Sample):
+            sample (_Sample):
                 The sample to load on the pipeline.
 
         """
@@ -132,7 +132,7 @@ class Pipeline:
             (self.sample.id, self.name),
         )
 
-    def eject(self, sample: "Sample | None" = None) -> None:
+    def eject(self, sample: "_Sample | None" = None) -> None:
         """Eject the sample from a pipeline."""
         # Find server associated with pipeline
         logger.info("Ejecting sample from the pipeline %s on server: %s", self.name, self.server.label)
@@ -151,11 +151,11 @@ class Pipeline:
             self.sample = None
 
 
-class Sample:
+class _Sample:
     """A class representing a sample in the database."""
 
     def __init__(self, sample_id: str) -> None:
-        """Initialize the Sample object."""
+        """Initialize the _Sample object."""
         self.id = sample_id
         self.pipeline = None
         self._properties = {}
@@ -248,15 +248,15 @@ class Sample:
         return capacity_Ah
 
     @classmethod
-    def from_id(cls, sample_id: str) -> "Sample":
-        """Create a Sample object from the database.
+    def from_id(cls, sample_id: str) -> "_Sample":
+        """Create a _Sample object from the database.
 
         Args:
             sample_id : str
                 The sample ID to create the object for.
 
         Returns:
-            Sample: The Sample object.
+            _Sample: The _Sample object.
 
         """
         # Check if sample exists in database
@@ -277,7 +277,7 @@ class Sample:
         if result:
             pipeline = result[0][0]
             sample = cls(sample_id)
-            sample.pipeline = Pipeline.from_id(pipeline)
+            sample.pipeline = _Pipeline.from_id(pipeline)
         else:
             sample = cls(sample_id)
 
@@ -298,12 +298,12 @@ class Sample:
             return None
 
 
-class CyclingJob:
+class _CyclingJob:
     """A class representing a job in the database."""
 
     def __init__(
         self,
-        sample: Sample,
+        sample: _Sample,
         job_name: str,
         capacity_Ah: float,
         comment: str,
@@ -383,15 +383,15 @@ class CyclingJob:
         )
 
     @classmethod
-    def from_id(cls, job_id: str) -> "CyclingJob":
-        """Create a CyclingJob object from the database.
+    def from_id(cls, job_id: str) -> "_CyclingJob":
+        """Create a _CyclingJob object from the database.
 
         Args:
             job_id : str
                 The job ID to create the object for.
 
         Returns:
-            CyclingJob: The CyclingJob object.
+            _CyclingJob: The _CyclingJob object.
 
         """
         result = dbf.execute_sql(
@@ -402,7 +402,7 @@ class CyclingJob:
             msg = f"Job '{job_id}' not found in the database."
             raise ValueError(msg)
         sample_id, capacity_mAh, jobid_on_server, comment = result[0]
-        sample = Sample.from_id(sample_id)
+        sample = _Sample.from_id(sample_id)
         job = cls(
             sample=sample,
             job_name=f"Job for sample {sample.id}",
@@ -524,8 +524,8 @@ class ServerManager:
                 The pipeline to load the sample on. Must exist in pipelines table of database
 
         """
-        sample = Sample.from_id(sample_id)
-        pipeline = Pipeline.from_id(pipeline)
+        sample = _Sample.from_id(sample_id)
+        pipeline = _Pipeline.from_id(pipeline)
         pipeline.load(sample)
 
     def eject(self, sample_id: str, pipeline_id: str) -> None:
@@ -538,8 +538,8 @@ class ServerManager:
                 The pipeline to eject the sample from, must exist in pipelines table of database
 
         """
-        sample = Sample.from_id(sample_id)
-        pipeline = Pipeline.from_id(pipeline_id)
+        sample = _Sample.from_id(sample_id)
+        pipeline = _Pipeline.from_id(pipeline_id)
         pipeline.eject(sample)
 
     def submit(
@@ -566,8 +566,8 @@ class ServerManager:
                 A comment to add to the job in the database
 
         """
-        sample = Sample.from_id(sample_id)
-        cycling_job = CyclingJob(
+        sample = _Sample.from_id(sample_id)
+        cycling_job = _CyclingJob(
             sample=sample,
             job_name=f"Job for sample {sample.id}",
             capacity_Ah=capacity_Ah,
@@ -587,7 +587,7 @@ class ServerManager:
             str: The output from the server cancel command
 
         """
-        return CyclingJob.from_id(jobid).cancel()
+        return _CyclingJob.from_id(jobid).cancel()
 
 
 class ServerManagerX:
