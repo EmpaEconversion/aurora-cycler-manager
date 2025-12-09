@@ -22,7 +22,6 @@ Run the script to harvest and convert all neware files.
 import base64
 import json
 import logging
-import os
 import re
 import sqlite3
 import tempfile
@@ -38,7 +37,13 @@ import xmltodict
 
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.database_funcs import get_sample_data
+from aurora_cycler_manager.database_funcs import (
+    check_job_running,
+    get_all_sampleids,
+    get_job_data,
+    get_or_create_job_id_from_server,
+    get_sample_data,
+)
 from aurora_cycler_manager.setup_logging import setup_logging
 from aurora_cycler_manager.utils import parse_datetime, run_from_sample, ssh_connect
 from aurora_cycler_manager.version import __url__, __version__
@@ -144,14 +149,8 @@ def harvest_neware_files(
         new_files = []
         with ssh.open_sftp() as sftp:
             for file in modified_files:
-                # Maintain the folder structure when copying
-                relative_path = os.path.relpath(file, server_copy_folder)
-                local_path = Path(local_folder) / relative_path
-                local_path.parent.mkdir(parents=True, exist_ok=True)  # Create local directory if it doesn't exist
-                # Prepend the server label to the filename
-                local_path = local_path.with_name(
-                    f"{server_label}-{local_path.name.replace('_', '-').replace(' ', '-')}",
-                )
+                job_id = get_or_create_job_id_from_server(server_label, Path(file).stem)
+                local_path = (Path(local_folder) / job_id).with_suffix(Path(file).suffix)
                 logger.info("Copying '%s' to '%s'", file, local_path)
                 sftp.get(file, local_path)
                 new_files.append(local_path)
@@ -186,31 +185,21 @@ def snapshot_raw_data(job_id: str) -> Path | None:
         Path to the .ndax file created or modified, or None if no files updated.
 
     """
-    # Job ID has form {server_label}-{device_id}-{subdevice_id}-{channel_id}-{test_id}
-    server_label, dev_id, subdev_id, channel_id, test_id = job_id.split("-")
+    job_data = get_job_data(job_id)
+    # Job ID on server has form {device_id}-{subdevice_id}-{channel_id}-{test_id}
+    dev_id, subdev_id, channel_id, test_id = job_data["Job ID on server"].split("-")
     # Neware has a different format for raw data. Folder is raw_data_folder/YYYYMMDD/,
     # file is YYYYMMDD_HHMMSS_27{len(4) 0 padded device_id}_0_{(subdevid-1)*8 + channel_id}_{test_id} + file type .ndc
 
-    # Get the job server label and submit date from the database
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT `Submitted`, `Server label` FROM jobs WHERE `Job ID` = ?",
-            (job_id,),
-        )
-        row = cursor.fetchone()
-        cursor.close()
-    if not row:
-        msg = f"No job found with ID '{job_id}' in database."
-        raise ValueError(msg)
-    logger.debug("Found job with submission date '%s', server label %s", row[0], row[1])
-    submitted = datetime.fromisoformat(row[0]).strftime("%Y%m%d")  # Get YYYYMMDD format
-    server_label = row[1]
+    submitted = datetime.fromisoformat(job_data["Submitted"]).strftime("%Y%m%d")  # Get YYYYMMDD format
 
     # Get the server from the config
-    server = next((server for server in CONFIG["Neware harvester"]["Servers"] if server["label"] == server_label), None)
+    server = next(
+        (server for server in CONFIG["Neware harvester"]["Servers"] if server["label"] == job_data["Server label"]),
+        None,
+    )
     if not server:
-        msg = f"No server found with label '{server_label}' in config."
+        msg = f"No server found with label '{job_data['Server label']}' in config."
         raise ValueError(msg)
     server_hostname = server["hostname"]
     server_username = server["username"]
@@ -264,7 +253,7 @@ def snapshot_raw_data(job_id: str) -> Path | None:
             encoded_script = base64.b64encode(powershell_command.encode("utf-16le")).decode("ascii")
             command = f"powershell.exe -EncodedCommand {encoded_script}"
         else:
-            msg = f"Unsupported shell type '{server_shell_type}' for server {server_label}."
+            msg = f"Unsupported shell type '{server_shell_type}' for server {job_data['Server label']}."
             raise ValueError(msg)
         _stdin, stdout, stderr = ssh.exec_command(command)
 
@@ -562,52 +551,25 @@ def get_neware_metadata_from_db(job_id: str) -> dict:
         dict: Metadata from the database
 
     """
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM jobs WHERE `Job ID` = ?",
-            (job_id,),
-        )
-        row = cursor.fetchone()
-
-        # Check if the job is still running with pipelines table
-        cursor.execute(
-            "SELECT 1 FROM pipelines WHERE `Job ID` = ? LIMIT 1",
-            (job_id,),
-        )
-        finished = cursor.fetchone() is None
-
-    if not row:
-        msg = f"No metadata found for Job ID '{job_id}' in database."
-        raise ValueError(msg)
-    row = dict(row)
+    job_data = get_job_data(job_id)
+    finished = not check_job_running(job_id)
     # convert string to xml then to dict
-    if row["Payload"].startswith("<"):  # It is an xml string
-        xml_payload = xmltodict.parse(row["Payload"], attr_prefix="")
+    if job_data["Payload"].startswith("<"):  # It is an xml string
+        xml_payload = xmltodict.parse(job_data["Payload"], attr_prefix="")
         metadata = _clean_ndax_step(xml_payload)
-    elif row["Payload"].startswith("["):  # It is JSON list of steps
-        metadata = {"Payload": json.loads(row["Payload"])}
+    elif job_data["Payload"].startswith("["):  # It is JSON list of steps
+        metadata = {"Payload": json.loads(job_data["Payload"])}
     else:
         metadata = {}
-    _server_label, Device_ID, Subdevice_ID, Channel_ID, Test_ID = job_id.split("-")
-    metadata["Device ID"] = Device_ID
-    metadata["Subdevice ID"] = Subdevice_ID
-    metadata["Channel ID"] = Channel_ID
-    metadata["Test ID"] = Test_ID
-    metadata["Barcode"] = row["Sample ID"]
+    job_id_on_server = job_data["Job ID on server"]
+    device_id, subdevice_id, channel_id, test_id = job_id_on_server.split("-")
+    metadata["Device ID"] = device_id
+    metadata["Subdevice ID"] = subdevice_id
+    metadata["Channel ID"] = channel_id
+    metadata["Test ID"] = test_id
+    metadata["Barcode"] = job_data["Sample ID"]
     metadata["Finished"] = finished
     return metadata
-
-
-def get_known_samples() -> list[str]:
-    """Get a list of Sample IDs from the database."""
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT `Sample ID` FROM samples")
-        rows = cursor.fetchall()
-        cursor.close()
-    return [row[0] for row in rows]
 
 
 def get_sampleid_from_metadata(metadata: dict, known_samples: list[str] | None = None) -> str | None:
@@ -618,7 +580,7 @@ def get_sampleid_from_metadata(metadata: dict, known_samples: list[str] | None =
     sampleid = None
 
     if not known_samples:
-        known_samples = get_known_samples()
+        known_samples = get_all_sampleids()
     for possible_sampleid in [barcode_sampleid, remark_sampleid]:
         if possible_sampleid in known_samples:
             sampleid = possible_sampleid
@@ -715,16 +677,6 @@ def update_database_job(
         known_samples (list[str], optional): List of known Sample IDs to check against
 
     """
-    # Check that filename is in the format text_*_*_*_* where * is a number e.g. tt4_120_5_3_24.ndax
-    # Otherwise we cannot get the full job ID, as sub-device ID is not reported properly
-    if not re.match(r"^\S+-\d+-\d+-\d+-\d+", filepath.stem):
-        msg = (
-            "Filename not in expected format. "
-            "Expect files in the format: "
-            "{serverlabel}-{devid}-{subdevid}-{channelid}-{testid} "
-            "e.g. nw4-120-1-3-24.ndax"
-        )
-        raise ValueError(msg)
     if filepath.suffix == ".xlsx":
         metadata = get_neware_xlsx_metadata(filepath)
     elif filepath.suffix == ".ndax":
@@ -737,10 +689,11 @@ def update_database_job(
     if not sampleid:
         msg = f"Sample ID not found in metadata for file {filepath}"
         raise ValueError(msg)
-    full_job_id = filepath.stem
-    job_id_on_server = "-".join(full_job_id.split("-")[-4:])  # Get job ID from filename
-    server_label = "-".join(full_job_id.split("-")[:-4])  # Get server label from filename
-    pipeline = "-".join(job_id_on_server.split("-")[:-1])  # because sub-device ID reported properly
+    job_id = filepath.stem
+    job_data = get_job_data(job_id)
+    job_id_on_server = job_data["Job ID on server"]
+    server_label = job_data["Server label"]
+    pipeline = job_data["Pipeline"]
     submitted = metadata.get("Start time")
     payload = json.dumps(metadata.get("Payload"))
     last_snapshot_uts = filepath.stat().st_birthtime
@@ -761,7 +714,7 @@ def update_database_job(
         cursor = conn.cursor()
         cursor.execute(
             "INSERT OR IGNORE INTO jobs (`Job ID`) VALUES (?)",
-            (full_job_id,),
+            (job_id,),
         )
         cursor.execute(
             "UPDATE jobs SET "
@@ -779,7 +732,7 @@ def update_database_job(
                 payload,
                 last_snapshot,
                 job_id_on_server,
-                full_job_id,
+                job_id,
             ),
         )
 
@@ -902,7 +855,7 @@ def convert_all_neware_data() -> None:
     snapshots_folder = get_neware_snapshot_folder()
     neware_files = [file for file in snapshots_folder.rglob("*") if file.suffix in [".xlsx", ".ndax"]]
     new_samples = set()
-    known_samples = get_known_samples()
+    known_samples = get_all_sampleids()
     for file in neware_files:
         logger.info("Converting %s", file)
         try:
@@ -928,7 +881,7 @@ def main() -> None:
     """Harvest and convert files that have changed."""
     new_files = harvest_all_neware_files()
     new_samples = set()
-    known_samples = get_known_samples()
+    known_samples = get_all_sampleids()
     logger.info("Processing %d files", len(new_files))
     for file in new_files:
         logger.info("Processing %s", file)
