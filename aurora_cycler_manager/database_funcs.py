@@ -388,7 +388,7 @@ def get_job_id_from_server(server_label: str, job_id_on_server: str) -> str:
 def get_or_create_job_id_from_server(server_label: str, job_id_on_server: str) -> str:
     """Get the job ID from server label and job ID on server, create new Job ID if it doesn't exist."""
     try:
-        get_job_id_from_server(server_label, job_id_on_server)
+        job_id = get_job_id_from_server(server_label, job_id_on_server)
     except ValueError:
         job_id = str(uuid.uuid4)
         with sqlite3.connect(CONFIG["Database path"]) as conn:
@@ -397,6 +397,7 @@ def get_or_create_job_id_from_server(server_label: str, job_id_on_server: str) -
                 "INSERT INTO Jobs (`Job ID`, `Job ID on server`, `Server label`) VALUES (?,?,?)",
                 (job_id, job_id_on_server, server_label),
             )
+    return job_id
 
 
 def get_unicycler_protocols(sample_id: str) -> list[dict]:
