@@ -561,6 +561,196 @@ class ServerManager:
         """
         return _CyclingJob.from_id(jobid).cancel()
 
+    def snapshot(
+        self,
+        samp_or_jobid: str,
+        mode: Literal["always", "new_data", "if_not_exists"] = "new_data",
+    ) -> None:
+        """Snapshot sample or job, download data, process, and save.
+
+        Args:
+            samp_or_jobid : str
+                The sample ID or (aurora) job ID to snapshot.
+            mode : str, optional
+                When to make a new snapshot. Can be one of the following:
+                    - 'always': Force a snapshot even if job is already done and data is downloaded.
+                    - 'new_data': Snapshot if there is new data.
+                    - 'if_not_exists': Snapshot only if the file doesn't exist locally.
+                Default is 'new_data'.
+
+        """
+        # check if the input is a sample ID
+        result = dbf.execute_sql("SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?", (samp_or_jobid,))
+        if result:  # it's a sample
+            result = dbf.execute_sql(
+                "SELECT `Sample ID`, `Status`, `Job ID`, `Job ID on server`, `Server label`, `Snapshot Status` "
+                "FROM jobs WHERE `Sample ID` = ? ",
+                (samp_or_jobid,),
+            )
+        else:  # it's a job ID
+            result = dbf.execute_sql(
+                "SELECT `Sample ID`, `Status`, `Job ID`, `Job ID on server`, `Server label`, `Snapshot Status` "
+                "FROM jobs WHERE `Job ID` = ?",
+                (samp_or_jobid,),
+            )
+        if not result:
+            msg = f"Sample or job ID '{samp_or_jobid}' not found in the database."
+            raise ValueError(msg)
+
+        for sample_id, status, jobid, jobid_on_server, server_label, snapshot_status in result:
+            if not sample_id:
+                logger.warning("Job %s has no sample, skipping.", jobid)
+                continue
+            if not jobid_on_server:
+                logger.warning("Job %s has no job ID on server, skipping.", jobid)
+                continue
+            # Check that sample is known
+            if sample_id == "Unknown":
+                logger.warning("Job %s has no sample name or payload, skipping.", jobid)
+                continue
+            run_id = run_from_sample(sample_id)
+
+            local_save_location_processed = Path(self.config["Processed snapshots folder path"]) / run_id / sample_id
+
+            files_exist = (local_save_location_processed / f"snapshot.{jobid}.h5").exists()
+            if files_exist and mode != "always":
+                if mode == "if_not_exists":
+                    logger.info("Snapshot for %s already exists, skipping.", jobid)
+                    continue
+                if mode == "new_data" and snapshot_status is not None and snapshot_status.startswith("c"):
+                    logger.info("Snapshot for %s already complete, skipping.", jobid)
+                    continue
+
+            # Check that the job has started
+            if status in ["q", "qw"]:
+                logger.warning("Job %s is still queued, skipping snapshot.", jobid)
+                continue
+
+            # Check that the server is accessible
+            try:
+                server = find_server(server_label)
+            except KeyError as e:
+                logger.warning("Could not access server %s for job %s: %s", server_label, jobid, e)
+                continue
+
+            # Snapshot the job
+            try:
+                new_snapshot_status = server.snapshot(sample_id, jobid, jobid_on_server)
+            except FileNotFoundError as e:
+                msg = (
+                    f"Error snapshotting {jobid}: {e}\n"
+                    "Likely the job was cancelled before starting. "
+                    "Setting `Snapshot Status` to 'ce' in the database."
+                )
+                dbf.execute_sql(
+                    "UPDATE jobs SET `Snapshot status` = 'ce' WHERE `Job ID` = ?",
+                    (jobid,),
+                )
+                raise FileNotFoundError(msg) from e
+
+            # Update the snapshot status in the database
+            dt = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            dbf.execute_sql(
+                "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
+                (sample_id,),
+            )
+            dbf.execute_sql(
+                "UPDATE results SET `Last snapshot` = ? WHERE `Sample ID` = ?",
+                (dt, sample_id),
+            )
+            dbf.execute_sql(
+                "UPDATE jobs SET `Snapshot status` = ?, `Last snapshot` = ? WHERE `Job ID` = ?",
+                (new_snapshot_status, dt, jobid),
+            )
+
+        # Analyse the new data (only once per sample)
+        for unique_sample_id in {sample_id for sample_id, *_ in result}:
+            analysis.analyse_sample(unique_sample_id)
+
+    def snapshot_all(
+        self,
+        sampleid_contains: str = "",
+        mode: Literal["always", "new_data", "if_not_exists"] = "new_data",
+    ) -> None:
+        """Snapshot all jobs in the database.
+
+        Args:
+            sampleid_contains : str, optional
+                A string that the sample ID must contain to be snapshot. By default all samples are
+                considered for snapshotting.
+            mode : str, optional
+                When to make a new snapshot. Can be one of the following:
+                    - 'always': Force a snapshot even if job is already done and data is downloaded.
+                    - 'new_data': Snapshot if there is new data on the server.
+                    - 'if_not_exists': Snapshot only if the file doesn't exist locally.
+                Default is 'new_data'.
+
+        """
+        # Find the jobs that need snapshotting
+        if mode not in ["always", "new_data", "if_not_exists"]:
+            msg = f"Invalid mode: {mode}. Must be one of 'always', 'new_data', 'if_not_exists'."
+            raise ValueError(msg)
+        where = "`Status` IN ( 'c', 'r', 'rd', 'cd', 'ce') AND `Sample ID` IS NOT 'Unknown'"
+        if mode in ["new_data"]:
+            where += " AND (`Snapshot status` NOT LIKE 'c%' OR `Snapshot status` IS NULL)"
+        if sampleid_contains:
+            result = dbf.execute_sql(
+                "SELECT `Job ID` FROM jobs WHERE " + where + " AND `Sample ID` LIKE ?",  # noqa: S608
+                (f"%{sampleid_contains}%",),
+            )
+        else:
+            result = dbf.execute_sql("SELECT `Job ID` FROM jobs WHERE " + where)  # noqa: S608
+        total_jobs = len(result)
+        logger.info("Snapshotting %d jobs with mode '%s'", total_jobs, mode)
+        t0 = time()
+        # Snapshot each job, ignore errors and continue
+        # Sleeps are added after each to not overload the server
+        # If snapshotting non-stop for hours, you can stop data transfer in the machine
+        # This could result in memory filling up in the cycler and data being lost
+        for i, (jobid,) in enumerate(result):
+            try:
+                self.snapshot(jobid, mode=mode)
+            except (KeyError, NotImplementedError, FileNotFoundError) as e:
+                logger.exception("Error snapshotting job %s", jobid)
+                if isinstance(e, FileNotFoundError):  # Something ran on server, so sleep
+                    sleep(10)
+                continue
+            except Exception as e:
+                tb = traceback.format_exc()
+                error_message = str(e) if str(e) else "An error occurred but no message was provided."
+                logger.warning("Unexpected error snapshotting %s: %s\n%s", jobid, error_message, tb)
+                sleep(10)  # to not overload the server
+                continue
+            time_elapsed = time() - t0
+            time_remaining = time_elapsed / (i + 1) * (total_jobs - i - 1)
+            sleep(10)  # to not overload the server
+            logger.info("%d/%d jobs done. Approx %d minutes remaining", i + 1, total_jobs, int(time_remaining / 60))
+
+    def _update_neware_jobids(self) -> None:
+        """Update all Job IDs on Neware servers.
+
+        Temporary measure until we have a faster way to get Job IDs from Newares
+        that can run in update_pipelines. This implementation takes ~1 second
+        per channel.
+
+        """
+        result = dbf.execute_sql(
+            "SELECT `Pipeline`, `Server label` FROM pipelines WHERE "
+            "`Sample ID` NOT NULL AND `Ready` = 0 AND `Server type` = 'neware'",
+        )
+        pipelines = [row[0] for row in result]
+        serverids = [row[1] for row in result]
+        for serverid, pipeline in zip(serverids, pipelines, strict=True):
+            logger.info("Updating job ID for %s on server %s", pipeline, serverid)
+            server = find_server(serverid)
+            assert isinstance(server, cycler_servers.NewareServer)  # noqa: S101
+            jobid_on_server = server._get_job_id(pipeline)  # noqa: SLF001
+            full_jobid = f"{server.label}-{jobid_on_server}"
+            dbf.execute_sql(
+                "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ? WHERE `Pipeline` = ?",
+                (full_jobid, jobid_on_server, pipeline),
+            )
+
 
 class ServerManagerX:
     """The ServerManager class manages the database and cycling servers.
