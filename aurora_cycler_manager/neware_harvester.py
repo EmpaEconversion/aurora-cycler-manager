@@ -29,10 +29,11 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+import fastnda
 import h5py
-import NewareNDA
 import pandas as pd
 import paramiko
+import polars as pl
 import xmltodict
 
 from aurora_cycler_manager.analysis import analyse_sample
@@ -687,28 +688,23 @@ def get_neware_xlsx_data(file_path: Path) -> pd.DataFrame:
 
 def get_neware_ndax_data(file_path: Path) -> pd.DataFrame:
     """Convert Neware ndax file to dictionary."""
-    df = NewareNDA.read(file_path)
-    # convert time to 64bit, add 1e-6 at new steps - negligible and avoids errors when sorting
-    df["Time"] = df["Time"].astype("float64") + (df["Time"] == 0) * 1e-6
-
-    output_df = pd.DataFrame()
-    output_df["V (V)"] = df["Voltage"]
-    output_df["I (A)"] = df["Current(mA)"] / 1000
-    output_df["technique"] = df["Status"].apply(lambda x: state_dict_rev_underscored.get(x, 0)).astype(int)
-    output_df["cycle_number"] = (
-        df["Status"].str.contains(r"_DChg|_DCHg|Rest", regex=True).shift(1)
-        & df["Status"].str.contains(r"_Chg", regex=True)
-    ).cumsum()
-    # "Date" from df is not reliable, instead calc from "Time" and add first date to get uts timestamp
-    # Get last time for each step and add to next steps
-    last_times = df.groupby("Step")["Time"].last()
-    offsets = last_times.shift(fill_value=0).cumsum()
-    total_time = df["Time"] + df["Step"].map(offsets)
-    # Get first datetime, add the total time to get uts
-    start_uts = float(df["Timestamp"].iloc[0].timestamp())
-    output_df["uts"] = start_uts + total_time
-
-    return output_df
+    df = fastnda.read(file_path)
+    if len(df) == 0:
+        msg = f"No data in file {file_path.name}"
+        raise ValueError(msg)
+    df = df.with_columns(
+        [
+            pl.col("voltage_V").alias("V (V)"),
+            (pl.col("current_mA") / 1000).alias("I (A)"),
+            pl.col("step_type")
+            .cast(pl.String)
+            .replace(state_dict_rev_underscored, return_dtype=pl.UInt32)
+            .alias("technique"),
+            pl.col("cycle_count").alias("cycle_number"),
+            (pl.col(["total_time_s"]) + df["unix_time_s"][0] + (df["step_time_s"] == 0) * 1e-6).alias("uts"),
+        ]
+    )
+    return df.select(["V (V)", "I (A)", "technique", "cycle_number", "uts"]).to_pandas()
 
 
 def update_database_job(
