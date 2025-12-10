@@ -251,6 +251,9 @@ def create_database(force: bool = False) -> None:
             ")",
         )
         cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_jobs_job_on_server ON jobs (`Job ID on server`, `Server label`)",
+        )
+        cursor.execute(
             "CREATE TABLE IF NOT EXISTS pipelines ("
             "`Pipeline` VARCHAR(50) PRIMARY KEY, "
             "`Sample ID` VARCHAR(255),"
@@ -310,6 +313,7 @@ def create_database(force: bool = False) -> None:
             "`Server label` TEXT, "
             "`Server hostname` TEXT, "
             "`Folder` TEXT, "
+            "`Last snapshot` DATETIME, "
             "UNIQUE(`Server label`, `Server hostname`, `Folder`)"
             ")",
         )
