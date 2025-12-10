@@ -354,7 +354,7 @@ def get_job_data(job_id: str) -> dict:
         job_data = dict(result)
         # Convert json strings to python objects
         payload = job_data.get("Payload")
-        if payload:
+        if payload and payload.startswith(("[", "{")):
             job_data["Payload"] = json.loads(payload)
     return job_data
 
