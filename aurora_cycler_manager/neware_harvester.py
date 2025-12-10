@@ -185,6 +185,10 @@ def snapshot_raw_data(job_id: str) -> Path | None:
         Path to the .ndax file created or modified, or None if no files updated.
 
     """
+    # File to create or update
+    ndax_path = get_neware_snapshot_folder() / f"{job_id}.ndax"
+
+    # Get the job info from database
     job_data = get_job_data(job_id)
 
     # Get device information from job ID on server
@@ -192,7 +196,19 @@ def snapshot_raw_data(job_id: str) -> Path | None:
     # Neware has a different format for raw data. Folder is raw_data_folder/YYYYMMDD/,
     # file is YYYYMMDD_HHMMSS_27{len(4) 0 padded device_id}_0_{(subdevid-1)*8 + channel_id}_{test_id} + file type .ndc
 
-    submitted = datetime.fromisoformat(job_data["Submitted"]).strftime("%Y%m%d")  # Get YYYYMMDD format
+    # Need the start/submission time to locate the raw data on Neware server
+    if job_data["Submitted"]:
+        submitted = datetime.fromisoformat(job_data["Submitted"]).strftime("%Y%m%d")  # Get YYYYMMDD format
+    elif ndax_path.exists():
+        metadata = get_neware_metadata(ndax_path)
+        if metadata.get("Start time"):
+            submitted = datetime.fromisoformat(metadata["Start time"]).strftime("%Y%m%d")
+        else:
+            msg = "No submit time in database, no start time in file, cannot find raw data on server."
+            raise ValueError(msg)
+    else:
+        msg = "No submit time in database, no local file to check, cannot find raw data on server."
+        raise ValueError(msg)
 
     # Get the server from the config
     server = next(
@@ -266,31 +282,32 @@ def snapshot_raw_data(job_id: str) -> Path | None:
             raise RuntimeError(msg)
         found_files = json.loads(output)
 
-        # Create or update the ndax file with new raw data
-        ndax_path = None
-        if any(file is not None for file in found_files.values()):
-            ndax_path = get_neware_snapshot_folder() / f"{job_id}.ndax"
-            logger.info("Updating ndax file at '%s'", ndax_path)
+        # If nothing found, give up
+        if all(file is None for file in found_files.values()):
+            return None
 
-            # Create a temporary directory to store the files
-            with tempfile.TemporaryDirectory() as tmp:
-                tmp_path = Path(tmp)
+        # Otherwise create or update the ndax file with new raw data
+        logger.info("Updating ndax file at '%s'", ndax_path)
 
-                # If ndax already exists, extract it to the temporary directory
-                if ndax_path.exists():
-                    with zipfile.ZipFile(ndax_path, "r") as zf:
-                        zf.extractall(tmp_path)
+        # Create a temporary directory to store the files
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
 
-                # Copy the new files over, replacing any existing ones
-                with ssh.open_sftp() as sftp:
-                    for ending, file in found_files.items():
-                        sftp.get(file, tmp_path / ("data" + ending))
+            # If ndax already exists, extract it to the temporary directory
+            if ndax_path.exists():
+                with zipfile.ZipFile(ndax_path, "r") as zf:
+                    zf.extractall(tmp_path)
 
-                # Write a new zip
-                with zipfile.ZipFile(ndax_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                    for file in tmp_path.rglob("*"):
-                        if file.is_file():
-                            zf.write(file, arcname=file.relative_to(tmp_path))
+            # Copy the new files over, replacing any existing ones
+            with ssh.open_sftp() as sftp:
+                for ending, file in found_files.items():
+                    sftp.get(file, tmp_path / ("data" + ending))
+
+            # Write a new zip
+            with zipfile.ZipFile(ndax_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for file in tmp_path.rglob("*"):
+                    if file.is_file():
+                        zf.write(file, arcname=file.relative_to(tmp_path))
     return ndax_path
 
 
