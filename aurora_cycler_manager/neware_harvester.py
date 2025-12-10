@@ -586,7 +586,7 @@ def get_neware_ndax_metadata(file_path: Path) -> dict:
 
 
 def get_neware_metadata_from_db(job_id: str) -> dict:
-    """Get metadata from the database for a Neware file.
+    """Get relevant metadata from the database for a Neware file.
 
     Args:
         job_id (str): Name of Job ID, (should be filename without extension)
@@ -597,14 +597,16 @@ def get_neware_metadata_from_db(job_id: str) -> dict:
     """
     job_data = get_job_data(job_id)
     finished = not check_job_running(job_id)
-    # convert string to xml then to dict
-    if job_data["Payload"].startswith("<"):  # It is an xml string
-        xml_payload = xmltodict.parse(job_data["Payload"], attr_prefix="")
-        metadata = _clean_ndax_step(xml_payload)
-    elif job_data["Payload"].startswith("["):  # It is JSON list of steps
-        metadata = {"Payload": json.loads(job_data["Payload"])}
-    else:
-        metadata = {}
+    # Check if payload needs parsing
+    metadata = {}
+    if isinstance(job_data, dict | list):  # It is already parsed
+        metadata = {"Payload": job_data["Payload"]}
+    elif isinstance(job_data, str):
+        if job_data["Payload"].startswith("<"):  # It is an xml string
+            xml_payload = xmltodict.parse(job_data["Payload"], attr_prefix="")
+            metadata = _clean_ndax_step(xml_payload)
+        elif job_data["Payload"].startswith("["):  # It is JSON list of steps
+            metadata = {"Payload": json.loads(job_data["Payload"])}
     device_id, subdevice_id, channel_id, test_id = re.split(r"[-_]", job_data["Job ID on server"])
     metadata["Device ID"] = device_id
     metadata["Subdevice ID"] = subdevice_id
