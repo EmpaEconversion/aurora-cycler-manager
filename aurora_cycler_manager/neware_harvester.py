@@ -311,6 +311,32 @@ def harvest_all_neware_files(*, force_copy: bool = False) -> list[Path]:
     return all_new_files
 
 
+def get_neware_data(filepath: Path) -> pd.DataFrame:
+    """Get dataframe from a Neware ndax or xlsx file."""
+    if filepath.suffix == ".xlsx":
+        df = get_neware_xlsx_data(filepath)
+    elif filepath.suffix == ".ndax":
+        df = get_neware_ndax_data(filepath)
+    else:
+        msg = f"File type {filepath.suffix} not supported"
+        raise ValueError(msg)
+    return df
+
+
+def get_neware_metadata(filepath: Path) -> dict:
+    """Get metadata dict from a Neware ndax or xlsx file."""
+    if filepath.suffix == ".xlsx":
+        metadata = get_neware_xlsx_metadata(filepath)
+        metadata["job_type"] = "neware_xlsx"
+    elif filepath.suffix == ".ndax":
+        metadata = get_neware_ndax_metadata(filepath)
+        metadata["job_type"] = "neware_ndax"
+    else:
+        msg = f"File type {filepath.suffix} not supported"
+        raise ValueError(msg)
+    return metadata
+
+
 def get_neware_xlsx_metadata(file_path: Path) -> dict:
     """Get metadata from a neware xlsx file.
 
@@ -677,13 +703,7 @@ def update_database_job(
         known_samples (list[str], optional): List of known Sample IDs to check against
 
     """
-    if filepath.suffix == ".xlsx":
-        metadata = get_neware_xlsx_metadata(filepath)
-    elif filepath.suffix == ".ndax":
-        metadata = get_neware_ndax_metadata(filepath)
-    else:
-        msg = f"File type {filepath.suffix} not supported"
-        raise ValueError(msg)
+    metadata = get_neware_metadata(filepath)
     if sampleid is None:
         sampleid = get_sampleid_from_metadata(metadata, known_samples)
     if not sampleid:
@@ -758,17 +778,8 @@ def convert_neware_data(
     """
     # Get test information and Sample ID
     file_path = Path(file_path)
-    if file_path.suffix == ".xlsx":
-        job_data = get_neware_xlsx_metadata(file_path)
-        job_data["job_type"] = "neware_xlsx"
-        data = get_neware_xlsx_data(file_path)
-    elif file_path.suffix == ".ndax":
-        job_data = get_neware_ndax_metadata(file_path)
-        job_data["job_type"] = "neware_ndax"
-        data = get_neware_ndax_data(file_path)
-    else:
-        msg = f"File type {file_path.suffix} not supported"
-        raise ValueError(msg)
+    data = get_neware_data(file_path)
+    job_data = get_neware_metadata(file_path)
     if sampleid is None:
         sampleid = get_sampleid_from_metadata(job_data, known_samples)
 
