@@ -390,7 +390,7 @@ def get_or_create_job_id_from_server(server_label: str, job_id_on_server: str) -
     try:
         job_id = get_job_id_from_server(server_label, job_id_on_server)
     except ValueError:
-        job_id = str(uuid.uuid4)
+        job_id = str(uuid.uuid4())
         with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(
