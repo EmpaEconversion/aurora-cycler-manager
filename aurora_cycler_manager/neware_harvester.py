@@ -186,8 +186,9 @@ def snapshot_raw_data(job_id: str) -> Path | None:
 
     """
     job_data = get_job_data(job_id)
-    # Job ID on server has form {device_id}-{subdevice_id}-{channel_id}-{test_id}
-    dev_id, subdev_id, channel_id, test_id = job_data["Job ID on server"].split("-")
+
+    # Get device information from job ID on server
+    dev_id, subdev_id, channel_id, test_id = re.split(r"[-_]", job_data["Job ID on server"])
     # Neware has a different format for raw data. Folder is raw_data_folder/YYYYMMDD/,
     # file is YYYYMMDD_HHMMSS_27{len(4) 0 padded device_id}_0_{(subdevid-1)*8 + channel_id}_{test_id} + file type .ndc
 
@@ -587,8 +588,7 @@ def get_neware_metadata_from_db(job_id: str) -> dict:
         metadata = {"Payload": json.loads(job_data["Payload"])}
     else:
         metadata = {}
-    job_id_on_server = job_data["Job ID on server"]
-    device_id, subdevice_id, channel_id, test_id = job_id_on_server.split("-")
+    device_id, subdevice_id, channel_id, test_id = re.split(r"[-_]", job_data["Job ID on server"])
     metadata["Device ID"] = device_id
     metadata["Subdevice ID"] = subdevice_id
     metadata["Channel ID"] = channel_id
