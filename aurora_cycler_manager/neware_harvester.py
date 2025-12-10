@@ -608,6 +608,7 @@ def get_neware_metadata_from_db(job_id: str) -> dict:
         elif job_data["Payload"].startswith("["):  # It is JSON list of steps
             metadata = {"Payload": json.loads(job_data["Payload"])}
     device_id, subdevice_id, channel_id, test_id = re.split(r"[-_]", job_data["Job ID on server"])
+    metadata["Start time"] = job_data["Submitted"]
     metadata["Device ID"] = device_id
     metadata["Subdevice ID"] = subdevice_id
     metadata["Channel ID"] = channel_id
