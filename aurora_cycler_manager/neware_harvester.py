@@ -698,7 +698,7 @@ def get_neware_ndax_data(file_path: Path) -> pd.DataFrame:
             (pl.col("current_mA") / 1000).alias("I (A)"),
             pl.col("step_type")
             .cast(pl.String)
-            .replace(state_dict_rev_underscored, return_dtype=pl.UInt32)
+            .replace_strict(state_dict_rev_underscored, return_dtype=pl.UInt32)
             .alias("technique"),
             pl.col("cycle_count").alias("cycle_number"),
             (pl.col(["total_time_s"]) + df["unix_time_s"][0] + (df["step_time_s"] == 0) * 1e-6).alias("uts"),
