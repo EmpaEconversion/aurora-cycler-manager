@@ -900,8 +900,8 @@ def convert_all_neware_data() -> None:
                     logger.info("Converted %s", sampleid)
         except (ValueError, AttributeError):
             logger.exception("Error converting %s", file)
+    logger.info("Analysing %d samples", len(new_samples))
     for sample in new_samples:
-        logger.info("Analysing %d samples", len(new_samples))
         try:
             analyse_sample(sample)
             logger.info("Analysed %s", sample)
