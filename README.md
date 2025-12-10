@@ -27,7 +27,7 @@ Experiments can use C-rates and the program will automatically calculate the cur
 
 Data is automatically gathered from cyclers, all incoming files are converted to one open standard - accepts Biologic .mpr, Neware .ndax, Neware .xlsx. Raw time-series data is converted to a hdf5 file including provenance tracked metadata.
 
-Data is converted using [`NewareNDA`](https://github.com/d-cogswell/NewareNDA) and [`yadg`](https://github.com/dgbowl/yadg), processing the raw binary data directly. This is much faster and more space efficient than exporting to text or Excel formats from these cyclers.
+Data is converted using [`fastnda`](https://github.com/g-kimbell/fastnda) and [`yadg`](https://github.com/dgbowl/yadg), processing the raw binary data directly. This is much faster and more space efficient than exporting to text or Excel formats from these cyclers.
 
 ### Analysis
 
