@@ -149,7 +149,8 @@ def harvest_neware_files(
         new_files = []
         with ssh.open_sftp() as sftp:
             for file in modified_files:
-                job_id = get_or_create_job_id_from_server(server_label, Path(file).stem)
+                job_id_on_server = Path(file).stem.replace("_", "-")
+                job_id = get_or_create_job_id_from_server(server_label, job_id_on_server)
                 local_path = (Path(local_folder) / job_id).with_suffix(Path(file).suffix)
                 logger.info("Copying '%s' to '%s'", file, local_path)
                 sftp.get(file, local_path)
@@ -899,8 +900,8 @@ def convert_all_neware_data() -> None:
                     logger.info("Converted %s", sampleid)
         except (ValueError, AttributeError):
             logger.exception("Error converting %s", file)
+    logger.info("Analysing %d samples", len(new_samples))
     for sample in new_samples:
-        logger.info("Analysing %d samples", len(new_samples))
         try:
             analyse_sample(sample)
             logger.info("Analysed %s", sample)
