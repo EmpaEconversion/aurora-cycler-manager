@@ -310,6 +310,7 @@ def create_database(force: bool = False) -> None:
             "`Server label` TEXT, "
             "`Server hostname` TEXT, "
             "`Folder` TEXT, "
+            "`Last snapshot` DATETIME, "
             "UNIQUE(`Server label`, `Server hostname`, `Folder`)"
             ")",
         )
