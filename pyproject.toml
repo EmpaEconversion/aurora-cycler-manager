@@ -16,13 +16,14 @@ dependencies = [
     "dash_mantine_components>=2.1.0",
     "dash_resizable_panels>=0.1.0",
     "defusedxml>=0.7.1",
+    "fastnda>=0.3.0",
     "h5py>=3.14.0",
-    "NewareNDA>=2025.6.2",
     "numpy>=2.2.6",
     "orjson>=3.11.0",
     "pandas>=2.3.1",
     "paramiko>=3.5.1",
     "platformdirs>=4.3.8",
+    "polars>=1.36.1",
     "pyarrow>=21.0.0",
     "python-calamine>=0.4.0",
     "scp>=0.15.0",
@@ -82,7 +83,7 @@ exclude = [
 plugins = ["pydantic.mypy"]
 
 [tool.bumpver]
-current_version = "v0.9.0"
+current_version = "v0.9.1"
 version_pattern = "vMAJOR.MINOR.PATCH[PYTAGNUM]"
 commit_message = "Bump version {old_version} -> {new_version}."
 tag_message = "Release {new_version}."
