@@ -149,6 +149,13 @@ class _Pipeline:
             self.sample.pipeline = None
             self.sample = None
 
+    def set_jobid(self, job_id: str, jobid_on_server: str | None = None) -> None:
+        """Set the job ID on the pipeline in the database."""
+        dbf.execute_sql(
+            "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ?, `Ready` = 0 WHERE `Pipeline` = ?",
+            (job_id, jobid_on_server, self.name),
+        )
+
 
 class _Sample:
     """A class representing a sample in the database."""
@@ -287,7 +294,7 @@ class _CyclingJob:
         if not sample.pipeline:
             msg = f"Sample {sample.id} is not loaded on any pipeline."
             raise ValueError(msg)
-        self.pipeline = sample.pipeline
+        self.pipeline: _Pipeline = sample.pipeline
         self.capacity_Ah = capacity_Ah
         self.comment = comment
         self.unicycler_protocol: str | None = None
@@ -320,6 +327,8 @@ class _CyclingJob:
                     self.comment,
                 ),
             )
+
+            self.pipeline.set_jobid(self.job_id, self.jobid_on_server)
 
     def add_payload(self, payload: str | Path | dict) -> None:
         """Add a payload to the job.
