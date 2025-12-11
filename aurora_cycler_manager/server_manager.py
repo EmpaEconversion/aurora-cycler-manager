@@ -53,14 +53,15 @@ def get_servers() -> dict[str, cycler_servers.CyclerServer]:
 
 def find_server(label: str) -> cycler_servers.CyclerServer:
     """Get the server object from the label."""
+    global SERVER_OBJECTS
     if not label:
         msg = (
             "No server label found from query, there is probably a mistake in the query. "
             "E.g. if you are searching for a sample ID, the ID might be wrong."
         )
         raise ValueError(msg)
-    servers = SERVER_OBJECTS or get_servers()
-    server = servers.get(label, None)
+    SERVER_OBJECTS = SERVER_OBJECTS or get_servers()
+    server = SERVER_OBJECTS.get(label, None)
     if not server:
         msg = (
             f"Server with label {label} not found. "
