@@ -1531,8 +1531,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         zenodo_info: str | None,
     ) -> tuple[str, bool, bool]:
         """Batch process data from selected samples and store in zip in temp folder on server."""
-        sample_ids = [s["Sample ID"] for s in selected_rows]
-        ccids = [s["Barcode"] for s in selected_rows]
+        samples = [_Sample.from_id(s["Sample ID"]) for s in selected_rows]
 
         # Remove old download files
         cleanup_temp_folder()
@@ -1564,7 +1563,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         pub_info = bu.parse_zenodo_info_xlsx(zenodo_info) if zenodo_info else {}
 
         # Number of files
-        n_files = len(sample_ids) * (
+        n_files = len(samples) * (
             int(download_hdf or 0) + int(download_json or 0) + int(download_bdf or 0) + int(download_jsonld or 0)
         )
         i = 0
@@ -1574,12 +1573,14 @@ def register_db_view_callbacks(app: Dash) -> None:
         # Create a new zip archive to populate
         temp_zip = tempfile.NamedTemporaryFile(dir=DOWNLOAD_DIR, delete=False, suffix=".zip")  # noqa: SIM115
         with zipfile.ZipFile(temp_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for sample, ccid in zip(sample_ids, ccids, strict=True):
-                run_id = run_from_sample(sample)
+            for sample in samples:
+                sample_id: str = sample.get("Sample ID")
+                ccid: str = sample.get("Barcode")
+                run_id = run_from_sample(sample_id)
                 data_folder = CONFIG["Processed snapshots folder path"]
-                sample_folder = str(data_folder / run_id / sample)
+                sample_folder = str(data_folder / run_id / sample_id)
                 battinfo_files = []
-                messages += f"{sample} - "
+                messages += f"{sample_id} - "
                 warnings = []
                 errors = []
                 if download_hdf:
@@ -1588,17 +1589,17 @@ def register_db_view_callbacks(app: Dash) -> None:
                         hdf5_file = next(Path(sample_folder).glob("full.*.h5"))
                         with hdf5_file.open("rb") as f:
                             hdf5_bytes = f.read()
-                        rel_file_path = sample + "/" + hdf5_file.name
+                        rel_file_path = sample_id + "/" + hdf5_file.name
                         zf.writestr(rel_file_path, hdf5_bytes)
                         rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
                         rocrate["@graph"].append(
                             {
                                 "@id": rel_file_path,
                                 "@type": "File",
-                                "about": {"@id": ccid if ccid else sample},
+                                "about": {"@id": ccid if ccid else sample_id},
                                 "encodingFormat": "application/octet-stream",
                                 "description": (
-                                    f"Time-series battery cycling data for sample: '{sample}'"
+                                    f"Time-series battery cycling data for sample: '{sample_id}'"
                                     + (f" with CCID: '{ccid}'. " if ccid else ". ")
                                     + "Data is in HDF5 format, keys are 'data' and 'metadata'. "
                                     "'data' contains an export from a Python Pandas dataframe. "
@@ -1610,13 +1611,13 @@ def register_db_view_callbacks(app: Dash) -> None:
                         messages += "✅"
                         set_progress((100 * i / n_files, messages, color))
                     except StopIteration:
-                        logger.warning("No HDF5 file found for %s", sample)
+                        logger.warning("No HDF5 file found for %s", sample_id)
                         messages += "⚠️"
                         warnings.append("HDF5")
                         color = "orange"
                         set_progress((100 * i / n_files, messages, color))
                     except Exception:
-                        logger.exception("Unexpected error processing HDF5 for sample %s", sample)
+                        logger.exception("Unexpected error processing HDF5 for sample %s", sample_id)
                         messages += "⁉️"
                         errors.append("HDF5")
                         color = "orange"
@@ -1628,7 +1629,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                         json_file = next(Path(sample_folder).glob("cycles.*.json"))
                         with json_file.open("rb") as f:
                             json_bytes = f.read()
-                        rel_file_path = sample + "/" + json_file.name
+                        rel_file_path = sample_id + "/" + json_file.name
                         zf.writestr(rel_file_path, json_bytes)
                         messages += "✅"
                         rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
@@ -1637,9 +1638,9 @@ def register_db_view_callbacks(app: Dash) -> None:
                                 "@id": rel_file_path,
                                 "@type": "File",
                                 "encodingFormat": "text/json",
-                                "about": {"@id": ccid if ccid else sample},
+                                "about": {"@id": ccid if ccid else sample_id},
                                 "description": (
-                                    f"Summary data from battery cycling for sample: '{sample}'"
+                                    f"Summary data from battery cycling for sample: '{sample_id}'"
                                     + (f" with CCID: '{ccid}'. " if ccid else ". ")
                                     + "File is in JSON format, top level keys are 'data' and 'metadata'. "
                                     "'data' contains lists with per-cycle summary stastics, e.g. discharge capacity. "
@@ -1650,13 +1651,13 @@ def register_db_view_callbacks(app: Dash) -> None:
                         battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
                         set_progress((100 * i / n_files, messages, color))
                     except StopIteration:
-                        logger.warning("No JSON summary file found for %s", sample)
+                        logger.warning("No JSON summary file found for %s", sample_id)
                         messages += "⚠️"
                         warnings.append("JSON summary")
                         color = "orange"
                         set_progress((100 * i / n_files, messages, color))
                     except Exception:
-                        logger.exception("Unexpected error processing JSON summary for sample %s", sample)
+                        logger.exception("Unexpected error processing JSON summary for sample %s", sample_id)
                         messages += "⁉️"
                         errors.append("JSON summary")
                         color = "orange"
@@ -1673,7 +1674,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                         df.to_parquet(buffer, index=False)  # or index=True, depending on your needs
                         buffer.seek(0)
                         parquet_name = hdf5_file.with_suffix(".bdf.parquet").name
-                        rel_file_path = sample + "/" + parquet_name
+                        rel_file_path = sample_id + "/" + parquet_name
                         zf.writestr(rel_file_path, buffer.read())
                         messages += "✅"
                         rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
@@ -1682,9 +1683,9 @@ def register_db_view_callbacks(app: Dash) -> None:
                                 "@id": rel_file_path,
                                 "@type": "File",
                                 "encodingFormat": "application/vnd.apache.parquet",
-                                "about": {"@id": ccid if ccid else sample},
+                                "about": {"@id": ccid if ccid else sample_id},
                                 "description": (
-                                    f"Time-series battery cycling data for sample: '{sample}'"
+                                    f"Time-series battery cycling data for sample: '{sample_id}'"
                                     + (f" with barcode: '{ccid}'. " if ccid else ". ")
                                     + "Data is parquet format, columns are 'battery data format' (BDF) compliant."
                                 ),
@@ -1693,13 +1694,13 @@ def register_db_view_callbacks(app: Dash) -> None:
                         battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
                         set_progress((100 * i / n_files, messages, color))
                     except StopIteration:
-                        logger.warning("No HDF5 file found for %s", sample)
+                        logger.warning("No HDF5 file found for %s", sample_id)
                         messages += "⚠️"
                         warnings.append("BDF")
                         color = "orange"
                         set_progress((100 * i / n_files, messages, color))
                     except Exception:
-                        logger.exception("Unexpected error processing BDF file for sample %s", sample)
+                        logger.exception("Unexpected error processing BDF file for sample %s", sample_id)
                         messages += "⁉️"
                         errors.append("BDF")
                         color = "orange"
@@ -1731,7 +1732,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                                 )
 
                         # Add unicycler protocols
-                        db_jobs = get_unicycler_protocols(sample)
+                        db_jobs = get_unicycler_protocols(sample_id)
                         if db_jobs:
                             ontologized_protocols = []
                             for db_job in db_jobs:
@@ -1765,18 +1766,22 @@ def register_db_view_callbacks(app: Dash) -> None:
                             battinfo_json = bu.merge_jsonld_on_type([battinfo_json, authors])
 
                         # Add publication info
-                        if pub_info.get("publication_doi_url") and pub_info.get("sample_to_fig") and (ccid or sample):
+                        if (
+                            pub_info.get("publication_doi_url")
+                            and pub_info.get("sample_to_fig")
+                            and (ccid or sample_id)
+                        ):
                             publication_extras = bu.add_associated_media(
                                 pub_info["publication_doi_url"],
                                 pub_info["sample_to_fig"],
                                 ccid,
-                                sample,
+                                sample_id,
                             )
                             battinfo_json = bu.merge_jsonld_on_type([battinfo_json, publication_extras])
 
                         # Save the JSON-LD
-                        jsonld_name = f"metadata.{sample}.jsonld"
-                        rel_file_path = sample + "/" + jsonld_name
+                        jsonld_name = f"metadata.{sample_id}.jsonld"
+                        rel_file_path = sample_id + "/" + jsonld_name
                         zf.writestr(rel_file_path, json.dumps(battinfo_json, indent=4))
                         messages += "✅"
                         rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
@@ -1785,9 +1790,9 @@ def register_db_view_callbacks(app: Dash) -> None:
                                 "@id": rel_file_path,
                                 "@type": "File",
                                 "encodingFormat": "text/json",
-                                "about": {"@id": ccid if ccid else sample},
+                                "about": {"@id": ccid if ccid else sample_id},
                                 "description": (
-                                    f"Metadata for sample: '{sample}'"
+                                    f"Metadata for sample: '{sample_id}'"
                                     + (f" with CCID: '{ccid}'. " if ccid else ". ")
                                     + "File is a BattINFO JSON-LD, describing the sample and experiment."
                                 ),
@@ -1795,13 +1800,13 @@ def register_db_view_callbacks(app: Dash) -> None:
                         )
                         set_progress((100 * i / n_files, messages, color))
                     except StopIteration:
-                        logger.warning("No BattINFO JSON-LD file found for %s", sample)
+                        logger.warning("No BattINFO JSON-LD file found for %s", sample_id)
                         messages += "⚠️"
                         warnings.append("JSON-LD")
                         color = "orange"
                         set_progress((100 * i / n_files, messages, color))
                     except Exception:
-                        logger.exception("Unexpected error processing JSON-LD file for sample %s", sample)
+                        logger.exception("Unexpected error processing JSON-LD file for sample %s", sample_id)
                         messages += "⁉️"
                         errors.append("JSON-LD")
                         color = "orange"
