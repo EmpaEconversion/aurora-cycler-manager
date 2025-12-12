@@ -230,6 +230,8 @@ def create_database(force: bool = False) -> None:
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_jobs_job_on_server ON jobs (`Job ID on server`, `Server label`)",
+            "CREATE INDEX IF NOT EXISTS idx_pipelines_sample_id ON pipelines `Sample ID`"
+            "CREATE INDEX IF NOT EXISTS idx_pipelines_job_id ON pipelines `Job ID`",
         )
         cursor.execute(
             "CREATE TABLE IF NOT EXISTS pipelines ("
