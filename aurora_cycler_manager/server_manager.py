@@ -17,7 +17,7 @@ import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from time import sleep, time
-from typing import Literal
+from typing import Any, Literal
 
 import paramiko
 from aurora_unicycler import Protocol
@@ -164,10 +164,10 @@ class _Sample:
     def __init__(self, sample_id: str) -> None:
         """Initialize the _Sample object."""
         self.id = sample_id
-        self.pipeline = None
-        self._data = {}
+        self.pipeline: _Pipeline | None = None
+        self._data: dict[str, str] = {}
 
-    def get(self, key: str) -> str | None:
+    def get(self, key: str) -> Any:  # noqa: ANN401
         """Get a property of the sample from the database.
 
         Args:
@@ -295,7 +295,7 @@ class _CyclingJob:
         if not sample.pipeline:
             msg = f"Sample {sample.id} is not loaded on any pipeline."
             raise ValueError(msg)
-        self.pipeline: _Pipeline = sample.pipeline
+        self.pipeline: _Pipeline | None = sample.pipeline
         self.capacity_Ah = capacity_Ah
         self.comment = comment
         self.unicycler_protocol: str | None = None
@@ -305,9 +305,13 @@ class _CyclingJob:
         """Submit the job to the server."""
         # Update the job table in the database
 
-        self.job_id, self.jobid_on_server, json_string = self.pipeline.server.submit(
-            self.sample.id, self.capacity_Ah, self.payload, self.pipeline.name
-        )
+        if self.pipeline and self.pipeline.server:
+            self.job_id, self.jobid_on_server, json_string = self.pipeline.server.submit(
+                self.sample.id, self.capacity_Ah, self.payload, self.pipeline.name
+            )
+        else:
+            msg = f"Sample {self.sample.id} is not loaded on any pipeline."
+            raise ValueError(msg)
 
         if self.job_id and self.jobid_on_server:
             dbf.execute_sql(
@@ -359,9 +363,11 @@ class _CyclingJob:
             str: The output from the server cancel command
 
         """
-        return self.sample.pipeline.server.cancel(
-            self.job_id, self.jobid_on_server, self.sample.id, self.sample.pipeline.name
-        )
+        if not self.pipeline or not self.pipeline.server:
+            msg = f"Sample {self.sample.id} is not loaded on any pipeline."
+            raise ValueError(msg)
+
+        return self.pipeline.server.cancel(self.job_id, self.jobid_on_server, self.sample.id, self.pipeline.name)
 
     @classmethod
     def from_id(cls, job_id: str) -> "_CyclingJob":
@@ -493,7 +499,7 @@ class ServerManager:
                 )
             conn.commit()
 
-    def load(self, sample_id: str, pipeline: str) -> None:
+    def load(self, sample_id: str, pipeline_id: str) -> None:
         """Load a sample on a pipeline.
 
         The appropriate server is found based on the pipeline, and the sample is loaded.
@@ -501,12 +507,12 @@ class ServerManager:
         Args:
             sample_id (str):
                 The sample ID to load. Must exist in samples table of database
-            pipeline (str):
+            pipeline_id (str):
                 The pipeline to load the sample on. Must exist in pipelines table of database
 
         """
         sample = _Sample.from_id(sample_id)
-        pipeline = _Pipeline.from_id(pipeline)
+        pipeline = _Pipeline.from_id(pipeline_id)
         pipeline.load(sample)
 
     def eject(self, sample_id: str, pipeline_id: str) -> None:
@@ -548,6 +554,10 @@ class ServerManager:
 
         """
         sample = _Sample.from_id(sample_id)
+
+        if isinstance(capacity_Ah, str):
+            capacity_Ah = sample.get_sample_capacity(capacity_Ah)
+
         cycling_job = _CyclingJob(
             sample=sample,
             job_name=f"Job for sample {sample.id}",

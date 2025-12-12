@@ -92,12 +92,12 @@ class CyclerServer:
         return True
 
     def submit(
-        self, sample: str, capacity_Ah: float, payload: str | dict | Path, pipeline: str
+        self, sample: str, capacity_Ah: float, payload: str | dict | Path | None, pipeline: str
     ) -> tuple[str, str, str]:
         """Submit a job to the server."""
         raise NotImplementedError
 
-    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
+    def cancel(self, jobid: str | None, job_id_on_server: str | None, sampleid: str, pipeline: str | None) -> None:
         """Cancel a job on the server."""
         raise NotImplementedError
 
@@ -126,7 +126,7 @@ class NewareServer(CyclerServer):
         self,
         sample: str,
         capacity_Ah: float,
-        payload: str | dict | Path,
+        payload: str | dict | Path | None,
         pipeline: str,
     ) -> tuple[str, str, str]:
         """Submit a job to the server.
@@ -212,7 +212,7 @@ class NewareServer(CyclerServer):
         return jobid, jobid_on_server, xml_string
 
     @override
-    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
+    def cancel(self, jobid: str | None, job_id_on_server: str | None, sampleid: str, pipeline: str | None) -> None:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.
@@ -269,7 +269,7 @@ class NewareServer(CyclerServer):
 
         return None  # Neware does not have a snapshot status
 
-    def _get_job_id(self, pipeline: str) -> str:
+    def _get_job_id(self, pipeline: str | None) -> str:
         """Get the testid for a pipeline."""
         output = self._command(f"neware get-job-id {pipeline} --full-id")
         return json.loads(output).get(pipeline)
@@ -298,7 +298,7 @@ class BiologicServer(CyclerServer):
         self,
         sample: str,
         capacity_Ah: float,
-        payload: str | dict | Path,
+        payload: str | dict | Path | None,
         pipeline: str,
     ) -> tuple[str, str, str]:
         """Submit a job to the server.
@@ -382,7 +382,7 @@ class BiologicServer(CyclerServer):
         return jobid, jobid_on_server, mps_string
 
     @override
-    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
+    def cancel(self, jobid: str | None, job_id_on_server: str | None, sampleid: str, pipeline: str | None) -> None:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.
