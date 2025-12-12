@@ -15,6 +15,7 @@ import logging
 import sqlite3
 import traceback
 from datetime import datetime, timezone
+from functools import cached_property
 from pathlib import Path
 from time import sleep, time
 from typing import Any, Literal
@@ -24,6 +25,7 @@ from aurora_unicycler import Protocol
 
 from aurora_cycler_manager import analysis, config, cycler_servers
 from aurora_cycler_manager import database_funcs as dbf
+from aurora_cycler_manager.cycler_servers import CyclerServer
 from aurora_cycler_manager.utils import run_from_sample
 
 SERVER_CORRESPONDENCE = {
@@ -68,15 +70,20 @@ def find_server(label: str) -> cycler_servers.CyclerServer:
 class _Pipeline:
     """A class representing a pipeline in the database."""
 
-    def __init__(self, pipeline_name: str, server_label: str) -> None:
+    def __init__(self, pipeline_name: str, server_label: str, sample: "_Sample | None" = None) -> None:
         """Initialize the _Pipeline object."""
         self.name = pipeline_name
-        self.server = find_server(server_label)
-        self.sample: _Sample | None = None
+        self.server_label = server_label
+        self.sample = sample
+
+    @cached_property
+    def server(self) -> CyclerServer:
+        """Lazy-load the server object."""
+        return find_server(self.server_label)
 
     @classmethod
     def from_id(cls, pipeline_name: str) -> "_Pipeline":
-        """Create a _Pipeline object from the database.
+        """Create a _Pipeline object from a pipeline ID.
 
         Args:
             pipeline_name : str
@@ -94,6 +101,17 @@ class _Pipeline:
             msg = f"Pipeline '{pipeline_name}' not found in the database."
             raise ValueError(msg)
         return cls(pipeline_name, result[0][1])
+
+    @classmethod
+    def from_sample(cls, sample: "_Sample") -> "_Pipeline | None":
+        """Create a _Pipeline object from a Sample object."""
+        result = dbf.execute_sql(
+            "SELECT `Pipeline`, `Server label` FROM pipelines WHERE `Sample ID` = ?",
+            (sample.id,),
+        )
+        if not result:
+            return None
+        return cls(result[0][0], result[0][1], sample)
 
     def load(self, sample: "_Sample") -> None:
         """Load the sample on a pipeline.
@@ -158,7 +176,6 @@ class _Sample:
     def __init__(self, sample_id: str) -> None:
         """Initialize the _Sample object."""
         self.id = sample_id
-        self.pipeline: _Pipeline | None = None
         self._data: dict[str, str] = {}
 
     def get(self, key: str) -> Any:  # noqa: ANN401
@@ -245,19 +262,14 @@ class _Sample:
         """
         sample = cls(sample_id)
 
-        # Check if the sample is loaded on a pipeline.
-        result = dbf.execute_sql(
-            "SELECT `Pipeline` FROM pipelines WHERE `Sample ID` = ?",
-            (sample_id,),
-        )
-
-        if result:
-            sample.pipeline = _Pipeline.from_id(result[0][0])
-
         # Load sample properties into _data dict
         sample._data = dbf.get_sample_data(sample_id)
 
         return sample
+
+    @cached_property
+    def pipeline(self) -> "_Pipeline | None":
+        return _Pipeline.from_sample(self)
 
     def safe_get_sample_capacity(
         self,
