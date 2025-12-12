@@ -126,7 +126,7 @@ class _Pipeline:
             (self.sample.id, self.name),
         )
 
-    def eject(self, sample: "_Sample | None" = None) -> None:
+    def eject(self) -> None:
         """Eject the sample from a pipeline."""
         # Find server associated with pipeline
         logger.info("Ejecting sample from the pipeline %s on server: %s", self.name, self.server.label)
@@ -135,12 +135,6 @@ class _Pipeline:
             (True, self.name),
         )
         if self.sample:
-            if sample and self.sample.id != sample.id:
-                msg = (
-                    f"The pipeline {self.name} on server {self.server.label} has"
-                    f" sample {self.sample.id} loaded, not {sample.id}."
-                )
-                raise ValueError(msg)
             self.sample.pipeline = None
             self.sample = None
 
@@ -509,19 +503,16 @@ class ServerManager:
         pipeline = _Pipeline.from_id(pipeline_id)
         pipeline.load(sample)
 
-    def eject(self, sample_id: str, pipeline_id: str) -> None:
+    def eject(self, pipeline_id: str) -> None:
         """Eject a sample from a pipeline.
 
         Args:
-            sample_id (str):
-                The sample ID to eject. Must exist in samples table of database
             pipeline_id (str):
                 The pipeline to eject the sample from, must exist in pipelines table of database
 
         """
-        sample = _Sample.from_id(sample_id)
         pipeline = _Pipeline.from_id(pipeline_id)
-        pipeline.eject(sample)
+        pipeline.eject()
 
     def submit(
         self,
