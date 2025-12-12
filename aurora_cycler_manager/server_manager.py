@@ -15,6 +15,7 @@ import logging
 import sqlite3
 import traceback
 from datetime import datetime, timezone
+from functools import cached_property
 from pathlib import Path
 from time import sleep, time
 from typing import Any, Literal
@@ -24,6 +25,7 @@ from aurora_unicycler import Protocol
 
 from aurora_cycler_manager import analysis, config, cycler_servers
 from aurora_cycler_manager import database_funcs as dbf
+from aurora_cycler_manager.cycler_servers import CyclerServer
 from aurora_cycler_manager.utils import run_from_sample
 
 SERVER_CORRESPONDENCE = {
@@ -71,8 +73,13 @@ class _Pipeline:
     def __init__(self, pipeline_name: str, server_label: str) -> None:
         """Initialize the _Pipeline object."""
         self.name = pipeline_name
-        self.server = find_server(server_label)
+        self.server_label = server_label
         self.sample: _Sample | None = None
+
+    @cached_property
+    def server(self) -> CyclerServer:
+        """Lazy-load the server object."""
+        return find_server(self.server_label)
 
     @classmethod
     def from_id(cls, pipeline_name: str) -> "_Pipeline":
