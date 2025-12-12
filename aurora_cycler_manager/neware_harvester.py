@@ -214,7 +214,7 @@ def snapshot_raw_data(job_id: str) -> Path | None:
 
     # Get the server from the config
     server = next(
-        (server for server in CONFIG["Neware harvester"]["Servers"] if server["label"] == job_data["Server label"]),
+        (server for server in CONFIG.get("Servers", []) if server["label"] == job_data["Server label"]),
         None,
     )
     if not server:
@@ -223,7 +223,7 @@ def snapshot_raw_data(job_id: str) -> Path | None:
     server_hostname = server["hostname"]
     server_username = server["username"]
     server_shell_type = server["shell_type"]
-    raw_data_folder = server.get("Neware raw folder location", "C:/Program Files (x86)/NEWARE/BTSServer80/NdcFile/")
+    raw_data_folder = server.get("neware_raw_data_path", "C:/Program Files (x86)/NEWARE/BTSServer80/NdcFile/")
 
     # Build the paths to check - assumes device type 27
     full_folder = raw_data_folder + submitted
@@ -314,20 +314,43 @@ def snapshot_raw_data(job_id: str) -> Path | None:
 
 
 def harvest_all_neware_files(*, force_copy: bool = False) -> list[Path]:
-    """Get neware files from all servers specified in the config."""
+    """Get neware files from all servers specified in the config.
+
+    Searches in the active "data_path" folder as well as a list of passive
+    "harvester_folders".
+    """
     all_new_files = []
     snapshots_folder = get_neware_snapshot_folder()
-    for server in CONFIG.get("Neware harvester", {}).get("Servers", []):
-        new_files = harvest_neware_files(
-            server_label=server["label"],
-            server_hostname=server["hostname"],
-            server_username=server["username"],
-            server_shell_type=server["shell_type"],
-            server_copy_folder=server["Neware folder location"],
-            local_folder=snapshots_folder,
-            force_copy=force_copy,
-        )
-        all_new_files.extend(new_files)
+
+    # Find all neware servers
+    for server in CONFIG.get("Servers", []):
+        if server.get("server_type") == "neware":
+            # Check activate data path folder
+            if server.get("data_path"):
+                new_files = harvest_neware_files(
+                    server["label"],
+                    server["hostname"],
+                    server["username"],
+                    server["shell_type"],
+                    server["data_path"],
+                    snapshots_folder,
+                    force_copy=force_copy,
+                )
+                all_new_files.extend(new_files)
+
+            # Check passive harvesters
+            for folder in server.get("harvester_folders", []):
+                new_files = harvest_neware_files(
+                    server["label"],
+                    server["hostname"],
+                    server["username"],
+                    server["shell_type"],
+                    folder,
+                    snapshots_folder,
+                    force_copy=force_copy,
+                )
+                all_new_files.extend(new_files)
+
     return all_new_files
 
 
@@ -736,11 +759,7 @@ def update_database_job(
     last_snapshot_uts = filepath.stat().st_birthtime
     last_snapshot = datetime.fromtimestamp(last_snapshot_uts, tz=timezone.utc).isoformat(timespec="seconds")
     server_hostname = next(
-        (
-            server["hostname"]
-            for server in CONFIG.get("Neware harvester", {}).get("Servers", [])
-            if server["label"] == server_label
-        ),
+        (server["hostname"] for server in CONFIG.get("Servers", []) if server["label"] == server_label),
         None,
     )
     if not server_hostname:
@@ -875,10 +894,7 @@ def convert_neware_data(
 
 
 def convert_all_neware_data() -> None:
-    """Convert all neware files to hdf5 files.
-
-    The config file needs a key "Neware harvester" with the keys "Snapshots folder path"
-    """
+    """Convert all neware files to hdf5 files."""
     # Get all xlsx and ndax files in the raw folder recursively
     snapshots_folder = get_neware_snapshot_folder()
     neware_files = [file for file in snapshots_folder.rglob("*") if file.suffix in [".xlsx", ".ndax"]]
