@@ -176,7 +176,6 @@ class _Sample:
     def __init__(self, sample_id: str) -> None:
         """Initialize the _Sample object."""
         self.id = sample_id
-        self.pipeline: _Pipeline | None = None
         self._data: dict[str, str] = {}
 
     def get(self, key: str) -> Any:  # noqa: ANN401
@@ -263,19 +262,14 @@ class _Sample:
         """
         sample = cls(sample_id)
 
-        # Check if the sample is loaded on a pipeline.
-        result = dbf.execute_sql(
-            "SELECT `Pipeline` FROM pipelines WHERE `Sample ID` = ?",
-            (sample_id,),
-        )
-
-        if result:
-            sample.pipeline = _Pipeline.from_id(result[0][0])
-
         # Load sample properties into _data dict
         sample._data = dbf.get_sample_data(sample_id)
 
         return sample
+
+    @cached_property
+    def pipeline(self) -> "_Pipeline | None":
+        return _Pipeline.from_sample(self)
 
     def safe_get_sample_capacity(
         self,
