@@ -46,7 +46,7 @@ from aurora_cycler_manager.database_funcs import (
     update_sample_label,
 )
 from aurora_cycler_manager.eclab_harvester import convert_mpr
-from aurora_cycler_manager.server_manager import ServerManager
+from aurora_cycler_manager.server_manager import ServerManager, _Sample
 from aurora_cycler_manager.utils import run_from_sample
 from aurora_cycler_manager.visualiser.db_batch_edit import (
     batch_edit_layout,
@@ -924,8 +924,8 @@ def register_db_view_callbacks(app: Dash) -> None:
         if not yes_clicks:
             return 0
         for row in selected_rows:
-            logger.info("Ejecting %s", row["Pipeline"])
-            sm.eject(row["Pipeline"])
+            logger.info("Ejecting Sample %s from the Pipeline %s", row["Sample ID"], row["Pipeline"])
+            sm.eject(row["Sample ID"], row["Pipeline"])
         return 1
 
     # Load button pop up, includes dynamic dropdowns for selecting samples to load
@@ -1054,7 +1054,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         if button_id == "submit-button":
             samples = [s.get("Sample ID") for s in selected_rows]
             capacities = {
-                mode: {s: sm.safe_get_sample_capacity(s, mode) for s in samples}
+                mode: {s: _Sample.from_id(s).safe_get_sample_capacity(mode) for s in samples}
                 for mode in ["areal", "mass", "nominal"]
             }
             folder = CONFIG.get("Protocols folder path")
