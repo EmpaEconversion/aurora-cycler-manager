@@ -42,6 +42,7 @@ dependencies = [
     "typing-extensions>=4.15.0",
     "tzlocal>=5.3.1",
     "waitress>=3.0.2",
+    "xlsxwriter>=3.2.9",
     "xmltodict>=0.14.2",
     "yadg>=6.2.2",
 ]
