@@ -94,12 +94,12 @@ class CyclerServer:
         return True
 
     def submit(
-        self, sample: str, capacity_Ah: float, payload: str | dict | Path, pipeline: str
+        self, sample: str, capacity_Ah: float, payload: str | dict | Path | None, pipeline: str
     ) -> tuple[str, str, str]:
         """Submit a job to the server."""
         raise NotImplementedError
 
-    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
+    def cancel(self, jobid: str | None, job_id_on_server: str | None, sampleid: str, pipeline: str | None) -> None:
         """Cancel a job on the server."""
         raise NotImplementedError
 
@@ -128,7 +128,7 @@ class NewareServer(CyclerServer):
         self,
         sample: str,
         capacity_Ah: float,
-        payload: str | dict | Path,
+        payload: str | dict | Path | None,
         pipeline: str,
     ) -> tuple[str, str, str]:
         """Submit a job to the server.
@@ -178,7 +178,7 @@ class NewareServer(CyclerServer):
         xml_string = xml_string.replace("$CAPACITY", str(capacity_mA_s))
 
         # Write the xml string to a temporary file
-        current_datetime = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        current_datetime = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
         try:
             with Path("./temp.xml").open("w", encoding="utf-8") as f:
                 f.write(xml_string)
@@ -186,15 +186,14 @@ class NewareServer(CyclerServer):
             with paramiko.SSHClient() as ssh:
                 ssh_connect(ssh, self.username, self.hostname)
                 with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
-                    remote_xml_dir = "C:/submitted_payloads/"
-                    remote_xml_path = remote_xml_dir + f"{sample}__{current_datetime}.xml"
+                    remote_xml_dir = PureWindowsPath("C:/submitted_payloads/")
+                    remote_xml_path = remote_xml_dir / f"{sample}__{current_datetime}.xml"
                     # Create the directory if it doesn't exist
                     if self.shell_type == "cmd":
                         ssh.exec_command(f'mkdir "{remote_xml_dir!s}"')
                     elif self.shell_type == "powershell":
                         ssh.exec_command(f'New-Item -ItemType Directory -Path "{remote_xml_dir!s}"')
-                    scp.put("./temp.xml", remote_xml_path)
-
+                    scp.put("./temp.xml", remote_xml_path.as_posix())  # SCP hates windows \
             # Submit the file on the remote PC
             output = self._command(f"neware start {pipeline} {sample} {remote_xml_path}")
             # Expect the output to be empty if successful, otherwise raise error
@@ -215,7 +214,7 @@ class NewareServer(CyclerServer):
         return jobid, jobid_on_server, xml_string
 
     @override
-    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
+    def cancel(self, jobid: str | None, job_id_on_server: str | None, sampleid: str, pipeline: str | None) -> None:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.
@@ -232,7 +231,6 @@ class NewareServer(CyclerServer):
             msg = "Pipeline is not running, cannot cancel job"
             raise ValueError(msg)
         # Check that job ID matches
-        output = self._command(f"neware testid {pipeline}")
         full_test_id = self._get_job_id(pipeline)
         if full_test_id != job_id_on_server:
             msg = "Job ID on server does not match Job ID being cancelled"
@@ -273,7 +271,7 @@ class NewareServer(CyclerServer):
 
         return None  # Neware does not have a snapshot status
 
-    def _get_job_id(self, pipeline: str) -> str:
+    def _get_job_id(self, pipeline: str | None) -> str:
         """Get the testid for a pipeline."""
         output = self._command(f"neware get-job-id {pipeline} --full-id")
         return json.loads(output).get(pipeline)
@@ -302,7 +300,7 @@ class BiologicServer(CyclerServer):
         self,
         sample: str,
         capacity_Ah: float,
-        payload: str | dict | Path,
+        payload: str | dict | Path | None,
         pipeline: str,
     ) -> tuple[str, str, str]:
         """Submit a job to the server.
@@ -327,10 +325,10 @@ class BiologicServer(CyclerServer):
                 if not payload.exists():
                     raise FileNotFoundError
                 if payload.suffix == ".json":
-                    with payload.open(encoding="utf-8") as f:
+                    with payload.open() as f:
                         mps_string = Protocol.from_dict(json.load(f), sample, capacity_Ah * 1000).to_biologic_mps()
                 elif payload.suffix == ".mps":
-                    with payload.open(encoding="utf-8") as f:
+                    with payload.open(encoding="cp1252") as f:
                         mps_string = f.read()
                 else:
                     msg = "Payload path must be a path to a unicycler json file or dict, or path to an mps file."
@@ -386,7 +384,7 @@ class BiologicServer(CyclerServer):
         return jobid, jobid_on_server, mps_string
 
     @override
-    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> None:
+    def cancel(self, jobid: str | None, job_id_on_server: str | None, sampleid: str, pipeline: str | None) -> None:
         """Cancel a job on the server.
 
         Use the STOP command on the Neware-api.
@@ -420,10 +418,11 @@ class BiologicServer(CyclerServer):
         pipelines, readys = [], []
         for pip, data in result.items():
             pipelines.append(pip)
-            if data["Status"] in ["Run", "Pause", "Sync"]:  # working\stop\finish\protect\pause
-                readys.append(False)  # Job is running - not ready
-            else:
-                readys.append(True)  # Job is not running - ready
+            # Biologic status can be:
+            # Stop/Run/Pause/Sync/Stop_rec1/Stop_rec2/Pause_rec
+            # _rec means it is still recording data
+            # Pipeline is only ready is status is 'Stop'
+            readys.append(data["Status"] == "Stop")
         return {
             "pipeline": pipelines,
             "sampleid": [None] * len(pipelines),
@@ -479,7 +478,10 @@ class BiologicServer(CyclerServer):
             # Convert copied files to hdf5
             for local_file in local_files:
                 if local_file.suffix == ".mpr":
-                    convert_mpr(local_file, job_id=jobid, update_database=True)
+                    try:
+                        convert_mpr(local_file, job_id=jobid, update_database=True)
+                    except Exception:
+                        logger.exception("Error converting %s", local_file.name)
 
         return None
 

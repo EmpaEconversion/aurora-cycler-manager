@@ -388,6 +388,15 @@ def dedupe_jsonld_list(lst: list) -> list:
     return deduped
 
 
+def make_test_object(battinfo_jsonld: dict) -> dict:
+    """Put BattINFO coin cell description inside a BatteryTest object."""
+    return {
+        "@context": battinfo_jsonld.pop("@context"),
+        "@type": "BatteryTest",
+        "hasTestObject": battinfo_jsonld,
+    }
+
+
 def merge_jsonld(json1: dict, json2: dict) -> dict:
     """Merge two JSON-LD structures assuming they reference the SAME NODE."""
     if not isinstance(json1, dict) or not isinstance(json2, dict):
@@ -422,20 +431,15 @@ def generate_battery_test(ontologized_protocols: dict | list[dict]) -> dict:
                 "rdfs": "https://www.w3.org/TR/rdf-schema/#ch_comment",
             },
         ],
-        "@type": "CoinCell",
-        "@reversed": {
-            "hasTestObject": {
-                "@type": "BatteryTest",
-                "hasMeasurementParameter": {
-                    "@type": ["ConstantCurrentConstantVoltageCycling", "IterativeWorkflow"],
-                    "rdfs:label": "GeneratedBatteryTestProcedure",
-                    "hasLab": {
-                        "@type": "Laboratory",
-                        "@id": "https://www.wikidata.org/wiki/Q683116",
-                        "rdfs:label": "Empa",
-                    },
-                    "hasTask": ontologized_protocols,
-                },
-            }
+        "@type": "BatteryTest",
+        "hasMeasurementParameter": {
+            "@type": ["ConstantCurrentConstantVoltageCycling", "IterativeWorkflow"],
+            "rdfs:label": "GeneratedBatteryTestProcedure",
+            "hasLab": {
+                "@type": "Laboratory",
+                "@id": "https://www.wikidata.org/wiki/Q683116",
+                "rdfs:label": "Empa",
+            },
+            "hasTask": ontologized_protocols,
         },
     }

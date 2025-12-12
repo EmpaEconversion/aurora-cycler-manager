@@ -169,40 +169,41 @@ def get_mprs(
 def get_all_mprs(*, force_copy: bool = False) -> list[str]:
     """Get all MPR files from the folders specified in the config.
 
-    The config file needs a key "EC-lab harvester" with a key "Snapshots folder
-    path" with a location to save to, and a key "Servers" containing a list of
-    dictionaries with the keys "label" and "EC-lab folder location".
-    The "label" must match a server in the "Servers" list in the main config.
+    Searches in the active "data_path" folder as well as a list of passive
+    "harvester_folders".
     """
     all_new_files = []
     snapshot_folder = get_eclab_snapshot_folder()
 
-    # Check active biologic servers
-    for server in CONFIG.get("Servers", {}):
+    # Find all biologic servers
+    for server in CONFIG.get("Servers", []):
         if server.get("server_type") == "biologic":
-            new_files = get_mprs(
-                server["label"],
-                server["hostname"],
-                server["username"],
-                server["shell_type"],
-                server["data_path"],
-                snapshot_folder,
-                force_copy=force_copy,
-            )
-            all_new_files.extend(new_files)
+            # Check active data path folder
+            if server.get("data_path"):
+                new_files = get_mprs(
+                    server["label"],
+                    server["hostname"],
+                    server["username"],
+                    server["shell_type"],
+                    server["data_path"],
+                    snapshot_folder,
+                    force_copy=force_copy,
+                )
+                all_new_files.extend(new_files)
 
-    # Check passive EC-lab harvesters
-    for server in CONFIG.get("EC-lab harvester", {}).get("Servers", []):
-        new_files = get_mprs(
-            server["label"],
-            server["hostname"],
-            server["username"],
-            server["shell_type"],
-            server["EC-lab folder location"],
-            snapshot_folder,
-            force_copy=force_copy,
-        )
-        all_new_files.extend(new_files)
+            # Check passive harvesters
+            for folder in server.get("harvester_folders", []):
+                new_files = get_mprs(
+                    server["label"],
+                    server["hostname"],
+                    server["username"],
+                    server["shell_type"],
+                    folder,
+                    snapshot_folder,
+                    force_copy=force_copy,
+                )
+                all_new_files.extend(new_files)
+
     return all_new_files
 
 
@@ -462,7 +463,7 @@ def get_sampleid_from_mpr(mpr_rel_path: str | Path) -> tuple[str, str]:
     # If that did not work, this may be 'out of bounds' data
 
     # A run ID lookup table is defined in case run IDs are wrong on the server
-    run_id_lookup = CONFIG.get("EC-lab harvester", {}).get("Run ID lookup", {})
+    run_id_lookup = CONFIG.get("Run ID lookup", {})
 
     # Get valid run IDs from the database
     with sqlite3.connect(CONFIG["Database path"]) as conn:
@@ -502,10 +503,8 @@ def get_sampleid_from_mpr(mpr_rel_path: str | Path) -> tuple[str, str]:
 def convert_all_mprs() -> None:
     """Convert all raw .mpr files to .h5.
 
-    The config file needs a key "EC lab harvester" with the keys "Snapshots folder path".
-
-    "EC lab harvester" can optionally contain "Run ID lookup" with a dictionary of run ID
-    lookups for folders that are named differently to run ID on the server.
+    Looks in configuration for "Servers" with "server_type": "biologic"
+    Gets data from "data_path" and "harvester_folders" list
     """
     # walk through raw_folder and get the sample ID
     snapshot_folder = get_eclab_snapshot_folder()

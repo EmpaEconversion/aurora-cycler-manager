@@ -16,6 +16,33 @@ from aurora_cycler_manager.utils import run_from_sample
 
 CONFIG = get_config()
 
+
+def execute_sql(query: str, params: tuple | None = None) -> list[tuple]:
+    """Execute a query on the database.
+
+    Args:
+        query : str
+            The query to execute
+        params : tuple, optional
+            The parameters to pass to the query
+
+    Returns:
+        list[tuple] : the result of the query
+
+    """
+    commit_keywords = ["UPDATE", "INSERT", "DELETE", "REPLACE", "CREATE", "DROP", "ALTER"]
+    commit = any(keyword in query.upper() for keyword in commit_keywords)
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cursor = conn.cursor()
+        if params is not None:
+            cursor.execute(query, params)
+        else:
+            cursor.execute(query)
+        if commit:
+            conn.commit()
+        return cursor.fetchall()
+
+
 ### SAMPLES ###
 
 
@@ -227,24 +254,6 @@ def get_all_sampleids() -> list[str]:
         return [row[0] for row in cursor.fetchall()]
 
 
-def get_job_data(job_id: str) -> dict:
-    """Get all data about a job from the database."""
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM jobs WHERE `Job ID`=?", (job_id,))
-        result = cursor.fetchone()
-        if not result:
-            msg = f"Job ID '{job_id}' not found in the database"
-            raise ValueError(msg)
-        job_data = dict(result)
-        # Convert json strings to python objects
-        payload = job_data.get("Payload")
-        if payload:
-            job_data["Payload"] = json.loads(payload)
-    return job_data
-
-
 def get_sample_data(sample_id: str) -> dict:
     """Get all data about a sample from the database."""
     with sqlite3.connect(CONFIG["Database path"]) as conn:
@@ -330,6 +339,65 @@ def remove_batch(batch_name: str) -> None:
 
 
 ### JOBS ###
+
+
+def get_job_data(job_id: str) -> dict:
+    """Get all data about a job from the database."""
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM jobs WHERE `Job ID`=?", (job_id,))
+        result = cursor.fetchone()
+        if not result:
+            msg = f"Job ID '{job_id}' not found in the database"
+            raise ValueError(msg)
+        job_data = dict(result)
+        # Convert json strings to python objects
+        payload = job_data.get("Payload")
+        if payload and payload.startswith(("[", "{")):
+            job_data["Payload"] = json.loads(payload)
+    return job_data
+
+
+def check_job_running(job_id: str) -> bool:
+    """Check if a job is currently on a pipeline."""
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT 1 FROM pipelines WHERE `Job ID` = ? LIMIT 1",
+            (job_id,),
+        )
+        return cursor.fetchone() is not None
+
+
+def get_job_id_from_server(server_label: str, job_id_on_server: str) -> str:
+    """Get the job ID from server label and job ID on server."""
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT `Job ID` FROM jobs WHERE `Job ID on server`=? AND `Server label`=?",
+            (job_id_on_server, server_label),
+        )
+        result = cursor.fetchone()
+    if result:
+        return result[0]
+    msg = f"No Job ID found for server {server_label}: {job_id_on_server}"
+    raise ValueError(msg)
+
+
+def get_or_create_job_id_from_server(server_label: str, job_id_on_server: str) -> str:
+    """Get the job ID from server label and job ID on server, create new Job ID if it doesn't exist."""
+    try:
+        job_id = get_job_id_from_server(server_label, job_id_on_server)
+    except ValueError:
+        job_id = str(uuid.uuid4())
+        with sqlite3.connect(CONFIG["Database path"]) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO Jobs (`Job ID`, `Job ID on server`, `Server label`) VALUES (?,?,?)",
+                (job_id, job_id_on_server, server_label),
+            )
+    return job_id
 
 
 def get_unicycler_protocols(sample_id: str) -> list[dict]:

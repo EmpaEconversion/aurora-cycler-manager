@@ -59,34 +59,12 @@ def default_config(base_dir: Path) -> dict:
                 "server_type": "neware or biologic",
                 "shell_type": "powershell or cmd - changes some commands",
                 "command_prefix": "this is put before any command, e.g. conda activate my_env ; ",
-                "command_suffix": "",
+                "command_suffix": "this is put after any command",
+                "harvester_folders": ["path/to/additional/passive/folders/to/scrape"],
+                "data_path": "C:/aurora/data/",
+                "neware_raw_data_path": "neware-specific raw ndc path, usually in install folder /BTSServer80/NdcFile/",
             },
         ],
-        "EC-lab harvester": {
-            "Servers": [
-                {
-                    "label": "example-server",
-                    "hostname": "example-hostname",
-                    "username": "username on remote server",
-                    "shell_type": "powershell or cmd",
-                    "EC-lab folder location": "C:/where/data/is/saved",
-                },
-            ],
-            "run_id_lookup": {
-                "folder name on server": "run_id in database",
-            },
-        },
-        "Neware harvester": {
-            "Servers": [
-                {
-                    "label": "example-server",
-                    "hostname": "example-hostname",
-                    "username": "username on remote server",
-                    "shell_type": "cmd",
-                    "Neware folder location": "C:/where/data/is/saved/",
-                },
-            ],
-        },
         "User mapping": {
             "short_name": "full_name",
         },
@@ -251,6 +229,9 @@ def create_database(force: bool = False) -> None:
             ")",
         )
         cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_jobs_job_on_server ON jobs (`Job ID on server`, `Server label`)",
+        )
+        cursor.execute(
             "CREATE TABLE IF NOT EXISTS pipelines ("
             "`Pipeline` VARCHAR(50) PRIMARY KEY, "
             "`Sample ID` VARCHAR(255),"
@@ -310,6 +291,7 @@ def create_database(force: bool = False) -> None:
             "`Server label` TEXT, "
             "`Server hostname` TEXT, "
             "`Folder` TEXT, "
+            "`Last snapshot` DATETIME, "
             "UNIQUE(`Server label`, `Server hostname`, `Folder`)"
             ")",
         )
