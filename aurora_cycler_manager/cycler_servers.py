@@ -14,6 +14,8 @@ These classes are used by server_manager.
 import base64
 import json
 import logging
+import subprocess
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
@@ -487,3 +489,78 @@ class BiologicServer(CyclerServer):
         """Get the testid for a pipeline."""
         output = self._command(f"biologic get-job-id {pipeline} --ssh")
         return json.loads(output).get(pipeline)
+
+
+class NewareAiidaServer(CyclerServer):
+    """Server class for Neware servers accessed through AiiDA, implements all the methods in CyclerServer.
+
+    Used by server_manager to interact with Neware servers, should not be instantiated directly.
+
+    A Neware server is a PC running Neware BTS 8.0 with the API enabled and aurora-neware CLI
+    installed. The 'neware' CLI command should be accessible in the PATH. If it is not by default,
+    use the 'command_prefix' in the shared config to add it to the PATH.
+
+    """
+
+    @override
+    def submit(
+        self, sample: str, capacity_Ah: float, payload: str | dict | Path, pipeline: str
+    ) -> tuple[str, str, str]:
+        """Submit a job to the server.
+
+        Use the start command on the aurora-neware CLI installed on Neware machine.
+        """
+        # Open a temporary folder and dump the content of payload to a json file there
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            json_path = Path(tmpdirname) / "payload.json"
+            with open(json_path, "w") as f:
+                json.dump(payload, f)
+
+            # Submit the command using shell
+            shell_command = f"aiida-neware neware@neware-001 {json_path} {pipeline}"
+            activate_script = Path("/home/lab131/aiida-venv") / "bin" / "activate"
+            command_to_run = f"source {activate_script} && {shell_command}"
+            result = subprocess.run(  # noqa: S602
+                command_to_run, check=False, shell=True, executable="/bin/bash", capture_output=True, text=True
+            )
+            unique_uuid = result.stdout.split()[0]
+
+        return unique_uuid, None, json.dumps(payload)
+
+    @override
+    def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
+        """Cancel a job on the server.
+
+        Use the STOP command on the Neware-api.
+        """
+        activate_script = Path("/home/lab131/aiida-venv") / "bin" / "activate"
+        command_to_run = f"source {activate_script} && verdi process kill {jobid}"
+        subprocess.run(command_to_run, check=False, shell=True, executable="/bin/bash", capture_output=True)  # noqa: S602
+        return f"Request to stop pipeline {pipeline} on Neware was sent."
+
+    def get_pipelines(self) -> dict:
+        """Get the status of all pipelines on the server."""
+        result = json.loads(self._command("neware status"))
+        # result is a dict with keys=pipeline and value a dict of stuff
+        # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
+        pipelines, sampleids, readys = [], [], []
+        for pip, data in result.items():
+            pipelines.append(pip)
+            if data["workstatus"] in ["working", "pause", "protect"]:  # working\stop\finish\protect\pause
+                sampleids.append(data["barcode"])
+                readys.append(False)
+            else:
+                sampleids.append(None)
+                readys.append(True)
+        return {"pipeline": pipelines, "sampleid": sampleids, "jobid": [None] * len(pipelines), "ready": readys}
+
+    @override
+    def snapshot(
+        self,
+        sample_id: str,
+        jobid: str,
+        jobid_on_server: str,
+        get_raw: bool = False,
+    ) -> str | None:
+        """Save a snapshot of a job on the server and download it to the local machine."""
+        return None  # Neware does not have a snapshot status like tomato
