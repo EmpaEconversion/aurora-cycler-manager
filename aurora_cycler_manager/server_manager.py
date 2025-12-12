@@ -169,7 +169,7 @@ class _Sample:
                 The property name to get.
 
         Returns:
-            str or None: The property value, or None if not found.
+            Any or None: The property value, or None if not found.
 
         """
         return self._data.get(key)
