@@ -307,7 +307,7 @@ class _CyclingJob:
             msg = f"Sample {self.sample.id} is not loaded on any pipeline."
             raise ValueError(msg)
 
-        if self.job_id and self.jobid_on_server:
+        if self.job_id:
             dbf.execute_sql(
                 "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Server hostname`, `Job ID on server`, "
                 "`Pipeline`, `Submitted`, `Payload`, `Unicycler protocol`, `Capacity (mAh)`, `Comment`) "
