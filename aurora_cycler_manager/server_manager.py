@@ -70,11 +70,11 @@ def find_server(label: str) -> cycler_servers.CyclerServer:
 class _Pipeline:
     """A class representing a pipeline in the database."""
 
-    def __init__(self, pipeline_name: str, server_label: str) -> None:
+    def __init__(self, pipeline_name: str, server_label: str, sample: "_Sample | None" = None) -> None:
         """Initialize the _Pipeline object."""
         self.name = pipeline_name
         self.server_label = server_label
-        self.sample: _Sample | None = None
+        self.sample = sample
 
     @cached_property
     def server(self) -> CyclerServer:
@@ -83,7 +83,7 @@ class _Pipeline:
 
     @classmethod
     def from_id(cls, pipeline_name: str) -> "_Pipeline":
-        """Create a _Pipeline object from the database.
+        """Create a _Pipeline object from a pipeline ID.
 
         Args:
             pipeline_name : str
@@ -101,6 +101,17 @@ class _Pipeline:
             msg = f"Pipeline '{pipeline_name}' not found in the database."
             raise ValueError(msg)
         return cls(pipeline_name, result[0][1])
+
+    @classmethod
+    def from_sample(cls, sample: "_Sample") -> "_Pipeline | None":
+        """Create a _Pipeline object from a Sample object."""
+        result = dbf.execute_sql(
+            "SELECT `Pipeline`, `Server label` FROM pipelines WHERE `Sample ID` = ?",
+            (sample.id,),
+        )
+        if not result:
+            return None
+        return cls(result[0][0], result[0][1], sample)
 
     def load(self, sample: "_Sample") -> None:
         """Load the sample on a pipeline.
