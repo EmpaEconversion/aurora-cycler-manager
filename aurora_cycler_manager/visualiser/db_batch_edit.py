@@ -89,7 +89,7 @@ batch_edit_layout = dmc.Stack(
 
 
 ### Callbacks ###
-def register_batch_edit_callbacks(app: Dash, database_access: bool) -> None:
+def register_batch_edit_callbacks(app: Dash) -> None:
     """Register all callbacks for the batch editing tab."""
 
     # When a batch is selected, show the samples in the batch
@@ -125,7 +125,7 @@ def register_batch_edit_callbacks(app: Dash, database_access: bool) -> None:
         prevent_initial_call=True,
     )
     def enable_save_batch(name: str, samples: list[str]) -> bool:
-        return not (database_access and name and samples)
+        return not (name and samples)
 
     # When the batch name is the same as an existing batch, enable the delete button
     @app.callback(
@@ -135,7 +135,7 @@ def register_batch_edit_callbacks(app: Dash, database_access: bool) -> None:
         prevent_initial_call=True,
     )
     def enable_delete_batch(name: str, batch_defs: dict[str, dict]) -> bool:
-        return not (database_access and (name in batch_defs))
+        return name not in batch_defs  # if name is not in existing batch, disable delete
 
     # When save batch is pressed, open a confirm dialog
     @app.callback(

@@ -38,26 +38,27 @@ SERVER_OBJECTS: dict[str, cycler_servers.CyclerServer] = {}
 logger = logging.getLogger(__name__)
 
 
-def get_servers() -> dict[str, cycler_servers.CyclerServer]:
+def get_servers(*, force_refresh: bool = False) -> dict[str, cycler_servers.CyclerServer]:
     """Create the cycler server objects from the config file."""
-    servers: dict[str, cycler_servers.CyclerServer] = {}
-    for server_config in config.get_config()["Servers"]:
-        if server_config["server_type"] not in SERVER_CORRESPONDENCE:
-            logger.error("Server type %s not recognized, skipping", server_config["server_type"])
-            continue
-        try:
-            server_class = SERVER_CORRESPONDENCE[server_config["server_type"]]
-            servers[server_config["label"]] = server_class(server_config)
-        except (OSError, ValueError, TimeoutError, paramiko.SSHException):
-            logger.exception("Server %s could not be created, skipping", server_config["label"])
-    return servers
+    global SERVER_OBJECTS
+    if not SERVER_OBJECTS or force_refresh:
+        servers: dict[str, cycler_servers.CyclerServer] = {}
+        for server_config in config.get_config()["Servers"]:
+            if server_config["server_type"] not in SERVER_CORRESPONDENCE:
+                logger.error("Server type %s not recognized, skipping", server_config["server_type"])
+                continue
+            try:
+                server_class = SERVER_CORRESPONDENCE[server_config["server_type"]]
+                servers[server_config["label"]] = server_class(server_config)
+            except (OSError, ValueError, TimeoutError, paramiko.SSHException):
+                logger.exception("Server %s could not be created, skipping", server_config["label"])
+        SERVER_OBJECTS = servers
+    return SERVER_OBJECTS
 
 
 def find_server(label: str) -> cycler_servers.CyclerServer:
     """Get the server object from the label."""
-    global SERVER_OBJECTS
-    SERVER_OBJECTS = SERVER_OBJECTS or get_servers()
-    server = SERVER_OBJECTS.get(label, None)
+    server = get_servers().get(label, None)
     if not server:
         msg = (
             f"Server with label {label} not found. "
@@ -413,16 +414,19 @@ class ServerManager:
 
     def __init__(self) -> None:
         """Initialize the server manager object."""
-        logger.info("Creating cycler server objects")
         self.config = config.get_config()
         if not self.config.get("Snapshots folder path"):
             msg = "'Snapshots folder path' not found in config file. Cannot save snapshots."
             raise ValueError(msg)
-        self.servers = get_servers()
-        if not self.servers:
-            msg = "No servers found in config file, please check the config file."
+        if not self.config.get("Servers"):
+            msg = "No servers in project configuration."
             raise ValueError(msg)
         logger.info("Server manager initialised, consider updating database with update_db()")
+
+    @cached_property
+    def servers(self) -> dict[str, CyclerServer]:
+        """Get a dictionary of Cycler Servers."""
+        return get_servers()
 
     def update_db(self) -> None:
         """Update all tables in the database."""
