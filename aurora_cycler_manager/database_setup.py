@@ -228,11 +228,7 @@ def create_database(force: bool = False) -> None:
             "FOREIGN KEY(`Pipeline`) REFERENCES pipelines(`Pipeline`)"
             ")",
         )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_jobs_job_on_server ON jobs (`Job ID on server`, `Server label`)",
-            "CREATE INDEX IF NOT EXISTS idx_pipelines_sample_id ON pipelines `Sample ID`"
-            "CREATE INDEX IF NOT EXISTS idx_pipelines_job_id ON pipelines `Job ID`",
-        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_job_on_server ON jobs (`Job ID on server`, `Server label`)")
         cursor.execute(
             "CREATE TABLE IF NOT EXISTS pipelines ("
             "`Pipeline` VARCHAR(50) PRIMARY KEY, "
@@ -249,6 +245,8 @@ def create_database(force: bool = False) -> None:
             "FOREIGN KEY(`Job ID`) REFERENCES jobs(`Job ID`)"
             ")",
         )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pipelines_sample_id ON 'pipelines' (`Sample ID`)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pipelines_job_id ON pipelines (`Job ID`)")
         cursor.execute(
             "CREATE TABLE IF NOT EXISTS results ("
             "`Sample ID` VARCHAR(255) PRIMARY KEY,"
