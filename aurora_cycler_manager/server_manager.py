@@ -38,20 +38,24 @@ SERVER_OBJECTS: dict[str, cycler_servers.CyclerServer] = {}
 logger = logging.getLogger(__name__)
 
 
-def get_servers(*, force_refresh: bool = False) -> dict[str, cycler_servers.CyclerServer]:
+def get_servers(*, reload: bool = False) -> dict[str, cycler_servers.CyclerServer]:
     """Create the cycler server objects from the config file."""
     global SERVER_OBJECTS
-    if not SERVER_OBJECTS or force_refresh:
+    if not SERVER_OBJECTS or reload:
         servers: dict[str, cycler_servers.CyclerServer] = {}
-        for server_config in config.get_config()["Servers"]:
-            if server_config["server_type"] not in SERVER_CORRESPONDENCE:
-                logger.error("Server type %s not recognized, skipping", server_config["server_type"])
-                continue
-            try:
-                server_class = SERVER_CORRESPONDENCE[server_config["server_type"]]
-                servers[server_config["label"]] = server_class(server_config)
-            except (OSError, ValueError, TimeoutError, paramiko.SSHException):
-                logger.exception("Server %s could not be created, skipping", server_config["label"])
+        logger.info("Attempting to connect to to servers")
+        if not config.get_config(reload=reload).get("Servers"):
+            logger.warning("No servers in the configuration.")
+        else:
+            for server_config in config.get_config()["Servers"]:
+                if server_config["server_type"] not in SERVER_CORRESPONDENCE:
+                    logger.error("Server type %s not recognized, skipping", server_config["server_type"])
+                    continue
+                try:
+                    server_class = SERVER_CORRESPONDENCE[server_config["server_type"]]
+                    servers[server_config["label"]] = server_class(server_config)
+                except (OSError, ValueError, TimeoutError, paramiko.SSHException):
+                    logger.exception("Server %s could not be created, skipping", server_config["label"])
         SERVER_OBJECTS = servers
     return SERVER_OBJECTS
 

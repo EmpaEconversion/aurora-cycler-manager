@@ -82,10 +82,9 @@ def main() -> None:
             print(gradient_text)  # noqa: T201
 
     setup_logging()
-    logger.info("Trying to connect to cycler servers...")
+    logger.info("Starting Aurora app...")
     from aurora_cycler_manager.visualiser.app import main as app_main  # noqa: PLC0415
 
-    logger.info("Starting Aurora app...")
     app_main()
 
 
