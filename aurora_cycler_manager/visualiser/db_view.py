@@ -816,15 +816,22 @@ def register_db_view_callbacks(app: Dash) -> None:
     # Update the database i.e. connect to servers and grab new info, then refresh the local data
     @app.callback(
         Output("refresh-database", "n_clicks", allow_duplicate=True),
+        Output("notifications-container", "sendNotifications", allow_duplicate=True),
         Input("update-database", "n_clicks"),
         running=[(Output("loading-message-store", "data"), "Updating databse - querying servers...", "")],
         prevent_initial_call=True,
     )
-    def update_database(n_clicks: int) -> int:
+    def update_database(n_clicks: int) -> tuple:
         if n_clicks is None:
             raise PreventUpdate
-        sm.update_db()
-        return 1
+        if not sm or not sm.servers:
+            return 0, [error_notification("Error", "You do not have access to any cycling servers.")]
+        try:
+            sm.update_db()
+        except Exception as e:
+            return 0, [error_notification("Error", str(e))]
+        else:
+            return 1, NoUpdate
 
     # Enable or disable buttons (load, eject, etc.) depending on what is selected in the table
     @app.callback(
