@@ -520,7 +520,7 @@ class NewareAiidaServer(CyclerServer):
                 json.dump(payload, f)
 
             # Submit the command using shell
-            shell_command = f"aiida-neware {self.pipeline}@{self.hostname} {json_path} {pipeline}"
+            shell_command = f"aiida-neware {pipeline}@{self.label} {json_path} {sample}"
             activate_script = Path("/home/lab131/aiida-venv") / "bin" / "activate"
             command_to_run = f"source {activate_script} && {shell_command}"
             result = subprocess.run(  # noqa: S602
@@ -528,7 +528,7 @@ class NewareAiidaServer(CyclerServer):
             )
             unique_uuid = result.stdout.split()[0]
 
-        return unique_uuid, None, json.dumps(payload)
+        return unique_uuid, unique_uuid, json.dumps(payload)
 
     @override
     def cancel(self, jobid: str, job_id_on_server: str, sampleid: str, pipeline: str) -> str:
@@ -543,12 +543,32 @@ class NewareAiidaServer(CyclerServer):
 
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
-        # result is a dict with keys=pipeline and value a dict of stuff
-        # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
-        pipelines, sampleids, readys = [], [], []
-        qb = orm.QueryBuilder().append(orm.Computer, tag="computer", filters={"label": {"==": "neware-001"}})
-        qb.append(orm.Code, tag="code", with_computer="computer")
-        return {"pipeline": pipelines, "sampleid": sampleids, "jobid": [None] * len(pipelines), "ready": readys}
+        qb = orm.QueryBuilder().append(orm.Computer, tag="computer", filters={"label": {"==": self.label}})
+        qb.append(orm.Code, project="label", tag="code", with_computer="computer")
+        qb.order_by({orm.Code: {"label": "asc"}})
+        pipelines = qb.all(flat=True)  # We use code label as pipeline name, and we get all codes on this computer.
+
+        # Now get all running jobs for these codes, together with their sample IDs
+        qb.append(
+            orm.CalcJobNode,
+            filters={orm.CalcJobNode.fields.process_state: {"in": ["created", "running", "waiting"]}},
+            tag="process",
+            with_incoming="code",
+            project=["uuid"],
+        )
+        qb.append(orm.Str, project="attributes.value", tag="sampleid", with_outgoing="process")
+
+        # Make a dict of pipeline: (jobid, sample_id)
+        running_jobs = {pipeline: {"jobid": uuid_, "sample_id": sample_id} for pipeline, uuid_, sample_id in qb.all()}
+
+        # Now build the output lists
+        jobids = [running_jobs[pipeline]["jobid"] if pipeline in running_jobs else None for pipeline in pipelines]
+        sampleids = [
+            running_jobs[pipeline]["sample_id"] if pipeline in running_jobs else None for pipeline in pipelines
+        ]
+        readys = [pipeline not in running_jobs for pipeline in pipelines]
+
+        return {"pipeline": pipelines, "sampleid": sampleids, "jobid": jobids, "ready": readys}
 
     @override
     def snapshot(
