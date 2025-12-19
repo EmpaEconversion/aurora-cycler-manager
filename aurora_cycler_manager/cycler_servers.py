@@ -20,7 +20,9 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
 
+import aiida
 import paramiko
+from aiida import orm
 from aurora_unicycler import Protocol
 from scp import SCPClient
 from typing_extensions import override
@@ -32,6 +34,7 @@ from aurora_cycler_manager.utils import run_from_sample, ssh_connect
 
 logger = logging.getLogger(__name__)
 CONFIG = get_config()
+aiida.load_profile()
 
 
 class CyclerServer:
@@ -517,7 +520,7 @@ class NewareAiidaServer(CyclerServer):
                 json.dump(payload, f)
 
             # Submit the command using shell
-            shell_command = f"aiida-neware neware@neware-001 {json_path} {pipeline}"
+            shell_command = f"aiida-neware {self.pipeline}@{self.hostname} {json_path} {pipeline}"
             activate_script = Path("/home/lab131/aiida-venv") / "bin" / "activate"
             command_to_run = f"source {activate_script} && {shell_command}"
             result = subprocess.run(  # noqa: S602
@@ -540,18 +543,11 @@ class NewareAiidaServer(CyclerServer):
 
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
-        result = json.loads(self._command("neware status"))
         # result is a dict with keys=pipeline and value a dict of stuff
         # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
         pipelines, sampleids, readys = [], [], []
-        for pip, data in result.items():
-            pipelines.append(pip)
-            if data["workstatus"] in ["working", "pause", "protect"]:  # working\stop\finish\protect\pause
-                sampleids.append(data["barcode"])
-                readys.append(False)
-            else:
-                sampleids.append(None)
-                readys.append(True)
+        qb = orm.QueryBuilder().append(orm.Computer, tag="computer", filters={"label": {"==": "neware-001"}})
+        qb.append(orm.Code, tag="code", with_computer="computer")
         return {"pipeline": pipelines, "sampleid": sampleids, "jobid": [None] * len(pipelines), "ready": readys}
 
     @override
