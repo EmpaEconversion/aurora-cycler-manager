@@ -15,6 +15,7 @@ import logging
 import sqlite3
 import traceback
 from datetime import datetime, timezone
+from functools import cached_property
 from pathlib import Path
 from time import sleep, time
 from typing import Any, Literal
@@ -24,6 +25,7 @@ from aurora_unicycler import Protocol
 
 from aurora_cycler_manager import analysis, config, cycler_servers
 from aurora_cycler_manager import database_funcs as dbf
+from aurora_cycler_manager.cycler_servers import CyclerServer
 from aurora_cycler_manager.utils import run_from_sample
 
 SERVER_CORRESPONDENCE = {
@@ -36,26 +38,31 @@ SERVER_OBJECTS: dict[str, cycler_servers.CyclerServer] = {}
 logger = logging.getLogger(__name__)
 
 
-def get_servers() -> dict[str, cycler_servers.CyclerServer]:
+def get_servers(*, reload: bool = False) -> dict[str, cycler_servers.CyclerServer]:
     """Create the cycler server objects from the config file."""
-    servers: dict[str, cycler_servers.CyclerServer] = {}
-    for server_config in config.get_config()["Servers"]:
-        if server_config["server_type"] not in SERVER_CORRESPONDENCE:
-            logger.error("Server type %s not recognized, skipping", server_config["server_type"])
-            continue
-        try:
-            server_class = SERVER_CORRESPONDENCE[server_config["server_type"]]
-            servers[server_config["label"]] = server_class(server_config)
-        except (OSError, ValueError, TimeoutError, paramiko.SSHException):
-            logger.exception("Server %s could not be created, skipping", server_config["label"])
-    return servers
+    global SERVER_OBJECTS
+    if not SERVER_OBJECTS or reload:
+        servers: dict[str, cycler_servers.CyclerServer] = {}
+        logger.info("Attempting to connect to to servers")
+        if not config.get_config(reload=reload).get("Servers"):
+            logger.warning("No servers in the configuration.")
+        else:
+            for server_config in config.get_config()["Servers"]:
+                if server_config["server_type"] not in SERVER_CORRESPONDENCE:
+                    logger.error("Server type %s not recognized, skipping", server_config["server_type"])
+                    continue
+                try:
+                    server_class = SERVER_CORRESPONDENCE[server_config["server_type"]]
+                    servers[server_config["label"]] = server_class(server_config)
+                except (OSError, ValueError, TimeoutError, paramiko.SSHException):
+                    logger.exception("Server %s could not be created, skipping", server_config["label"])
+        SERVER_OBJECTS = servers
+    return SERVER_OBJECTS
 
 
 def find_server(label: str) -> cycler_servers.CyclerServer:
     """Get the server object from the label."""
-    global SERVER_OBJECTS
-    SERVER_OBJECTS = SERVER_OBJECTS or get_servers()
-    server = SERVER_OBJECTS.get(label, None)
+    server = get_servers().get(label, None)
     if not server:
         msg = (
             f"Server with label {label} not found. "
@@ -68,15 +75,20 @@ def find_server(label: str) -> cycler_servers.CyclerServer:
 class _Pipeline:
     """A class representing a pipeline in the database."""
 
-    def __init__(self, pipeline_name: str, server_label: str) -> None:
+    def __init__(self, pipeline_name: str, server_label: str, sample: "_Sample | None" = None) -> None:
         """Initialize the _Pipeline object."""
         self.name = pipeline_name
-        self.server = find_server(server_label)
-        self.sample: _Sample | None = None
+        self.server_label = server_label
+        self.sample = sample
+
+    @cached_property
+    def server(self) -> CyclerServer:
+        """Lazy-load the server object."""
+        return find_server(self.server_label)
 
     @classmethod
     def from_id(cls, pipeline_name: str) -> "_Pipeline":
-        """Create a _Pipeline object from the database.
+        """Create a _Pipeline object from a pipeline ID.
 
         Args:
             pipeline_name : str
@@ -94,6 +106,17 @@ class _Pipeline:
             msg = f"Pipeline '{pipeline_name}' not found in the database."
             raise ValueError(msg)
         return cls(pipeline_name, result[0][1])
+
+    @classmethod
+    def from_sample(cls, sample: "_Sample") -> "_Pipeline | None":
+        """Create a _Pipeline object from a Sample object."""
+        result = dbf.execute_sql(
+            "SELECT `Pipeline`, `Server label` FROM pipelines WHERE `Sample ID` = ?",
+            (sample.id,),
+        )
+        if not result:
+            return None
+        return cls(result[0][0], result[0][1], sample)
 
     def load(self, sample: "_Sample") -> None:
         """Load the sample on a pipeline.
@@ -158,7 +181,6 @@ class _Sample:
     def __init__(self, sample_id: str) -> None:
         """Initialize the _Sample object."""
         self.id = sample_id
-        self.pipeline: _Pipeline | None = None
         self._data: dict[str, str] = {}
 
     def get(self, key: str) -> Any:  # noqa: ANN401
@@ -245,19 +267,14 @@ class _Sample:
         """
         sample = cls(sample_id)
 
-        # Check if the sample is loaded on a pipeline.
-        result = dbf.execute_sql(
-            "SELECT `Pipeline` FROM pipelines WHERE `Sample ID` = ?",
-            (sample_id,),
-        )
-
-        if result:
-            sample.pipeline = _Pipeline.from_id(result[0][0])
-
         # Load sample properties into _data dict
         sample._data = dbf.get_sample_data(sample_id)
 
         return sample
+
+    @cached_property
+    def pipeline(self) -> "_Pipeline | None":
+        return _Pipeline.from_sample(self)
 
     def safe_get_sample_capacity(
         self,
@@ -401,16 +418,19 @@ class ServerManager:
 
     def __init__(self) -> None:
         """Initialize the server manager object."""
-        logger.info("Creating cycler server objects")
         self.config = config.get_config()
         if not self.config.get("Snapshots folder path"):
             msg = "'Snapshots folder path' not found in config file. Cannot save snapshots."
             raise ValueError(msg)
-        self.servers = get_servers()
-        if not self.servers:
-            msg = "No servers found in config file, please check the config file."
+        if not self.config.get("Servers"):
+            msg = "No servers in project configuration."
             raise ValueError(msg)
         logger.info("Server manager initialised, consider updating database with update_db()")
+
+    @cached_property
+    def servers(self) -> dict[str, CyclerServer]:
+        """Get a dictionary of Cycler Servers."""
+        return get_servers()
 
     def update_db(self) -> None:
         """Update all tables in the database."""

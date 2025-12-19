@@ -73,13 +73,9 @@ from aurora_cycler_manager.visualiser.notifications import (
 # If user cannot ssh connect then disable features that require it
 logger = logging.getLogger(__name__)
 CONFIG = get_config()
-accessible_servers = []
-database_access = False
 sm: ServerManager | None = None
 try:
     sm = ServerManager()
-    accessible_servers = list(sm.servers.keys())
-    database_access = bool(accessible_servers)
 except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
     logger.warning(e)
     logger.warning("You cannot access any servers. Running in view-only mode.")
@@ -339,7 +335,6 @@ button_layout = dmc.Flex(
                     dmc.ActionIcon(
                         html.I(className="bi bi-database-down"),
                         id="update-database",
-                        disabled=not accessible_servers,
                         size="lg",
                     ),
                     label="Update database by querying cyclers",
@@ -708,7 +703,7 @@ db_view_layout = html.Div(
 
 def register_db_view_callbacks(app: Dash) -> None:
     """Register callbacks for the database view layout."""
-    register_batch_edit_callbacks(app, database_access)
+    register_batch_edit_callbacks(app)
     register_protocol_edit_callbacks(app)
 
     # Update data in tables when it changes
@@ -821,15 +816,22 @@ def register_db_view_callbacks(app: Dash) -> None:
     # Update the database i.e. connect to servers and grab new info, then refresh the local data
     @app.callback(
         Output("refresh-database", "n_clicks", allow_duplicate=True),
+        Output("notifications-container", "sendNotifications", allow_duplicate=True),
         Input("update-database", "n_clicks"),
         running=[(Output("loading-message-store", "data"), "Updating databse - querying servers...", "")],
         prevent_initial_call=True,
     )
-    def update_database(n_clicks: int) -> int:
+    def update_database(n_clicks: int) -> tuple:
         if n_clicks is None:
             raise PreventUpdate
-        sm.update_db()
-        return 1
+        if not sm or not sm.servers:
+            return 0, [error_notification("Error", "You do not have access to any cycling servers.")]
+        try:
+            sm.update_db()
+        except Exception as e:
+            return 0, [error_notification("Error", str(e))]
+        else:
+            return 1, NoUpdate
 
     # Enable or disable buttons (load, eject, etc.) depending on what is selected in the table
     @app.callback(
@@ -841,19 +843,19 @@ def register_db_view_callbacks(app: Dash) -> None:
     def enable_buttons(selected_rows: list, table: str) -> tuple[bool, ...]:
         enabled = set()
         # Add buttons to enabled set with union operator |=
-        if database_access:
+        if sm and sm.servers:
             enabled |= {"upload-button"}
         if selected_rows:
             enabled |= {"copy-button"}
             if len(selected_rows) <= 200:  # To avoid enormous zip files being stored
                 enabled |= {"download-button"}
-            if accessible_servers:  # Need cycler permissions to do anything except copy, view, upload, download
+            if sm and sm.servers:  # Need cycler permissions to do anything except copy, view, upload, download
                 if table == "samples":
                     if all(s.get("Sample ID") is not None for s in selected_rows):
                         enabled |= {"delete-button", "label-button", "create-batch-button"}
                 elif table == "pipelines":
                     all_samples = all(s.get("Sample ID") is not None for s in selected_rows)
-                    all_servers = all(s.get("Server label") in accessible_servers for s in selected_rows)
+                    all_servers = all(s.get("Server label") in sm.servers for s in selected_rows)
                     no_samples = all(s.get("Sample ID") is None for s in selected_rows)
                     if all_samples:
                         enabled |= {"label-button", "create-batch-button"}
@@ -866,7 +868,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                     elif all_servers and no_samples:
                         enabled |= {"load-button"}
                 elif table == "jobs":
-                    if all(s.get("Server label") in accessible_servers for s in selected_rows):
+                    if all(s.get("Server label") in sm.servers for s in selected_rows):
                         enabled |= {"snapshot-button"}
                         if all(s.get("Job ID") for s in selected_rows):
                             enabled |= {"cancel-button"}
