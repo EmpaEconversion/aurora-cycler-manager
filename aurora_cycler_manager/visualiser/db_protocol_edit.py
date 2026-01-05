@@ -129,7 +129,7 @@ def describe_row(technique: dict) -> str:
             description = f"until {seconds_to_time(time)}"
     elif name == "loop":
         loop_to = technique.get("loop_to")
-        loop_to_str = f"'{loop_to}'" if isinstance(loop_to, str) else f"technqiue {loop_to} (1-indexed)"
+        loop_to_str = f"'{loop_to}'" if isinstance(loop_to, str) else f"technique {loop_to} (1-indexed)"
         description = f"to {loop_to_str} for {technique.get('cycle_count')} cycles"
     elif name == "tag":
         description = f"{technique.get('tag')}"
