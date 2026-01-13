@@ -18,6 +18,8 @@ jobs:
     strategy:
       matrix:
         python-version:
+          - "3.10"
+          - "3.11"
           - "3.12.12"
           - "3.13"
 
@@ -39,7 +41,12 @@ jobs:
         run: ruff check --ignore=PTH,C901,PLR0911,PLR0912,PLR0913,PLR0915,PLW0603,BLE001,TRY400,PERF203,FIX002,FBT001,FBT002
 
       - name: Run tests with pytest
-        run: pytest --cov=aurora_cycler_manager --cov-report=term
+        run: pytest --cov=aurora_cycler_manager --cov-report=term --cov-report=xml
+
+      - name: Upload results to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   # Publish to PyPI if tagged and tests pass
   publish:
