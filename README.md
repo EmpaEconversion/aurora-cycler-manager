@@ -1,9 +1,15 @@
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/33a4416a-3fae-4bb3-acce-3862bc87a4a6#gh-light-mode-only" width="500" align="center" alt="Aurora cycler manager">
-  <img src="https://github.com/user-attachments/assets/95845ec0-e155-4e4f-95d2-ab1c992de940#gh-dark-mode-only" width="500" align="center" alt="Aurora cycler manager">
-</p>
+<h1 align="center">
+  <img src="https://github.com/user-attachments/assets/931d2c11-db04-41b6-995a-ef66ead759fc" width="500" align="center" alt="Aurora cycler manager">
+</h1>
 
 <br>
+
+[![PyPI version](https://img.shields.io/pypi/v/aurora-cycler-manager.svg)](https://pypi.org/project/aurora-cycler-manager/)
+[![License](https://img.shields.io/github/license/empaeconversion/aurora-cycler-manager?color=blue)](https://github.com/empaeconversion/aurora-cycler-manager/blob/main/LICENSE)
+![Python Versions](https://img.shields.io/badge/python-3-blue)
+[![Checks](https://img.shields.io/github/actions/workflow/status/empaeconversion/aurora-cycler-manager/CI.yml)](https://github.com/EmpaEconversion/aurora-cycler-manager/actions/workflows/CI.yml)
+[![Coverage](https://img.shields.io/codecov/c/github/empaeconversion/aurora-cycler-manager)](https://app.codecov.io/gh/EmpaEconversion/aurora-cycler-manager)
+
 
 Cycler control, data pipeline, and data visualisation from Empa's robotic battery lab.
 
