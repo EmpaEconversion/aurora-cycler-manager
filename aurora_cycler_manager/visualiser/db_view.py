@@ -3,6 +3,7 @@
 Database view tab layout and callbacks for the visualiser app.
 """
 
+import base64
 import json
 import logging
 import tempfile
@@ -30,6 +31,7 @@ from aurora_cycler_manager.database_funcs import (
     update_sample_label,
 )
 from aurora_cycler_manager.server_manager import ServerManager, _Sample
+from aurora_cycler_manager.visualiser import file_io
 from aurora_cycler_manager.visualiser.db_batch_edit import (
     batch_edit_layout,
     register_batch_edit_callbacks,
@@ -37,11 +39,6 @@ from aurora_cycler_manager.visualiser.db_batch_edit import (
 from aurora_cycler_manager.visualiser.db_protocol_edit import (
     protocol_edit_layout,
     register_protocol_edit_callbacks,
-)
-from aurora_cycler_manager.visualiser.file_io import (
-    create_zip_for_download,
-    determine_uploaded_file,
-    process_uploaded_file,
 )
 from aurora_cycler_manager.visualiser.funcs import (
     get_database,
@@ -1533,7 +1530,12 @@ def register_db_view_callbacks(app: Dash) -> None:
         }
         filetypes = {ft for ft, enabled in filetypes.items() if enabled}  # Convert to set
         temp_zip_path = DOWNLOAD_DIR / f"aurora_{uuid.uuid4().hex}.zip"
-        return create_zip_for_download(sample_ids, filetypes, zenodo_info, temp_zip_path, set_progress)
+        try:
+            file_io.create_rocrate(sample_ids, filetypes, zenodo_info, temp_zip_path, set_progress)
+        except ValueError:
+            return "", True, True
+        else:
+            return f"/download-temp/{temp_zip_path.name}", False, True
 
     # This lets users download files from a URL
     @app.server.route("/download-temp/<path:filename>")
@@ -1578,7 +1580,9 @@ def register_db_view_callbacks(app: Dash) -> None:
         prevent_initial_call=True,
     )
     def figure_out_files(contents: str, filename: str, selected_rows: list) -> tuple[str, str, bool, dict]:
-        return determine_uploaded_file(contents, filename, selected_rows)
+        _content_type, content_string = contents.split(",")
+        decoded = base64.b64decode(content_string)
+        return file_io.determine_uploaded(decoded, filename, selected_rows)
 
     # If you leave the upload modal, wipe the contents
     @app.callback(
@@ -1608,4 +1612,6 @@ def register_db_view_callbacks(app: Dash) -> None:
     def process_file(n_clicks: int, data: dict, contents: str, selected_rows: list) -> int:
         if not n_clicks:
             raise PreventUpdate
-        return process_uploaded_file(data, contents, selected_rows)
+        _content_type, content_string = contents.split(",")
+        decoded = base64.b64decode(content_string)
+        return file_io.process_uploaded(data, decoded, selected_rows)

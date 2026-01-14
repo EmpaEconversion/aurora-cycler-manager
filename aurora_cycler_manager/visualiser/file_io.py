@@ -3,7 +3,6 @@
 Functions for file upload and download.
 """
 
-import base64
 import io
 import json
 import logging
@@ -67,16 +66,14 @@ def is_unicycler_protocol(obj: list | str | dict) -> bool:
     return isinstance(obj, dict) and bool(obj.get("unicycler"))
 
 
-def determine_uploaded_file(contents: str, filename: str, selected_rows: list) -> tuple[str, str, bool, dict]:
+def determine_uploaded(decoded_bytes: bytes, filename: str, selected_rows: list) -> tuple[str, str, bool, dict]:
     """Determine what the uploaded file should do."""
-    _content_type, content_string = contents.split(",")
-    if not content_string:
+    if not decoded_bytes:
         return "Nothing uploaded", "grey", True, {"file": None, "data": None}
 
     if filename.endswith((".jsonld", ".json")):
         # It could be ontology or samples
-        decoded = base64.b64decode(content_string)
-        data = json.loads(decoded)
+        data = json.loads(decoded_bytes)
         if is_samples_json(data):
             samples = [d.get("Sample ID") for d in data]
             known_samples = set(get_all_sampleids())
@@ -156,8 +153,7 @@ def determine_uploaded_file(contents: str, filename: str, selected_rows: list) -
 
     elif filename.endswith(".xlsx"):
         # It is probably a battinfo xlsx file
-        decoded = base64.b64decode(content_string)
-        excel_file = pd.ExcelFile(io.BytesIO(decoded))
+        excel_file = pd.ExcelFile(io.BytesIO(decoded_bytes))
         sheet_names = [str(s) for s in excel_file.sheet_names]
         expected_sheets = ["Schema", "@context-TopLevel", "@context-Connector", "Ontology - Unit", "Unique ID"]
         if not all(sheet in expected_sheets for sheet in sheet_names):
@@ -169,25 +165,21 @@ def determine_uploaded_file(contents: str, filename: str, selected_rows: list) -
                 True,
                 {"file": None, "data": None},
             )
-        samples = [s.get("Sample ID") for s in selected_rows]
-        if not samples:
+        sample_ids = [s.get("Sample ID") for s in selected_rows]
+        if not sample_ids:
             return "Got a BattINFO xlsx, but you must select samples.", "red", True, {"file": None, "data": None}
         return (
             "Got a BattINFO xlsx\n"
             "The metadata will be merged with info from the database\n"
-            f"It will be applied to {len(samples)} samples:\n" + "\n".join(samples),
+            f"It will be applied to {len(sample_ids)} samples:\n" + "\n".join(sample_ids),
             "green",
             False,
             {"file": "battinfo-xlsx", "data": None},  # Don't copy the content_string
         )
 
     elif filename.endswith(".zip"):
-        # It is probably data, look for mpr and ndax files
-        # Decode the base64 string
-        decoded = base64.b64decode(content_string)
-
         # Wrap in BytesIO so we can use it like a file
-        zip_buffer = io.BytesIO(decoded)
+        zip_buffer = io.BytesIO(decoded_bytes)
 
         # Open the zip archive
         with zipfile.ZipFile(zip_buffer, "r") as zip_file:
@@ -235,10 +227,9 @@ def determine_uploaded_file(contents: str, filename: str, selected_rows: list) -
     return "File not understood", "red", True, {"file": None, "data": None}
 
 
-def process_uploaded_file(data: dict, contents: str, selected_rows: list) -> int:
+def process_uploaded(data: dict, decoded_bytes: bytes, selected_rows: list) -> int:
     """Process the uploaded file."""
-    _content_type, content_string = contents.split(",")
-    if not content_string:
+    if not decoded_bytes:
         msg = "No contents"
         raise ValueError(msg)
     match data.get("file"):
@@ -267,7 +258,7 @@ def process_uploaded_file(data: dict, contents: str, selected_rows: list) -> int
             try:
                 # If xlsx, first convert to dict
                 battinfo_jsonld = (
-                    convert_excel_to_jsonld(io.BytesIO(base64.b64decode(content_string)))
+                    convert_excel_to_jsonld(io.BytesIO(decoded_bytes))
                     if data["file"] == "battinfo-xlsx"
                     else data["data"]
                 )
@@ -345,7 +336,7 @@ def process_uploaded_file(data: dict, contents: str, selected_rows: list) -> int
             return 1
 
         case "zip":
-            zip_buffer = io.BytesIO(base64.b64decode(content_string))
+            zip_buffer = io.BytesIO(decoded_bytes)
             valid_files = data["data"]
             successful_samples = set()
             with zipfile.ZipFile(zip_buffer, "r") as zip_file:
@@ -401,13 +392,13 @@ def process_uploaded_file(data: dict, contents: str, selected_rows: list) -> int
             return 0
 
 
-def create_zip_for_download(
+def create_rocrate(
     sample_ids: list,
     filetypes: set,
     zenodo_info: str | None,
     zip_path: str | Path,
     set_progress: Callable | None,
-) -> tuple[str, bool, bool]:
+) -> None:
     """Batch process data from selected samples and store in zip in temp folder on server."""
     zip_path = Path(zip_path)
     samples = [_Sample.from_id(s) for s in sample_ids]
@@ -689,8 +680,9 @@ def create_zip_for_download(
             messages += "\n✅ ZIP file ready to download"
             if set_progress:
                 set_progress((100 * i / n_files, messages, color))
-            return (f"/download-temp/{zip_path.name}", False, True)
-        messages += "\n❌ No ZIP file created"
-        if set_progress:
-            set_progress((100 * i / n_files, messages, "red"))
-        return ("", True, True)
+        else:
+            messages += "\n❌ No ZIP file created"
+            if set_progress:
+                set_progress((100 * i / n_files, messages, "red"))
+            msg = "Zip has no content"
+            raise ValueError(msg)
