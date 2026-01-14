@@ -23,9 +23,7 @@ Cycler control, data pipeline, and data visualisation from Empa's robotic batter
 
 Aurora cycler manager can be used to control and submit experiments to Biologic and Neware cyclers.
 
-Jobs can be submitted with a cycler-specific file (e.g. .xml or .mps).
-
-Alternatively, a `unicycler` universal .json protocol can be used, which is converted to the appropriate format on submission.
+Jobs can be submitted with a cycler-specific file (e.g. .xml or .mps), or an [`aurora-unicycler`](https://github.com/EmpaEConversion/aurora-unicycler) protocol, which is automatically converted to the appropriate format on submission.
 
 Experiments can use C-rates and the program will automatically calculate the current required based on the sample information in the database.
 
@@ -47,12 +45,12 @@ A web-app based on `Plotly Dash` allows rapid, interactive viewing of time-serie
 
 In a Python environment:
 
-```
+```shell
 pip install aurora-cycler-manager
 ```
 
 To _view data from an existing set up_:
-```
+```shell
 aurora-setup connect --project-dir="path\to\your\setup"
 ```
 
@@ -67,7 +65,7 @@ To _interact with servers on an existing set up_:
   - "Snapshots folder path" is where raw data downloaded from cyclers is stored, this can become very large
 
 To _create a new set up_:
-```
+```shell
 aurora-setup init --project-dir="path\to\your\setup"
 ```
 - This generates subfolders within the directory, a database, and a configuation file
@@ -82,7 +80,7 @@ aurora-setup init --project-dir="path\to\your\setup"
 ## Updating
 
 Upgrade with pip, you do not have to redo any setup steps:
-```
+```shell
 pip install aurora-cycler-manager --upgrade
 ```
 If upgrading from earlier than 0.5.0, first `pip uninstall aurora-cycler-manager` then follow the installation steps.
@@ -90,7 +88,7 @@ If upgrading from earlier than 0.5.0, first `pip uninstall aurora-cycler-manager
 ## Usage
 
 A web app allows users to view analysed data and see the status of samples, jobs, and cyclers, and submit jobs to cyclers if they have access. Run with:
-```
+```shell
 aurora-app
 ```
 
@@ -102,7 +100,7 @@ aurora-app
 - Loading samples, submitting jobs, analysing data etc. can also be run in Python scripts directly - see the example in `server_manager.py`.
 
 With SSH access, automatic data harvesting and analysis is run using:
-```
+```shell
 aurora-daemon
 ```
 
