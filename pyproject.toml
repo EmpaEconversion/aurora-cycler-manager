@@ -5,6 +5,16 @@ build-backend = "flit_core.buildapi"
 [project]
 name = "aurora-cycler-manager"
 description = "Battery cycler management, data analysis and visualisation."
+license = "MIT"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+]
 requires-python = ">=3.10"
 dynamic = ["version"]
 dependencies = [
@@ -41,7 +51,7 @@ dev = [
     "bumpver>=2025.1131",
     "pre-commit>=4.2.0",
     "pytest>=8.4.1",
-    "ruff>=0.12.3",
+    "ruff>=0.14.11",
 ]
 
 [project.scripts]

@@ -1,9 +1,15 @@
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/33a4416a-3fae-4bb3-acce-3862bc87a4a6#gh-light-mode-only" width="500" align="center" alt="Aurora cycler manager">
-  <img src="https://github.com/user-attachments/assets/95845ec0-e155-4e4f-95d2-ab1c992de940#gh-dark-mode-only" width="500" align="center" alt="Aurora cycler manager">
-</p>
+<h1 align="center">
+  <img src="https://github.com/user-attachments/assets/931d2c11-db04-41b6-995a-ef66ead759fc" width="500" align="center" alt="Aurora cycler manager">
+</h1>
 
 <br>
+
+[![PyPI version](https://img.shields.io/pypi/v/aurora-cycler-manager.svg)](https://pypi.org/project/aurora-cycler-manager/)
+[![License](https://img.shields.io/github/license/empaeconversion/aurora-cycler-manager?color=blue)](https://github.com/empaeconversion/aurora-cycler-manager/blob/main/LICENSE)
+![Python Versions](https://img.shields.io/badge/python-3-blue)
+[![Checks](https://img.shields.io/github/actions/workflow/status/empaeconversion/aurora-cycler-manager/CI.yml)](https://github.com/EmpaEconversion/aurora-cycler-manager/actions/workflows/CI.yml)
+[![Coverage](https://img.shields.io/codecov/c/github/empaeconversion/aurora-cycler-manager)](https://app.codecov.io/gh/EmpaEconversion/aurora-cycler-manager)
+
 
 Cycler control, data pipeline, and data visualisation from Empa's robotic battery lab.
 
@@ -17,9 +23,7 @@ Cycler control, data pipeline, and data visualisation from Empa's robotic batter
 
 Aurora cycler manager can be used to control and submit experiments to Biologic and Neware cyclers.
 
-Jobs can be submitted with a cycler-specific file (e.g. .xml or .mps).
-
-Alternatively, a `unicycler` universal .json protocol can be used, which is converted to the appropriate format on submission.
+Jobs can be submitted with a cycler-specific file (e.g. .xml or .mps), or an [`aurora-unicycler`](https://github.com/EmpaEConversion/aurora-unicycler) protocol, which is automatically converted to the appropriate format on submission.
 
 Experiments can use C-rates and the program will automatically calculate the current required based on the sample information in the database.
 
@@ -41,12 +45,12 @@ A web-app based on `Plotly Dash` allows rapid, interactive viewing of time-serie
 
 In a Python environment:
 
-```
+```shell
 pip install aurora-cycler-manager
 ```
 
 To _view data from an existing set up_:
-```
+```shell
 aurora-setup connect --project-dir="path\to\your\setup"
 ```
 
@@ -61,7 +65,7 @@ To _interact with servers on an existing set up_:
   - "Snapshots folder path" is where raw data downloaded from cyclers is stored, this can become very large
 
 To _create a new set up_:
-```
+```shell
 aurora-setup init --project-dir="path\to\your\setup"
 ```
 - This generates subfolders within the directory, a database, and a configuation file
@@ -76,7 +80,7 @@ aurora-setup init --project-dir="path\to\your\setup"
 ## Updating
 
 Upgrade with pip, you do not have to redo any setup steps:
-```
+```shell
 pip install aurora-cycler-manager --upgrade
 ```
 If upgrading from earlier than 0.5.0, first `pip uninstall aurora-cycler-manager` then follow the installation steps.
@@ -84,7 +88,7 @@ If upgrading from earlier than 0.5.0, first `pip uninstall aurora-cycler-manager
 ## Usage
 
 A web app allows users to view analysed data and see the status of samples, jobs, and cyclers, and submit jobs to cyclers if they have access. Run with:
-```
+```shell
 aurora-app
 ```
 
@@ -96,7 +100,7 @@ aurora-app
 - Loading samples, submitting jobs, analysing data etc. can also be run in Python scripts directly - see the example in `server_manager.py`.
 
 With SSH access, automatic data harvesting and analysis is run using:
-```
+```shell
 aurora-daemon
 ```
 

@@ -129,7 +129,7 @@ def describe_row(technique: dict) -> str:
             description = f"until {seconds_to_time(time)}"
     elif name == "loop":
         loop_to = technique.get("loop_to")
-        loop_to_str = f"'{loop_to}'" if isinstance(loop_to, str) else f"technqiue {loop_to} (1-indexed)"
+        loop_to_str = f"'{loop_to}'" if isinstance(loop_to, str) else f"technique {loop_to} (1-indexed)"
         description = f"to {loop_to_str} for {technique.get('cycle_count')} cycles"
     elif name == "tag":
         description = f"{technique.get('tag')}"
@@ -1044,7 +1044,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         indices = [row["index"] for row in grid_data] if grid_data else []
         protocol_dict["method"][:] = [protocol_dict["method"][i] for i in indices]
         selected_indices = [row["index"] for row in selected_rows] if selected_rows else []
-        new_selected_indicies = [i for i, index in enumerate(indices) if index in selected_indices]
+        new_selected_indices = [i for i, index in enumerate(indices) if index in selected_indices]
 
         # If no technique was selected, append the new technique to the end after reordering
         if index is None:
@@ -1053,7 +1053,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
             elif not protocol_dict["method"]:
                 protocol_dict["method"] = [new_technique]
 
-        return protocol_dict, new_selected_indicies
+        return protocol_dict, new_selected_indices
 
     # If the virtual data changes (dragging, updating data) or global settings change, check if protocol is valid
     @app.callback(

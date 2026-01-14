@@ -380,7 +380,7 @@ load_modal = dmc.Modal(
                 ),
                 dmc.Button(
                     "Auto-increment",
-                    id="load-incrememt",
+                    id="load-increment",
                     color="gray",
                 ),
                 dmc.Button(
@@ -818,7 +818,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Output("notifications-container", "sendNotifications", allow_duplicate=True),
         Input("update-database", "n_clicks"),
-        running=[(Output("loading-message-store", "data"), "Updating databse - querying servers...", "")],
+        running=[(Output("loading-message-store", "data"), "Updating database - querying servers...", "")],
         prevent_initial_call=True,
     )
     def update_database(n_clicks: int) -> tuple:
@@ -934,7 +934,7 @@ def register_db_view_callbacks(app: Dash) -> None:
     @app.callback(
         Output("load-modal", "opened"),
         Output("load-modal-text", "children"),
-        Output("load-incrememt", "style"),
+        Output("load-increment", "style"),
         Input("load-button", "n_clicks"),
         Input("load-yes-close", "n_clicks"),
         State("load-modal", "opened"),
@@ -978,7 +978,7 @@ def register_db_view_callbacks(app: Dash) -> None:
     # When auto-increment is pressed, increment the sample ID for each selected pipeline
     @app.callback(
         Output({"type": "load-dropdown", "index": ALL}, "value"),
-        Input("load-incrememt", "n_clicks"),
+        Input("load-increment", "n_clicks"),
         Input("load-clear", "n_clicks"),
         State({"type": "load-dropdown", "index": ALL}, "value"),
         State("samples-store", "data"),
@@ -999,7 +999,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             return [None for _ in selected_samples]
 
         # If auto-increment, go through the list, if the sample is empty increment the previous sample
-        if button_id == "load-incrememt":
+        if button_id == "load-increment":
             for i in range(1, len(selected_samples)):
                 if not selected_samples[i]:
                     prev_sample = selected_samples[i - 1]
@@ -1816,7 +1816,7 @@ def register_db_view_callbacks(app: Dash) -> None:
                         True,
                         {"file": None, "data": None},
                     )
-                protocols = [s.get("Unicycer protocol") for s in selected_rows if s.get("Unicycer protocol")]
+                protocols = [s.get("Unicycler protocol") for s in selected_rows if s.get("Unicycler protocol")]
                 if protocols:
                     return (
                         "Got a unicycler protocol.\nWARNING - this will overwrite data",
