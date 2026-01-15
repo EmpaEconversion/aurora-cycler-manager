@@ -341,6 +341,15 @@ def remove_batch(batch_name: str) -> None:
 ### JOBS ###
 
 
+def get_jobs_from_sample(sample_id: str) -> list[str]:
+    """List all Job IDs associated with a sample."""
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT `Job ID` FROM jobs WHERE `Sample ID`=?", (sample_id,))
+        result = cursor.fetchall()
+    return [r[0] for r in result]
+
+
 def get_job_data(job_id: str) -> dict:
     """Get all data about a job from the database."""
     with sqlite3.connect(CONFIG["Database path"]) as conn:
@@ -356,6 +365,9 @@ def get_job_data(job_id: str) -> dict:
         payload = job_data.get("Payload")
         if payload and payload.startswith(("[", "{")):
             job_data["Payload"] = json.loads(payload)
+        unicycler = job_data.get("Unicycler protocol")
+        if unicycler and unicycler.startswith("{"):
+            job_data["Unicycler protocol"] = json.loads(unicycler)
     return job_data
 
 
