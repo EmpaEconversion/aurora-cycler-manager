@@ -34,6 +34,7 @@ def reset_all(test_dir: Path) -> Generator[None, None, None]:
     shutil.copyfile(db_path, db_path.with_suffix(".bak"))
     assert not any(snapshots_path.rglob("*.h5")), "Already h5 files in snapshots folder!"
     assert not any(snapshots_path.rglob("*.json")), "Already json files in snapshots folder!"
+    assert not any(snapshots_path.rglob("*.jsonld")), "Already jsonld files in snapshots folder!"
     assert not any(test_dir.glob("temp_*")), "Already temp folders!"
 
     yield
@@ -44,6 +45,10 @@ def reset_all(test_dir: Path) -> Generator[None, None, None]:
     for file in snapshots_path.rglob("*.h5"):
         file.unlink()
     for file in snapshots_path.rglob("cycles.*.json"):
+        file.unlink()
+    for file in snapshots_path.rglob("aux.*.jsonld"):
+        file.unlink()
+    for file in snapshots_path.rglob("battinfo.*.jsonld"):
         file.unlink()
     # Reset config
     with (test_dir / "test_config.json").open("w") as f:
