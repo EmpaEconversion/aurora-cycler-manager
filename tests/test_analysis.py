@@ -22,7 +22,7 @@ from aurora_cycler_manager.neware_harvester import convert_all_neware_data
 class TestAnalysis:
     """Test the analysis functions."""
 
-    def test_analyse_eclab_sample(self, reset_all: object) -> None:
+    def test_analyse_eclab_sample(self, reset_all) -> None:
         """Generate test data, run analysis."""
         convert_all_mprs()
         df, cycle_dict, metadata = analyse_sample("250116_kigr_gen6_01")
@@ -48,7 +48,7 @@ class TestAnalysis:
         assert all(k in metadata for k in ["sample_data", "job_data", "provenance"])
         assert metadata["sample_data"]["Sample ID"] == "250116_kigr_gen6_01"
 
-    def test_analyse_neware_sample(self, reset_all: object) -> None:
+    def test_analyse_neware_sample(self, reset_all) -> None:
         """Generate test data, run analysis."""
         convert_all_neware_data()
         df, cycle_dict, metadata = analyse_sample("commercial_cell_009")
@@ -74,7 +74,7 @@ class TestAnalysis:
         assert all(k in metadata for k in ["sample_data", "job_data", "provenance"])
         assert metadata["sample_data"]["Sample ID"] == "commercial_cell_009"
 
-    def test_update_sample_metadata(self, reset_all: object) -> None:
+    def test_update_sample_metadata(self, reset_all) -> None:
         """Test update sample metadata."""
         sample_folder = Path(__file__).parent / "test_data" / "snapshots" / "250116_kigr_gen6" / "250116_kigr_gen6_01"
 
