@@ -74,9 +74,9 @@ class TestAnalysis:
         assert all(k in metadata for k in ["sample_data", "job_data", "provenance"])
         assert metadata["sample_data"]["Sample ID"] == "commercial_cell_009"
 
-    def test_update_sample_metadata(self, reset_all) -> None:
+    def test_update_sample_metadata(self, reset_all, test_dir: Path) -> None:
         """Test update sample metadata."""
-        sample_folder = Path(__file__).parent / "test_data" / "snapshots" / "250116_kigr_gen6" / "250116_kigr_gen6_01"
+        sample_folder = test_dir / "snapshots" / "250116_kigr_gen6" / "250116_kigr_gen6_01"
 
         # Files which will be written to
         cycles_file = sample_folder / "cycles.250116_kigr_gen6_01.json"

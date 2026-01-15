@@ -8,9 +8,9 @@ import pytest
 from aurora_cycler_manager.eclab_harvester import convert_mpr
 
 
-def test_convert_data(reset_all: object) -> None:
+def test_convert_data(reset_all, test_dir: Path) -> None:
     """Should be able to convert mprs from different formats."""
-    folder = Path(__file__).resolve().parent / "test_data" / "eclab_harvester"
+    folder = test_dir / "eclab_harvester"
     mpr_with_date = folder / "test_C01.mpr"
 
     params = {
@@ -46,7 +46,7 @@ def test_convert_data(reset_all: object) -> None:
     convert_mpr(mpr_without_date, mpl_file=mpl_bytes, **params)
 
 
-def test_convert_data_update_database(reset_all: object, test_dir: Path) -> None:
+def test_convert_data_update_database(reset_all, test_dir: Path) -> None:
     """Database should be able to accept data from known and unknown sources."""
     # Make backup to restore from for each test
     folder = test_dir / "eclab_harvester"
