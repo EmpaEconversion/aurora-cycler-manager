@@ -136,7 +136,7 @@ def test_summarise_assembly() -> None:
     assert answer == expect
 
 
-def test_merge_battinfo_with_db() -> None:
+def test_merge_battinfo_with_db(test_dir: Path) -> None:
     """Test merging BattINFO JSON-LD with sample data from database."""
     battinfo_jsonld = {
         "@context": ["stuff"],
@@ -185,7 +185,7 @@ def test_merge_battinfo_with_db() -> None:
     }
 
     # Try with a more complicated file
-    sample_file = Path(__file__).parent / "test_data" / "samples" / "test_battinfo.jsonld"
+    sample_file = test_dir / "samples" / "test_battinfo.jsonld"
     with sample_file.open("r") as f:
         battinfo_jsonld = json.load(f)
     result = merge_battinfo_with_db_data(battinfo_jsonld, sample_data)
