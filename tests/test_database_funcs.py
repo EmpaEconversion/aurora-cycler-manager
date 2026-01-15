@@ -1,7 +1,6 @@
 """Unit tests for database_funcs.py."""
 
 import json
-import shutil
 from pathlib import Path
 
 import pandas as pd
@@ -35,8 +34,8 @@ class TestPreCheckSampleFile:
 
     def test_too_big(self) -> None:
         """Should raise error if file is over 2 MB."""
+        large_file = Path("large_file.json")
         try:
-            large_file = Path("large_file.json")
             with large_file.open("wb") as f:
                 f.write(b"0" * (2 * 1024 * 1024 + 1))
             with pytest.raises(ValueError, match=r".*is over 2 MB.*"):
@@ -48,9 +47,9 @@ class TestPreCheckSampleFile:
     def test_not_json(self) -> None:
         """Should raise error if file is not JSON."""
         sample_file = Path(__file__).parent / "test_data" / "samples" / "240620_kigr_gen2.json"
+        temp_file = sample_file.with_suffix(".txt")
         # copy to a temp file with a different extension
         try:
-            temp_file = sample_file.with_suffix(".txt")
             temp_file.write_text(sample_file.read_text())
             with pytest.raises(ValueError, match=r".*not a json file.*"):
                 _pre_check_sample_file(temp_file)
@@ -148,64 +147,64 @@ class TestSampleFunctions:
     """Test the various functions for manipulating the samples table."""
 
     # Make backup to restore from for each test
-    db_path = Path(__file__).parent / "test_data" / "database" / "test_database.db"
     sample_file = Path(__file__).parent / "test_data" / "samples" / "240620_kigr_gen2.json"
-    shutil.copyfile(db_path, db_path.with_suffix(".bak"))
 
-    def test_update_sample_label(self) -> None:
+    def test_update_sample_label(self, reset_all) -> None:
         """Add sample from file and manipulate the samples table."""
-        try:
-            shutil.copyfile(self.db_path.with_suffix(".bak"), self.db_path)
+        # Add samples from file
+        add_samples_from_file(self.sample_file)
 
-            # Add samples from file
-            add_samples_from_file(self.sample_file)
+        # Update a label
+        update_sample_label("240620_kigr_gen2_01", "foo")
+        sample_data = get_sample_data("240620_kigr_gen2_01")
+        assert sample_data["Label"] == "foo"
 
-            # Update a label
-            update_sample_label("240620_kigr_gen2_01", "foo")
-            sample_data = get_sample_data("240620_kigr_gen2_01")
-            assert sample_data["Label"] == "foo"
+        update_sample_label("240620_kigr_gen2_01", "bar")
+        sample_data = get_sample_data("240620_kigr_gen2_01")
+        assert sample_data["Label"] == "bar"
 
-            update_sample_label("240620_kigr_gen2_01", "bar")
-            sample_data = get_sample_data("240620_kigr_gen2_01")
-            assert sample_data["Label"] == "bar"
+        # Delete some samples
+        sample_ids = get_all_sampleids()
+        assert "240620_kigr_gen2_01" in sample_ids
+        delete_samples("240620_kigr_gen2_01")
+        sample_ids = get_all_sampleids()
+        assert "240620_kigr_gen2_01" not in sample_ids
+        delete_samples(["240620_kigr_gen2_02", "240620_kigr_gen2_03"])
+        sample_ids = get_all_sampleids()
+        assert "240620_kigr_gen2_02" not in sample_ids
+        assert "240620_kigr_gen2_03" not in sample_ids
 
-            # Delete some samples
-            sample_ids = get_all_sampleids()
-            assert "240620_kigr_gen2_01" in sample_ids
-            delete_samples("240620_kigr_gen2_01")
-            sample_ids = get_all_sampleids()
-            assert "240620_kigr_gen2_01" not in sample_ids
-            delete_samples(["240620_kigr_gen2_02", "240620_kigr_gen2_03"])
-            sample_ids = get_all_sampleids()
-            assert "240620_kigr_gen2_02" not in sample_ids
-            assert "240620_kigr_gen2_03" not in sample_ids
-
-        finally:
-            shutil.copyfile(self.db_path.with_suffix(".bak"), self.db_path)
-
-    def test_add_samples_from_object(self) -> None:
+    def test_add_samples_from_object(self, reset_all) -> None:
         """Test thats samples can be added from a dict."""
-        try:
-            shutil.copyfile(self.db_path.with_suffix(".bak"), self.db_path)
+        with self.sample_file.open("r") as f:
+            sample_dict = json.load(f)
+        add_samples_from_object(sample_dict)
+        sample_ids = get_all_sampleids()
+        assert "240620_kigr_gen2_01" in sample_ids
 
-            with self.sample_file.open("r") as f:
-                sample_dict = json.load(f)
-            add_samples_from_object(sample_dict)
-            sample_ids = get_all_sampleids()
-            assert "240620_kigr_gen2_01" in sample_ids
-
-        finally:
-            shutil.copyfile(self.db_path.with_suffix(".bak"), self.db_path)
-
-    def test_batch_operations(self) -> None:
+    def test_batch_operations(self, reset_all) -> None:
         """Create, modify, delete batches in the database."""
-        try:
-            shutil.copyfile(self.db_path.with_suffix(".bak"), self.db_path)
+        # Add samples from file
+        add_samples_from_file(self.sample_file)
 
-            # Add samples from file
-            add_samples_from_file(self.sample_file)
+        # Create a batch
+        save_or_overwrite_batch(
+            "Batch please",
+            "A test batch for testing",
+            [
+                "240620_kigr_gen2_01",
+                "240620_kigr_gen2_02",
+                "240620_kigr_gen2_03",
+            ],
+        )
 
-            # Create a batch
+        # Check the batch exists
+        batch_details = get_batch_details()
+        assert "Batch please" in batch_details
+        assert batch_details["Batch please"]["description"] == "A test batch for testing"
+
+        # Try overwriting - it should raise a ValueError
+        with pytest.raises(ValueError, match=r".*already exists.*"):
             save_or_overwrite_batch(
                 "Batch please",
                 "A test batch for testing",
@@ -216,52 +215,30 @@ class TestSampleFunctions:
                 ],
             )
 
-            # Check the batch exists
-            batch_details = get_batch_details()
-            assert "Batch please" in batch_details
-            assert batch_details["Batch please"]["description"] == "A test batch for testing"
+        # Check the batch didn't change
+        batch_details = get_batch_details()
+        assert batch_details["Batch please"]["description"] == "A test batch for testing"
 
-            # Try overwriting - it should raise a ValueError
-            with pytest.raises(ValueError, match=r".*already exists.*"):
-                save_or_overwrite_batch(
-                    "Batch please",
-                    "A test batch for testing",
-                    [
-                        "240620_kigr_gen2_01",
-                        "240620_kigr_gen2_02",
-                        "240620_kigr_gen2_03",
-                    ],
-                )
+        # Try overwriting with same name and force overwrite
+        save_or_overwrite_batch(
+            "Batch please",
+            "It has the same name but I'm forcing it to overwrite",
+            [
+                "240620_kigr_gen2_04",
+                "240620_kigr_gen2_05",
+                "240620_kigr_gen2_06",
+            ],
+            overwrite=True,
+        )
+        # Confirm it overwrites
+        batch_details = get_batch_details()
+        assert batch_details["Batch please"]["description"] == "It has the same name but I'm forcing it to overwrite"
+        assert "240620_kigr_gen2_04" in batch_details["Batch please"]["samples"]
 
-            # Check the batch didn't change
-            batch_details = get_batch_details()
-            assert batch_details["Batch please"]["description"] == "A test batch for testing"
-
-            # Try overwriting with same name and force overwrite
-            save_or_overwrite_batch(
-                "Batch please",
-                "It has the same name but I'm forcing it to overwrite",
-                [
-                    "240620_kigr_gen2_04",
-                    "240620_kigr_gen2_05",
-                    "240620_kigr_gen2_06",
-                ],
-                overwrite=True,
-            )
-            # Confirm it overwrites
-            batch_details = get_batch_details()
-            assert (
-                batch_details["Batch please"]["description"] == "It has the same name but I'm forcing it to overwrite"
-            )
-            assert "240620_kigr_gen2_04" in batch_details["Batch please"]["samples"]
-
-            # Remove the batch
-            remove_batch("Batch please")
-            batch_details = get_batch_details()
-            assert "Batch please" not in batch_details
-
-        finally:
-            shutil.copyfile(self.db_path.with_suffix(".bak"), self.db_path)
+        # Remove the batch
+        remove_batch("Batch please")
+        batch_details = get_batch_details()
+        assert "Batch please" not in batch_details
 
     def test_get_job_data(self) -> None:
         """Test getting job data from database."""

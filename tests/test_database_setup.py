@@ -1,11 +1,8 @@
 """Test database_setup.py aurora-setup command line tool."""
 
-import gc
 import json
 import os
-import shutil
 import sqlite3
-from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -19,40 +16,17 @@ if os.getenv("PYTEST_RUNNING") != "1":
     raise RuntimeError(msg)
 
 
-@pytest.fixture
-def setup_test_projects() -> Generator[tuple[Path, Path], None, None]:
-    """Set up and teardown temporary folders for testing setup."""
-    original_config_path = Path(__file__).resolve().parent / "test_data" / "test_config.json"
-    backup_config_path = original_config_path.with_suffix(".bak")
-    shutil.copy(original_config_path, backup_config_path)
-
-    test_project_path_1 = Path(__file__).resolve().parent / "test_data" / "temp_project1"
-    test_project_path_2 = Path(__file__).resolve().parent / "test_data" / "temp_project2"
-
-    # Yield the paths for the test projects and config files
-    yield test_project_path_1, test_project_path_2
-
-    # Teardown happens at the end of the test, return nothing
-    if backup_config_path.exists() and original_config_path.exists():
-        original_config_path.unlink()
-        backup_config_path.rename(original_config_path)
-        get_config(reload=True)
-    gc.collect()
-    shutil.rmtree(test_project_path_1, ignore_errors=True)
-    shutil.rmtree(test_project_path_2, ignore_errors=True)
-
-
 class TestAnalysis:
     """Test the database_setup.py aurora-setup command line tool."""
 
-    def test_project_init(self, setup_test_projects: tuple[Path, Path]) -> None:
+    def test_project_init(self, reset_all, tmp_path: Path) -> None:
         """Test connect command."""
         # Double check you're not going to delete the prod database!
         if os.getenv("PYTEST_RUNNING") != "1":
             msg = "This test should not run outside of pytest environment!"
             raise RuntimeError(msg)
 
-        test_project_path_1, _test_project_path_2 = setup_test_projects
+        test_project_path_1 = tmp_path / "temp_project1"
         shared_config_1 = test_project_path_1 / "database" / "shared_config.json"
         generated_files = [
             "database/shared_config.json",
@@ -84,14 +58,15 @@ class TestAnalysis:
         assert "This" not in data
         assert config["Shared config path"] == shared_config_1
 
-    def test_init_new_project(self, setup_test_projects: tuple[Path, Path]) -> None:
+    def test_init_new_project(self, reset_all, tmp_path: Path) -> None:
         """Test creating a new project and switching between projects."""
         # Double check you're not going to delete the prod database!
         if os.getenv("PYTEST_RUNNING") != "1":
             msg = "This test should not run outside of pytest environment!"
             raise RuntimeError(msg)
 
-        test_project_path_1, test_project_path_2 = setup_test_projects
+        test_project_path_1 = tmp_path / "temp_project1"
+        test_project_path_2 = tmp_path / "temp_project2"
         shared_config_1 = test_project_path_1 / "database" / "shared_config.json"
         shared_config_2 = test_project_path_2 / "database" / "shared_config.json"
 
@@ -113,13 +88,13 @@ class TestAnalysis:
         status = get_status()
         assert Path(status["Shared config path"]) == shared_config_1
 
-    def test_database_funcs(self, setup_test_projects: tuple[Path, Path]) -> None:
+    def test_database_funcs(self, reset_all, tmp_path: Path) -> None:
         """Test database functions."""
         # Double check you're not going to delete the prod database!
         if os.getenv("PYTEST_RUNNING") != "1":
             msg = "This test should not run outside of pytest environment!"
             raise RuntimeError(msg)
-        test_project_path_1, _test_project_path_2 = setup_test_projects
+        test_project_path_1 = tmp_path / "temp_project1"
         shared_config_1 = test_project_path_1 / "database" / "shared_config.json"
 
         # Initialise the setup

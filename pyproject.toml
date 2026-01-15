@@ -78,10 +78,13 @@ lint.ignore = [
 ]
 fix = true
 
-[tool.ruff.lint.extend-per-file-ignores]
+[tool.ruff.extend-per-file-ignores]
 "tests/*.py" = [
-    "S101", # asserts allowed in tests
-    "PT011", # allow just checking for ValueError without match
+    "ANN001",  # Fixture params
+    "ARG001",  # Unused arg in func
+    "ARG002",  # Unused arg in method
+    "S101",    # Asserts allowed in tests
+    "PT011",   # Allow just checking for ValueError without match
 ]
 
 [tool.mypy]

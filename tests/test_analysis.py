@@ -1,7 +1,6 @@
 """Test analysis.py."""
 
 import json
-import shutil
 from pathlib import Path
 
 import h5py
@@ -23,136 +22,106 @@ from aurora_cycler_manager.neware_harvester import convert_all_neware_data
 class TestAnalysis:
     """Test the analysis functions."""
 
-    # Make backup to restore from for each test
-    db_path = Path(__file__).parent / "test_data" / "database" / "test_database.db"
-    shutil.copyfile(db_path, db_path.with_suffix(".bak"))
-
-    def test_analyse_eclab_sample(self) -> None:
+    def test_analyse_eclab_sample(self, reset_all: object) -> None:
         """Generate test data, run analysis."""
-        sample_folder = Path(__file__).parent / "test_data" / "snapshots" / "250116_kigr_gen6" / "250116_kigr_gen6_01"
-        shutil.copyfile(self.db_path.with_suffix(".bak"), self.db_path)
-        try:
-            convert_all_mprs()
-            df, cycle_dict, metadata = analyse_sample("250116_kigr_gen6_01")
+        convert_all_mprs()
+        df, cycle_dict, metadata = analyse_sample("250116_kigr_gen6_01")
 
-            # DataFrame checks
-            assert isinstance(df, pd.DataFrame)
-            assert not df.empty
-            assert all(k in df.columns for k in ["uts", "V (V)", "I (A)", "Cycle"])
-            assert all(df["uts"] > 1.7e9)
-            assert all(df["V (V)"] > 0)
-            assert all(df["V (V)"] < 5)
+        # DataFrame checks
+        assert isinstance(df, pd.DataFrame)
+        assert not df.empty
+        assert all(k in df.columns for k in ["uts", "V (V)", "I (A)", "Cycle"])
+        assert all(df["uts"] > 1.7e9)
+        assert all(df["V (V)"] > 0)
+        assert all(df["V (V)"] < 5)
 
-            # cycle dict checks
-            assert isinstance(cycle_dict, dict)
-            assert isinstance(cycle_dict["Cycle"], list)
-            assert len(cycle_dict["Cycle"]) == cycle_dict["Cycle"][-1]
+        # cycle dict checks
+        assert isinstance(cycle_dict, dict)
+        assert isinstance(cycle_dict["Cycle"], list)
+        assert len(cycle_dict["Cycle"]) == cycle_dict["Cycle"][-1]
 
-            # DataFrame-cycle consistency
-            assert df["Cycle"].max() == cycle_dict["Cycle"][-1]
+        # DataFrame-cycle consistency
+        assert df["Cycle"].max() == cycle_dict["Cycle"][-1]
 
-            # metadata checks
-            assert isinstance(metadata, dict)
-            assert all(k in metadata for k in ["sample_data", "job_data", "provenance"])
-            assert metadata["sample_data"]["Sample ID"] == "250116_kigr_gen6_01"
-        finally:  # Reset db and remove files
-            shutil.copyfile(self.db_path.with_suffix(".bak"), self.db_path)
-            for file in sample_folder.glob("*.h5"):
-                file.unlink()
-            for file in sample_folder.glob("cycles.*.json"):
-                file.unlink()
+        # metadata checks
+        assert isinstance(metadata, dict)
+        assert all(k in metadata for k in ["sample_data", "job_data", "provenance"])
+        assert metadata["sample_data"]["Sample ID"] == "250116_kigr_gen6_01"
 
-    def test_analyse_neware_sample(self) -> None:
+    def test_analyse_neware_sample(self, reset_all: object) -> None:
         """Generate test data, run analysis."""
-        sample_folder = Path(__file__).parent / "test_data" / "snapshots" / "commercial_cell" / "commercial_cell_009"
-        shutil.copyfile(self.db_path.with_suffix(".bak"), self.db_path)
-        try:
-            convert_all_neware_data()
-            df, cycle_dict, metadata = analyse_sample("commercial_cell_009")
+        convert_all_neware_data()
+        df, cycle_dict, metadata = analyse_sample("commercial_cell_009")
 
-            # DataFrame checks
-            assert isinstance(df, pd.DataFrame)
-            assert not df.empty
-            assert all(k in df.columns for k in ["uts", "V (V)", "I (A)", "Cycle"])
-            assert all(df["uts"] > 1.7e9)
-            assert all(df["V (V)"] > 0)
-            assert all(df["V (V)"] < 5)
+        # DataFrame checks
+        assert isinstance(df, pd.DataFrame)
+        assert not df.empty
+        assert all(k in df.columns for k in ["uts", "V (V)", "I (A)", "Cycle"])
+        assert all(df["uts"] > 1.7e9)
+        assert all(df["V (V)"] > 0)
+        assert all(df["V (V)"] < 5)
 
-            # cycle dict checks
-            assert isinstance(cycle_dict, dict)
-            assert isinstance(cycle_dict["Cycle"], list)
-            assert len(cycle_dict["Cycle"]) == cycle_dict["Cycle"][-1]
+        # cycle dict checks
+        assert isinstance(cycle_dict, dict)
+        assert isinstance(cycle_dict["Cycle"], list)
+        assert len(cycle_dict["Cycle"]) == cycle_dict["Cycle"][-1]
 
-            # DataFrame-cycle consistency
-            assert df["Cycle"].max() == cycle_dict["Cycle"][-1]
+        # DataFrame-cycle consistency
+        assert df["Cycle"].max() == cycle_dict["Cycle"][-1]
 
-            # metadata checks
-            assert isinstance(metadata, dict)
-            assert all(k in metadata for k in ["sample_data", "job_data", "provenance"])
-            assert metadata["sample_data"]["Sample ID"] == "commercial_cell_009"
-        finally:  # Reset db and remove files
-            shutil.copyfile(self.db_path.with_suffix(".bak"), self.db_path)
-            for file in sample_folder.glob("*.h5"):
-                file.unlink()
-            for file in sample_folder.glob("cycles.*.json"):
-                file.unlink()
+        # metadata checks
+        assert isinstance(metadata, dict)
+        assert all(k in metadata for k in ["sample_data", "job_data", "provenance"])
+        assert metadata["sample_data"]["Sample ID"] == "commercial_cell_009"
 
-    def test_update_sample_metadata(self) -> None:
+    def test_update_sample_metadata(self, reset_all: object) -> None:
         """Test update sample metadata."""
         sample_folder = Path(__file__).parent / "test_data" / "snapshots" / "250116_kigr_gen6" / "250116_kigr_gen6_01"
-        shutil.copyfile(self.db_path.with_suffix(".bak"), self.db_path)
-        try:
-            # Files which will be written to
-            cycles_file = sample_folder / "cycles.250116_kigr_gen6_01.json"
-            full_file = sample_folder / "full.250116_kigr_gen6_01.h5"
 
-            # Convert the data to cycles.*.json and full.*.h5 and read the data
-            convert_all_mprs()
-            analyse_sample("250116_kigr_gen6_01")
-            with cycles_file.open("r") as f:
-                cycles_data_before = json.load(f)
-            full_data_before = pd.read_hdf(full_file, "data")
-            with h5py.File(full_file, "r") as f:
-                full_metadata_before = json.loads(f["metadata"][()])
+        # Files which will be written to
+        cycles_file = sample_folder / "cycles.250116_kigr_gen6_01.json"
+        full_file = sample_folder / "full.250116_kigr_gen6_01.h5"
 
-            # Change the sample metadata
-            update_sample_label("250116_kigr_gen6_01", "This should be written to the file")
-            update_sample_metadata("250116_kigr_gen6_01")
+        # Convert the data to cycles.*.json and full.*.h5 and read the data
+        convert_all_mprs()
+        analyse_sample("250116_kigr_gen6_01")
+        with cycles_file.open("r") as f:
+            cycles_data_before = json.load(f)
+        full_data_before = pd.read_hdf(full_file, "data")
+        with h5py.File(full_file, "r") as f:
+            full_metadata_before = json.loads(f["metadata"][()])
 
-            # Reread the data files
-            with cycles_file.open("r") as f:
-                cycles_data_after = json.load(f)
-            full_data_after = pd.read_hdf(full_file, "data")
-            with h5py.File(full_file, "r") as f:
-                full_metadata_after = json.loads(f["metadata"][()])
+        # Change the sample metadata
+        update_sample_label("250116_kigr_gen6_01", "This should be written to the file")
+        update_sample_metadata("250116_kigr_gen6_01")
 
-            # Check that the label has been updated
-            assert cycles_data_after["data"]["Label"] == "This should be written to the file"
-            assert cycles_data_after["metadata"]["sample_data"]["Label"] == "This should be written to the file"
-            assert cycles_data_before["data"]["Label"] != cycles_data_after["data"]["Label"]
+        # Reread the data files
+        with cycles_file.open("r") as f:
+            cycles_data_after = json.load(f)
+        full_data_after = pd.read_hdf(full_file, "data")
+        with h5py.File(full_file, "r") as f:
+            full_metadata_after = json.loads(f["metadata"][()])
 
-            assert full_metadata_after["sample_data"]["Label"] == "This should be written to the file"
-            assert full_metadata_before["sample_data"]["Label"] != full_metadata_after["sample_data"]["Label"]
+        # Check that the label has been updated
+        assert cycles_data_after["data"]["Label"] == "This should be written to the file"
+        assert cycles_data_after["metadata"]["sample_data"]["Label"] == "This should be written to the file"
+        assert cycles_data_before["data"]["Label"] != cycles_data_after["data"]["Label"]
 
-            # The rest should be the same
-            cycles_data_before["data"].pop("Label")
-            cycles_data_after["data"].pop("Label")
-            cycles_data_before["metadata"]["sample_data"].pop("Label")
-            cycles_data_after["metadata"]["sample_data"].pop("Label")
-            assert cycles_data_before == cycles_data_after
+        assert full_metadata_after["sample_data"]["Label"] == "This should be written to the file"
+        assert full_metadata_before["sample_data"]["Label"] != full_metadata_after["sample_data"]["Label"]
 
-            assert full_data_before.equals(full_data_after)
+        # The rest should be the same
+        cycles_data_before["data"].pop("Label")
+        cycles_data_after["data"].pop("Label")
+        cycles_data_before["metadata"]["sample_data"].pop("Label")
+        cycles_data_after["metadata"]["sample_data"].pop("Label")
+        assert cycles_data_before == cycles_data_after
 
-            full_metadata_before["sample_data"].pop("Label")
-            full_metadata_after["sample_data"].pop("Label")
-            assert full_metadata_before == full_metadata_after
+        assert full_data_before.equals(full_data_after)
 
-        finally:  # Reset db and remove files
-            shutil.copyfile(self.db_path.with_suffix(".bak"), self.db_path)
-            for file in sample_folder.glob("*.h5"):
-                file.unlink()
-            for file in sample_folder.glob("cycles.*.json"):
-                file.unlink()
+        full_metadata_before["sample_data"].pop("Label")
+        full_metadata_after["sample_data"].pop("Label")
+        assert full_metadata_before == full_metadata_after
 
     def test_dqdv(self) -> None:
         """Test the dQ/dV calculation against analytical derivative."""
