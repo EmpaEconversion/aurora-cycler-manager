@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import shutil
+import warnings
 from collections.abc import Generator
 from pathlib import Path
 
@@ -22,6 +23,12 @@ def pytest_configure(config: pytest.Config) -> None:
 def test_dir() -> Path:
     """Get test dir."""
     return Path(__file__).parent / "test_data"
+
+
+@pytest.fixture(autouse=True)
+def ignore_sqlite_warns() -> None:
+    """When using --cov, sqlite3 context managers don't close, coverage holds some ref and warns."""
+    warnings.filterwarnings("ignore", message="unclosed database", category=ResourceWarning)
 
 
 @pytest.fixture
