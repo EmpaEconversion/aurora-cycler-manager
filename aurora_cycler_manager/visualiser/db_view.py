@@ -534,6 +534,7 @@ download_modal = dmc.Modal(
                 children=dmc.Stack(
                     [
                         dmc.Checkbox(label="HDF5 time-series", id="download-hdf"),
+                        dmc.Checkbox(label="BDF CSV time-series", id="download-bdf-csv"),
                         dmc.Checkbox(label="BDF parquet time-series", id="download-bdf-parquet"),
                         dmc.Checkbox(label="JSON cycling summary", id="download-json-summary"),
                         dmc.Checkbox(label="JSON-LD ontologised metadata", id="download-jsonld"),
@@ -1447,6 +1448,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         Input("download-hdf", "checked"),
         Input("download-json-summary", "checked"),
         Input("download-bdf-parquet", "checked"),
+        Input("download-bdf-csv", "checked"),
         prevent_initial_call=True,
     )
     def reset_process(
@@ -1489,6 +1491,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             State("download-hdf", "checked"),
             State("download-json-summary", "checked"),
             State("download-bdf-parquet", "checked"),
+            State("download-bdf-csv", "checked"),
             State("download-jsonld", "checked"),
             State("upload-zenodo-info-button", "contents"),
         ],
@@ -1496,6 +1499,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             (Output("download-hdf", "disabled"), True, False),
             (Output("download-json-summary", "disabled"), True, False),
             (Output("download-bdf-parquet", "disabled"), True, False),
+            (Output("download-bdf-csv", "disabled"), True, False),
             (Output("download-jsonld", "disabled"), True, False),
             (Output("download-process-button", "disabled"), True, False),
             (Output("download-process-button", "loading"), True, False),
@@ -1515,7 +1519,8 @@ def register_db_view_callbacks(app: Dash) -> None:
         selected_rows: list,
         download_hdf: bool | None,
         download_json: bool | None,
-        download_bdf: bool | None,
+        download_bdf_parquet: bool | None,
+        download_bdf_csv: bool | None,
         download_jsonld: bool | None,
         zenodo_info: str | None,
     ) -> tuple[str, bool, bool]:
@@ -1523,7 +1528,8 @@ def register_db_view_callbacks(app: Dash) -> None:
         cleanup_temp_folder()
         sample_ids = [s["Sample ID"] for s in selected_rows]
         filetypes = {
-            "bdf": download_bdf,
+            "bdf-parquet": download_bdf_parquet,
+            "bdf-csv": download_bdf_csv,
             "json": download_json,
             "jsonld": download_jsonld,
             "hdf": download_hdf,

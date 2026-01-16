@@ -445,7 +445,7 @@ def create_rocrate(
             messages += f"{sample_id} - "
             warnings = []
             errors = []
-            if "bdf" in filetypes:
+            if "hdf" in filetypes:
                 i += 1
                 try:
                     hdf5_file = next(Path(sample_folder).glob("full.*.h5"))
@@ -523,7 +523,49 @@ def create_rocrate(
                 if set_progress:
                     set_progress((100 * i / n_files, messages, color))
 
-            if "bdf" in filetypes:
+            if "bdf-csv" in filetypes:
+                i += 1
+                try:
+                    hdf5_file = next(Path(sample_folder).glob("full.*.h5"))
+                    df = pd.read_hdf(hdf5_file)
+                    df = aurora_to_bdf(pd.DataFrame(df))
+                    # convert to csv file and write to zip
+                    buffer = io.BytesIO()
+                    df.to_csv(buffer, index=False)  # or index=True, depending on your needs
+                    buffer.seek(0)
+                    parquet_name = hdf5_file.with_suffix(".bdf.csv").name
+                    rel_file_path = sample_id + "/" + parquet_name
+                    zf.writestr(rel_file_path, buffer.read())
+                    messages += "✅"
+                    rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                    rocrate["@graph"].append(
+                        {
+                            "@id": rel_file_path,
+                            "@type": "File",
+                            "encodingFormat": "text/csv",
+                            "about": {"@id": ccid if ccid else sample_id},
+                            "description": (
+                                f"Time-series battery cycling data for sample: '{sample_id}'"
+                                + (f" with barcode: '{ccid}'. " if ccid else ". ")
+                                + "Data is csv format, columns are 'battery data format' (BDF) compliant."
+                            ),
+                        }
+                    )
+                    battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
+                except StopIteration:
+                    logger.warning("No HDF5 file found for %s", sample_id)
+                    messages += "⚠️"
+                    warnings.append("BDF-CSV")
+                    color = "orange"
+                except Exception:
+                    logger.exception("Unexpected error processing BDF file for sample %s", sample_id)
+                    messages += "⁉️"
+                    errors.append("BDF-CSV")
+                    color = "orange"
+                if set_progress:
+                    set_progress((100 * i / n_files, messages, color))
+
+            if "bdf-parquet" in filetypes:
                 i += 1
                 try:
                     hdf5_file = next(Path(sample_folder).glob("full.*.h5"))
@@ -555,12 +597,12 @@ def create_rocrate(
                 except StopIteration:
                     logger.warning("No HDF5 file found for %s", sample_id)
                     messages += "⚠️"
-                    warnings.append("BDF")
+                    warnings.append("BDF-parquet")
                     color = "orange"
                 except Exception:
                     logger.exception("Unexpected error processing BDF file for sample %s", sample_id)
                     messages += "⁉️"
-                    errors.append("BDF")
+                    errors.append("BDF-parquet")
                     color = "orange"
                 if set_progress:
                     set_progress((100 * i / n_files, messages, color))

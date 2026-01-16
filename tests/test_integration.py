@@ -204,12 +204,20 @@ def test_analyse_download_eclab_sample(
     zip_file = tmp_path / "file.zip"
     file_io.create_rocrate(
         [sample_id],
-        {"hdf", "bdf", "json", "jsonld"},
+        {"hdf", "bdf-parquet", "bdf-csv", "json", "jsonld"},
         zenodo_info_str,
         zip_file,
         set_progress,
     )
     assert zip_file.exists()
+    with ZipFile(zip_file, mode="r") as zf:
+        files = zf.namelist()
+        assert f"{sample_id}/full.{sample_id}.h5" in files
+        assert f"{sample_id}/full.{sample_id}.bdf.parquet" in files
+        assert f"{sample_id}/full.{sample_id}.bdf.csv" in files
+        assert f"{sample_id}/cycles.{sample_id}.json" in files
+        assert f"{sample_id}/metadata.{sample_id}.jsonld" in files
+        assert "ro-crate-metadata.json" in files
 
     # Test downloading the files when every one breaks
     with patch("zipfile.ZipFile.writestr", side_effect=ValueError("fail")):
@@ -218,7 +226,7 @@ def test_analyse_download_eclab_sample(
         with pytest.raises(ValueError, match="Zip has no content"):
             file_io.create_rocrate(
                 [sample_id],
-                {"hdf", "bdf", "json", "jsonld"},
+                {"hdf", "bdf-parquet", "bdf-csv", "json", "jsonld"},
                 zenodo_info_str,
                 zip_file,
                 set_progress,
