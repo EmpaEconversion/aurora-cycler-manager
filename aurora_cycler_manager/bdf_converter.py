@@ -32,9 +32,9 @@ hdf_mapping = {
 }
 
 
-def aurora_to_bdf(df: pd.DataFrame) -> pd.DataFrame:
+def aurora_to_bdf(df: pd.DataFrame | pd.Series) -> pd.DataFrame:
     """Convert an Aurora dataframe to BDF compliant dataframe."""
-    df = df[[c for c in df.columns if c in bdf_mapping]]
+    df = pd.DataFrame(df[[c for c in df.columns if c in bdf_mapping]])
     df = df.rename(columns=bdf_mapping)
     df["Test Time / s"] = (df["Unix Time / s"] - df["Unix Time / s"].iloc[0]).round(3)
     return df
