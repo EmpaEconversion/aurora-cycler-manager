@@ -199,11 +199,12 @@ def determine_uploaded(decoded_bytes: bytes, filename: str, selected_rows: list)
                     invalid_files[file] = f"Folder {folder} is not a Sample ID in the database"
                     continue
                 filetype = file.split(".")[-1]
+                if filetype in ["mpl"]:  # silently ignore - sidecar file
+                    continue
                 if filetype not in ["mpr"]:
                     invalid_files[file] = f"Filetype {filetype} is not supported"
                     continue
-                if filetype in ["mpl"]:  # silently ignore - sidecar file
-                    continue
+
                 valid_files[file] = folder
         if valid_files:
             msg = "Got a zip with valid files\nAdding data for the following samples:\n" + "\n".join(
