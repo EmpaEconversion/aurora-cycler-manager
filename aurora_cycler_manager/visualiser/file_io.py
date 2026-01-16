@@ -46,12 +46,9 @@ def is_samples_json(obj: list | str | dict) -> bool:
 def is_battinfo_jsonld(obj: list | str | dict) -> bool:
     """Check if object is battinfo JSON-LD."""
     if isinstance(obj, dict) and obj.get("@context"):
-        logger.critical("Is object with @context")
         coincell = bu.find_coin_cell(obj)
-        logger.critical("Is coincell: %s", coincell)
         if coincell:
             comments = coincell.get("rdfs:comment")
-            logger.critical("Comments: %s", comments)
             return isinstance(comments, list) and len(comments) >= 1 and comments[0].startswith("BattINFO")
     return False
 
