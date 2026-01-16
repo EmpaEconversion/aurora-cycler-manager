@@ -1,0 +1,225 @@
+"""Test chaining together many high level functions."""
+
+import base64
+import json
+from pathlib import Path
+from unittest.mock import patch
+from zipfile import ZipFile
+
+import pytest
+
+from aurora_cycler_manager.database_funcs import get_job_data, get_jobs_from_sample
+from aurora_cycler_manager.visualiser import file_io
+
+
+def set_progress(x: tuple[float, str, str]) -> None:
+    """Simulate a progress bar."""
+    i, _message, _color = x
+    if i < 0 or i > 100:
+        msg = "Progress cannot be outside range 0-100"
+        raise ValueError(msg)
+
+
+def test_analyse_download_eclab_sample(
+    reset_all, test_dir: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Generate test data, run analysis."""
+    sample_id = "250116_kigr_gen6_01"
+    run_id = "250116_kigr_gen6"
+    sample_folder = test_dir / "snapshots" / run_id / sample_id
+    raw_data_folder = test_dir / "local_snapshots" / "eclab_snapshots" / run_id / "1"
+
+    # Test downloading without data - should not make zip
+    zip_file = tmp_path / "empty.zip"
+    with pytest.raises(ValueError, match="Zip has no content"):
+        file_io.create_rocrate(
+            [sample_id],
+            {"hdf", "bdf", "json", "jsonld"},
+            None,
+            zip_file,
+            set_progress,
+        )
+
+    # Zip the raw data
+    zip_path = tmp_path / "data.zip"
+    with ZipFile(zip_path, mode="w") as zf:
+        # Add an invalid file
+        zf.writestr(f"{sample_id}/thing.txt", "hello there")
+        # Add an invalid sample ID
+        zf.writestr("not_a_sample_in_the_db/thing.txt", "hello there")
+        # Add file without sample folder
+        zf.writestr("thing.txt", "hello there")
+    zip_buffer = zip_path.read_bytes()
+
+    # 'Upload' the raw data
+    res = file_io.determine_uploaded(zip_buffer, zip_path.name, [])
+    assert "No valid files" in res[0]
+    assert res[3]["file"] is None
+
+    # Zip the raw data
+    zip_path = tmp_path / "data.zip"
+    with ZipFile(zip_path, mode="w") as zf:
+        for file in raw_data_folder.iterdir():
+            zf.write(file, arcname=Path(sample_id) / file.name)
+        # Add an invalid file
+        zf.writestr(f"{sample_id}/thing.txt", "hello there")
+        # Add an invalid sample ID
+        zf.writestr("not_a_sample_in_the_db/thing.txt", "hello there")
+        # Add file without sample folder
+        zf.writestr("thing.txt", "hello there")
+    zip_buffer = zip_path.read_bytes()
+
+    # 'Upload' the raw data
+    res = file_io.determine_uploaded(zip_buffer, zip_path.name, [])
+    assert "zip" in res[0]
+    assert res[3]["file"] == "zip"
+
+    # Should make some hdf5 and cycles json files
+    file_io.process_uploaded(res[3], zip_buffer, [])
+    assert (sample_folder / f"full.{sample_id}.h5").exists()
+    assert (sample_folder / f"cycles.{sample_id}.json").exists()
+    assert len(list(sample_folder.glob("snapshot.*.h5"))) == 2
+
+    # Uploading again should not add new files, should overwrite
+    zip_path = tmp_path / "data.zip"
+    with ZipFile(zip_path, mode="w") as zf:
+        for file in raw_data_folder.iterdir():
+            zf.write(file, arcname=Path(sample_id) / file.name)
+    zip_buffer = zip_path.read_bytes()
+    res = file_io.determine_uploaded(zip_buffer, zip_path.name, [])
+    assert "zip" in res[0]
+    assert res[3]["file"] == "zip"
+    file_io.process_uploaded(res[3], zip_buffer, [])
+    # Should still only be 2 snapshot files
+    assert len(list(sample_folder.glob("snapshot.*.h5"))) == 2
+
+    # Should make some Job IDs in the database
+    jobs = get_jobs_from_sample(sample_id)
+    assert len(jobs) > 0
+
+    # Upload a unicycler dict
+    unicycler_dict = {
+        "unicycler": {"version": "0.4.3"},
+        "sample": {"name": "test_sample", "capacity_mAh": "123"},
+        "record": {"current_mA": "0.1", "voltage_V": "0.1", "time_s": "10"},
+        "safety": {
+            "max_voltage_V": "5",
+            "min_voltage_V": "-0.1",
+            "max_current_mA": "10",
+            "min_current_mA": "-10",
+            "delay_s": "10",
+        },
+        "method": [
+            {"step": "constant_current", "rate_C": "0.1", "until_time_s": "54000.0", "until_voltage_V": "4.9"},
+            {
+                "step": "constant_voltage",
+                "voltage_V": "4.9",
+                "until_time_s": "21600",
+                "until_rate_C": "0.05",
+            },
+            {
+                "step": "constant_current",
+                "rate_C": "-0.1",
+                "until_time_s": "54000.0",
+                "until_voltage_V": "3.5",
+            },
+            {
+                "step": "loop",
+                "loop_to": 1,
+                "cycle_count": 100,
+            },
+        ],
+    }
+    unicycler_bytes = json.dumps(unicycler_dict).encode()
+
+    # 'Upload' the dict without job selected
+    res = file_io.determine_uploaded(unicycler_bytes, "unicycler.json", [])
+    assert "you must select jobs" in res[0]
+    assert res[3]["file"] is None
+    assert res[3]["data"] is None
+
+    # 'Upload' the dict
+    res = file_io.determine_uploaded(unicycler_bytes, "unicycler.json", [{"Sample ID": sample_id, "Job ID": jobs[0]}])
+    assert "unicycler" in res[0]
+    assert res[3]["file"] == "unicycler-json"
+    assert res[3]["data"] == unicycler_dict
+
+    # Should add a unicycler protocol to the database
+    file_io.process_uploaded(res[3], unicycler_bytes, [{"Sample ID": sample_id, "Job ID": jobs[0]}])
+    job_data = get_job_data(jobs[0])
+    assert job_data["Unicycler protocol"] == unicycler_dict
+
+    # 'Upload' the dict again, should warn
+    res = file_io.determine_uploaded(unicycler_bytes, "unicycler.json", [job_data])
+    assert "unicycler" in res[0]
+    assert "this will overwrite data" in res[0]
+    assert res[3]["file"] == "unicycler-json"
+    assert res[3]["data"] == unicycler_dict
+
+    # Upload a battinfo xlsx
+    zenodoinfo_xlsx_bytes = (test_dir / "misc" / "aurora_zenodo_info.xlsx").read_bytes()
+    battinfo_xlsx_bytes = (test_dir / "misc" / "BattINFO_example.xlsx").read_bytes()
+
+    # Without samples selected warns
+    res = file_io.determine_uploaded(battinfo_xlsx_bytes, "some.xlsx", [])
+    assert "must select samples" in res[0]
+    assert res[3]["file"] is None
+
+    # Wrong xslx complains
+    res = file_io.determine_uploaded(zenodoinfo_xlsx_bytes, "some.xlsx", [])
+    assert "does not have the expected sheets" in res[0]
+    assert res[3]["file"] is None
+
+    # With selected works
+    res = file_io.determine_uploaded(battinfo_xlsx_bytes, "some.xlsx", [{"Sample ID": sample_id}])
+    assert "BattINFO" in res[0]
+    assert res[3]["file"] == "battinfo-xlsx"
+    assert res[3]["data"] is None
+
+    # Should add a unicycler protocol to the database
+    file_io.process_uploaded(res[3], battinfo_xlsx_bytes, [{"Sample ID": sample_id}])
+    assert (sample_folder / f"battinfo.{sample_id}.jsonld").exists()
+
+    # Upload an auxiliary jsonld
+    aux_jsonld = {
+        "@context": "some stuff",
+        "@type": "CoinCell",
+        "hasThing": "stuff",
+    }
+    aux_jsonld_bytes = json.dumps(aux_jsonld).encode()
+    # 'Upload' the dict
+    res = file_io.determine_uploaded(aux_jsonld_bytes, "some.json", [{"Sample ID": sample_id}])
+    assert "auxiliary" in res[0]
+    assert res[3]["file"] == "aux-jsonld"
+    assert res[3]["data"] == aux_jsonld
+
+    # Should add a unicycler protocol to the database
+    file_io.process_uploaded(res[3], aux_jsonld_bytes, [{"Sample ID": sample_id}])
+    assert (sample_folder / f"aux.{sample_id}.jsonld").exists()
+
+    # Include publication info - this is how data is uploaded to Dash
+    zenodo_info_str = f"xlsx,{base64.b64encode(zenodoinfo_xlsx_bytes).decode('utf-8')}"
+
+    # Test downloading the files
+    zip_file = tmp_path / "file.zip"
+    file_io.create_rocrate(
+        [sample_id],
+        {"hdf", "bdf", "json", "jsonld"},
+        zenodo_info_str,
+        zip_file,
+        set_progress,
+    )
+    assert zip_file.exists()
+
+    # Test downloading the files when every one breaks
+    with patch("zipfile.ZipFile.writestr", side_effect=ValueError("fail")):
+        # Test downloading the files
+        zip_file = tmp_path / "file.zip"
+        with pytest.raises(ValueError, match="Zip has no content"):
+            file_io.create_rocrate(
+                [sample_id],
+                {"hdf", "bdf", "json", "jsonld"},
+                zenodo_info_str,
+                zip_file,
+                set_progress,
+            )
