@@ -1528,16 +1528,16 @@ def register_db_view_callbacks(app: Dash) -> None:
         cleanup_temp_folder()
         sample_ids = [s["Sample ID"] for s in selected_rows]
         filetypes = {
+            "hdf5": download_hdf,
             "bdf-parquet": download_bdf_parquet,
             "bdf-csv": download_bdf_csv,
-            "json": download_json,
-            "jsonld": download_jsonld,
-            "hdf": download_hdf,
+            "cycles-json": download_json,
+            "metadata-jsonld": download_jsonld,
         }
         filetypes = {ft for ft, enabled in filetypes.items() if enabled}  # Convert to set
         temp_zip_path = DOWNLOAD_DIR / f"aurora_{uuid.uuid4().hex}.zip"
         try:
-            file_io.create_rocrate(sample_ids, filetypes, zenodo_info, temp_zip_path, set_progress)
+            file_io.create_rocrate(sample_ids, filetypes, temp_zip_path, zenodo_info, set_progress)
         except ValueError:
             return "", True, True
         else:

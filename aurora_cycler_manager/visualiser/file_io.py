@@ -3,6 +3,8 @@
 Functions for file upload and download.
 """
 
+import builtins
+import contextlib
 import io
 import json
 import logging
@@ -393,11 +395,21 @@ def process_uploaded(data: dict, decoded_bytes: bytes, selected_rows: list) -> i
 def create_rocrate(
     sample_ids: list,
     filetypes: set,
-    zenodo_info: str | None,
     zip_path: str | Path,
-    set_progress: Callable | None,
+    zenodo_info: str | None = None,
+    set_progress: Callable | None = None,
 ) -> None:
-    """Batch process data from selected samples and store in zip in temp folder on server."""
+    """Create ro-crate zip with multiple samples.
+
+    Args:
+        sample_ids: List of sample IDs to add to ro-crate.
+        filetypes: set of file types, subset of:
+            {"hdf5","bdf-csv","bdf-parquet","cycles-json","metadata-jsonld"}
+        zip_path: Path of where to save zip.
+        zenodo_info (optional): Path to zenodo info xlsx file.
+        set_progress (used by app): Function for progress bar.
+
+    """
     zip_path = Path(zip_path)
     samples = [_Sample.from_id(s) for s in sample_ids]
     rocrate = {
@@ -445,266 +457,257 @@ def create_rocrate(
             messages += f"{sample_id} - "
             warnings = []
             errors = []
-            if "hdf" in filetypes:
+            hdf5_file = None
+            bdf_df = None
+
+            # If time-series data is requested, get the hdf5 file
+            if {"hdf5", "bdf-csv", "bdf-parquet"} & filetypes:
+                hdf5_file = next(Path(sample_folder).glob("full.*.h5"), None)
+                # If bdf is requested, convert the dataframe
+                if hdf5_file and {"bdf-csv", "bdf-parquet"} & filetypes:
+                    with contextlib.suppress(builtins.BaseException):
+                        bdf_df = aurora_to_bdf(pd.read_hdf(hdf5_file))
+
+            # Loop through requested files
+            for filetype in filetypes:
                 i += 1
                 try:
-                    hdf5_file = next(Path(sample_folder).glob("full.*.h5"))
-                    with hdf5_file.open("rb") as f:
-                        hdf5_bytes = f.read()
-                    rel_file_path = sample_id + "/" + hdf5_file.name
-                    zf.writestr(rel_file_path, hdf5_bytes)
-                    rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
-                    rocrate["@graph"].append(
-                        {
-                            "@id": rel_file_path,
-                            "@type": "File",
-                            "about": {"@id": ccid if ccid else sample_id},
-                            "encodingFormat": "application/octet-stream",
-                            "description": (
-                                f"Time-series battery cycling data for sample: '{sample_id}'"
-                                + (f" with CCID: '{ccid}'. " if ccid else ". ")
-                                + "Data is in HDF5 format, keys are 'data' and 'metadata'. "
-                                "'data' contains an export from a Python Pandas dataframe. "
-                                "'metadata' contains a JSON-string with info about the sample and experiment."
-                            ),
-                        }
-                    )
-                    battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
-                    messages += "✅"
-                except StopIteration:
-                    logger.warning("No HDF5 file found for %s", sample_id)
-                    messages += "⚠️"
-                    warnings.append("HDF5")
-                    color = "orange"
-                except Exception:
-                    logger.exception("Unexpected error processing HDF5 for sample %s", sample_id)
-                    messages += "⁉️"
-                    errors.append("HDF5")
-                    color = "orange"
-                if set_progress:
-                    set_progress((100 * i / n_files, messages, color))
+                    if filetype == "hdf5":
+                        if hdf5_file is None:
+                            logger.warning("No time-series data for %s", sample_id)
+                            messages += "⚠️"
+                            warnings.append(filetype)
+                            color = "orange"
+                            continue
+                        rel_file_path = sample_id + "/" + hdf5_file.name
+                        zf.write(hdf5_file, rel_file_path)
+                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                        rocrate["@graph"].append(
+                            {
+                                "@id": rel_file_path,
+                                "@type": "File",
+                                "about": {"@id": ccid if ccid else sample_id},
+                                "encodingFormat": "application/octet-stream",
+                                "description": (
+                                    f"Time-series battery cycling data for sample: '{sample_id}'"
+                                    + (f" with CCID: '{ccid}'. " if ccid else ". ")
+                                    + "Data is in HDF5 format, keys are 'data' and 'metadata'. "
+                                    "'data' contains an export from a Python Pandas dataframe. "
+                                    "'metadata' contains a JSON-string with info about the sample and experiment."
+                                ),
+                            }
+                        )
+                        battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
+                        messages += "✅"
 
-            if "json" in filetypes:
-                i += 1
-                try:
-                    json_file = next(Path(sample_folder).glob("cycles.*.json"))
-                    with json_file.open("rb") as f:
-                        json_bytes = f.read()
-                    rel_file_path = sample_id + "/" + json_file.name
-                    zf.writestr(rel_file_path, json_bytes)
-                    messages += "✅"
-                    rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
-                    rocrate["@graph"].append(
-                        {
-                            "@id": rel_file_path,
-                            "@type": "File",
-                            "encodingFormat": "text/json",
-                            "about": {"@id": ccid if ccid else sample_id},
-                            "description": (
-                                f"Summary data from battery cycling for sample: '{sample_id}'"
-                                + (f" with CCID: '{ccid}'. " if ccid else ". ")
-                                + "File is in JSON format, top level keys are 'data' and 'metadata'. "
-                                "'data' contains lists with per-cycle summary stastics, e.g. discharge capacity. "
-                                "'metadata' contains sample and experiment information."
-                            ),
-                        }
-                    )
-                    battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
-                except StopIteration:
-                    logger.warning("No JSON summary file found for %s", sample_id)
-                    messages += "⚠️"
-                    warnings.append("JSON summary")
-                    color = "orange"
-                except Exception:
-                    logger.exception("Unexpected error processing JSON summary for sample %s", sample_id)
-                    messages += "⁉️"
-                    errors.append("JSON summary")
-                    color = "orange"
-                if set_progress:
-                    set_progress((100 * i / n_files, messages, color))
+                    if filetype == "cycles-json":
+                        json_file = next(Path(sample_folder).glob("cycles.*.json"), None)
+                        if not json_file:
+                            logger.warning("No JSON summary file found for %s", sample_id)
+                            messages += "⚠️"
+                            warnings.append("JSON summary")
+                            color = "orange"
+                            continue
+                        with json_file.open("rb") as f:
+                            json_bytes = f.read()
+                        rel_file_path = sample_id + "/" + json_file.name
+                        zf.writestr(rel_file_path, json_bytes)
+                        messages += "✅"
+                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                        rocrate["@graph"].append(
+                            {
+                                "@id": rel_file_path,
+                                "@type": "File",
+                                "encodingFormat": "text/json",
+                                "about": {"@id": ccid if ccid else sample_id},
+                                "description": (
+                                    f"Summary data from battery cycling for sample: '{sample_id}'"
+                                    + (f" with CCID: '{ccid}'. " if ccid else ". ")
+                                    + "File is in JSON format, top level keys are 'data' and 'metadata'. "
+                                    "'data' contains lists with per-cycle summary stastics, e.g. discharge capacity. "
+                                    "'metadata' contains sample and experiment information."
+                                ),
+                            }
+                        )
+                        battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
 
-            if "bdf-csv" in filetypes:
-                i += 1
-                try:
-                    hdf5_file = next(Path(sample_folder).glob("full.*.h5"))
-                    df = pd.read_hdf(hdf5_file)
-                    df = aurora_to_bdf(pd.DataFrame(df))
-                    # convert to csv file and write to zip
-                    buffer = io.BytesIO()
-                    df.to_csv(buffer, index=False)  # or index=True, depending on your needs
-                    buffer.seek(0)
-                    parquet_name = hdf5_file.with_suffix(".bdf.csv").name
-                    rel_file_path = sample_id + "/" + parquet_name
-                    zf.writestr(rel_file_path, buffer.read())
-                    messages += "✅"
-                    rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
-                    rocrate["@graph"].append(
-                        {
-                            "@id": rel_file_path,
-                            "@type": "File",
-                            "encodingFormat": "text/csv",
-                            "about": {"@id": ccid if ccid else sample_id},
-                            "description": (
-                                f"Time-series battery cycling data for sample: '{sample_id}'"
-                                + (f" with barcode: '{ccid}'. " if ccid else ". ")
-                                + "Data is csv format, columns are 'battery data format' (BDF) compliant."
-                            ),
-                        }
-                    )
-                    battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
-                except StopIteration:
-                    logger.warning("No HDF5 file found for %s", sample_id)
-                    messages += "⚠️"
-                    warnings.append("BDF-CSV")
-                    color = "orange"
-                except Exception:
-                    logger.exception("Unexpected error processing BDF file for sample %s", sample_id)
-                    messages += "⁉️"
-                    errors.append("BDF-CSV")
-                    color = "orange"
-                if set_progress:
-                    set_progress((100 * i / n_files, messages, color))
+                    if filetype == "bdf-csv":
+                        if hdf5_file is None:
+                            logger.warning("No time-series data for %s", sample_id)
+                            messages += "⚠️"
+                            warnings.append(filetype)
+                            color = "orange"
+                            continue
+                        if bdf_df is None:
+                            logger.exception("Failed to convert to BDF %s", sample_id)
+                            messages += "⁉️"
+                            errors.append(filetype)
+                            color = "orange"
+                            continue
+                        # convert to csv file and write to zip
+                        buffer = io.BytesIO()
+                        bdf_df.to_csv(buffer, index=False)  # or index=True, depending on your needs
+                        buffer.seek(0)
+                        parquet_name = hdf5_file.with_suffix(".bdf.csv").name
+                        rel_file_path = sample_id + "/" + parquet_name
+                        zf.writestr(rel_file_path, buffer.read())
+                        messages += "✅"
+                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                        rocrate["@graph"].append(
+                            {
+                                "@id": rel_file_path,
+                                "@type": "File",
+                                "encodingFormat": "text/csv",
+                                "about": {"@id": ccid if ccid else sample_id},
+                                "description": (
+                                    f"Time-series battery cycling data for sample: '{sample_id}'"
+                                    + (f" with barcode: '{ccid}'. " if ccid else ". ")
+                                    + "Data is csv format, columns are 'battery data format' (BDF) compliant."
+                                ),
+                            }
+                        )
+                        battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
 
-            if "bdf-parquet" in filetypes:
-                i += 1
-                try:
-                    hdf5_file = next(Path(sample_folder).glob("full.*.h5"))
-                    df = pd.read_hdf(hdf5_file)
-                    df = aurora_to_bdf(pd.DataFrame(df))
-                    # convert to parquet file and write to zip
-                    buffer = io.BytesIO()
-                    df.to_parquet(buffer, index=False)  # or index=True, depending on your needs
-                    buffer.seek(0)
-                    parquet_name = hdf5_file.with_suffix(".bdf.parquet").name
-                    rel_file_path = sample_id + "/" + parquet_name
-                    zf.writestr(rel_file_path, buffer.read())
-                    messages += "✅"
-                    rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
-                    rocrate["@graph"].append(
-                        {
-                            "@id": rel_file_path,
-                            "@type": "File",
-                            "encodingFormat": "application/vnd.apache.parquet",
-                            "about": {"@id": ccid if ccid else sample_id},
-                            "description": (
-                                f"Time-series battery cycling data for sample: '{sample_id}'"
-                                + (f" with barcode: '{ccid}'. " if ccid else ". ")
-                                + "Data is parquet format, columns are 'battery data format' (BDF) compliant."
-                            ),
-                        }
-                    )
-                    battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
-                except StopIteration:
-                    logger.warning("No HDF5 file found for %s", sample_id)
-                    messages += "⚠️"
-                    warnings.append("BDF-parquet")
-                    color = "orange"
-                except Exception:
-                    logger.exception("Unexpected error processing BDF file for sample %s", sample_id)
-                    messages += "⁉️"
-                    errors.append("BDF-parquet")
-                    color = "orange"
-                if set_progress:
-                    set_progress((100 * i / n_files, messages, color))
+                    if filetype == "bdf-parquet":
+                        if hdf5_file is None:
+                            logger.warning("No time-series data for %s", sample_id)
+                            messages += "⚠️"
+                            warnings.append(filetype)
+                            color = "orange"
+                            continue
+                        if bdf_df is None:
+                            logger.exception("Failed to convert to BDF %s", sample_id)
+                            messages += "⁉️"
+                            errors.append(filetype)
+                            color = "orange"
+                            continue
+                        # convert to parquet file and write to zip
+                        buffer = io.BytesIO()
+                        bdf_df.to_parquet(buffer, index=False)  # or index=True, depending on your needs
+                        buffer.seek(0)
+                        parquet_name = hdf5_file.with_suffix(".bdf.parquet").name
+                        rel_file_path = sample_id + "/" + parquet_name
+                        zf.writestr(rel_file_path, buffer.read())
+                        messages += "✅"
+                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                        rocrate["@graph"].append(
+                            {
+                                "@id": rel_file_path,
+                                "@type": "File",
+                                "encodingFormat": "application/vnd.apache.parquet",
+                                "about": {"@id": ccid if ccid else sample_id},
+                                "description": (
+                                    f"Time-series battery cycling data for sample: '{sample_id}'"
+                                    + (f" with barcode: '{ccid}'. " if ccid else ". ")
+                                    + "Data is parquet format, columns are 'battery data format' (BDF) compliant."
+                                ),
+                            }
+                        )
+                        battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
 
-            if "jsonld" in filetypes:
-                i += 1
-                try:
-                    # Get the BattINFO file
-                    battinfo_file = next(Path(sample_folder).glob("battinfo.*.jsonld"))
-                    with battinfo_file.open("r") as f:
-                        battinfo_json = json.load(f)
-                    battinfo_json = bu.make_test_object(battinfo_json)
+                    if filetype == "metadata-jsonld":
+                        # Get the BattINFO file
+                        battinfo_file = next(Path(sample_folder).glob("battinfo.*.jsonld"), None)
+                        aux_file = next(Path(sample_folder).glob("aux.*.jsonld"), None)
+                        if battinfo_file is None:
+                            logger.warning("No BattINFO file for %s", sample_id)
+                            messages += "⚠️"
+                            warnings.append(filetype)
+                            color = "orange"
+                            continue
+                        with battinfo_file.open("r") as f:
+                            battinfo_json = json.load(f)
+                        battinfo_json = bu.make_test_object(battinfo_json)
 
-                    # Check for auxiliary jsonld file
-                    aux_json = None
-                    try:
-                        aux_file = next(Path(sample_folder).glob("aux.*.jsonld"))
-                        with aux_file.open("r") as f:
-                            aux_json = json.load(f)
-                    except StopIteration:
-                        pass
-                    if aux_json:
-                        try:
-                            bu.merge_jsonld_on_type([battinfo_json, aux_json])
-                        except ValueError:
-                            bu.merge_jsonld_on_type([battinfo_json["hasTestObject"], aux_json], target_type="CoinCell")
+                        # Check for auxiliary jsonld file
+                        if aux_file:
+                            with aux_file.open("r") as f:
+                                aux_json = json.load(f)
+                            try:
+                                bu.merge_jsonld_on_type([battinfo_json, aux_json])
+                            except ValueError:
+                                bu.merge_jsonld_on_type(
+                                    [battinfo_json["hasTestObject"], aux_json],
+                                    target_type="CoinCell",
+                                )
 
-                    # Add unicycler protocols
-                    db_jobs = get_unicycler_protocols(sample_id)
-                    if db_jobs:
-                        ontologized_protocols = []
-                        for db_job in db_jobs:
-                            protocol = Protocol.from_dict(json.loads(db_job["Unicycler protocol"]))
-                            ontologized_protocols.append(
-                                protocol.to_battinfo_jsonld(capacity_mAh=db_job["Capacity (mAh)"])
+                        # Add unicycler protocols
+                        db_jobs = get_unicycler_protocols(sample_id)
+                        if db_jobs:
+                            ontologized_protocols = []
+                            for db_job in db_jobs:
+                                protocol = Protocol.from_dict(json.loads(db_job["Unicycler protocol"]))
+                                ontologized_protocols.append(
+                                    protocol.to_battinfo_jsonld(capacity_mAh=db_job["Capacity (mAh)"])
+                                )
+                            test_jsonld = bu.generate_battery_test(ontologized_protocols)
+                            battinfo_json = bu.merge_jsonld_on_type([battinfo_json, test_jsonld])
+
+                        # Add data files
+                        if battinfo_files:
+                            battinfo_json = bu.merge_jsonld_on_type([battinfo_json, *battinfo_files])
+
+                        # Add ccid to output
+                        if ccid:
+                            battinfo_json = bu.merge_jsonld_on_type([battinfo_json, bu.add_ccid_output(ccid)])
+
+                        # Add citation string
+                        if pub_info.get("citation_string"):
+                            battinfo_json = bu.merge_jsonld_on_type(
+                                [
+                                    battinfo_json,
+                                    bu.add_citation(pub_info["citation_string"]),
+                                ]
                             )
-                        test_jsonld = bu.generate_battery_test(ontologized_protocols)
-                        battinfo_json = bu.merge_jsonld_on_type([battinfo_json, test_jsonld])
 
-                    # Add data files
-                    if battinfo_files:
-                        battinfo_json = bu.merge_jsonld_on_type([battinfo_json, *battinfo_files])
+                        # Add authors and institutions
+                        if pub_info.get("authors") and pub_info.get("institutions"):
+                            authors = bu.add_authors(pub_info["authors"], pub_info["institutions"])
+                            battinfo_json = bu.merge_jsonld_on_type([battinfo_json, authors])
 
-                    # Add ccid to output
-                    if ccid:
-                        battinfo_json = bu.merge_jsonld_on_type([battinfo_json, bu.add_ccid_output(ccid)])
+                        # Add publication info
+                        if (
+                            pub_info.get("publication_doi_url")
+                            and pub_info.get("sample_to_fig")
+                            and (ccid or sample_id)
+                        ):
+                            publication_extras = bu.add_associated_media(
+                                pub_info["publication_doi_url"],
+                                pub_info["sample_to_fig"],
+                                ccid,
+                                sample_id,
+                            )
+                            battinfo_json = bu.merge_jsonld_on_type([battinfo_json, publication_extras])
 
-                    # Add citation string
-                    if pub_info.get("citation_string"):
-                        battinfo_json = bu.merge_jsonld_on_type(
-                            [
-                                battinfo_json,
-                                bu.add_citation(pub_info["citation_string"]),
-                            ]
+                        # Save the JSON-LD
+                        jsonld_name = f"metadata.{sample_id}.jsonld"
+                        rel_file_path = sample_id + "/" + jsonld_name
+                        zf.writestr(rel_file_path, json.dumps(battinfo_json, indent=4))
+                        messages += "✅"
+                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                        rocrate["@graph"].append(
+                            {
+                                "@id": rel_file_path,
+                                "@type": "File",
+                                "encodingFormat": "text/json",
+                                "about": {"@id": ccid if ccid else sample_id},
+                                "description": (
+                                    f"Metadata for sample: '{sample_id}'"
+                                    + (f" with CCID: '{ccid}'. " if ccid else ". ")
+                                    + "File is a BattINFO JSON-LD, describing the sample and experiment."
+                                ),
+                            }
                         )
-
-                    # Add authors and institutions
-                    if pub_info.get("authors") and pub_info.get("institutions"):
-                        authors = bu.add_authors(pub_info["authors"], pub_info["institutions"])
-                        battinfo_json = bu.merge_jsonld_on_type([battinfo_json, authors])
-
-                    # Add publication info
-                    if pub_info.get("publication_doi_url") and pub_info.get("sample_to_fig") and (ccid or sample_id):
-                        publication_extras = bu.add_associated_media(
-                            pub_info["publication_doi_url"],
-                            pub_info["sample_to_fig"],
-                            ccid,
-                            sample_id,
-                        )
-                        battinfo_json = bu.merge_jsonld_on_type([battinfo_json, publication_extras])
-
-                    # Save the JSON-LD
-                    jsonld_name = f"metadata.{sample_id}.jsonld"
-                    rel_file_path = sample_id + "/" + jsonld_name
-                    zf.writestr(rel_file_path, json.dumps(battinfo_json, indent=4))
-                    messages += "✅"
-                    rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
-                    rocrate["@graph"].append(
-                        {
-                            "@id": rel_file_path,
-                            "@type": "File",
-                            "encodingFormat": "text/json",
-                            "about": {"@id": ccid if ccid else sample_id},
-                            "description": (
-                                f"Metadata for sample: '{sample_id}'"
-                                + (f" with CCID: '{ccid}'. " if ccid else ". ")
-                                + "File is a BattINFO JSON-LD, describing the sample and experiment."
-                            ),
-                        }
-                    )
-                except StopIteration:
-                    logger.warning("No BattINFO JSON-LD file found for %s", sample_id)
-                    messages += "⚠️"
-                    warnings.append("JSON-LD")
-                    color = "orange"
                 except Exception:
-                    logger.exception("Unexpected error processing JSON-LD file for sample %s", sample_id)
+                    logger.exception("Unexpected error processing %s %s", sample_id, filetype)
                     messages += "⁉️"
-                    errors.append("JSON-LD")
+                    errors.append(filetype)
                     color = "orange"
-                if set_progress:
-                    set_progress((100 * i / n_files, messages, color))
+                finally:
+                    if set_progress:
+                        set_progress((100 * i / n_files, messages, color))
+
+            # After converting all files for a sample, give a summary message
             messages += "\n"
             if warnings:
                 messages += "No data for " + ", ".join(warnings) + "\n"
@@ -713,7 +716,7 @@ def create_rocrate(
             if set_progress:
                 set_progress((100 * i / n_files, messages, color))
 
-        # Check if zipfile contains anything
+        # After converting all files for all samples, check if zipfile contains anything
         if zf.filelist:
             zf.writestr("ro-crate-metadata.json", json.dumps(rocrate, indent=4))
             logger.info("Saved zip file in server temp folder: %s", zip_path.name)

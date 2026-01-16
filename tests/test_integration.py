@@ -34,9 +34,9 @@ def test_analyse_download_eclab_sample(
     with pytest.raises(ValueError, match="Zip has no content"):
         file_io.create_rocrate(
             [sample_id],
-            {"hdf", "bdf", "json", "jsonld"},
-            None,
+            {"hdf5", "bdf-parquet", "bdf-csv", "cycles-json", "metadata-jsonld"},
             zip_file,
+            None,
             set_progress,
         )
 
@@ -204,9 +204,9 @@ def test_analyse_download_eclab_sample(
     zip_file = tmp_path / "file.zip"
     file_io.create_rocrate(
         [sample_id],
-        {"hdf", "bdf-parquet", "bdf-csv", "json", "jsonld"},
-        zenodo_info_str,
+        {"hdf5", "bdf-parquet", "bdf-csv", "cycles-json", "metadata-jsonld"},
         zip_file,
+        zenodo_info_str,
         set_progress,
     )
     assert zip_file.exists()
@@ -220,14 +220,17 @@ def test_analyse_download_eclab_sample(
         assert "ro-crate-metadata.json" in files
 
     # Test downloading the files when every one breaks
-    with patch("zipfile.ZipFile.writestr", side_effect=ValueError("fail")):
+    with (
+        patch("zipfile.ZipFile.write", side_effect=ValueError("fail")),
+        patch("zipfile.ZipFile.writestr", side_effect=ValueError("fail")),
+    ):
         # Test downloading the files
         zip_file = tmp_path / "file.zip"
         with pytest.raises(ValueError, match="Zip has no content"):
             file_io.create_rocrate(
                 [sample_id],
-                {"hdf", "bdf-parquet", "bdf-csv", "json", "jsonld"},
-                zenodo_info_str,
+                {"hdf5", "bdf-parquet", "bdf-csv", "cycles-json", "metadata-jsonld"},
                 zip_file,
+                zenodo_info_str,
                 set_progress,
             )

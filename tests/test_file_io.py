@@ -131,4 +131,4 @@ class TestCreateRocrate:
         """Test nothing selected."""
         zip_path = tmp_path / "file.zip"
         with pytest.raises(ValueError):
-            file_io.create_rocrate([], set(), None, zip_path, None)
+            file_io.create_rocrate([], set(), zip_path)
