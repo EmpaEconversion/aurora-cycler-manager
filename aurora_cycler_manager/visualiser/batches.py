@@ -1,4 +1,4 @@
-"""Copyright © 2025, Empa.
+"""Copyright © 2025-2026, Empa.
 
 Batches tab layout and callbacks for the visualiser app.
 """
@@ -19,7 +19,7 @@ from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 from plotly.colors import hex_to_rgb, label_rgb, sample_colorscale
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.utils import run_from_sample
+from aurora_cycler_manager.stdlib_utils import run_from_sample
 from aurora_cycler_manager.visualiser.funcs import correlation_matrix
 
 CONFIG = get_config()

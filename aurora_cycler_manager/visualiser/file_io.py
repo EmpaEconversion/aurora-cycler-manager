@@ -30,7 +30,7 @@ from aurora_cycler_manager.database_funcs import (
 )
 from aurora_cycler_manager.eclab_harvester import convert_mpr
 from aurora_cycler_manager.server_manager import _Sample
-from aurora_cycler_manager.utils import run_from_sample
+from aurora_cycler_manager.stdlib_utils import run_from_sample
 from aurora_cycler_manager.visualiser.notifications import (
     error_notification,
     success_notification,

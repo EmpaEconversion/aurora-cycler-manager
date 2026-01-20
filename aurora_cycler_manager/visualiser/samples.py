@@ -1,4 +1,4 @@
-"""Copyright © 2025, Empa.
+"""Copyright © 2025-2026, Empa.
 
 Samples tab layout and callbacks for the visualiser app.
 """
@@ -17,7 +17,7 @@ from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
 from aurora_cycler_manager.analysis import calc_dqdv, combine_jobs
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.utils import run_from_sample
+from aurora_cycler_manager.stdlib_utils import run_from_sample
 
 CONFIG = get_config()
 logger = logging.getLogger(__name__)

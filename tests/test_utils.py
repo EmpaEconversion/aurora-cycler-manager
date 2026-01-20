@@ -2,7 +2,8 @@
 
 import pytest
 
-from aurora_cycler_manager.utils import c_to_float, check_illegal_text, run_from_sample, weighted_median
+from aurora_cycler_manager.stdlib_utils import c_to_float, check_illegal_text, run_from_sample
+from aurora_cycler_manager.utils import weighted_median
 
 
 class TestRunFromSample:

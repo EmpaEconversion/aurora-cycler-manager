@@ -1,4 +1,4 @@
-"""Copyright © 2025, Empa.
+"""Copyright © 2025-2026, Empa.
 
 Harvest Neware data files and convert to aurora-compatible hdf5 files.
 
@@ -46,7 +46,8 @@ from aurora_cycler_manager.database_funcs import (
     get_sample_data,
 )
 from aurora_cycler_manager.setup_logging import setup_logging
-from aurora_cycler_manager.utils import parse_datetime, run_from_sample, ssh_connect
+from aurora_cycler_manager.stdlib_utils import run_from_sample
+from aurora_cycler_manager.utils import parse_datetime, ssh_connect
 from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration

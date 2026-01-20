@@ -1,4 +1,4 @@
-"""Copyright © 2025, Empa.
+"""Copyright © 2025-2026, Empa.
 
 Functions used for parsing, analysing and plotting.
 
@@ -24,13 +24,15 @@ from tsdownsample import MinMaxLTTBDownsampler
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_batch_details, get_sample_data
-from aurora_cycler_manager.utils import (
+from aurora_cycler_manager.stdlib_utils import (
     json_dump_compress_lists,
     max_with_none,
     min_with_none,
-    parse_datetime,
     round_c_rate,
     run_from_sample,
+)
+from aurora_cycler_manager.utils import (
+    parse_datetime,
     weighted_median,
 )
 from aurora_cycler_manager.version import __url__, __version__

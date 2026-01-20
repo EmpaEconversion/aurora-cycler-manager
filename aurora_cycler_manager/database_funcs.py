@@ -1,4 +1,4 @@
-"""Copyright © 2025, Empa.
+"""Copyright © 2025-2026, Empa.
 
 Functions for interacting with the database.
 """
@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.utils import run_from_sample
+from aurora_cycler_manager.stdlib_utils import run_from_sample
 
 CONFIG = get_config()
 
