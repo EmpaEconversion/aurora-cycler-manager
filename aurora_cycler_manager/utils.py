@@ -4,6 +4,7 @@ Utility functions for the Aurora Cycler Manager.
 """
 
 import json
+import re
 import uuid
 from contextlib import suppress
 from datetime import datetime, timezone
@@ -181,3 +182,18 @@ def parse_datetime(datetime_str: str | float) -> datetime:
         return datetime.fromtimestamp(datetime_str, tz=timezone.utc)
     msg = f"Invalid datetime string: {datetime_str}"
     raise ValueError(msg)
+
+
+_ILLEGAL_RE = re.compile(r'[\/\\:*?"\'<>|]|\.\.|\x00')
+
+
+def check_illegal_text(test_string: str) -> None:
+    r"""Raise error if illegal characters in string.
+
+    Banned: \ / : * ? " ' < > | .. \0
+    """
+    match = _ILLEGAL_RE.search(test_string)
+    if match:
+        banned = match.group(0)
+        msg = f"Illegal character or sequence in text: {banned!r}"
+        raise ValueError(msg)

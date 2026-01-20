@@ -2,7 +2,7 @@
 
 import pytest
 
-from aurora_cycler_manager.utils import c_to_float, run_from_sample, weighted_median
+from aurora_cycler_manager.utils import c_to_float, check_illegal_text, run_from_sample, weighted_median
 
 
 class TestRunFromSample:
@@ -96,3 +96,44 @@ class TestWeightedMedian:
         """Different length of values and weights."""
         with pytest.raises(ValueError):
             weighted_median([1.0, 2.0], [1.0])
+
+
+class TestIllegalText:
+    """Test check_illegal_text function."""
+
+    def test_legal(self) -> None:
+        """These should not raise errors."""
+        tests = [
+            "hello",
+            "this-is-fine",
+            "this_is also--fine ",
+            "dots. are. fine. if. . spacedwé hävé löts öf ümläüts",
+            "(brackets)[are]{okay}",
+            "emoji are valid in sample IDs 🤖",
+        ]
+        for test in tests:
+            check_illegal_text(test)
+
+    def test_illegal(self) -> None:
+        """These should raise errors."""
+        tests = [
+            "cant/use",
+            r"cant\use",
+            "naughty \0",
+            "nope: not allowed",
+            "can i use this? no",
+            "How about >",
+            "< or that",
+            "oh|no",
+            ".. is a big no no",
+            ".............. too",
+        ]
+        for test in tests:
+            with pytest.raises(ValueError, match="Illegal character or sequence"):
+                check_illegal_text(test)
+
+        # Check the error printing works
+        with pytest.raises(ValueError, match=r"Illegal character or sequence in text: '>'"):
+            check_illegal_text("aaaaa>aaaa")
+        with pytest.raises(ValueError, match=r"Illegal character or sequence in text: '..'"):
+            check_illegal_text("aaaaa..aaaa")
