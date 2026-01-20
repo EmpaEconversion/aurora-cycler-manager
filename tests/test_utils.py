@@ -2,7 +2,15 @@
 
 import pytest
 
-from aurora_cycler_manager.utils import c_to_float, run_from_sample, weighted_median
+from aurora_cycler_manager.stdlib_utils import (
+    c_to_float,
+    check_illegal_text,
+    max_with_none,
+    min_with_none,
+    round_c_rate,
+    run_from_sample,
+)
+from aurora_cycler_manager.utils import weighted_median
 
 
 class TestRunFromSample:
@@ -29,6 +37,22 @@ class TestRunFromSample:
         assert run_from_sample(None) == "misc"
 
 
+class TestMinMax:
+    """Test min and max functions."""
+
+    def test_min_with_none(self) -> None:
+        """Test min_with_none function."""
+        assert min_with_none([]) is None
+        assert min_with_none([1, 2, 3.123]) == 1
+        assert min_with_none([1, None, 3.123]) == 1
+
+    def test_max_with_none(self) -> None:
+        """Test min_with_none function."""
+        assert max_with_none([]) is None
+        assert max_with_none([1, 2, 3.123]) == 3.123
+        assert max_with_none([1, None, 3.123]) == 3.123
+
+
 class TestCToFloat:
     """Test the c_to_float function."""
 
@@ -41,6 +65,7 @@ class TestCToFloat:
         assert c_to_float("5/10C") == 0.5
         assert c_to_float("3D/5") == -0.6
         assert c_to_float("1/2 D") == -0.5
+        assert c_to_float("0.5C/") == 0.5
 
     def test_invalid_c_rate(self) -> None:
         """Invalid C-rate strings."""
@@ -96,3 +121,55 @@ class TestWeightedMedian:
         """Different length of values and weights."""
         with pytest.raises(ValueError):
             weighted_median([1.0, 2.0], [1.0])
+
+
+class TestIllegalText:
+    """Test check_illegal_text function."""
+
+    def test_legal(self) -> None:
+        """These should not raise errors."""
+        tests = [
+            "hello",
+            "this-is-fine",
+            "this_is also--fine ",
+            "dots. are. fine. if. . spacedwé hävé löts öf ümläüts",
+            "(brackets)[are]{okay}",
+            "emoji are valid in sample IDs 🤖",
+        ]
+        for test in tests:
+            check_illegal_text(test)
+
+    def test_illegal(self) -> None:
+        """These should raise errors."""
+        tests = [
+            "cant/use",
+            r"cant\use",
+            "naughty \0",
+            "nope: not allowed",
+            "can i use this? no",
+            "How about >",
+            "< or that",
+            "oh|no",
+            ".. is a big no no",
+            ".............. too",
+        ]
+        for test in tests:
+            with pytest.raises(ValueError, match="Illegal character or sequence"):
+                check_illegal_text(test)
+
+        # Check the error printing works
+        with pytest.raises(ValueError, match=r"Illegal character or sequence in text: '>'"):
+            check_illegal_text("aaaaa>aaaa")
+        with pytest.raises(ValueError, match=r"Illegal character or sequence in text: '..'"):
+            check_illegal_text("aaaaa..aaaa")
+
+
+class TestRoundCRate:
+    """Test round_c_rate function."""
+
+    def test_round_c_rate(self) -> None:
+        """Test round_c_rate function."""
+        assert round_c_rate(1 / 15 + 1e-6, 5) == round(1 / 15, 5)
+        assert round_c_rate(1 / 7 + 1e-15, 10) == round(1 / 7, 10)
+        assert round_c_rate(3.14159, 5, tolerance=1e-10) == round(3.14159, 5)
+        assert round_c_rate(3.14159, 10, tolerance=1e-1) == round(311 / 99, 10)

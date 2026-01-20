@@ -1,4 +1,4 @@
-"""Copyright © 2025, Empa.
+"""Copyright © 2025-2026, Empa.
 
 Functions for getting the configuration settings.
 """
@@ -12,6 +12,8 @@ from zoneinfo import ZoneInfo
 
 import platformdirs
 from tzlocal import get_localzone_name
+
+from aurora_cycler_manager.stdlib_utils import check_illegal_text
 
 logger = logging.getLogger(__name__)
 CONFIG = None
@@ -128,6 +130,13 @@ def _read_config_file() -> dict:
 
     if not config.get("Database path"):
         raise ValueError(err_msg)
+
+    # Check server labels are valid
+    for server in config.get("Servers", []):
+        check_illegal_text(server["label"])
+    for harvester in ("EC-lab harvester", "Neware harvester"):
+        for server in config.get(harvester, {}).get("Servers", []):
+            check_illegal_text(server["label"])
 
     # Set timezone
     if config.get("Time zone"):

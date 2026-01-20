@@ -1,4 +1,4 @@
-"""Copyright © 2025, Empa.
+"""Copyright © 2025-2026, Empa.
 
 server_manager manages a database and communicates with multiple cycler servers.
 
@@ -26,7 +26,7 @@ from aurora_unicycler import Protocol
 from aurora_cycler_manager import analysis, config, cycler_servers
 from aurora_cycler_manager import database_funcs as dbf
 from aurora_cycler_manager.cycler_servers import CyclerServer
-from aurora_cycler_manager.utils import run_from_sample
+from aurora_cycler_manager.stdlib_utils import run_from_sample
 
 SERVER_CORRESPONDENCE = {
     "neware": cycler_servers.NewareServer,
