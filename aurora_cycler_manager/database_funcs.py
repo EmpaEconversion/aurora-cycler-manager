@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.stdlib_utils import run_from_sample
+from aurora_cycler_manager.stdlib_utils import check_illegal_text, run_from_sample
 
 CONFIG = get_config()
 
@@ -63,6 +63,8 @@ def add_samples_from_file(json_file: str | Path, overwrite: bool = False) -> Non
 def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
     """Upload the sample dataframe to the database."""
     sample_ids = df["Sample ID"].tolist()
+    for sample_id in sample_ids:
+        check_illegal_text(sample_id)
     if len(sample_ids) != len(set(sample_ids)):
         msg = "File contains duplicate 'Sample ID' keys"
         raise ValueError(msg)
