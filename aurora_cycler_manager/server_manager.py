@@ -42,22 +42,23 @@ def get_servers(*, reload: bool = False) -> dict[str, cycler_servers.CyclerServe
     """Create the cycler server objects from the config file."""
     global SERVER_OBJECTS
     if not SERVER_OBJECTS or reload:
-        servers: dict[str, cycler_servers.CyclerServer] = {}
+        SERVER_OBJECTS = {}
         logger.info("Attempting to connect to to servers")
         if not config.get_config(reload=reload).get("Servers"):
             logger.warning("No servers in the configuration.")
         else:
             for server_label, server_dict in config.get_config()["Servers"].items():
-                server_type = server_dict.get("server_type", "unknown")
+                server_type = server_dict.get("server_type")
+                if server_type.endswith("_harvester"):
+                    continue  # Skip silently
                 if server_type not in SERVER_CORRESPONDENCE:
                     logger.error("Server type %s not recognized, skipping", server_type)
                     continue
                 try:
                     server_class = SERVER_CORRESPONDENCE[server_type]
-                    servers[server_label] = server_class(server_dict, label=server_label)
+                    SERVER_OBJECTS[server_label] = server_class(server_dict, label=server_label)
                 except (OSError, ValueError, TimeoutError, paramiko.SSHException):
                     logger.exception("Server %s could not be created, skipping", server_label)
-        SERVER_OBJECTS = servers
     return SERVER_OBJECTS
 
 

@@ -131,21 +131,8 @@ def _read_config_file() -> dict:
     if not config.get("Database path"):
         raise ValueError(err_msg)
 
-    # Servers should be transformed to key: dict
-    servers = _convert_servers_to_dict(config.get("Servers"))
-    servers = _merge_dicts(
-        servers,
-        _convert_servers_to_dict(config.get("Neware harvester", {}).get("Servers")),
-    )
-    servers = _merge_dicts(
-        servers,
-        _convert_servers_to_dict(config.get("EC-lab harvester", {}).get("Servers")),
-    )
-    config["Servers"] = servers
-
-    # Check server labels are valid
-    for server_label in config["Servers"]:
-        check_illegal_text(server_label)
+    # Servers should be transformed to key: dict with valid labels
+    config["Servers"] = _convert_legacy_servers(config)
 
     # Set timezone
     if config.get("Time zone"):
@@ -172,29 +159,28 @@ def _read_config_file() -> dict:
     return config
 
 
-def _convert_servers_to_dict(servers: list | dict | None) -> dict:
-    if servers is None:
-        return {}
+def _convert_legacy_servers(config: dict) -> dict:
+    """Convert servers from older config styles to single dict."""
+    servers = _convert_servers_to_dict(config.get("Servers"))
+    neware_harvesters = _convert_servers_to_dict(config.get("Neware harvester", {}).get("Servers", {}))
+    for server_config in neware_harvesters.values():
+        server_config["server_type"] = "neware_harvester"
+    biologic_harvesters = _convert_servers_to_dict(config.get("EC-lab harvester", {}).get("Servers", {}))
+    for server_config in biologic_harvesters.values():
+        server_config["server_type"] = "biologic_harvester"
+    servers = {**neware_harvesters, **biologic_harvesters, **servers}  # new server style takes priority
+    for server_label in servers:
+        check_illegal_text(server_label)
+    return servers
+
+
+def _convert_servers_to_dict(servers: list | dict) -> dict:
+    """Convert list of servers to dict."""
     if isinstance(servers, list):
         return {s["label"]: s for s in servers}
     for label, config in servers:
         config["label"] = label
     return servers
-
-
-def _merge_dicts(dict1: dict[str, dict], dict2: dict[str, dict]) -> dict[str, dict]:
-    """Merge dicts, left overwrites."""
-    result = {}
-    all_keys = set(dict1.keys()) | set(dict2.keys())
-    for key in all_keys:
-        if key in dict1 and key in dict2:
-            if isinstance(dict1[key], dict) and isinstance(dict2[key], dict):
-                result[key] = {**dict2[key], **dict1[key]}
-            else:
-                result[key] = dict1[key]
-        else:
-            result[key] = dict1.get(key) or dict2.get(key)
-    return result
 
 
 def patch_database(config: dict) -> None:

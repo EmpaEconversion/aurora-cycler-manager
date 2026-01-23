@@ -178,7 +178,7 @@ def get_all_mprs(*, force_copy: bool = False) -> list[str]:
 
     # Find all biologic servers
     for server in CONFIG.get("Servers", []):
-        if server.get("server_type") == "biologic":
+        if server.get("server_type") in {"biologic", "biologic_harvester"}:
             # Check active data path folder
             if server.get("data_path"):
                 new_files = get_mprs(

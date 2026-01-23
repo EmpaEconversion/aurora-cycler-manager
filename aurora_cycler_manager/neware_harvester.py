@@ -325,7 +325,7 @@ def harvest_all_neware_files(*, force_copy: bool = False) -> list[Path]:
 
     # Find all neware servers
     for server in CONFIG.get("Servers", []):
-        if server.get("server_type") == "neware":
+        if server.get("server_type") in {"neware", "neware_harvester"}:
             # Check activate data path folder
             if server.get("data_path"):
                 new_files = harvest_neware_files(
