@@ -177,28 +177,28 @@ def get_all_mprs(*, force_copy: bool = False) -> list[str]:
     snapshot_folder = get_eclab_snapshot_folder()
 
     # Find all biologic servers
-    for server in CONFIG.get("Servers", []):
-        if server.get("server_type") in {"biologic", "biologic_harvester"}:
+    for server_label, server_config in CONFIG.get("Servers", {}).items():
+        if server_config.get("server_type") in {"biologic", "biologic_harvester"}:
             # Check active data path folder
-            if server.get("data_path"):
+            if server_config.get("data_path"):
                 new_files = get_mprs(
-                    server["label"],
-                    server["hostname"],
-                    server["username"],
-                    server["shell_type"],
-                    server["data_path"],
+                    server_label,
+                    server_config["hostname"],
+                    server_config["username"],
+                    server_config["shell_type"],
+                    server_config["data_path"],
                     snapshot_folder,
                     force_copy=force_copy,
                 )
                 all_new_files.extend(new_files)
 
             # Check passive harvesters
-            for folder in server.get("harvester_folders", []):
+            for folder in server_config.get("harvester_folders", []):
                 new_files = get_mprs(
-                    server["label"],
-                    server["hostname"],
-                    server["username"],
-                    server["shell_type"],
+                    server_label,
+                    server_config["hostname"],
+                    server_config["username"],
+                    server_config["shell_type"],
                     folder,
                     snapshot_folder,
                     force_copy=force_copy,

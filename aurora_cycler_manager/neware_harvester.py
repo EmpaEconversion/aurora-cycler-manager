@@ -214,17 +214,14 @@ def snapshot_raw_data(job_id: str) -> Path | None:
         raise ValueError(msg)
 
     # Get the server from the config
-    server = next(
-        (server for server in CONFIG.get("Servers", []) if server["label"] == job_data["Server label"]),
-        None,
-    )
-    if not server:
+    server_config = CONFIG.get("Servers", {}).get(job_data["Server label"])
+    if not server_config:
         msg = f"No server found with label '{job_data['Server label']}' in config."
         raise ValueError(msg)
-    server_hostname = server["hostname"]
-    server_username = server["username"]
-    server_shell_type = server["shell_type"]
-    raw_data_folder = server.get("neware_raw_data_path", "C:/Program Files (x86)/NEWARE/BTSServer80/NdcFile/")
+    server_hostname = server_config["hostname"]
+    server_username = server_config["username"]
+    server_shell_type = server_config["shell_type"]
+    raw_data_folder = server_config.get("neware_raw_data_path", "C:/Program Files (x86)/NEWARE/BTSServer80/NdcFile/")
 
     # Build the paths to check - assumes device type 27
     full_folder = raw_data_folder + submitted
@@ -324,28 +321,28 @@ def harvest_all_neware_files(*, force_copy: bool = False) -> list[Path]:
     snapshots_folder = get_neware_snapshot_folder()
 
     # Find all neware servers
-    for server in CONFIG.get("Servers", []):
-        if server.get("server_type") in {"neware", "neware_harvester"}:
+    for server_label, server_config in CONFIG.get("Servers", {}).items():
+        if server_config.get("server_type") in {"neware", "neware_harvester"}:
             # Check activate data path folder
-            if server.get("data_path"):
+            if server_config.get("data_path"):
                 new_files = harvest_neware_files(
-                    server["label"],
-                    server["hostname"],
-                    server["username"],
-                    server["shell_type"],
-                    server["data_path"],
+                    server_label,
+                    server_config["hostname"],
+                    server_config["username"],
+                    server_config["shell_type"],
+                    server_config["data_path"],
                     snapshots_folder,
                     force_copy=force_copy,
                 )
                 all_new_files.extend(new_files)
 
             # Check passive harvesters
-            for folder in server.get("harvester_folders", []):
+            for folder in server_config.get("harvester_folders", []):
                 new_files = harvest_neware_files(
-                    server["label"],
-                    server["hostname"],
-                    server["username"],
-                    server["shell_type"],
+                    server_label,
+                    server_config["hostname"],
+                    server_config["username"],
+                    server_config["shell_type"],
                     folder,
                     snapshots_folder,
                     force_copy=force_copy,
@@ -759,10 +756,9 @@ def update_database_job(
     payload = json.dumps(metadata.get("Payload"))
     last_snapshot_uts = filepath.stat().st_birthtime
     last_snapshot = datetime.fromtimestamp(last_snapshot_uts, tz=timezone.utc).isoformat(timespec="seconds")
-    server_hostname = next(
-        (server["hostname"] for server in CONFIG.get("Servers", []) if server["label"] == server_label),
-        None,
-    )
+
+    server_config = CONFIG.get("Servers", {}).get(job_data["Server label"], {})
+    server_hostname = server_config.get("hostname")
     if not server_hostname:
         msg = f"Server hostname not found for server label {server_label}"
         raise ValueError(msg)
