@@ -403,10 +403,10 @@ def convert_mpr(
         # Add the file/job information to the database
         add_data_to_db(sample_id, file_stem, df, job_id)
 
-        # Create the 'data' hdf5 dataset
+        # Create the 'data/cycling' hdf5 dataset
         df.to_hdf(
             hdf5_filepath,
-            key="data",
+            key="data/cycling",
             mode="w",
             complib="blosc",
             complevel=9,

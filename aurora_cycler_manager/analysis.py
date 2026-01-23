@@ -809,7 +809,7 @@ def analyse_cycles(
                     df[col] = df[col].astype(np.float32)
             df.to_hdf(
                 output_hdf5_file,
-                key="data",
+                key="data/cycling",
                 mode="w",
                 complib="blosc",
                 complevel=9,
@@ -931,7 +931,7 @@ def shrink_sample(sample_id: str) -> None:
 
     # Save the new file
     new_file_location = file_location.with_name(f"shrunk.{sample_id}.h5")
-    df.to_hdf(new_file_location, key="data", mode="w", complib="blosc", complevel=9)
+    df.to_hdf(new_file_location, key="data/cycling", mode="w", complib="blosc", complevel=9)
 
 
 def shrink_all_samples(sampleid_contains: str = "") -> None:

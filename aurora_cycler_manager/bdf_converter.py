@@ -93,6 +93,6 @@ def bdf_parquet_to_aurora_hdf(bdf_file: str | Path, hdf5_file: str | Path | None
     else:
         hdf5_file = Path(hdf5_file).with_suffix(".h5")
         hdf5_file.parent.mkdir(exist_ok=True)
-    df.to_hdf(hdf5_file, key="data", mode="w")
+    df.to_hdf(hdf5_file, key="data/cycling", mode="w")
     with h5py.File(hdf5_file, "a") as f:
         f.create_dataset("metadata", data=json.dumps(metadata))
