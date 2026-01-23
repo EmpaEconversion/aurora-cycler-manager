@@ -4,18 +4,6 @@ Harvest EC-lab .mpr files and convert to aurora-compatible hdf5 files.
 
 Define the machines to grab files from in the config.json file.
 
-get_mpr will copy all files from specified folders on a remote machine, if they
-have been modified since the last time the function was called.
-
-get_all_mprs does this for all machines defined in the config.
-
-convert_mpr converts an mpr to a dataframe and optionally saves it as a hdf5
-file. This file contains all cycling data as well as metadata from the mpr and
-information about the sample from the database.
-
-convert_all_mprs does this for all mpr files in the local snapshot folder, and
-saves them to the processed snapshot folder.
-
 Run the script to harvest and convert all mpr files.
 """
 
@@ -177,7 +165,7 @@ def get_all_mprs(*, force_copy: bool = False) -> list[str]:
     snapshot_folder = get_eclab_snapshot_folder()
 
     # Find all biologic servers
-    for server_label, server_config in CONFIG.get("Servers", {}).items():
+    for server_label, server_config in CONFIG["Servers"].items():
         if server_config.get("server_type") in {"biologic", "biologic_harvester"}:
             # Check active data path folder
             if server_config.get("data_path"):
@@ -504,8 +492,9 @@ def get_sampleid_from_mpr(mpr_rel_path: str | Path) -> tuple[str, str]:
 def convert_all_mprs() -> None:
     """Convert all raw .mpr files to .h5.
 
-    Looks in configuration for "Servers" with "server_type": "biologic"
-    Gets data from "data_path" and "harvester_folders" list
+    Looks in configuration for "Servers" with "server_type": "biologic" or
+    "biologic_harvester".
+    Gets data from "data_path" and "harvester_folders" list.
     """
     # walk through raw_folder and get the sample ID
     snapshot_folder = get_eclab_snapshot_folder()

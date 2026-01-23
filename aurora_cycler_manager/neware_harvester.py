@@ -4,18 +4,6 @@ Harvest Neware data files and convert to aurora-compatible hdf5 files.
 
 Define the machines to grab files from in the config.json file.
 
-get_neware_data will copy all files from specified folders on a remote machine,
-if they have been modified since the last time the function was called.
-
-get_all_neware_data does this for all machines defined in the config.
-
-convert_neware_data converts the file to a pandas dataframe and metadata
-dictionary, and optionally saves as a hdf5 file. This file contains all cycling
-data as well as metadata and information about the sample from the database.
-
-convert_all_neware_data does this for all files in the local snapshot folder,
-and saves them to the processed snapshot folder.
-
 Run the script to harvest and convert all neware files.
 """
 
@@ -214,7 +202,7 @@ def snapshot_raw_data(job_id: str) -> Path | None:
         raise ValueError(msg)
 
     # Get the server from the config
-    server_config = CONFIG.get("Servers", {}).get(job_data["Server label"])
+    server_config = CONFIG["Servers"].get(job_data["Server label"])
     if not server_config:
         msg = f"No server found with label '{job_data['Server label']}' in config."
         raise ValueError(msg)
@@ -314,14 +302,16 @@ def snapshot_raw_data(job_id: str) -> Path | None:
 def harvest_all_neware_files(*, force_copy: bool = False) -> list[Path]:
     """Get neware files from all servers specified in the config.
 
-    Searches in the active "data_path" folder as well as a list of passive
+    Looks in configuration for "Servers" with "server_type": "neware" or
+    "neware_harvester".
+    Gets data from "data_path" and "harvester_folders" list.
     "harvester_folders".
     """
     all_new_files = []
     snapshots_folder = get_neware_snapshot_folder()
 
     # Find all neware servers
-    for server_label, server_config in CONFIG.get("Servers", {}).items():
+    for server_label, server_config in CONFIG["Servers"].items():
         if server_config.get("server_type") in {"neware", "neware_harvester"}:
             # Check activate data path folder
             if server_config.get("data_path"):
@@ -757,7 +747,7 @@ def update_database_job(
     last_snapshot_uts = filepath.stat().st_birthtime
     last_snapshot = datetime.fromtimestamp(last_snapshot_uts, tz=timezone.utc).isoformat(timespec="seconds")
 
-    server_config = CONFIG.get("Servers", {}).get(job_data["Server label"], {})
+    server_config = CONFIG["Servers"].get(job_data["Server label"], {})
     server_hostname = server_config.get("hostname")
     if not server_hostname:
         msg = f"Server hostname not found for server label {server_label}"
