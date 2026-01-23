@@ -178,8 +178,8 @@ def _convert_servers_to_dict(servers: list | dict) -> dict:
     """Convert list of servers to dict."""
     if isinstance(servers, list):
         return {s["label"]: s for s in servers}
-    for label, config in servers:
-        config["label"] = label
+    for server_label, server_config in servers.items():
+        server_config["label"] = server_label
     return servers
 
 
