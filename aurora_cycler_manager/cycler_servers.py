@@ -36,18 +36,15 @@ CONFIG = get_config()
 class CyclerServer:
     """Base class for server objects, should not be instantiated directly."""
 
-    def __init__(self, server_config: dict) -> None:
+    def __init__(self, server_config: dict, label: str | None = None) -> None:
         """Initialise server object."""
-        self.label = server_config["label"]
+        self.label = label or server_config["label"]
         self.hostname = server_config["hostname"]
         self.username = server_config["username"]
         self.server_type = server_config["server_type"]
         self.shell_type = server_config.get("shell_type", "")
         self.command_prefix = server_config.get("command_prefix", "")
         self.command_suffix = server_config.get("command_suffix", "")
-        self.last_status = None
-        self.last_queue = None
-        self.last_queue_all = None
         self.check_connection()
 
     def _command(self, command: str, timeout: float = 300) -> str:
@@ -286,9 +283,9 @@ class BiologicServer(CyclerServer):
     default, use the 'command_prefix' in the shared config to add it to the PATH.
     """
 
-    def __init__(self, server_config: dict) -> None:
+    def __init__(self, server_config: dict, label: str | None = None) -> None:
         """Initialise server object."""
-        super().__init__(server_config)
+        super().__init__(server_config, label)
         # EC-lab can only work on Windows
         self.biologic_data_path = PureWindowsPath(
             server_config.get("biologic_data_path", "C:/aurora/data/"),

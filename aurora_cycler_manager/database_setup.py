@@ -51,12 +51,11 @@ def default_config(base_dir: Path) -> dict:
         "Samples folder path": str(base_dir / "samples"),
         "Protocols folder path": str(base_dir / "protocols"),
         "Processed snapshots folder path": str(base_dir / "snapshots"),
-        "Servers": [
-            {
-                "label": "example-server",
+        "Servers": {
+            "example-label": {
                 "hostname": "example-hostname",
                 "username": "username on remote server",
-                "server_type": "neware or biologic",
+                "server_type": "neware or biologic or neware_harvester or biologic_harvester",
                 "shell_type": "powershell or cmd - changes some commands",
                 "command_prefix": "this is put before any command, e.g. conda activate my_env ; ",
                 "command_suffix": "this is put after any command",
@@ -64,7 +63,7 @@ def default_config(base_dir: Path) -> dict:
                 "data_path": "C:/aurora/data/",
                 "neware_raw_data_path": "neware-specific raw ndc path, usually in install folder /BTSServer80/NdcFile/",
             },
-        ],
+        },
         "User mapping": {
             "short_name": "full_name",
         },

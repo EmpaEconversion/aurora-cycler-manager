@@ -131,12 +131,8 @@ def _read_config_file() -> dict:
     if not config.get("Database path"):
         raise ValueError(err_msg)
 
-    # Check server labels are valid
-    for server in config.get("Servers", []):
-        check_illegal_text(server["label"])
-    for harvester in ("EC-lab harvester", "Neware harvester"):
-        for server in config.get(harvester, {}).get("Servers", []):
-            check_illegal_text(server["label"])
+    # Servers should be transformed to key: dict with valid labels
+    config["Servers"] = _convert_legacy_servers(config)
 
     # Set timezone
     if config.get("Time zone"):
@@ -161,6 +157,30 @@ def _read_config_file() -> dict:
         config["SSH known hosts path"] = Path("~/.ssh/known_hosts").expanduser()
 
     return config
+
+
+def _convert_legacy_servers(config: dict) -> dict:
+    """Convert servers from older config styles to single dict."""
+    servers = _convert_servers_to_dict(config.get("Servers"))
+    neware_harvesters = _convert_servers_to_dict(config.get("Neware harvester", {}).get("Servers", {}))
+    for server_config in neware_harvesters.values():
+        server_config["server_type"] = "neware_harvester"
+    biologic_harvesters = _convert_servers_to_dict(config.get("EC-lab harvester", {}).get("Servers", {}))
+    for server_config in biologic_harvesters.values():
+        server_config["server_type"] = "biologic_harvester"
+    servers = {**neware_harvesters, **biologic_harvesters, **servers}  # new server style takes priority
+    for server_label in servers:
+        check_illegal_text(server_label)
+    return servers
+
+
+def _convert_servers_to_dict(servers: list | dict) -> dict:
+    """Convert list of servers to dict."""
+    if isinstance(servers, list):
+        return {s["label"]: s for s in servers}
+    for server_label, server_config in servers.items():
+        server_config["label"] = server_label
+    return servers
 
 
 def patch_database(config: dict) -> None:
