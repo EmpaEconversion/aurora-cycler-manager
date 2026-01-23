@@ -71,6 +71,31 @@ def _sort_times(start_times: list | np.ndarray, end_times: list | np.ndarray) ->
     return sorted_indices[unique_mask]
 
 
+def read_hdf_cycling(file: str | Path) -> pd.DataFrame | pd.Series:
+    """Read cycling data from aurora-style hdf5 file to pandas."""
+    with h5py.File(file, "r") as f:
+        for key in ["data/cycling", "cycling", "data"]:
+            if key in f:
+                return pd.read_hdf(file, key=key)
+    return pd.read_hdf(file)
+
+
+def read_hdf_eis(file: str | Path) -> pd.DataFrame | pd.Series:
+    """Read eis data from aurora-style hdf5 file to pandas."""
+    with h5py.File(file, "r") as f:
+        for key in ["data/eis", "data-eis", "eis"]:
+            if key in f:
+                return pd.read_hdf(file, key=key)
+    msg = "No data/eis key in file."
+    raise KeyError(msg)
+
+
+def read_hdf_metadata(file: str | Path) -> dict:
+    """Read metadata from aurora-style hdf5 file."""
+    with h5py.File(file, "r") as h5f:
+        return json.loads(h5f["metadata"][()])
+
+
 def combine_jobs(
     job_files: list[Path],
 ) -> tuple[pd.DataFrame, dict]:
@@ -94,13 +119,12 @@ def combine_jobs(
     sampleids = []
     for f in job_files:
         if f.name.endswith(".h5"):
-            dfs.append(pd.read_hdf(f))
-            with h5py.File(f, "r") as h5f:
-                metadata = json.loads(h5f["metadata"][()])
-                metadatas.append(metadata)
-                sampleids.append(
-                    metadata.get("sample_data", {}).get("Sample ID", ""),
-                )
+            dfs.append(read_hdf_cycling(f))
+            metadata = read_hdf_metadata(f)
+            metadatas.append(metadata)
+            sampleids.append(
+                metadata.get("sample_data", {}).get("Sample ID", ""),
+            )
     if len(set(sampleids)) != 1:
         msg = "All files must be from the same sample"
         raise ValueError(msg)
@@ -871,7 +895,7 @@ def shrink_sample(sample_id: str) -> None:
     if not file_location.exists():
         msg = f"File {file_location} not found"
         raise FileNotFoundError(msg)
-    df = pd.read_hdf(file_location)
+    df = read_hdf_cycling(file_location)
     # Only keep a few columns
     df = df[["V (V)", "I (A)", "uts", "dQ (mAh)", "Cycle"]]
     # Calculate derivative - impossible to do after downsampling
