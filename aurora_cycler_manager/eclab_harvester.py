@@ -199,7 +199,7 @@ def get_all_mprs(*, force_copy: bool = False) -> list[str]:
 def get_mpr_data(
     mpr_file: str | Path | bytes,
     mpl_file: str | Path | bytes | None = None,
-) -> tuple[pd.DataFrame, dict, dict]:
+) -> tuple[pd.DataFrame, pd.DataFrame | None, dict, dict]:
     """Convert mpr file to dataframe."""
     if isinstance(mpr_file, (str, Path)):
         mpr_file = Path(mpr_file)
@@ -220,6 +220,11 @@ def get_mpr_data(
 
     # Check if the time is incorrect and fix it
     df = check_mpr_uts(df, mpr_file, mpl_file)
+
+    # Check if frequency exists
+    eis_mask = (
+        (data.data_vars["freq"] != 0).to_numpy() if "freq" in data.data_vars and any(data.data_vars["freq"]) else None
+    )
 
     # Only keep certain columns in dataframe
     try:
@@ -245,11 +250,23 @@ def get_mpr_data(
     df = df.astype({"V (V)": "float32", "I (A)": "float32"})
     df = df.astype({"technique": "int16", "cycle_number": "int32"})
 
+    if eis_mask is not None and any(eis_mask):
+        eis_df = df.copy()
+        eis_df["f (Hz)"] = data.data_vars["freq"].to_numpy()
+        eis_df["Re(Z) (ohm)"] = data.data_vars["Re(Z)"].to_numpy()
+        eis_df["Im(Z) (ohm)"] = -data.data_vars["-Im(Z)"].to_numpy()
+        eis_df = eis_df.astype({"Re(Z) (ohm)": "float32", "Im(Z) (ohm)": "float32"})
+        eis_df = eis_df[eis_mask]
+        eis_df = eis_df.drop(columns=["cycle_number"])
+        df = df[~eis_mask]
+    else:
+        eis_df = None
+
     # Get metadata
     mpr_metadata = json.loads(data.attrs["original_metadata"])
     mpr_metadata["job_type"] = "eclab_mpr"
     yadg_metadata = {k: v for k, v in data.attrs.items() if k.startswith("yadg")}
-    return df, mpr_metadata, yadg_metadata
+    return df, eis_df, mpr_metadata, yadg_metadata
 
 
 def check_mpr_uts(
@@ -348,7 +365,7 @@ def convert_mpr(
         raise TypeError(msg)
 
     # Get data and metadata from mpr (and mpl) files
-    df, mpr_metadata, yadg_metadata = get_mpr_data(mpr_file, mpl_file)
+    df, eis_df, mpr_metadata, yadg_metadata = get_mpr_data(mpr_file, mpl_file)
 
     # get sample data from database
     try:
@@ -411,6 +428,15 @@ def convert_mpr(
             complib="blosc",
             complevel=9,
         )
+
+        if eis_df is not None:
+            eis_df.to_hdf(
+                hdf5_filepath,
+                key="data/eis",
+                mode="a",
+                complib="blosc",
+                complevel=9,
+            )
 
         # Create a dataset called metadata and json dump the metadata
         with h5py.File(hdf5_filepath, "a") as f:

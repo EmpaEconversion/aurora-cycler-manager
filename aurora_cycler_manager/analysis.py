@@ -98,7 +98,7 @@ def read_hdf_metadata(file: str | Path) -> dict:
 
 def combine_jobs(
     job_files: list[Path],
-) -> tuple[pd.DataFrame, dict]:
+) -> tuple[pd.DataFrame, pd.DataFrame | None, dict]:
     """Read multiple job files and return a single dataframe.
 
     Merges the data, identifies cycle numbers and changes column names.
@@ -110,16 +110,20 @@ def combine_jobs(
 
     Returns:
         pd.DataFrame: DataFrame containing the cycling data
+        pd.DataFrame | None: DataFrame containing the eis data
         dict: metadata from the files
 
     """
     # Get the metadata from the files
     dfs = []
+    eis_dfs = []
     metadatas = []
     sampleids = []
     for f in job_files:
         if f.name.endswith(".h5"):
             dfs.append(read_hdf_cycling(f))
+            with contextlib.suppress(KeyError):
+                eis_dfs.append(read_hdf_eis(f))
             metadata = read_hdf_metadata(f)
             metadatas.append(metadata)
             sampleids.append(
@@ -178,6 +182,14 @@ def combine_jobs(
             df.loc[df["Step"] == step, "Cycle"] = cycle
             cycle += 1
 
+    # EIS - combine and set cycle number to last cycle before EIS
+    if eis_dfs:
+        eis_df = pd.concat(eis_dfs)
+        eis_df = eis_df.sort_values("uts")
+        eis_df = pd.merge_asof(eis_df, df[["time", "Cycle"]], on="time", direction="backward")
+    else:
+        eis_df = None
+
     # Add provenance to the metadatas
     # Replace sample data with latest from database
     sample_data = get_sample_data(sampleids[0])
@@ -203,7 +215,7 @@ def combine_jobs(
         "glossary": glossary,
     }
 
-    return df, metadata
+    return df, eis_df, metadata
 
 
 def extract_voltage_crates(job_data: dict) -> dict:
@@ -449,7 +461,7 @@ def analyse_cycles(
     TODO: Add save location as an argument.
 
     """
-    df, metadata = combine_jobs(job_files)
+    df, eis_df, metadata = combine_jobs(job_files)
 
     # update metadata
     metadata.setdefault("provenance", {}).setdefault("aurora_metadata", {})
@@ -814,6 +826,14 @@ def analyse_cycles(
                 complib="blosc",
                 complevel=9,
             )
+            if eis_df is not None:
+                eis_df.to_hdf(
+                    output_hdf5_file,
+                    key="data/eis",
+                    mode="a",
+                    complib="blosc",
+                    complevel=9,
+                )
             with h5py.File(output_hdf5_file, "a") as f:
                 f.create_dataset("metadata", data=json.dumps(metadata))
     return df, cycle_dict, metadata

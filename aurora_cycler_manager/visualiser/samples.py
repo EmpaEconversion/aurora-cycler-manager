@@ -314,7 +314,7 @@ def register_samples_callbacks(app: Dash) -> None:
                 df = read_hdf_cycling(full_file)
                 data["data_sample_time"][sample] = df.to_dict(orient="list")
             elif cycling_files := list(sample_folder.glob("snapshot.*.h5")):
-                df, _metadata = combine_jobs([Path(f) for f in cycling_files])
+                df, _eis_df, _metadata = combine_jobs([Path(f) for f in cycling_files])
                 data["data_sample_time"][sample] = df.to_dict(orient="list")
             else:
                 logger.info("No cycling files found in %s", sample_folder)
