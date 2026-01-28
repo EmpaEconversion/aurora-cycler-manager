@@ -7,6 +7,7 @@ from contextlib import suppress
 from datetime import datetime, timezone
 
 import numpy as np
+import pandas as pd
 import paramiko
 
 from aurora_cycler_manager.config import get_config
@@ -23,7 +24,10 @@ def ssh_connect(ssh: paramiko.SSHClient, username: str, hostname: str) -> None:
     ssh.connect(hostname.lower(), username=username.lower(), key_filename=CONFIG.get("SSH private key path"))
 
 
-def weighted_median(values: list[float] | np.ndarray, weights: list[float] | np.ndarray) -> float:
+def weighted_median(
+    values: list[float] | np.ndarray | pd.Series,
+    weights: list[float] | np.ndarray | pd.Series,
+) -> float:
     """Calculate the weighted median of a list of values.
 
     Args:
