@@ -1,4 +1,4 @@
-"""Copyright © 2025, Empa.
+"""Copyright © 2025-2026, Empa.
 
 Functions for converting between Aurora-style and BDF-style dataframes/files.
 """
@@ -10,6 +10,8 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pandas as pd
+
+from aurora_cycler_manager.data_bundle import read_cycling, read_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -58,15 +60,8 @@ def bdf_to_aurora(df: pd.DataFrame) -> pd.DataFrame:
 def aurora_hdf_to_bdf_parquet(hdf5_file: str | Path, bdf_file: str | Path | None = None) -> None:
     """Convert Aurora HDF5 file to BDF parquet file."""
     hdf5_file = Path(hdf5_file)
-    try:
-        df = pd.read_hdf(hdf5_file, key="data")
-    except KeyError:
-        df = pd.read_hdf(hdf5_file, key="cycling")
-
-    # In HDF with pandas, attrs are dropped
-    # Metadata is stored as a json string with a separate key
-    with h5py.File(hdf5_file, "r") as f:
-        metadata = json.loads(f["metadata"][()])
+    df = read_cycling(hdf5_file)
+    metadata = read_metadata(hdf5_file)
 
     # Convert to BDF style columns
     df = aurora_to_bdf(pd.DataFrame(df))
@@ -98,6 +93,6 @@ def bdf_parquet_to_aurora_hdf(bdf_file: str | Path, hdf5_file: str | Path | None
     else:
         hdf5_file = Path(hdf5_file).with_suffix(".h5")
         hdf5_file.parent.mkdir(exist_ok=True)
-    df.to_hdf(hdf5_file, key="data", mode="w")
+    df.to_hdf(hdf5_file, key="data/cycling", mode="w")
     with h5py.File(hdf5_file, "a") as f:
         f.create_dataset("metadata", data=json.dumps(metadata))

@@ -3,18 +3,12 @@
 import json
 from pathlib import Path
 
-import h5py
 import numpy as np
 import pandas as pd
 
-from aurora_cycler_manager.analysis import (
-    analyse_sample,
-    calc_dqdv,
-    update_sample_metadata,
-)
-from aurora_cycler_manager.database_funcs import (
-    update_sample_label,
-)
+from aurora_cycler_manager.analysis import analyse_sample, calc_dqdv, update_sample_metadata
+from aurora_cycler_manager.data_bundle import read_cycling, read_metadata
+from aurora_cycler_manager.database_funcs import update_sample_label
 from aurora_cycler_manager.eclab_harvester import convert_all_mprs
 from aurora_cycler_manager.neware_harvester import convert_all_neware_data
 
@@ -25,7 +19,10 @@ class TestAnalysis:
     def test_analyse_eclab_sample(self, reset_all) -> None:
         """Generate test data, run analysis."""
         convert_all_mprs()
-        df, cycle_dict, metadata = analyse_sample("250116_kigr_gen6_01")
+        results = analyse_sample("250116_kigr_gen6_01")
+        df = results["data_cycling"]
+        cycle_df = results.get("data_cycle_summary")
+        metadata = results["metadata"]
 
         # DataFrame checks
         assert isinstance(df, pd.DataFrame)
@@ -36,12 +33,11 @@ class TestAnalysis:
         assert all(df["V (V)"] < 5)
 
         # cycle dict checks
-        assert isinstance(cycle_dict, dict)
-        assert isinstance(cycle_dict["Cycle"], list)
-        assert len(cycle_dict["Cycle"]) == cycle_dict["Cycle"][-1]
+        assert isinstance(cycle_df, pd.DataFrame)
+        assert len(cycle_df["Cycle"]) == cycle_df["Cycle"].iloc[-1]
 
         # DataFrame-cycle consistency
-        assert df["Cycle"].max() == cycle_dict["Cycle"][-1]
+        assert df["Cycle"].max() == cycle_df["Cycle"].iloc[-1]
 
         # metadata checks
         assert isinstance(metadata, dict)
@@ -51,7 +47,10 @@ class TestAnalysis:
     def test_analyse_neware_sample(self, reset_all) -> None:
         """Generate test data, run analysis."""
         convert_all_neware_data()
-        df, cycle_dict, metadata = analyse_sample("commercial_cell_009")
+        results = analyse_sample("commercial_cell_009")
+        df = results["data_cycling"]
+        cycle_df = results.get("data_cycle_summary")
+        metadata = results["metadata"]
 
         # DataFrame checks
         assert isinstance(df, pd.DataFrame)
@@ -62,12 +61,11 @@ class TestAnalysis:
         assert all(df["V (V)"] < 5)
 
         # cycle dict checks
-        assert isinstance(cycle_dict, dict)
-        assert isinstance(cycle_dict["Cycle"], list)
-        assert len(cycle_dict["Cycle"]) == cycle_dict["Cycle"][-1]
+        assert isinstance(cycle_df, pd.DataFrame)
+        assert len(cycle_df["Cycle"]) == cycle_df["Cycle"].iloc[-1]
 
         # DataFrame-cycle consistency
-        assert df["Cycle"].max() == cycle_dict["Cycle"][-1]
+        assert df["Cycle"].max() == cycle_df["Cycle"].iloc[-1]
 
         # metadata checks
         assert isinstance(metadata, dict)
@@ -87,9 +85,8 @@ class TestAnalysis:
         analyse_sample("250116_kigr_gen6_01")
         with cycles_file.open("r") as f:
             cycles_data_before = json.load(f)
-        full_data_before = pd.read_hdf(full_file, "data")
-        with h5py.File(full_file, "r") as f:
-            full_metadata_before = json.loads(f["metadata"][()])
+        full_data_before = read_cycling(full_file)
+        full_metadata_before = read_metadata(full_file)
 
         # Change the sample metadata
         update_sample_label("250116_kigr_gen6_01", "This should be written to the file")
@@ -98,9 +95,8 @@ class TestAnalysis:
         # Reread the data files
         with cycles_file.open("r") as f:
             cycles_data_after = json.load(f)
-        full_data_after = pd.read_hdf(full_file, "data")
-        with h5py.File(full_file, "r") as f:
-            full_metadata_after = json.loads(f["metadata"][()])
+        full_data_after = read_cycling(full_file)
+        full_metadata_after = read_metadata(full_file)
 
         # Check that the label has been updated
         assert cycles_data_after["data"]["Label"] == "This should be written to the file"

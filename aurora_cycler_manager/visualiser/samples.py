@@ -5,18 +5,17 @@ Samples tab layout and callbacks for the visualiser app.
 
 import json
 import logging
-import os
 from pathlib import Path
 
 import dash_mantine_components as dmc
 import numpy as np
-import pandas as pd
 import plotly.graph_objs as go
 from dash import Dash, Input, Output, State, dcc, html
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
 from aurora_cycler_manager.analysis import calc_dqdv, combine_jobs
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.data_bundle import read_combined_summary, read_cycling
 from aurora_cycler_manager.stdlib_utils import run_from_sample
 
 CONFIG = get_config()
@@ -304,43 +303,39 @@ def register_samples_callbacks(app: Dash) -> None:
             # Otherwise import the data
             run_id = run_from_sample(sample)
             data_folder = CONFIG["Processed snapshots folder path"]
-            file_location = str(data_folder / run_id / sample)
+            sample_folder = data_folder / run_id / sample
 
-            # Get raw data
-            try:
-                files = os.listdir(file_location)
-            except FileNotFoundError:
-                continue
-            if compressed and any(f.startswith("shrunk") and f.endswith(".h5") for f in files):
-                filepath = next(f for f in files if f.startswith("shrunk") and f.endswith(".h5"))
-                df = pd.read_hdf(f"{file_location}/{filepath}")
+            # Get time series data
+            if compressed and (shrunk_file := next(sample_folder.glob("shrunk.*.h5"), None)):
+                df = read_cycling(shrunk_file)
                 data_dict = df.to_dict(orient="list")
                 data_dict["Shrunk"] = True
                 data["data_sample_time"][sample] = data_dict
-            elif any(f.startswith("full") and f.endswith(".h5") for f in files):
-                filepath = next(f for f in files if f.startswith("full") and f.endswith(".h5"))
-                df = pd.read_hdf(f"{file_location}/{filepath}")
+            elif full_file := next(sample_folder.glob("full.*.h5"), None):
+                df = read_cycling(full_file)
+                data["data_sample_time"][sample] = df.to_dict(orient="list")
+            elif cycling_files := list(sample_folder.glob("snapshot.*.h5")):
+                data_bundle = combine_jobs([Path(f) for f in cycling_files])
+                df = data_bundle["data_cycling"]
                 data["data_sample_time"][sample] = df.to_dict(orient="list")
             else:
-                cycling_files = [
-                    os.path.join(file_location, f) for f in files if (f.startswith("snapshot") and f.endswith(".h5"))
-                ]
-                if not cycling_files:
-                    logger.info("No cycling files found in %s", file_location)
-                    continue
-                df, _metadata = combine_jobs([Path(f) for f in cycling_files])
-                data["data_sample_time"][sample] = df.to_dict(orient="list")
+                logger.info("No cycling files found in %s", sample_folder)
+                continue
 
-            # Get the analysed file
-            try:
-                analysed_file = next(f for f in files if (f.startswith("cycles") and f.endswith(".json")))
-            except StopIteration:
-                continue
-            with open(f"{file_location}/{analysed_file}", encoding="utf-8") as f:
-                cycle_dict = json.load(f)["data"]
-            if not cycle_dict or "Cycle" not in cycle_dict:
-                continue
-            data["data_sample_cycle"][sample] = cycle_dict
+            # Get cycle summary data
+            if full_file := next(sample_folder.glob("full.*.h5"), None):
+                df = read_combined_summary(full_file)
+                if df is not None:
+                    data["data_sample_cycle"][sample] = df.to_dict(orient="list")
+                else:
+                    analysed_file = next(sample_folder.glob("cycles.*.json"), None)
+                    if analysed_file:
+                        with analysed_file.open() as f:
+                            cycle_dict = json.load(f)["data"]
+                        if cycle_dict and "Cycle" in cycle_dict:
+                            data["data_sample_cycle"][sample] = cycle_dict
+                    else:
+                        logger.info("No cycling summary found in %s", sample_folder)
 
         # Update the y-axis options
         time_y_vars = {"V (V)"}

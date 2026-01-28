@@ -3,7 +3,6 @@
 Database view tab layout and callbacks for the visualiser app.
 """
 
-import base64
 import json
 import logging
 import tempfile
@@ -15,6 +14,7 @@ from typing import Literal
 
 import dash_ag_grid as dag
 import dash_mantine_components as dmc
+import dash_uploader as du
 import paramiko
 from dash import ALL, Dash, Input, NoUpdate, Output, State, callback, clientside_callback, dcc, html, no_update
 from dash import callback_context as ctx
@@ -66,8 +66,10 @@ except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
 
 # ---------------------------- Utility functions ----------------------------- #
 
-DOWNLOAD_DIR = Path(tempfile.gettempdir()) / "aurora_tmp"
+DOWNLOAD_DIR = Path(tempfile.gettempdir()) / "aurora_download_tmp"
 DOWNLOAD_DIR.mkdir(exist_ok=True, parents=True)
+UPLOAD_DIR = Path(tempfile.gettempdir()) / "aurora_upload_tmp"
+UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
 
 
 def cleanup_temp_folder() -> None:
@@ -619,7 +621,6 @@ upload_modal = dmc.Modal(
     title="Upload",
     children=dmc.Stack(
         [
-            dcc.Store(id="upload-store", data={"file": None, "data": None}),
             dmc.Text("You can upload:"),
             dmc.List(
                 [
@@ -629,19 +630,9 @@ upload_modal = dmc.Modal(
                     dmc.ListItem("Unicycler protocols as a .json file"),
                 ]
             ),
-            dcc.Upload(
-                dmc.Button(
-                    "Drag & drop or select file",
-                    id="upload-data-button-element",
-                    fullWidth=True,
-                    style={"width": "100%"},
-                ),
-                id="upload-data-button",
-                accept=".json,.zip,.xlsx,.jsonld",
-                max_size=512 * 1024 * 1024,
-                multiple=False,
-                style={"display": "block", "width": "100%"},
-            ),
+            du.Upload(id="dash-uploader", max_file_size=2048),
+            dcc.Store(id="upload-filepath", data=""),
+            dcc.Store(id="upload-store", data={"file": None, "data": None}),
             dmc.Alert(
                 title="File status",
                 children="You haven't uploaded anything",
@@ -727,6 +718,7 @@ def register_db_view_callbacks(app: Dash) -> None:
     """Register callbacks for the database view layout."""
     register_batch_edit_callbacks(app)
     register_protocol_edit_callbacks(app)
+    du.configure_upload(app, UPLOAD_DIR)
 
     # Update data in tables when it changes
     @app.callback(
@@ -1575,20 +1567,28 @@ def register_db_view_callbacks(app: Dash) -> None:
         raise PreventUpdate
 
     # Figure out what was just uploaded and tell the user
+    @du.callback(
+        output=Output("upload-filepath", "data"),
+        id="dash-uploader",
+    )
+    def callback_on_completion(status: du.UploadStatus) -> str:
+        """Update filepath when upload finished."""
+        return str(status.uploaded_files[0])
+
     @app.callback(
         Output("upload-alert", "children"),
         Output("upload-alert", "color"),
         Output("upload-data-confirm-button", "disabled"),
         Output("upload-store", "data"),
-        Input("upload-data-button", "contents"),
-        State("upload-data-button", "filename"),
+        Input("upload-filepath", "data"),
         State("selected-rows-store", "data"),
+        running=[
+            (Output("upload-data-button-element", "loading"), True, False),
+        ],
         prevent_initial_call=True,
     )
-    def figure_out_files(contents: str, filename: str, selected_rows: list) -> tuple[str, str, bool, dict]:
-        _content_type, content_string = contents.split(",")
-        decoded = base64.b64decode(content_string)
-        return file_io.determine_uploaded(decoded, filename, selected_rows)
+    def figure_out_files(filepath: str, selected_rows: list) -> tuple[str, str, bool, dict]:
+        return file_io.determine_file(filepath, selected_rows)
 
     # If you leave the upload modal, wipe the contents
     @app.callback(
@@ -1607,7 +1607,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("upload-data-confirm-button", "n_clicks"),
         State("upload-store", "data"),
-        State("upload-data-button", "contents"),
+        State("upload-filepath", "data"),
         State("selected-rows-store", "data"),
         running=[
             (Output("loading-message-store", "data"), "Processing data...", ""),
@@ -1615,9 +1615,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         ],
         prevent_initial_call=True,
     )
-    def process_file(n_clicks: int, data: dict, contents: str, selected_rows: list) -> int:
+    def process_file(n_clicks: int, data: dict, filepath: str, selected_rows: list) -> int:
         if not n_clicks:
             raise PreventUpdate
-        _content_type, content_string = contents.split(",")
-        decoded = base64.b64decode(content_string)
-        return file_io.process_uploaded(data, decoded, selected_rows)
+        return file_io.process_file(data, filepath, selected_rows)

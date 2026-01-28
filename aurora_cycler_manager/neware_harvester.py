@@ -854,7 +854,7 @@ def convert_neware_data(
             data = data.astype({"technique": "int16", "cycle_number": "int32"})
             data.to_hdf(
                 folder / file_name,
-                key="data",
+                key="data/cycling",
                 mode="w",
                 complib="blosc",
                 complevel=9,
