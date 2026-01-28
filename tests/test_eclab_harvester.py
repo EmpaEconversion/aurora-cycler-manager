@@ -3,9 +3,12 @@
 import sqlite3
 from pathlib import Path
 
+import pandas as pd
 import pytest
+from pandas.testing import assert_frame_equal
 
-from aurora_cycler_manager.eclab_harvester import convert_mpr
+from aurora_cycler_manager.analysis import analyse_sample
+from aurora_cycler_manager.eclab_harvester import convert_mpr, get_mpr_data
 
 
 def test_convert_data(reset_all, test_dir: Path) -> None:
@@ -143,3 +146,42 @@ def test_convert_data_update_database(reset_all, test_dir: Path) -> None:
         result = cursor.fetchone()
         assert result is not None
         cursor.close()
+
+
+def test_convert_eis(reset_all, test_dir: Path) -> None:
+    """Check EIS works without any cycling data."""
+    mpr = test_dir / "misc" / "PEIS.mpr"
+    df, eis_df, metadata, yadg_metadata = get_mpr_data(mpr)
+    assert eis_df is not None
+    assert isinstance(eis_df, pd.DataFrame)
+    assert len(df) == 0
+    assert isinstance(metadata, dict)
+    assert isinstance(yadg_metadata, dict)
+    assert all(
+        x in eis_df.columns for x in ["uts", "V (V)", "I (A)", "technique", "f (Hz)", "Re(Z) (ohm)", "Im(Z) (ohm)"]
+    )
+    # Save to database etc.
+    sample_id = "240701_svfe_gen6_01"
+    convert_mpr(mpr, sample_id=sample_id)
+    results = analyse_sample(sample_id)
+
+    eis_df["Cycle"] = 0
+    eis_check = results.get("data_eis")
+    assert eis_check is not None
+    assert_frame_equal(eis_check, eis_df)
+
+
+def test_convert_eis_with_other_data(reset_all, test_dir: Path) -> None:
+    """Check EIS works with cycling data."""
+    sample_id = "240701_svfe_gen6_01"
+    cycling_data = test_dir / "eclab_harvester" / "test_C01.mpr"
+    eis_data = test_dir / "misc" / "PEIS.mpr"
+    convert_mpr(cycling_data, sample_id=sample_id)
+    convert_mpr(eis_data, sample_id=sample_id)
+    results = analyse_sample(sample_id)
+
+    assert len(results["data_cycling"]) == 18001
+    eis = results.get("data_eis")
+    assert eis is not None
+    assert len(eis) == 244
+    assert eis["Cycle"].iloc[0] == max(results["data_cycling"]["Cycle"])

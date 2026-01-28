@@ -19,6 +19,7 @@ from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 from plotly.colors import hex_to_rgb, label_rgb, sample_colorscale
 
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.data_bundle import read_combined_summary
 from aurora_cycler_manager.stdlib_utils import run_from_sample
 from aurora_cycler_manager.visualiser.funcs import correlation_matrix
 
@@ -535,11 +536,16 @@ def register_batches_callbacks(app: Dash) -> None:
             if s in data:
                 continue
             run_id = run_from_sample(s)
-            file_location = Path(CONFIG["Processed snapshots folder path"]) / run_id / s / f"cycles.{s}.json"
-            if not file_location.exists():
-                continue
-            with file_location.open(encoding="utf-8") as f:
-                data[s] = json.load(f)["data"]
+            sample_folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / s
+            full_file = sample_folder / f"full.{s}.h5"
+            df = read_combined_summary(full_file)
+            if df is not None:
+                data[s] = df.to_dict(orient="list")
+            else:
+                json_summary = sample_folder / f"cycles.{s}.json"
+                if json_summary.exists():
+                    with json_summary.open("r") as f:
+                        data[s] = json.load(f)["data"]
 
         # y-axis options are lists in data
         # color options are non-lists

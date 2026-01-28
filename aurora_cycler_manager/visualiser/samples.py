@@ -13,8 +13,9 @@ import plotly.graph_objs as go
 from dash import Dash, Input, Output, State, dcc, html
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
-from aurora_cycler_manager.analysis import calc_dqdv, combine_jobs, read_hdf_cycling
+from aurora_cycler_manager.analysis import calc_dqdv, combine_jobs
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.data_bundle import read_combined_summary, read_cycling
 from aurora_cycler_manager.stdlib_utils import run_from_sample
 
 CONFIG = get_config()
@@ -304,29 +305,37 @@ def register_samples_callbacks(app: Dash) -> None:
             data_folder = CONFIG["Processed snapshots folder path"]
             sample_folder = data_folder / run_id / sample
 
-            # Get raw data
+            # Get time series data
             if compressed and (shrunk_file := next(sample_folder.glob("shrunk.*.h5"), None)):
-                df = read_hdf_cycling(shrunk_file)
+                df = read_cycling(shrunk_file)
                 data_dict = df.to_dict(orient="list")
                 data_dict["Shrunk"] = True
                 data["data_sample_time"][sample] = data_dict
             elif full_file := next(sample_folder.glob("full.*.h5"), None):
-                df = read_hdf_cycling(full_file)
+                df = read_cycling(full_file)
                 data["data_sample_time"][sample] = df.to_dict(orient="list")
             elif cycling_files := list(sample_folder.glob("snapshot.*.h5")):
-                df, _eis_df, _metadata = combine_jobs([Path(f) for f in cycling_files])
+                data_bundle = combine_jobs([Path(f) for f in cycling_files])
+                df = data_bundle["data_cycling"]
                 data["data_sample_time"][sample] = df.to_dict(orient="list")
             else:
                 logger.info("No cycling files found in %s", sample_folder)
                 continue
 
-            # Get the analysed file
-            analysed_file = next(sample_folder.glob("cycles.*.json"), None)
-            if analysed_file:
-                with analysed_file.open() as f:
-                    cycle_dict = json.load(f)["data"]
-                if cycle_dict and "Cycle" in cycle_dict:
-                    data["data_sample_cycle"][sample] = cycle_dict
+            # Get cycle summary data
+            if full_file := next(sample_folder.glob("full.*.h5"), None):
+                df = read_combined_summary(full_file)
+                if df is not None:
+                    data["data_sample_cycle"][sample] = df.to_dict(orient="list")
+                else:
+                    analysed_file = next(sample_folder.glob("cycles.*.json"), None)
+                    if analysed_file:
+                        with analysed_file.open() as f:
+                            cycle_dict = json.load(f)["data"]
+                        if cycle_dict and "Cycle" in cycle_dict:
+                            data["data_sample_cycle"][sample] = cycle_dict
+                    else:
+                        logger.info("No cycling summary found in %s", sample_folder)
 
         # Update the y-axis options
         time_y_vars = {"V (V)"}
