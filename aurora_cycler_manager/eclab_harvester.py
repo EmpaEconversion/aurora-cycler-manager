@@ -418,7 +418,8 @@ def convert_mpr(
         hdf5_filepath = folder / f"snapshot.{file_stem}.h5"
 
         # Add the file/job information to the database
-        add_data_to_db(sample_id, file_stem, df, job_id)
+        all_uts = pd.concat([d["uts"] for d in [df, eis_df] if d is not None and len(d) > 0], ignore_index=True)
+        add_data_to_db(sample_id, file_stem, all_uts.min(), all_uts.max(), job_id)
 
         # Create the 'data/cycling' hdf5 dataset
         df.to_hdf(
