@@ -5,7 +5,12 @@ DataBundle Typed dict and functions to read/write hdf5.
 
 import json
 from pathlib import Path
-from typing import NotRequired, TypedDict
+from typing import TypedDict
+
+try:
+    from typing import NotRequired
+except ImportError:  # Python 3.10
+    from typing_extensions import NotRequired
 
 import h5py
 import pandas as pd
