@@ -18,7 +18,7 @@ from aurora_unicycler import Protocol
 from battinfoconverter_backend.json_convert import convert_excel_to_jsonld
 
 import aurora_cycler_manager.battinfo_utils as bu
-from aurora_cycler_manager.analysis import analyse_sample, read_hdf_cycling
+from aurora_cycler_manager.analysis import analyse_sample, read_cycling
 from aurora_cycler_manager.bdf_converter import aurora_to_bdf
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import (
@@ -65,14 +65,17 @@ def is_unicycler_protocol(obj: list | str | dict) -> bool:
     return isinstance(obj, dict) and bool(obj.get("unicycler"))
 
 
-def determine_uploaded(decoded_bytes: bytes, filename: str, selected_rows: list) -> tuple[str, str, bool, dict]:
+def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str, bool, dict]:
     """Determine what the uploaded file should do."""
-    if not decoded_bytes:
+    logger.info("Determining upload")
+    filepath = Path(filepath)
+    if not filepath or not filepath.exists():
         return "Nothing uploaded", "grey", True, {"file": None, "data": None}
 
-    if filename.endswith((".jsonld", ".json")):
+    if filepath.suffix in {".jsonld", ".json"}:
         # It could be ontology or samples
-        data = json.loads(decoded_bytes)
+        with filepath.open("r") as f:
+            data = json.load(f)
         if is_samples_json(data):
             samples = [d.get("Sample ID") for d in data]
             known_samples = set(get_all_sampleids())
@@ -150,9 +153,9 @@ def determine_uploaded(decoded_bytes: bytes, filename: str, selected_rows: list)
                 {"file": "unicycler-json", "data": data},
             )
 
-    elif filename.endswith(".xlsx"):
+    elif filepath.suffix == ".xlsx":
         # It is probably a battinfo xlsx file
-        excel_file = pd.ExcelFile(io.BytesIO(decoded_bytes))
+        excel_file = pd.ExcelFile(filepath)
         sheet_names = [str(s) for s in excel_file.sheet_names]
         expected_sheets = ["Schema", "@context-TopLevel", "@context-Connector", "Ontology - Unit", "Unique ID"]
         if not all(sheet in expected_sheets for sheet in sheet_names):
@@ -176,12 +179,9 @@ def determine_uploaded(decoded_bytes: bytes, filename: str, selected_rows: list)
             {"file": "battinfo-xlsx", "data": None},  # Don't copy the content_string
         )
 
-    elif filename.endswith(".zip"):
-        # Wrap in BytesIO so we can use it like a file
-        zip_buffer = io.BytesIO(decoded_bytes)
-
+    elif filepath.suffix == ".zip":
         # Open the zip archive
-        with zipfile.ZipFile(zip_buffer, "r") as zip_file:
+        with zipfile.ZipFile(filepath, "r") as zip_file:
             # List the contents
             valid_files = {}
             invalid_files = {}
@@ -201,13 +201,13 @@ def determine_uploaded(decoded_bytes: bytes, filename: str, selected_rows: list)
                     invalid_files[file] = f"Folder {folder} is not a Sample ID in the database"
                     continue
                 filetype = file.split(".")[-1]
-                if filetype in ["mpl"]:  # silently ignore - sidecar file
+                if filetype == "mpl":  # silently ignore - sidecar file
                     continue
-                if filetype not in ["mpr"]:
-                    invalid_files[file] = f"Filetype {filetype} is not supported"
+                if filetype in {"mpr", "xlsx"}:
+                    valid_files[file] = folder
                     continue
+                invalid_files[file] = f"Filetype {filetype} is not supported"
 
-                valid_files[file] = folder
         if valid_files:
             msg = "Got a zip with valid files\nAdding data for the following samples:\n" + "\n".join(
                 sorted(set(valid_files.values()))
@@ -227,10 +227,33 @@ def determine_uploaded(decoded_bytes: bytes, filename: str, selected_rows: list)
     return "File not understood", "red", True, {"file": None, "data": None}
 
 
-def process_uploaded(data: dict, decoded_bytes: bytes, selected_rows: list) -> int:
+def save_battinfo(data: dict, file: str | Path | io.BytesIO, sample_ids: list[str]) -> None:
+    """Convert BattINFO to jsonld and save in sample folder."""
+    battinfo_jsonld = (
+        convert_excel_to_jsonld(file, debug_mode=False) if data["file"] == "battinfo-xlsx" else data["data"]
+    )
+    with Path("bruh.json").open("w") as f:
+        f.write(json.dumps(battinfo_jsonld, indent=4))
+    # Merge json with database info and save
+    for s in sample_ids:
+        sample_data = get_sample_data(s)
+        merged_jsonld = bu.merge_battinfo_with_db_data(battinfo_jsonld, sample_data)
+        run_id = run_from_sample(s)
+        save_path = CONFIG["Processed snapshots folder path"] / run_id / s / f"battinfo.{s}.jsonld"
+        logger.info("Saving battinfo json-ld file to %s", save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        with save_path.open("w", encoding="utf-8") as f:
+            json.dump(merged_jsonld, f, indent=4)
+
+
+def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
     """Process the uploaded file."""
-    if not decoded_bytes:
-        msg = "No contents"
+    filepath = Path(filepath)
+    if not data.get("file"):
+        msg = "No file type provided"
+        raise ValueError(msg)
+    if not filepath or not filepath.exists():
+        msg = "No file provided"
         raise ValueError(msg)
     match data.get("file"):
         case "samples-json":
@@ -256,27 +279,11 @@ def process_uploaded(data: dict, decoded_bytes: bytes, selected_rows: list) -> i
 
         case "battinfo-jsonld" | "battinfo-xlsx":
             try:
-                # If xlsx, first convert to dict
-                battinfo_jsonld = (
-                    convert_excel_to_jsonld(io.BytesIO(decoded_bytes))
-                    if data["file"] == "battinfo-xlsx"
-                    else data["data"]
-                )
-
-                # Merge json with database info and save
-                samples = [s.get("Sample ID") for s in selected_rows if s.get("Sample ID")]
-                for s in samples:
-                    sample_data = get_sample_data(s)
-                    merged_jsonld = bu.merge_battinfo_with_db_data(battinfo_jsonld, sample_data)
-                    run_id = run_from_sample(s)
-                    save_path = CONFIG["Processed snapshots folder path"] / run_id / s / f"battinfo.{s}.jsonld"
-                    logger.info("Saving battinfo json-ld file to %s", save_path)
-                    save_path.parent.mkdir(parents=True, exist_ok=True)
-                    with save_path.open("w", encoding="utf-8") as f:
-                        json.dump(merged_jsonld, f, indent=4)
+                sample_ids = [s.get("Sample ID") for s in selected_rows if s.get("Sample ID")]
+                save_battinfo(data, filepath, sample_ids)
                 success_notification(
                     "BattINFO json-ld uploaded",
-                    f"JSON-LD merged with data from {len(samples)} samples",
+                    f"JSON-LD merged with data from {len(sample_ids)} samples",
                     queue=True,
                 )
             except Exception as e:
@@ -336,18 +343,17 @@ def process_uploaded(data: dict, decoded_bytes: bytes, selected_rows: list) -> i
             return 1
 
         case "zip":
-            zip_buffer = io.BytesIO(decoded_bytes)
             valid_files = data["data"]
             successful_samples = set()
-            with zipfile.ZipFile(zip_buffer, "r") as zip_file:
-                for filepath, sample_id in valid_files.items():
-                    filename = filepath.split("/")[-1]
+            with zipfile.ZipFile(filepath, "r") as zip_file:
+                for subfilepath, sample_id in valid_files.items():
+                    filename = subfilepath.split("/")[-1]
                     try:
-                        with zip_file.open(filepath) as file:
+                        with zip_file.open(subfilepath) as file:
                             match filename.split(".")[-1]:
                                 case "mpr":
                                     # Check if there is an associated mpl file
-                                    mpl_filename = filename.replace(".mpr", ".mpl")
+                                    mpl_filename = subfilepath.replace(".mpr", ".mpl")
                                     if mpl_filename in zip_file.namelist():
                                         with zip_file.open(mpl_filename) as f:
                                             mpl_file = f.read()
@@ -366,6 +372,14 @@ def process_uploaded(data: dict, decoded_bytes: bytes, selected_rows: list) -> i
                                     success_notification(
                                         "File processed",
                                         f"{filename}",
+                                        queue=True,
+                                    )
+                                case "xlsx":
+                                    xlsx_bytes = io.BytesIO(file.read())
+                                    save_battinfo({"file": "battinfo-xlsx"}, xlsx_bytes, [sample_id])
+                                    success_notification(
+                                        "File processed",
+                                        f"BattINFO json-ld added to {sample_id}",
                                         queue=True,
                                     )
                     except Exception as e:
@@ -466,7 +480,7 @@ def create_rocrate(
                 # If bdf is requested, convert the dataframe
                 if hdf5_file and {"bdf-csv", "bdf-parquet"} & filetypes:
                     with contextlib.suppress(builtins.BaseException):
-                        bdf_df = aurora_to_bdf(read_hdf_cycling(hdf5_file))
+                        bdf_df = aurora_to_bdf(read_cycling(hdf5_file))
 
             # Loop through requested files
             for filetype in filetypes:
