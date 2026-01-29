@@ -3,9 +3,7 @@
 Samples tab layout and callbacks for the visualiser app.
 """
 
-import json
 import logging
-from pathlib import Path
 
 import dash_mantine_components as dmc
 import numpy as np
@@ -13,10 +11,9 @@ import plotly.graph_objs as go
 from dash import Dash, Input, Output, State, dcc, html
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
-from aurora_cycler_manager.analysis import calc_dqdv, combine_jobs
+from aurora_cycler_manager.analysis import calc_dqdv
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_bundle import read_combined_summary, read_cycling
-from aurora_cycler_manager.stdlib_utils import run_from_sample
+from aurora_cycler_manager.data_bundle import get_combined_summary, get_cycling, get_cycling_shrunk
 
 CONFIG = get_config()
 logger = logging.getLogger(__name__)
@@ -301,41 +298,31 @@ def register_samples_callbacks(app: Dash) -> None:
                     continue
 
             # Otherwise import the data
-            run_id = run_from_sample(sample)
-            data_folder = CONFIG["Processed snapshots folder path"]
-            sample_folder = data_folder / run_id / sample
-
             # Get time series data
-            if compressed and (shrunk_file := next(sample_folder.glob("shrunk.*.h5"), None)):
-                df = read_cycling(shrunk_file)
+            logger.info("Searching for %s", sample)
+            if compressed and (df := get_cycling_shrunk(sample)) is not None:
                 data_dict = df.to_dict(orient="list")
                 data_dict["Shrunk"] = True
+                logger.info("Found shrunk for %s", sample)
                 data["data_sample_time"][sample] = data_dict
-            elif full_file := next(sample_folder.glob("full.*.h5"), None):
-                df = read_cycling(full_file)
-                data["data_sample_time"][sample] = df.to_dict(orient="list")
-            elif cycling_files := list(sample_folder.glob("snapshot.*.h5")):
-                data_bundle = combine_jobs([Path(f) for f in cycling_files])
-                df = data_bundle["data_cycling"]
-                data["data_sample_time"][sample] = df.to_dict(orient="list")
             else:
-                logger.info("No cycling files found in %s", sample_folder)
-                continue
+                logger.info("Couldn't find shrunk for %s", sample)
+                try:
+                    logger.info("Getting full for %s", sample)
+                    df = get_cycling(sample)
+                    data["data_sample_time"][sample] = df.to_dict(orient="list")
+                except ValueError:
+                    logger.info("No cycling found for %s", sample)
+                    continue
 
             # Get cycle summary data
-            if full_file := next(sample_folder.glob("full.*.h5"), None):
-                df = read_combined_summary(full_file)
-                if df is not None:
-                    data["data_sample_cycle"][sample] = df.to_dict(orient="list")
-                else:
-                    analysed_file = next(sample_folder.glob("cycles.*.json"), None)
-                    if analysed_file:
-                        with analysed_file.open() as f:
-                            cycle_dict = json.load(f)["data"]
-                        if cycle_dict and "Cycle" in cycle_dict:
-                            data["data_sample_cycle"][sample] = cycle_dict
-                    else:
-                        logger.info("No cycling summary found in %s", sample_folder)
+            logger.info("Getting summary data for %s", sample)
+            df = get_combined_summary(sample)
+            if df is not None:
+                logger.info("Found summary data for %s", sample)
+                data["data_sample_cycle"][sample] = df.to_dict(orient="list")
+            else:
+                logger.info("Couldn't get summary data for %s", sample)
 
         # Update the y-axis options
         time_y_vars = {"V (V)"}

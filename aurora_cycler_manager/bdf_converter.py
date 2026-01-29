@@ -11,7 +11,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from aurora_cycler_manager.data_bundle import read_cycling, read_metadata
+from aurora_cycler_manager.data_bundle import read_hdf_cycling, read_hdf_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +60,8 @@ def bdf_to_aurora(df: pd.DataFrame) -> pd.DataFrame:
 def aurora_hdf_to_bdf_parquet(hdf5_file: str | Path, bdf_file: str | Path | None = None) -> None:
     """Convert Aurora HDF5 file to BDF parquet file."""
     hdf5_file = Path(hdf5_file)
-    df = read_cycling(hdf5_file)
-    metadata = read_metadata(hdf5_file)
+    df = read_hdf_cycling(hdf5_file)
+    metadata = read_hdf_metadata(hdf5_file)
 
     # Convert to BDF style columns
     df = aurora_to_bdf(pd.DataFrame(df))

@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from aurora_cycler_manager.analysis import analyse_sample, calc_dqdv, update_sample_metadata
-from aurora_cycler_manager.data_bundle import read_cycling, read_metadata
+from aurora_cycler_manager.data_bundle import read_hdf_cycling, read_hdf_metadata
 from aurora_cycler_manager.database_funcs import update_sample_label
 from aurora_cycler_manager.eclab_harvester import convert_all_mprs
 from aurora_cycler_manager.neware_harvester import convert_all_neware_data
@@ -85,8 +85,8 @@ class TestAnalysis:
         analyse_sample("250116_kigr_gen6_01")
         with cycles_file.open("r") as f:
             cycles_data_before = json.load(f)
-        full_data_before = read_cycling(full_file)
-        full_metadata_before = read_metadata(full_file)
+        full_data_before = read_hdf_cycling(full_file)
+        full_metadata_before = read_hdf_metadata(full_file)
 
         # Change the sample metadata
         update_sample_label("250116_kigr_gen6_01", "This should be written to the file")
@@ -95,8 +95,8 @@ class TestAnalysis:
         # Reread the data files
         with cycles_file.open("r") as f:
             cycles_data_after = json.load(f)
-        full_data_after = read_cycling(full_file)
-        full_metadata_after = read_metadata(full_file)
+        full_data_after = read_hdf_cycling(full_file)
+        full_metadata_after = read_hdf_metadata(full_file)
 
         # Check that the label has been updated
         assert cycles_data_after["data"]["Label"] == "This should be written to the file"

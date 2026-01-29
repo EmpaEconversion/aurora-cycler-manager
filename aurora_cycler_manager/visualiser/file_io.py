@@ -18,9 +18,10 @@ from aurora_unicycler import Protocol
 from battinfoconverter_backend.json_convert import convert_excel_to_jsonld
 
 import aurora_cycler_manager.battinfo_utils as bu
-from aurora_cycler_manager.analysis import analyse_sample, read_cycling
+from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.bdf_converter import aurora_to_bdf
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.data_bundle import read_hdf_cycling
 from aurora_cycler_manager.database_funcs import (
     add_protocol_to_job,
     add_samples_from_object,
@@ -232,8 +233,6 @@ def save_battinfo(data: dict, file: str | Path | io.BytesIO, sample_ids: list[st
     battinfo_jsonld = (
         convert_excel_to_jsonld(file, debug_mode=False) if data["file"] == "battinfo-xlsx" else data["data"]
     )
-    with Path("bruh.json").open("w") as f:
-        f.write(json.dumps(battinfo_jsonld, indent=4))
     # Merge json with database info and save
     for s in sample_ids:
         sample_data = get_sample_data(s)
@@ -480,7 +479,7 @@ def create_rocrate(
                 # If bdf is requested, convert the dataframe
                 if hdf5_file and {"bdf-csv", "bdf-parquet"} & filetypes:
                     with contextlib.suppress(builtins.BaseException):
-                        bdf_df = aurora_to_bdf(read_cycling(hdf5_file))
+                        bdf_df = aurora_to_bdf(read_hdf_cycling(hdf5_file))
 
             # Loop through requested files
             for filetype in filetypes:

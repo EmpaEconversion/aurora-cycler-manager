@@ -23,7 +23,13 @@ import pandas as pd
 from tsdownsample import MinMaxLTTBDownsampler
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_bundle import DataBundle, read_cycling, read_data_bundle, write_hdf
+from aurora_cycler_manager.data_bundle import (
+    DataBundle,
+    get_cycling,
+    get_full_file,
+    read_hdf_data_bundle,
+    write_hdf,
+)
 from aurora_cycler_manager.database_funcs import get_batch_details, get_sample_data
 from aurora_cycler_manager.stdlib_utils import (
     json_dump_compress_lists,
@@ -142,7 +148,7 @@ def combine_jobs(
 
 def read_and_order_job_files(job_files: list[Path]) -> tuple[list[Path], list[DataBundle]]:
     """Take list of job files, reorder by time, return lists of dataframes and metadata."""
-    data_bundles = [read_data_bundle(f) for f in job_files if f.name.endswith(".h5")]
+    data_bundles = [read_hdf_data_bundle(f) for f in job_files if f.name.endswith(".h5")]
     if len(data_bundles) == 0:
         msg = "No valid hdf5 files provided"
         raise ValueError(msg)
@@ -828,6 +834,7 @@ def analyse_cycles(
             data["data_cycling"][col] = data["data_cycling"][col].astype(np.float32)
 
     # Add new data to the data bundle
+    data["data_overall_summary"] = overall_summary
     data["metadata"]["glossary"] = {**data["metadata"]["glossary"], **cycles_glossary}
     if not cycle_summary_df.empty:
         data["data_cycle_summary"] = cycle_summary_df
@@ -922,12 +929,7 @@ def update_sample_metadata(sample_ids: str | list[str]) -> None:
 
 def shrink_sample(sample_id: str) -> None:
     """Find the full.x.h5 file for the sample and save a lossy, compressed version."""
-    run_id = run_from_sample(sample_id)
-    file_location = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample_id / f"full.{sample_id}.h5"
-    if not file_location.exists():
-        msg = f"File {file_location} not found"
-        raise FileNotFoundError(msg)
-    df = read_cycling(file_location)
+    df = get_cycling(sample_id)
     # Only keep a few columns
     df = df[["V (V)", "I (A)", "uts", "dQ (mAh)", "Cycle"]]
     # Calculate derivative - impossible to do after downsampling
@@ -961,9 +963,9 @@ def shrink_sample(sample_id: str) -> None:
     df["dQ (mAh)"] = df["Q (mAh)"].diff().fillna(0)
     df = df.drop(columns=["Q (mAh)"])
 
-    # Save the new file
-    new_file_location = file_location.with_name(f"shrunk.{sample_id}.h5")
-    df.to_hdf(new_file_location, key="data/cycling", mode="w", complib="blosc", complevel=9)
+    # Update the shrunk dataset
+    full_file = get_full_file(sample_id)
+    df.to_hdf(full_file, key="data/cycling_shrunk", complib="blosc", complevel=9)
 
 
 def shrink_all_samples(sampleid_contains: str = "") -> None:
