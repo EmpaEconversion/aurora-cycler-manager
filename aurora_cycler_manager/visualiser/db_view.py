@@ -535,10 +535,10 @@ download_modal = dmc.Modal(
                 legend="Select files to download",
                 children=dmc.Stack(
                     [
-                        dmc.Checkbox(label="HDF5 time-series", id="download-hdf"),
                         dmc.Checkbox(label="BDF CSV time-series", id="download-bdf-csv"),
                         dmc.Checkbox(label="BDF parquet time-series", id="download-bdf-parquet"),
-                        dmc.Checkbox(label="JSON cycling summary", id="download-json-summary"),
+                        dmc.Checkbox(label="CSV cycling summary", id="download-cycles-csv"),
+                        dmc.Checkbox(label="Parquet cycling summary", id="download-cycles-parquet"),
                         dmc.Checkbox(label="JSON-LD ontologised metadata", id="download-jsonld"),
                     ]
                 ),
@@ -1372,7 +1372,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         sample_ids = [s["Sample ID"] for s in selected_rows]
         logger.info("Labelling [%s] with '%s'", ", ".join(sample_ids), label)
         update_sample_label(sample_ids, label)
-        logger.info("Updating metadata in cycles.*.json and full.*.h5 files")
+        logger.info("Updating metadata in data files")
         update_sample_metadata(sample_ids)
         return 1
 
@@ -1437,8 +1437,8 @@ def register_db_view_callbacks(app: Dash) -> None:
         Input("download-button", "n_clicks"),
         Input("upload-zenodo-info-button", "contents"),
         Input("download-jsonld", "checked"),
-        Input("download-hdf", "checked"),
-        Input("download-json-summary", "checked"),
+        Input("download-cycles-csv", "checked"),
+        Input("download-cycles-parquet", "checked"),
         Input("download-bdf-parquet", "checked"),
         Input("download-bdf-csv", "checked"),
         prevent_initial_call=True,
@@ -1480,16 +1480,16 @@ def register_db_view_callbacks(app: Dash) -> None:
         ],
         state=[
             State("selected-rows-store", "data"),
-            State("download-hdf", "checked"),
-            State("download-json-summary", "checked"),
+            State("download-cycles-parquet", "checked"),
+            State("download-cycles-csv", "checked"),
             State("download-bdf-parquet", "checked"),
             State("download-bdf-csv", "checked"),
             State("download-jsonld", "checked"),
             State("upload-zenodo-info-button", "contents"),
         ],
         running=[
-            (Output("download-hdf", "disabled"), True, False),
-            (Output("download-json-summary", "disabled"), True, False),
+            (Output("download-cycles-parquet", "disabled"), True, False),
+            (Output("download-cycles-csv", "disabled"), True, False),
             (Output("download-bdf-parquet", "disabled"), True, False),
             (Output("download-bdf-csv", "disabled"), True, False),
             (Output("download-jsonld", "disabled"), True, False),
@@ -1509,8 +1509,8 @@ def register_db_view_callbacks(app: Dash) -> None:
         set_progress: Callable,
         _yes_clicks: int,
         selected_rows: list,
-        download_hdf: bool | None,
-        download_json: bool | None,
+        download_cycles_parquet: bool | None,
+        download_cycles_csv: bool | None,
         download_bdf_parquet: bool | None,
         download_bdf_csv: bool | None,
         download_jsonld: bool | None,
@@ -1520,16 +1520,16 @@ def register_db_view_callbacks(app: Dash) -> None:
         cleanup_temp_folder()
         sample_ids = [s["Sample ID"] for s in selected_rows]
         filetypes = {
-            "hdf5": download_hdf,
             "bdf-parquet": download_bdf_parquet,
             "bdf-csv": download_bdf_csv,
-            "cycles-json": download_json,
+            "cycles-csv": download_cycles_csv,
+            "cycles-parquet": download_cycles_parquet,
             "metadata-jsonld": download_jsonld,
         }
-        filetypes = {ft for ft, enabled in filetypes.items() if enabled}  # Convert to set
+        filetype_set = {ft for ft, enabled in filetypes.items() if enabled}  # Convert to set
         temp_zip_path = DOWNLOAD_DIR / f"aurora_{uuid.uuid4().hex}.zip"
         try:
-            file_io.create_rocrate(sample_ids, filetypes, temp_zip_path, zenodo_info, set_progress)
+            file_io.create_rocrate(sample_ids, filetype_set, temp_zip_path, zenodo_info, set_progress)
         except ValueError:
             return "", True, True
         else:

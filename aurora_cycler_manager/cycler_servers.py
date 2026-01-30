@@ -263,7 +263,7 @@ class NewareServer(CyclerServer):
         """Save a snapshot of a job on the server and download it to the local machine."""
         ndax_path = snapshot_raw_data(jobid)
         if ndax_path:
-            convert_neware_data(ndax_path, sample_id, output_hdf5_file=True)
+            convert_neware_data(ndax_path, sample_id, save_file=True)
 
         return None  # Neware does not have a snapshot status
 
@@ -471,7 +471,7 @@ class BiologicServer(CyclerServer):
                     logger.info("Downloading file %s to %s", remote_file, local_file)
                     sftp.get(remote_file, str(local_file))
 
-            # Convert copied files to hdf5
+            # Convert copied files to aurora style
             for local_file in local_files:
                 if local_file.suffix == ".mpr":
                     try:

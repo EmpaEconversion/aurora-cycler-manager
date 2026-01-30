@@ -2,7 +2,7 @@
 
 Functions used for parsing, analysing and plotting.
 
-Takes partial cycling files and combines into one full DataFrame and hdf5 file.
+Takes partial cycling files and combines into one full DataFrame and parquet file.
 
 Analyses metadata and data to extract useful information, including protocol
 summary information, per-cycle data, and summary statistics.
@@ -20,15 +20,15 @@ from typing import Literal
 import h5py
 import numpy as np
 import pandas as pd
+import polars as pl
 from tsdownsample import MinMaxLTTBDownsampler
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.data_bundle import (
-    DataBundle,
-    get_cycling,
-    get_full_file,
-    read_hdf_data_bundle,
-    write_hdf,
+    SampleDataBundle,
+    get_sample_folder,
+    read_cycling,
+    read_metadata,
 )
 from aurora_cycler_manager.database_funcs import get_batch_details, get_sample_data
 from aurora_cycler_manager.stdlib_utils import (
@@ -78,144 +78,145 @@ def _sort_times(start_times: list | np.ndarray, end_times: list | np.ndarray) ->
     return sorted_indices[unique_mask]
 
 
-def combine_jobs(
-    job_files: list[Path],
-) -> DataBundle:
-    """Combine multiple snapshot.*.h5 files into one dataset.
-
-    Args:
-        job_files (List[str]): list of paths to the job files
-
-    Returns:
-        dict with DataBundle keys
-
-    """
-    # Get the metadata from the files
-    job_files, data_bundles = read_and_order_job_files(job_files)
-
-    df = merge_dfs([d["data_cycling"] for d in data_bundles])
-
-    # EIS - combine and set cycle number to last cycle before EIS
-    eis_dfs = [eis for d in data_bundles if (eis := d.get("data_eis")) is not None and not eis.empty]
-    if eis_dfs:
-        eis_df = pd.concat(eis_dfs)
-        eis_df = eis_df.sort_values("uts")
-        if not df.empty:
-            eis_df = pd.merge_asof(eis_df, df[["uts", "Cycle"]], on="uts", direction="backward")
-        else:
-            eis_df["Cycle"] = 0
-    else:
-        eis_df = None
-
-    # Add provenance to the metadatas
-    # Replace sample data with latest from database
-    sample_id = data_bundles[0]["metadata"].get("sample_data", {}).get("Sample ID", "")
+def merge_metadata(job_files: list[Path], metadatas: list[dict]) -> dict:
+    """Merge several job metadata, add provenance, replace sample data with latest from db."""
+    sample_id = metadatas[0].get("sample_data", {}).get("Sample ID", "")
     sample_data = get_sample_data(sample_id)
     # Merge glossary dicts
     glossary = {}
-    for g in [d["metadata"].get("glossary", {}) for d in data_bundles]:
+    for g in [m.get("glossary", {}) for m in metadatas]:
         glossary.update(g)
-    metadata = {
+    return {
         "provenance": {
             "aurora_metadata": {
                 "data_merging": {
                     "job_files": [str(f) for f in job_files],
                     "repo_url": __url__,
                     "repo_version": __version__,
-                    "method": "analysis.combine_jobs",
+                    "method": "analysis.merge_dfs",
                     "datetime": datetime.now(timezone.utc).isoformat(),
                 },
             },
-            "original_file_provenance": {
-                str(f): d["metadata"]["provenance"] for f, d in zip(job_files, data_bundles, strict=True)
-            },
+            "original_file_provenance": {str(f): m["provenance"] for f, m in zip(job_files, metadatas, strict=True)},
         },
         "sample_data": sample_data,
-        "job_data": [d["metadata"].get("job_data", {}) for d in data_bundles],
+        "job_data": [m.get("job_data", {}) for m in metadatas],
         "glossary": glossary,
     }
 
-    data = DataBundle(
-        {
-            "data_cycling": df,
-            "metadata": metadata,
-        }
-    )
-    if eis_df is not None:
-        data["data_eis"] = eis_df
-    return data
 
-
-def read_and_order_job_files(job_files: list[Path]) -> tuple[list[Path], list[DataBundle]]:
+def read_and_order_job_files(job_files: list[Path]) -> tuple[list[Path], list[pl.DataFrame], list[dict]]:
     """Take list of job files, reorder by time, return lists of dataframes and metadata."""
-    data_bundles = [read_hdf_data_bundle(f) for f in job_files if f.name.endswith(".h5")]
-    if len(data_bundles) == 0:
-        msg = "No valid hdf5 files provided"
+    dfs = [read_cycling(f) for f in job_files]
+    metadatas = [read_metadata(f) for f in job_files]
+    if len(dfs) == 0:
+        msg = "No valid cycling files provided"
         raise ValueError(msg)
-    sampleids = [d["metadata"].get("sample_data", {}).get("Sample ID", "") for d in data_bundles]
+    sampleids = [m.get("sample_data", {}).get("Sample ID", "") for m in metadatas]
     if len(set(sampleids)) > 1:
         msg = "All files must be from the same sample"
         raise ValueError(msg)
-    start_times = [
-        min_with_none(
-            [
-                df["uts"].iloc[0] if df is not None and "uts" in df.columns and not df["uts"].empty else None
-                for df in [d["data_cycling"], d.get("data_eis")]
-            ]
-        )
-        for d in data_bundles
-    ]
-    end_times = [
-        max_with_none(
-            [
-                df["uts"].iloc[-1] if df is not None and "uts" in df.columns and not df["uts"].empty else None
-                for df in [d["data_cycling"], d.get("data_eis")]
-            ]
-        )
-        for d in data_bundles
-    ]
+    start_times = [df["uts"][0] for df in dfs]
+    end_times = [df["uts"][-1] for df in dfs]
     order = _sort_times(start_times, end_times)
-    data_bundles = [data_bundles[i] for i in order]
     job_files = [job_files[i] for i in order]
-    return job_files, data_bundles
+    dfs = [dfs[i] for i in order]
+    metadatas = [metadatas[i] for i in order]
+    return job_files, dfs, metadatas
 
 
-def merge_dfs(dfs: list[pd.DataFrame]) -> pd.DataFrame:
-    """Merge cycling dataframes and add cycles."""
+def calc_dq(df: pl.DataFrame) -> pl.DataFrame:
+    """Calculate and add dQ (mAh) column."""
+    # TODO: this should be smarter - maybe assert 0 between steps
+    return (
+        df.with_columns(
+            [
+                pl.col("uts").diff().fill_null(0).alias("dt (s)"),
+                ((pl.col("I (A)") + pl.col("I (A)").shift(1)) / 2).fill_null(0).alias("Iavg (A)"),
+            ]
+        )
+        .with_columns([(1e3 * pl.col("Iavg (A)") * pl.col("dt (s)") / 3600).alias("dQ (mAh)")])
+        .with_columns([pl.when(pl.col("dt (s)") > 600).then(0).otherwise(pl.col("dQ (mAh)")).alias("dQ (mAh)")])
+        .drop("Iavg (A)", "dt (s)")
+    )
+
+
+def merge_dfs(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, pl.DataFrame | None]:
+    """Merge cycling dataframes and add cycles. Seperate out EIS."""
+    # Add an EIS thing
     for i, df in enumerate(dfs):
-        df["job_number"] = i
-    df = pd.concat(dfs)
-    if not df.empty:
-        df = df.sort_values("uts")
+        dfs[i] = df.with_columns(pl.lit(i).alias("job_number"))
+
+    df = pl.concat(dfs, how="diagonal")
+    eis_df = None
+
+    if "f (Hz)" in df.columns:
+        eis_mask = (df["f (Hz)"].is_not_null()) & (df["f (Hz)"] != 0)
+        eis_df = df.filter(eis_mask)
+        df = df.filter(~eis_mask).drop("f (Hz)", "Re(Z) (ohm)", "Im(Z) (ohm)")
+        if eis_df.is_empty():
+            eis_df = None
+
+    if not df.is_empty():
+        df = df.sort("uts")
         if "loop_number" not in df.columns:
-            df["loop_number"] = 0
+            df = df.with_columns(pl.lit(0).alias("loop_number"))
         else:
-            df["loop_number"] = df["loop_number"].fillna(0)
+            df = df.with_columns(pl.col("loop_number").fill_null(0))
 
-        df["group_id"] = (
-            (df["loop_number"].shift(-1) < df["loop_number"])
-            | (df["cycle_number"].shift(-1) < df["cycle_number"])
-            | (df["job_number"].shift(-1) < df["job_number"])
-        ).cumsum()
-        df["Step"] = df.groupby(["job_number", "group_id", "cycle_number", "loop_number"]).ngroup()
-        df = df.drop(columns=["job_number", "group_id", "cycle_number", "loop_number", "index"], errors="ignore")
-        df["Cycle"] = 0
-        cycle = 1
-        for step, group_df in df.groupby("Step"):
-            # To be considered a cycle (subject to change):
-            # - more than 10 data points
-            # - more than 5 charging points
-            # - more than 5 discharging points
-            if len(group_df) > 10 and sum(group_df["I (A)"] > 0) > 5 and sum(group_df["I (A)"] < 0) > 5:
-                df.loc[df["Step"] == step, "Cycle"] = cycle
-                cycle += 1
+        if "dQ (mAh)" not in df.columns:
+            df = calc_dq(df)
+
+        # Increment step if any job, cycle, or loop changes
+        df = df.with_columns(
+            pl.struct(["job_number", "cycle_number", "loop_number"]).rank(method="dense").alias("Step")
+        )
+
+        # Drop columns
+        df = df.drop("job_number", "cycle_number", "loop_number", "index", strict=False)
+
+        # Calculate criteria for each Step group
+        step_stats = df.group_by("Step").agg(
+            [
+                pl.len().alias("count"),
+                (pl.col("I (A)") > 0).sum().alias("positive_count"),
+                (pl.col("I (A)") < 0).sum().alias("negative_count"),
+            ]
+        )
+
+        # Determine which steps are valid cycles
+        step_stats = step_stats.with_columns(
+            ((pl.col("count") > 10) & (pl.col("positive_count") > 5) & (pl.col("negative_count") > 5)).alias("is_cycle")
+        )
+
+        # Assign cycle numbers (cumsum of is_cycle, 0 for non-cycles)
+        step_stats = step_stats.sort("Step").with_columns(
+            pl.when(pl.col("is_cycle")).then(pl.col("is_cycle").cum_sum()).otherwise(0).alias("Cycle")
+        )
+
+        # Join back to main dataframe
+        df = df.join(step_stats.select(["Step", "Cycle"]), on="Step", how="left")
+
+        # Handle EIS merge - find last non-zero cycle before the EIS
+        if eis_df is not None:
+            eis_df = eis_df.join_asof(
+                df.filter(pl.col("Cycle") != 0).select(["uts", "Cycle"]), on="uts", strategy="backward"
+            ).with_columns(pl.col("Cycle").fill_null(0))
+
     else:
-        df["Step"] = pd.Series(dtype="int")
-        df["Cycle"] = pd.Series(dtype="int")
-    return df
+        df = df.with_columns(
+            [
+                pl.Series("dQ (mAh)", [], dtype=pl.Float32),
+                pl.Series("Step", [], dtype=pl.Int32),
+                pl.Series("Cycle", [], dtype=pl.Int32),
+            ]
+        )
+        if eis_df is not None:
+            eis_df = eis_df.with_columns(pl.lit(0).alias("Cycle"))
+    return df, eis_df
 
 
-def extract_voltage_crates(job_data: dict) -> dict:
+def extract_voltage_crates(job_data: list[dict]) -> dict:
     """Extract min and max voltage, C-rate, and formation cycle count from job data."""
     form_C = None
     form_max_V = None
@@ -435,280 +436,209 @@ def extract_voltage_crates(job_data: dict) -> dict:
 
 
 def analyse_cycles(
-    job_files: list[Path],
-    voltage_lower_cutoff: float = 0,
-    voltage_upper_cutoff: float = 5,
-    save_cycle_dict: bool = False,
-    save_merged_hdf: bool = False,
-) -> DataBundle:
-    """Take multiple dataframes, merge and analyse the cycling data.
-
-    Args:
-        job_files (List[Path]): list of paths to the hdf5 job files
-        voltage_lower_cutoff (float, optional): lower cutoff for voltage data
-        voltage_upper_cutoff (float, optional): upper cutoff for voltage data
-        save_cycle_dict (bool, optional): save the cycle_dict as a json file
-        save_merged_hdf (bool, optional): save the merged dataframe as an hdf5 file
-
-    Returns:
-        dict with keys "data/cycling" "data/eis" "data/summary" and "metadata"
-
-    """
-    data = combine_jobs(job_files)
-
-    # update metadata
-    data["metadata"].setdefault("provenance", {}).setdefault("aurora_metadata", {})
-    data["metadata"]["provenance"]["aurora_metadata"].update(
-        {
-            "analysis": {
-                "repo_url": __url__,
-                "repo_version": __version__,
-                "method": "analysis.analyse_cycles",
-                "datetime": datetime.now(timezone.utc).isoformat(),
-            },
-        },
-    )
-
-    sample_data = data["metadata"].get("sample_data", {})
-    sampleid = sample_data.get("Sample ID")
-    job_data = data["metadata"].get("job_data")
-    finished = job_data[-1].get("Finished") if job_data else None  # Used in Newares
-    snapshot_pipeline = job_data[-1].get("Pipeline") if job_data else None
-    last_snapshot = job_data[-1].get("Last snapshot") if job_data else None
-
-    # Extract useful information from the metadata
-    mass_mg = sample_data.get("Cathode active material mass (mg)", np.nan)
-
-    # Get voltage and C-rates
-    protocol_summary = extract_voltage_crates(job_data) if job_data else {}
-
-    # Check current status and pipeline (may be more recenty than snapshot)
-    pipeline, status = None, None
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sampleid,))
-        row = cursor.fetchone()
-        if row:
-            pipeline = row[0]
-            job_id = row[1]
-            if job_id:
-                cursor.execute("SELECT `Status` FROM jobs WHERE `Job ID` = ?", (f"{job_id}",))
-                status = cursor.fetchone()[0]
-
+    df: pl.DataFrame,
+    mass_mg: float | None,
+    protocol_summary: dict | None,
+) -> tuple[pl.DataFrame, dict]:
+    """Analyse time-series dataframe, return per-cycle summary."""
     # Analyse each cycle in the cycling data
-    charge_capacity_mAh = []
-    discharge_capacity_mAh = []
-    charge_avg_V = []
-    discharge_avg_V = []
-    charge_energy_mWh = []
-    discharge_energy_mWh = []
-    charge_avg_I = []
-    discharge_avg_I = []
-    cycle_median_I = []
     started_charge = False
     started_discharge = False
+    protocol_summary = protocol_summary or {}
+    form_cycle_count = protocol_summary.get("form_cycle_count")
+    finished = protocol_summary.get("finished")
 
-    df = data["data_cycling"]
-    df["dt (s)"] = np.concatenate([[0], df["uts"].to_numpy()[1:] - df["uts"].to_numpy()[:-1]])
-    df["Iavg (A)"] = np.concatenate([[0], (df["I (A)"].to_numpy()[1:] + df["I (A)"].to_numpy()[:-1]) / 2])
-    df["dQ (mAh)"] = 1e3 * df["Iavg (A)"] * df["dt (s)"] / 3600
-    df.loc[df["dt (s)"] > 600, "dQ (mAh)"] = 0
-    for _, group_df in df.groupby("Step"):
-        cycle = group_df["Cycle"].iloc[0]
-        if cycle <= 0:
-            if len(group_df) > 10:
-                started_charge = False
-                started_discharge = False
-            continue
-        charge_data = group_df[
-            (group_df["Iavg (A)"] > 0)
-            & (group_df["V (V)"] > voltage_lower_cutoff)
-            & (group_df["V (V)"] < voltage_upper_cutoff)
-            & (group_df["dt (s)"] < 600)
-        ]
-        discharge_data = group_df[
-            (group_df["Iavg (A)"] < 0)
-            & (group_df["V (V)"] > voltage_lower_cutoff)
-            & (group_df["V (V)"] < voltage_upper_cutoff)
-            & (group_df["dt (s)"] < 600)
-        ]
-        # Only consider cycles with more than 10 data points
-        started_charge = len(charge_data) > 10
-        started_discharge = len(discharge_data) > 10
+    # TODO: Do we need to filter voltages? e.g. only use 0-5 V
 
-        if started_charge and started_discharge:
-            charge_capacity_mAh.append(charge_data["dQ (mAh)"].sum())
-            charge_avg_V.append((charge_data["V (V)"] * charge_data["dQ (mAh)"]).sum() / charge_data["dQ (mAh)"].sum())
-            charge_energy_mWh.append((charge_data["V (V)"] * charge_data["dQ (mAh)"]).sum())
-            charge_avg_I.append(
-                (charge_data["Iavg (A)"] * charge_data["dQ (mAh)"]).sum() / charge_data["dQ (mAh)"].sum(),
-            )
-            discharge_capacity_mAh.append(-discharge_data["dQ (mAh)"].sum())
-            discharge_avg_V.append(
-                (discharge_data["V (V)"] * discharge_data["dQ (mAh)"]).sum() / discharge_data["dQ (mAh)"].sum(),
-            )
-            discharge_energy_mWh.append((-discharge_data["V (V)"] * discharge_data["dQ (mAh)"]).sum())
-            discharge_avg_I.append(
-                (-discharge_data["Iavg (A)"] * discharge_data["dQ (mAh)"]).sum() / discharge_data["dQ (mAh)"].sum(),
-            )
-            cycle_median_I.append(weighted_median(abs(charge_data["Iavg (A)"]), abs(charge_data["dQ (mAh)"])))
+    # Get summary stats
+    summary_df = (
+        df.group_by("Cycle")
+        .agg(
+            [
+                pl.col("dQ (mAh)").clip(lower_bound=0).sum().alias("Charge capacity (mAh)"),
+                -pl.col("dQ (mAh)").clip(upper_bound=0).sum().alias("Discharge capacity (mAh)"),
+                (pl.col("V (V)") * pl.col("dQ (mAh)").clip(lower_bound=0)).sum().alias("Charge energy (mWh)"),
+                -(pl.col("V (V)") * pl.col("dQ (mAh)").clip(upper_bound=0)).sum().alias("Discharge energy (mWh)"),
+                (
+                    (pl.col("I (A)") * pl.col("dQ (mAh)").clip(lower_bound=0)).sum()
+                    / pl.col("dQ (mAh)").clip(lower_bound=0).sum()
+                ).alias("Charge average current (A)"),
+                -(
+                    (pl.col("I (A)") * pl.col("dQ (mAh)").clip(upper_bound=0)).sum()
+                    / pl.col("dQ (mAh)").clip(upper_bound=0).sum()
+                ).alias("Discharge average current (A)"),
+            ]
+        )
+        .sort("Cycle")
+        .filter(pl.col("Cycle") > 0)
+    )
 
     # Try to guess the number of formation cycles if it was not found from the job data
-    form_cycle_count = protocol_summary.get("form_cycle_count")
     if not form_cycle_count:
         form_cycle_count = 3
         # Check median current up to 10 cycles, if it changes assume that is the formation cycle
-        rounded_current = [f"{x:.2g}" for x in cycle_median_I[: min(10, len(cycle_median_I))]]
+        median_currents = []
+        for cycle in range(1, 11):
+            df_filtered = df.filter(pl.col("Cycle") == cycle, pl.col("I (A)") > 0)
+            median_currents.append(weighted_median(df_filtered["I (A)"], df_filtered["dQ (mAh)"]))
+        rounded_current = [f"{x:.2g}" for x in median_currents if x]
         if len(rounded_current) > 2 and len(set(rounded_current)) > 1:
             idx = next((i for i, x in enumerate(rounded_current) if x != rounded_current[0]), None)
             if idx is not None:
                 form_cycle_count = idx
-    initial_cycle = form_cycle_count + 1
+        protocol_summary["form_cycle_count"] = form_cycle_count
 
-    formed = len(charge_capacity_mAh) >= initial_cycle
-
+    formed = len(summary_df) > form_cycle_count if form_cycle_count else False
     # A row is added if charge data is complete and discharge started, but it may have incomplete discharge data
     # If the job is not complete but a discharge has started, set the last discharge data to NaN
-    complete = 1
     if started_charge and started_discharge and finished is False:  # job is still running
-        discharge_capacity_mAh[-1] = np.nan
-        complete = 0
+        df["Discharge capacity (mAh)"][-1] = pl.Null
 
     # Create a dictionary with the cycling data
-    cycle_summary_df = pd.DataFrame(
-        {
-            "Cycle": list(range(1, len(charge_capacity_mAh) + 1)),
-            "Charge capacity (mAh)": charge_capacity_mAh,
-            "Discharge capacity (mAh)": discharge_capacity_mAh,
-            "Charge energy (mWh)": charge_energy_mWh,
-            "Discharge energy (mWh)": discharge_energy_mWh,
-            "Charge average voltage (V)": [e / c for e, c in zip(charge_energy_mWh, charge_capacity_mAh, strict=False)],
-            "Discharge average voltage (V)": [
-                e / c for e, c in zip(discharge_energy_mWh, discharge_capacity_mAh, strict=False)
-            ],
-            "Coulombic efficiency (%)": [
-                100 * d / c for d, c in zip(discharge_capacity_mAh, charge_capacity_mAh, strict=False)
-            ],
-            "Energy efficiency (%)": [
-                100 * d / c for d, c in zip(discharge_energy_mWh, charge_energy_mWh, strict=False)
-            ],
-            "Voltage efficiency (%)": [100 * d / c for d, c in zip(discharge_avg_V, charge_avg_V, strict=False)],
-            "Specific charge capacity (mAh/g)": [c / (mass_mg * 1e-3) for c in charge_capacity_mAh]
-            if mass_mg
-            else None,
-            "Specific discharge capacity (mAh/g)": [d / (mass_mg * 1e-3) for d in discharge_capacity_mAh]
-            if mass_mg
-            else None,
-            "Normalised discharge capacity (%)": [
-                100 * d / discharge_capacity_mAh[initial_cycle - 1] for d in discharge_capacity_mAh
-            ]
-            if formed
-            else None,
-            "Normalised discharge energy (%)": [
-                100 * d / discharge_energy_mWh[initial_cycle - 1] for d in discharge_energy_mWh
-            ]
-            if formed
-            else None,
-            "Delta V (V)": [c - d for c, d in zip(charge_avg_V, discharge_avg_V, strict=False)],
-            "Charge average current (A)": charge_avg_I,
-            "Discharge average current (A)": discharge_avg_I,
-        }
+    summary_df = summary_df.with_columns(
+        [
+            (pl.col("Charge energy (mWh)") / pl.col("Charge capacity (mAh)")).alias("Charge average voltage (V)"),
+            (pl.col("Discharge energy (mWh)") / pl.col("Discharge capacity (mAh)")).alias(
+                "Discharge average voltage (V)"
+            ),
+        ]
+    ).with_columns(
+        [
+            (100 * pl.col("Discharge capacity (mAh)") / pl.col("Charge capacity (mAh)")).alias(
+                "Coulombic efficiency (%)"
+            ),
+            (100 * pl.col("Discharge energy (mWh)") / pl.col("Charge energy (mWh)")).alias("Energy efficiency (%)"),
+            (100 * pl.col("Discharge average voltage (V)") / pl.col("Charge average voltage (V)")).alias(
+                "Voltage efficiency (%)"
+            ),
+            (pl.col("Charge average voltage (V)") - pl.col("Discharge average voltage (V)")).alias("Delta V (V)"),
+        ]
     )
+    if mass_mg:
+        mass_g = mass_mg / 1000
+        summary_df = summary_df.with_columns(
+            [
+                (pl.col("Charge capacity (mAh)") / mass_g).alias("Specific charge capacity (mAh/g)"),
+                (pl.col("Discharge capacity (mAh)") / mass_g).alias("Specific discharge capacity (mAh/g)"),
+                (pl.col("Charge energy (mWh)") / mass_g).alias("Specific charge energy (mWh/g)"),
+                (pl.col("Discharge energy (mWh)") / mass_g).alias("Specific discharge energy (mWh/g)"),
+            ]
+        )
+    if formed:
+        dc100 = summary_df["Discharge capacity (mAh)"][form_cycle_count]
+        de100 = summary_df["Discharge energy (mWh)"][form_cycle_count]
+        summary_df = summary_df.with_columns(
+            [
+                (100 * pl.col("Discharge capacity (mAh)") / dc100).alias("Normalised discharge capacity (%)"),
+                (100 * pl.col("Discharge energy (mWh)") / de100).alias("Normalised discharge energy (%)"),
+            ]
+        )
 
-    overall_summary = {
-        "Sample ID": sampleid,
-        "Formation max voltage (V)": protocol_summary["form_max_V"],
-        "Formation min voltage (V)": protocol_summary["form_min_V"],
-        "Cycle max voltage (V)": protocol_summary["cycle_max_V"],
-        "Cycle min voltage (V)": protocol_summary["cycle_min_V"],
-        "Max voltage (V)": protocol_summary["global_max_V"],
-        "Formation C": protocol_summary["form_C"] if protocol_summary["form_C"] else 0,  # for backwards compatibility
-        "Cycle C": protocol_summary["cycle_C"],
-        "Formation cycles": form_cycle_count,
+    return summary_df, protocol_summary
+
+
+def analyse_overall(
+    df: pl.DataFrame,
+    eis_df: pl.DataFrame | None,
+    metadata: dict,
+    protocol_summary: dict,
+    cycle_summary_df: pl.DataFrame,
+) -> dict:
+    """Get overall summary."""
+    sample_data = metadata.get("sample_data", {})
+    sample_id = sample_data.get("Sample ID")
+    formation_cycles = protocol_summary.get("form_cycle_count")
+    overall = {
+        "Sample ID": sample_id,
+        "Run ID": run_from_sample(sample_id),
+        "Formation max voltage (V)": protocol_summary.get("form_max_V"),
+        "Formation min voltage (V)": protocol_summary.get("form_min_V"),
+        "Cycle max voltage (V)": protocol_summary.get("cycle_max_V"),
+        "Cycle min voltage (V)": protocol_summary.get("cycle_min_V"),
+        "Max voltage (V)": protocol_summary.get("global_max_V"),
+        "Formation C": protocol_summary.get("form_C") or 0,  # for backwards compatibility
+        "Cycle C": protocol_summary.get("cycle_C"),
+        "Formation cycles": formation_cycles,
     }
-
     # Add some sample metadata to overall summary for convenience
     for col in SAMPLE_METADATA_TO_DATA:
-        overall_summary[col] = sample_data.get(col)
+        overall[col] = sample_data.get(col)
 
     # Calculate additional quantities from cycle_summary and add to overall_summary
-    if cycle_summary_df.empty:
-        logger.info("No cycles found for %s", sampleid)
-    elif len(cycle_summary_df["Cycle"]) == 1 and not complete:
-        logger.info("No complete cycles found for %s", sampleid)
+    if cycle_summary_df.is_empty():
+        logger.info("No cycles found for %s", sample_id)
+    elif len(cycle_summary_df["Cycle"]) == 1 and cycle_summary_df["Discharge capacity (mAh)"][-1].is_null():
+        logger.info("No complete cycles found for %s", sample_id)
     else:  # Analyse the cycling data
-        last_idx = -1 if complete else -2
-        overall_summary["Number of cycles"] = max(cycle_summary_df["Cycle"])
-        overall_summary["First formation coulombic efficiency (%)"] = cycle_summary_df["Coulombic efficiency (%)"].iloc[
-            0
-        ]
-        overall_summary["First formation specific discharge capacity (mAh/g)"] = (
-            cycle_summary_df["Specific discharge capacity (mAh/g)"].iloc[0] if mass_mg else None
-        )
-        overall_summary["Initial specific discharge capacity (mAh/g)"] = (
-            (cycle_summary_df["Specific discharge capacity (mAh/g)"].iloc[initial_cycle - 1] if formed else None)
-            if mass_mg
-            else None
-        )
-        overall_summary["Initial coulombic efficiency (%)"] = (
-            cycle_summary_df["Coulombic efficiency (%)"].iloc[initial_cycle - 1] if formed else None
-        )
-        overall_summary["Capacity loss (%)"] = (
-            100 - cycle_summary_df["Normalised discharge capacity (%)"].iloc[last_idx] if formed else None
-        )
-        overall_summary["Last specific discharge capacity (mAh/g)"] = (
-            cycle_summary_df["Specific discharge capacity (mAh/g)"].iloc[last_idx] if mass_mg else None
-        )
-        overall_summary["Last coulombic efficiency (%)"] = cycle_summary_df["Coulombic efficiency (%)"].iloc[last_idx]
-        overall_summary["Formation average voltage (V)"] = (
-            np.mean(cycle_summary_df["Charge average voltage (V)"].iloc[: initial_cycle - 1]) if formed else None
-        )
-        overall_summary["Formation average current (A)"] = (
-            np.mean(cycle_summary_df["Charge average current (A)"].iloc[: initial_cycle - 1]) if formed else None
-        )
-        overall_summary["Initial delta V (V)"] = (
-            cycle_summary_df["Delta V (V)"].iloc[initial_cycle - 1] if formed else None
-        )
+        formed = cycle_summary_df["Cycle"][-1] > formation_cycles if formation_cycles else False
+        has_mass = "Specific discharge capacity (mAh/g)" in cycle_summary_df.columns
 
-        # Calculate cycles to x% of initial discharge capacity
-        def _find_first_element(arr: np.ndarray, start_idx: int) -> int | None:
-            """Find first element in array that is 1 where at least 1 of the next 2 elements are also 1.
+        last_idx = -2 if cycle_summary_df["Discharge capacity (mAh)"][-1] is None else -1
+        overall["Number of cycles"] = cycle_summary_df["Cycle"].max()
+        overall["First formation coulombic efficiency (%)"] = cycle_summary_df["Coulombic efficiency (%)"][0]
+        overall["Last coulombic efficiency (%)"] = cycle_summary_df["Coulombic efficiency (%)"][last_idx]
 
-            Since cycles are 1-indexed and arrays are 0-indexed, this gives the first cycle BEFORE a condition is met.
-            """
-            if len(arr) - start_idx < 3:
+        if has_mass:
+            overall["First formation specific discharge capacity (mAh/g)"] = cycle_summary_df[
+                "Specific discharge capacity (mAh/g)"
+            ][0]
+            overall["Last specific discharge capacity (mAh/g)"] = cycle_summary_df[
+                "Specific discharge capacity (mAh/g)"
+            ][last_idx]
+
+        if formed:
+            assert isinstance(formation_cycles, int)  # noqa: S101
+            overall["Initial coulombic efficiency (%)"] = cycle_summary_df["Coulombic efficiency (%)"][formation_cycles]
+            overall["Capacity loss (%)"] = 100 - cycle_summary_df["Normalised discharge capacity (%)"][last_idx]
+            overall["Formation average voltage (V)"] = cycle_summary_df["Charge average voltage (V)"][
+                :formation_cycles
+            ].mean()
+            overall["Formation average current (A)"] = cycle_summary_df["Charge average current (A)"][
+                :formation_cycles
+            ].mean()
+
+            overall["Initial delta V (V)"] = cycle_summary_df["Delta V (V)"][formation_cycles]
+            if has_mass:
+                overall["Initial specific discharge capacity (mAh/g)"] = cycle_summary_df[
+                    "Specific discharge capacity (mAh/g)"
+                ][formation_cycles]
+
+            # Calculate cycles to x% of initial discharge capacity
+            def _find_first_element(arr: np.ndarray, start_idx: int) -> int | None:
+                """Find first element in array that is 1 where at least 1 of the next 2 elements are also 1.
+
+                Cycles are 1-indexed and arrays are 0-indexed, so this gives the first cycle BEFORE a condition is met.
+                """
+                if len(arr) - start_idx < 3:
+                    return None
+                for i in range(start_idx, len(arr) - 2):
+                    if arr[i] == 0:
+                        continue
+                    if arr[i + 1] == 1 or arr[i + 2] == 1:
+                        return i
                 return None
-            for i in range(start_idx, len(arr) - 2):
-                if arr[i] == 0:
-                    continue
-                if arr[i + 1] == 1 or arr[i + 2] == 1:
-                    return i
-            return None
 
-        pcents = [95, 90, 85, 80, 75, 70, 60, 50]
-        norm = np.array(cycle_summary_df["Normalised discharge capacity (%)"])
-        for pcent in pcents:
-            overall_summary[f"Cycles to {pcent}% capacity"] = None
-            if formed:
-                abs_cycle = _find_first_element(norm < pcent, form_cycle_count)
+            pcents = [95, 90, 85, 80, 75, 70, 60, 50]
+            norm = np.array(cycle_summary_df["Normalised discharge capacity (%)"])
+            for pcent in pcents:
+                abs_cycle = _find_first_element(norm < pcent, formation_cycles)
                 if abs_cycle is not None:
-                    overall_summary[f"Cycles to {pcent}% capacity"] = abs_cycle - form_cycle_count
-        norm = np.array(cycle_summary_df["Normalised discharge energy (%)"])
-        for pcent in pcents:
-            overall_summary[f"Cycles to {pcent}% energy"] = None
-            if formed:
-                abs_cycle = _find_first_element(norm < pcent, form_cycle_count)
+                    overall[f"Cycles to {pcent}% capacity"] = abs_cycle - formation_cycles
+            norm = np.array(cycle_summary_df["Normalised discharge energy (%)"])
+            for pcent in pcents:
+                abs_cycle = _find_first_element(norm < pcent, formation_cycles)
                 if abs_cycle is not None:
-                    overall_summary[f"Cycles to {pcent}% energy"] = abs_cycle - form_cycle_count
-
-        overall_summary["Run ID"] = run_from_sample(sampleid)
+                    overall[f"Cycles to {pcent}% energy"] = abs_cycle - formation_cycles
 
     # If assembly history is available, calculate times between steps
     assembly_history = sample_data.get("Assembly history", [])
     if isinstance(assembly_history, str):
         assembly_history = json.loads(assembly_history)
     job_start = min_with_none(
-        [d["uts"].iloc[0] for d in [data["data_cycling"], data.get("data_eis")] if d is not None and not d.empty]
+        [
+            df["uts"][0] if not df.is_empty() else None,
+            eis_df["uts"][0] if eis_df is not None and not eis_df.is_empty() else None,
+        ]
     )
     if assembly_history and isinstance(assembly_history, list) and job_start is not None:
         press = next((step.get("uts") for step in assembly_history if step["Step"] == "Press"), None)
@@ -723,54 +653,66 @@ def analyse_cycles(
                 (step.get("uts") for step in history_after_electrolyte if step["Step"] in ["Anode", "Cathode"]),
                 None,
             )
-            overall_summary["Electrolyte to press (s)"] = (
-                press - first_electrolyte if first_electrolyte and press else None
-            )
-            overall_summary["Electrolyte to electrode (s)"] = (
+            overall["Electrolyte to press (s)"] = press - first_electrolyte if first_electrolyte and press else None
+            overall["Electrolyte to electrode (s)"] = (
                 cover_electrolyte - first_electrolyte if first_electrolyte and cover_electrolyte else None
             )
-            overall_summary["Electrode to protection (s)"] = (
-                job_start - cover_electrolyte if cover_electrolyte else None
-            )
-        overall_summary["Press to protection (s)"] = job_start - press if press else None
+            overall["Electrode to protection (s)"] = job_start - cover_electrolyte if cover_electrolyte else None
+        overall["Press to protection (s)"] = job_start - press if press else None
+
+    return overall
+
+
+def update_results(overall: dict, job_data: list[dict]) -> None:
+    """Update results table with overall info."""
+    # Check current status and pipeline (may be more recenty than snapshot)
+
+    snapshot_pipeline = job_data[-1].get("Pipeline") if job_data else None
+    last_snapshot = job_data[-1].get("Last snapshot") if job_data else None
+
+    sample_id = overall.get("Sample ID")
+    pipeline, status = None, None
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sample_id,))
+        row = cursor.fetchone()
+        if row:
+            pipeline = row[0]
+            job_id = row[1]
+            if job_id:
+                cursor.execute("SELECT `Status` FROM jobs WHERE `Job ID` = ?", (f"{job_id}",))
+                status = cursor.fetchone()[0]
 
     # Update the database with some of the results
     flag = None
     if pipeline:
-        if formed and (cap_loss := overall_summary.get("Capacity loss (%)")) and cap_loss > 50:
+        if (cap_loss := overall.get("Capacity loss (%)")) and cap_loss > 50:
             flag = "🪫"
-        if (form_eff := overall_summary.get("First formation coulombic efficiency (%)")) and form_eff < 50:
+        if (form_eff := overall.get("First formation coulombic efficiency (%)")) and form_eff < 50:
             flag = "🚩"
-        if formed and (init_eff := overall_summary.get("Initial coulombic efficiency (%)")) and init_eff < 50:
+        if (init_eff := overall.get("Initial coulombic efficiency (%)")) and init_eff < 50:
             flag = "🚩"
-        if (
-            formed
-            and (init_cap := overall_summary.get("Initial specific discharge capacity (mAh/g)"))
-            and init_cap < 50
-        ):
+        if (init_cap := overall.get("Initial specific discharge capacity (mAh/g)")) and init_cap < 50:
             flag = "🚩"
     update_row = {
         "Pipeline": pipeline,
         "Status": status,
         "Flag": flag,
-        "Number of cycles": overall_summary.get("Number of cycles"),
-        "Capacity loss (%)": overall_summary.get("Capacity loss (%)"),
-        "Max voltage (V)": max_with_none([protocol_summary.get("form_max_V"), protocol_summary.get("cycle_max_V")]),
-        "Formation C": overall_summary.get("Formation C"),
-        "Cycling C": overall_summary.get("Cycle C"),
-        "First formation efficiency (%)": overall_summary.get("First formation coulombic efficiency (%)"),
-        "Initial specific discharge capacity (mAh/g)": overall_summary.get(
-            "Initial specific discharge capacity (mAh/g)"
-        ),
-        "Initial efficiency (%)": overall_summary.get("Initial coulombic efficiency (%)"),
-        "Last specific discharge capacity (mAh/g)": overall_summary.get("Last specific discharge capacity (mAh/g)"),
-        "Last efficiency (%)": overall_summary.get("Last coulombic efficiency (%)"),
+        "Number of cycles": overall.get("Number of cycles"),
+        "Capacity loss (%)": overall.get("Capacity loss (%)"),
+        "Max voltage (V)": overall.get("Max voltage (V)"),
+        "Formation C": overall.get("Formation C"),
+        "Cycling C": overall.get("Cycle C"),
+        "First formation efficiency (%)": overall.get("First formation coulombic efficiency (%)"),
+        "Initial specific discharge capacity (mAh/g)": overall.get("Initial specific discharge capacity (mAh/g)"),
+        "Initial efficiency (%)": overall.get("Initial coulombic efficiency (%)"),
+        "Last specific discharge capacity (mAh/g)": overall.get("Last specific discharge capacity (mAh/g)"),
+        "Last efficiency (%)": overall.get("Last coulombic efficiency (%)"),
         "Last analysis": datetime.now(timezone.utc).isoformat(),
         # Only add the following keys if they are not None, otherwise they set to NULL in database
         **({"Last snapshot": last_snapshot} if last_snapshot else {}),
         **({"Snapshot pipeline": snapshot_pipeline} if snapshot_pipeline else {}),
     }
-
     # round any floats to 3 decimal places
     for k, v in update_row.items():
         if isinstance(v, float):
@@ -779,108 +721,88 @@ def analyse_cycles(
     with sqlite3.connect(CONFIG["Database path"]) as conn:
         cursor = conn.cursor()
         # insert a row with sampleid if it doesn't exist
-        cursor.execute("INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)", (sampleid,))
+        cursor.execute("INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)", (sample_id,))
         # update the row
         columns = ", ".join([f"`{k}` = ?" for k in update_row])
         cursor.execute(
             f"UPDATE results SET {columns} WHERE `Sample ID` = ?",  # noqa: S608
-            (*update_row.values(), sampleid),
+            (*update_row.values(), sample_id),
         )
 
-    # Glossary for analysed cycles
-    cycles_glossary = {
-        "Sample ID": "Sample ID (YYMMDD_name_tag_XX)",
-        "Cycle": "Cycle number",
-        "Charge capacity (mAh)": "Charge capacity in milliampere-hours (mAh)",
-        "Discharge capacity (mAh)": "Discharge capacity in milliampere-hours (mAh)",
-        "Charge energy (mWh)": "Charge energy in milliwatt-hours (mWh)",
-        "Discharge energy (mWh)": "Discharge energy in milliwatt-hours (mWh)",
-        "Charge average voltage (V)": "Average charge voltage (V), current-weighted",
-        "Discharge average voltage (V)": "Average discharge voltage (V), current-weighted",
-        "Coulombic efficiency (%)": "Discharge capacity / Charge capacity * 100",
-        "Energy efficiency (%)": "Discharge energy / Charge energy * 100",
-        "Voltage efficiency (%)": "Discharge average voltage / Charge average voltage * 100",
-        "Specific charge capacity (mAh/g)": "Charge capacity per gram of active material",
-        "Specific discharge capacity (mAh/g)": "Discharge capacity per gram of active material",
-        "Normalised discharge capacity (%)": "Discharge capacity normalized to post-formation first cycle",
-        "Normalised discharge energy (%)": "Discharge energy normalized to post-formation first cycle",
-        "Delta V (V)": "Charge average voltage - Discharge average voltage",
-        "Charge average current (A)": "Average current during charge weighted by current (sum(I*dQ)/sum(dQ))",
-        "Discharge average current (A)": "Average current during discharge weighted by current (sum(I*dQ)/sum(dQ))",
-        "Formation max voltage (V)": "Max voltage during formation from protocol (not measured data)",
-        "Formation min voltage (V)": "Min voltage during formation from protocol (not measured data)",
-        "Cycle max voltage (V)": "Max voltage during long-term cycling found from protocol (not measured data)",
-        "Cycle min voltage (V)": "Min voltage during long-term cycling found from protocol (not measured data)",
-        "Max voltage (V)": "Max voltage in entire protocol found from protocol (not measured data)",
-        "Formation C": "C-rate during formation cycling, found from protocol (not measured data)",
-        "Cycle C": "C-rate during cycling, found from protocol (not measured data)",
-        "Formation cycles": "Number of formation cycles determined from protocol (assumes <10 and same C-rate)",
-        "First formation coulombic efficiency (%)": "Coulombic efficiency in first formation cycle",
-        "First formation specific discharge capacity (mAh/g)": "Specific discharge capacity in first formation cycle",
-        "Initial specific discharge capacity (mAh/g)": "Specific discharge capacity in first post-formation cycle",
-        "Initial coulombic efficiency (%)": "Coulombic efficiency in first post-formation cycle",
-        "Capacity loss (%)": "Capacity loss from first post-formation to last cycle",
-        "Last specific discharge capacity (mAh/g)": "Specific discharge capacity in last cycle",
-        "Last coulombic efficiency (%)": "Coulombic efficiency in last cycle",
-        "Formation average voltage (V)": "Average voltage in formation (current-weighted)",
-        "Formation average current (A)": "Average. current in formation (current-weighted)",
-        "Initial delta V (V)": "Charge - Discharge average voltage in first post-formation cycle",
-    }
 
-    # Remove unnecessary columns, reduce precision
-    data["data_cycling"] = data["data_cycling"].drop(columns=["dt (s)", "Iavg (A)"])
-    for col in ["V (V)", "I (A)", "dQ (mAh)"]:
-        if col in data["data_cycling"].columns:
-            data["data_cycling"][col] = data["data_cycling"][col].astype(np.float32)
-
-    # Add new data to the data bundle
-    data["data_overall_summary"] = overall_summary
-    data["metadata"]["glossary"] = {**data["metadata"]["glossary"], **cycles_glossary}
-    if not cycle_summary_df.empty:
-        data["data_cycle_summary"] = cycle_summary_df
-
-    # Save the data bundle
-    save_folder = job_files[0].parent
-    if save_cycle_dict:
-        output_json_file = save_folder / f"cycles.{sampleid}.json"
-        merged_dict = {**cycle_summary_df.to_dict(orient="list"), **overall_summary}
-        with output_json_file.open("w") as f:
-            json_dump_compress_lists({"data": merged_dict, "metadata": data["metadata"]}, f, indent=4)
-    if save_merged_hdf:
-        output_hdf5_file = save_folder / f"full.{sampleid}.h5"
-        write_hdf(data, output_hdf5_file)
-
-    return data
-
-
-def analyse_sample(sample: str) -> DataBundle:
+def analyse_sample(sample_id: str) -> SampleDataBundle:
     """Analyse a single sample.
 
     Will search for the sample in the processed snapshots folder and analyse the cycling data.
 
     """
-    run_id = run_from_sample(sample)
-    file_location = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample
-    job_files = list(file_location.glob("snapshot.*.h5"))
-    results = analyse_cycles(
-        job_files,
-        save_cycle_dict=True,
-        save_merged_hdf=True,
+    sample_folder = get_sample_folder(sample_id)
+    job_files = list(sample_folder.rglob("snapshot.*"))
+
+    # Read dfs into the correct order
+    job_files, dfs, metadatas = read_and_order_job_files(job_files)
+
+    # Merge into one df, plus optional eis df
+    df, eis_df = merge_dfs(dfs)
+
+    # Merge metadatas together
+    metadata = merge_metadata(job_files, metadatas)
+
+    # Get sample and job data
+    sample_data = metadata.get("sample_data", {})
+    job_data = metadata.get("job_data")
+
+    # Extract info from the protocol information
+    protocol_summary = extract_voltage_crates(job_data) if job_data else {}
+
+    # Get the per-cycle dataframe
+    summary_df, protocol_summary = analyse_cycles(
+        df,
+        mass_mg=sample_data.get("Cathode active material mass (mg)"),
+        protocol_summary=protocol_summary,
     )
-    # also save a shrunk version of the file
-    with contextlib.suppress(ValueError):
-        shrink_sample(sample)
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE results SET `Last analysis` = ? WHERE `Sample ID` = ?",
-            (datetime.now(timezone.utc).isoformat(), sample),
-        )
-    return results
+
+    overall = analyse_overall(
+        df,
+        eis_df,
+        metadata,
+        protocol_summary,
+        summary_df,
+    )
+
+    # Get the shrunk dataframe
+    shrunk_df = shrink_df(df)
+
+    # Save the data
+    df.write_parquet(sample_folder / f"full.{sample_id}.parquet", metadata={"AURORA:metadata": json.dumps(metadata)})
+    if shrunk_df is not None:
+        shrunk_df.write_parquet(sample_folder / f"shrunk.{sample_id}.parquet")
+    if eis_df is not None:
+        eis_df.write_parquet(sample_folder / f"eis.{sample_id}.parquet")
+    if summary_df is not None:
+        summary_df.write_parquet(sample_folder / f"cycles.{sample_id}.parquet")
+    if overall is not None:
+        with (sample_folder / f"overall.{sample_id}.json").open("w") as f:
+            json.dump(overall, f, indent=4)
+    if metadata is not None:
+        with (sample_folder / f"metadata.{sample_id}.json").open("w") as f:
+            json.dump(metadata, f, indent=4)
+
+    return SampleDataBundle(
+        sample_id=sample_id,
+        cycling=df,
+        cycling_shrunk=shrunk_df,
+        eis=eis_df,
+        cycles_summary=summary_df,
+        overall_summary=overall,
+        metadata=metadata,
+    )
 
 
 def update_sample_metadata(sample_ids: str | list[str]) -> None:
-    """Update "sample_data" in metadata of full.x.hdf5 and cycles.x.json files.
+    """Update "sample_data" in metadata of all files.
+
+    Updates full.*.h5, full.*.parquet, cycles.*.json, overall.*.json, metadata.*.json.
 
     Args:
         sample_ids: sample id or list of sample ids to update
@@ -889,83 +811,104 @@ def update_sample_metadata(sample_ids: str | list[str]) -> None:
     if isinstance(sample_ids, str):
         sample_ids = [sample_ids]
     for sample_id in sample_ids:
-        run_id = run_from_sample(sample_id)
-        sample_folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample_id
+        # Get updated database data
+        sample_data = get_sample_data(sample_id)
+
+        sample_folder = get_sample_folder(sample_id)
+
         # HDF5 full file
         hdf5_file = sample_folder / f"full.{sample_id}.h5"
-        if not hdf5_file.exists():
-            logger.warning("File %s not found", hdf5_file)
-            continue
-        with h5py.File(hdf5_file, "a") as f:
-            metadata = json.loads(f["metadata"][()])
-            sample_data = get_sample_data(sample_id)
-            metadata["sample_data"] = sample_data
-            del f["metadata"]
-            f.create_dataset("metadata", data=json.dumps(metadata))
-            # Update overall summary
-            if "data/overall_summary" in f:
-                summary = json.loads(f["data/overall_summary"][()])
-                for col in SAMPLE_METADATA_TO_DATA:
-                    summary[col] = sample_data.get(col)
-                del f["data/overall_summary"]
-                f.create_dataset("data/overall_summary", data=json.dumps(summary))
+        if hdf5_file.exists():
+            with h5py.File(hdf5_file, "a") as f:
+                metadata = json.loads(f["metadata"][()])
+                metadata["sample_data"] = sample_data
+                del f["metadata"]
+                f.create_dataset("metadata", data=json.dumps(metadata))
+
+        # Parquet full file
+        # Doesn't seem like there is a way to do this without a full file rewrite
+        full_file = sample_folder / f"full.{sample_id}.parquet"
+        metadata = read_metadata(full_file)
+        df = pl.read_parquet(full_file)
+        metadata["sample_data"] = sample_data
+        df = read_cycling(full_file)
+        df.write_parquet(
+            sample_folder / f"full.{sample_id}.parquet", metadata={"AURORA:metadata": json.dumps(metadata)}
+        )
+
         # JSON cycles file
         json_file = sample_folder / f"cycles.{sample_id}.json"
-        if not json_file.exists():
-            logger.warning("File %s not found", json_file)
-            continue
-        with json_file.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-            # check it has keys data and metadata
-            if "data" not in data or "metadata" not in data:
-                logger.warning("File %s has incorrect format", json_file)
-                continue
-            data["metadata"]["sample_data"] = sample_data
-            for col in SAMPLE_METADATA_TO_DATA:
-                data["data"][col] = sample_data.get(col)
-        with json_file.open("w", encoding="utf-8") as f:
-            json_dump_compress_lists(data, f, indent=4)
+        if json_file.exists():
+            with json_file.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+                data["metadata"]["sample_data"] = sample_data
+                for col in SAMPLE_METADATA_TO_DATA:
+                    data["data"][col] = sample_data.get(col)
+            with json_file.open("w", encoding="utf-8") as f:
+                json_dump_compress_lists(data, f, indent=4)
+
+        # JSON overall file
+        overall_file = sample_folder / f"overall.{sample_id}.json"
+        if overall_file.exists():
+            with overall_file.open("r", encoding="utf-8") as f:
+                overall = json.load(f)
+                for col in SAMPLE_METADATA_TO_DATA:
+                    overall[col] = sample_data.get(col)
+            with overall_file.open("w", encoding="utf-8") as f:
+                json.dump(overall, f, indent=4)
+
+        # JSON metadata file
+        metadata_file = sample_folder / f"metadata.{sample_id}.json"
+        if metadata_file.exists():
+            with metadata_file.open("r", encoding="utf-8") as f:
+                metadata = json.load(f)
+                metadata["sample_data"] = sample_data
+            with metadata_file.open("w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=4)
 
 
-def shrink_sample(sample_id: str) -> None:
+def shrink_df(df: pl.DataFrame) -> pl.DataFrame:
     """Find the full.x.h5 file for the sample and save a lossy, compressed version."""
-    df = get_cycling(sample_id)
     # Only keep a few columns
-    df = df[["V (V)", "I (A)", "uts", "dQ (mAh)", "Cycle"]]
-    # Calculate derivative - impossible to do after downsampling
-    df["Q (mAh)"] = df["dQ (mAh)"].cumsum()
-    # Group by cycle and calculate the derivative
-    dqdv = np.full(len(df), np.nan)
-    for idx in df.groupby("Cycle").indices.values():
-        group = df.iloc[np.array(idx)]
-        dqdv[idx] = calc_dqdv(group["V (V)"].to_numpy(), group["Q (mAh)"].to_numpy(), group["dQ (mAh)"].to_numpy())
-    df["dQ/dV (mAh/V)"] = dqdv
-
-    # Reduce precision of some columns
-    for col in ["V (V)", "I (A)", "dQ (mAh)", "dQ/dV (mAh/V)", "Q (mAh)"]:
-        df[col] = df[col].astype(np.float32)
-    df["Cycle"] = df["Cycle"].astype(np.int16)
+    df = df.select("uts", "V (V)", "I (A)", "dQ (mAh)", "Cycle")
 
     # Use the LTTB downsampler to reduce the number of data points
     original_length = len(df)
     new_length = min(original_length, original_length // 20 + 1000, 50000)
     if new_length < 3:
-        logger.info("Too few data points (%d) to shrink %s", original_length, sample_id)
-        return
+        return df.with_columns(pl.lit(None).alias("dQ/dV (mAh/V)"))
+
+    # Calculate cumulative sum
+    df = df.with_columns(pl.col("dQ (mAh)").cum_sum().alias("Q (mAh)"))
+
+    # Define function to apply per group
+    def compute_dqdv(group_df: pl.DataFrame) -> pl.DataFrame:
+        dqdv = calc_dqdv(group_df["V (V)"].to_numpy(), group_df["Q (mAh)"].to_numpy(), group_df["dQ (mAh)"].to_numpy())
+        return group_df.with_columns(pl.Series("dQ/dV (mAh/V)", dqdv))
+
+    # Apply to each cycle group
+    df = df.group_by("Cycle", maintain_order=True).map_groups(compute_dqdv)
+
+    # Reduce precision of some columns
+    df.cast(
+        {
+            "Cycle": pl.Int16,
+            "V (V)": pl.Float32,
+            "I (A)": pl.Float32,
+            "dQ (mAh)": pl.Float32,
+            "dQ/dV (mAh/V)": pl.Float32,
+            "Q (mAh)": pl.Float32,
+        }
+    )
     s_ds_V = MinMaxLTTBDownsampler().downsample(df["uts"], df["V (V)"], n_out=new_length)
     s_ds_I = MinMaxLTTBDownsampler().downsample(df["uts"], df["I (A)"], n_out=new_length)
     ind = np.sort(np.concatenate([s_ds_V, s_ds_I]))
 
     # Downsample the dataframe
-    df = df.iloc[ind]
+    df = df[ind]
 
     # Recalculate dQ so it cumulates correctly after downsampling
-    df["dQ (mAh)"] = df["Q (mAh)"].diff().fillna(0)
-    df = df.drop(columns=["Q (mAh)"])
-
-    # Update the shrunk dataset
-    full_file = get_full_file(sample_id)
-    df.to_hdf(full_file, key="data/cycling_shrunk", complib="blosc", complevel=9)
+    return df.with_columns(pl.col("Q (mAh)").diff().fill_null(0).alias("dQ (mAh)")).drop("Q (mAh)")
 
 
 def shrink_all_samples(sampleid_contains: str = "") -> None:
@@ -977,14 +920,17 @@ def shrink_all_samples(sampleid_contains: str = "") -> None:
     """
     for batch_folder in Path(CONFIG["Processed snapshots folder path"]).iterdir():
         if batch_folder.is_dir():
-            for sample in batch_folder.iterdir():
-                if sampleid_contains and sampleid_contains not in sample.name:
+            for sample_folder in batch_folder.iterdir():
+                sample_id = sample_folder.name
+                if sampleid_contains and sampleid_contains not in sample_id:
                     continue
                 try:
-                    shrink_sample(sample.name)
-                    logger.info("Shrunk %s", sample.name)
+                    df = read_cycling(sample_id)
+                    df = shrink_df(df)
+                    df.write_parquet(sample_folder / f"shrunk.{sample_id}.parquet")
+                    logger.info("Shrunk %s", sample_id)
                 except (KeyError, ValueError, PermissionError, RuntimeError, FileNotFoundError):
-                    logger.exception("Failed to shrink %s", sample.name)
+                    logger.exception("Failed to shrink %s", sample_id)
 
 
 def analyse_all_samples(

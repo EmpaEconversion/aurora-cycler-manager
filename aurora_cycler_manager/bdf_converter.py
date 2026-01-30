@@ -7,92 +7,67 @@ import json
 import logging
 from pathlib import Path
 
-import h5py
-import numpy as np
-import pandas as pd
+import polars as pl
 
-from aurora_cycler_manager.data_bundle import read_hdf_cycling, read_hdf_metadata
+from aurora_cycler_manager.analysis import calc_dq
+from aurora_cycler_manager.data_bundle import read_cycling, read_metadata
 
 logger = logging.getLogger(__name__)
 
-bdf_mapping = {
-    "uts": "Unix Time / s",
-    "I (A)": "Current / A",
-    "V (V)": "Voltage / V",
-    "Step": "Step Count / 1",
-    "Cycle": "Cycle Count / 1",
+aurora_to_bdf_map: dict[str, str] = {
+    "uts": "unix_time_seconds",
+    "V (V)": "voltage_volt",
+    "I (A)": "current_ampere",
+    "Step": "step_count",
+    "Cycle": "cycle_count",
 }
-hdf_mapping = {v: k for k, v in bdf_mapping.items()}
-# also include 'machine readable' BDF codes
-hdf_mapping = {
-    **hdf_mapping,
-    "unix_time_seconds": "uts",
-    "current_ampere": "I (A)",
-    "voltage_volt": "V (V)",
-    "step_count_dimensionless": "Step",
-    "cycle_count_dimensionless": "Cycle",
+
+bdf_to_aurora_map_extras: dict[str, str] = {
+    "Unix Time / s": "uts",
+    "Current / A": "I (A)",
+    "Voltage / V": "V (V)",
+    "Step Count / 1": "Step",
+    "Cycle Count / 1": "Cycle",
+}
+
+bdf_to_aurora_map: dict[str, str] = {
+    **{v: k for k, v in aurora_to_bdf_map.items()},
+    **bdf_to_aurora_map_extras,
 }
 
 
-def aurora_to_bdf(df: pd.DataFrame | pd.Series) -> pd.DataFrame:
+def aurora_to_bdf(df: pl.DataFrame) -> pl.DataFrame:
     """Convert an Aurora dataframe to BDF compliant dataframe."""
-    df = pd.DataFrame(df[[c for c in df.columns if c in bdf_mapping]])
-    df = df.rename(columns=bdf_mapping)
-    df["Test Time / s"] = (df["Unix Time / s"] - df["Unix Time / s"].iloc[0]).round(3)
-    return df
+    df.select([k for k in aurora_to_bdf_map if k in df.columns])
+    df = df.rename(aurora_to_bdf_map, strict=False)
+    t0 = df["unix_time_seconds"][0]  # TODO: handle empty case
+    return df.with_columns((pl.col("unix_time_seconds") - t0).alias("test_time_seconds"))
 
 
-def bdf_to_aurora(df: pd.DataFrame) -> pd.DataFrame:
+def bdf_to_aurora(df: pl.DataFrame) -> pl.DataFrame:
     """Convert a BDF compliant dataframe to Aurora."""
-    df = df[[c for c in df.columns if c in hdf_mapping]]
-    df = df.rename(columns=hdf_mapping)
+    df = df.select([k for k in bdf_to_aurora_map if k in df.columns])
+    df = df.rename(bdf_to_aurora_map, strict=False)
     if "uts" not in df:
         msg = "Aurora dataframes must include unix time in seconds."
         raise ValueError(msg)
-    # Need to recalculate dQ (mAh)
-    df = df.astype({"uts": "f8", "I (A)": "f8"})
-    dt_s = np.concatenate([[0], df["uts"].to_numpy()[1:] - df["uts"].to_numpy()[:-1]])
-    Iavg_A = np.concatenate([[0], (df["I (A)"].to_numpy()[1:] + df["I (A)"].to_numpy()[:-1]) / 2])
-    df["dQ (mAh)"] = 1e3 * Iavg_A * dt_s / 3600
-    return df
+    # Need to recalculate dQ (mAh), lost in round trip
+    return calc_dq(df)
 
 
-def aurora_hdf_to_bdf_parquet(hdf5_file: str | Path, bdf_file: str | Path | None = None) -> None:
-    """Convert Aurora HDF5 file to BDF parquet file."""
-    hdf5_file = Path(hdf5_file)
-    df = read_hdf_cycling(hdf5_file)
-    metadata = read_hdf_metadata(hdf5_file)
+def aurora_to_bdf_parquet(aurora_full_file: str | Path, bdf_file: str | Path | None = None) -> None:
+    """Convert Aurora full file to BDF parquet file."""
+    aurora_full_file = Path(aurora_full_file)
+    df = read_cycling(aurora_full_file)
+    metadata = read_metadata(aurora_full_file)
 
     # Convert to BDF style columns
-    df = aurora_to_bdf(pd.DataFrame(df))
-
-    # In parquet, metadata can be stored in pandas attrs
-    df.attrs["metadata"] = metadata
+    df = aurora_to_bdf(df)
 
     # Save parquet file
     if not bdf_file:
-        bdf_file = hdf5_file.with_suffix(".bdf.parquet")
+        bdf_file = aurora_full_file.with_suffix(".bdf.parquet")
     else:
         bdf_file = Path(bdf_file).with_suffix(".bdf.parquet")
         bdf_file.parent.mkdir(exist_ok=True)
-    df.to_parquet(bdf_file, compression="brotli")
-
-
-def bdf_parquet_to_aurora_hdf(bdf_file: str | Path, hdf5_file: str | Path | None = None) -> None:
-    """Convert BDF parquet file to Aurora hdf5 file."""
-    bdf_file = Path(bdf_file)
-    df = pd.read_parquet(bdf_file)
-    metadata = df.attrs.get("metadata")
-    df = bdf_to_aurora(df)
-
-    # Remove both suffixes if there are two
-    if bdf_file.name.endswith(".bdf.parquet"):
-        bdf_file = bdf_file.with_suffix("")
-    if not hdf5_file:
-        hdf5_file = bdf_file.with_suffix(".h5")
-    else:
-        hdf5_file = Path(hdf5_file).with_suffix(".h5")
-        hdf5_file.parent.mkdir(exist_ok=True)
-    df.to_hdf(hdf5_file, key="data/cycling", mode="w")
-    with h5py.File(hdf5_file, "a") as f:
-        f.create_dataset("metadata", data=json.dumps(metadata))
+    df.write_parquet(bdf_file, compression="brotli", metadata={"AURORA:metadata": json.dumps(metadata)})

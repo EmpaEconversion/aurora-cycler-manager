@@ -1,6 +1,6 @@
 """Copyright © 2025-2026, Empa.
 
-Harvest EC-lab .mpr files and convert to aurora-compatible hdf5 files.
+Harvest EC-lab .mpr files and convert to aurora-compatible parquet files.
 
 Define the machines to grab files from in the config.json file.
 
@@ -14,10 +14,10 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-import h5py
 import numpy as np
 import pandas as pd
 import paramiko
+import polars as pl
 import yadg
 from dgbowl_schemas.yadg.dataschema import ExtractorFactory
 
@@ -199,7 +199,7 @@ def get_all_mprs(*, force_copy: bool = False) -> list[str]:
 def get_mpr_data(
     mpr_file: str | Path | bytes,
     mpl_file: str | Path | bytes | None = None,
-) -> tuple[pd.DataFrame, pd.DataFrame | None, dict, dict]:
+) -> tuple[pl.DataFrame, dict, dict]:
     """Convert mpr file to dataframe."""
     if isinstance(mpr_file, (str, Path)):
         mpr_file = Path(mpr_file)
@@ -220,11 +220,6 @@ def get_mpr_data(
 
     # Check if the time is incorrect and fix it
     df = check_mpr_uts(df, mpr_file, mpl_file)
-
-    # Check if frequency exists
-    eis_mask = (
-        (data.data_vars["freq"] != 0).to_numpy() if "freq" in data.data_vars and any(data.data_vars["freq"]) else None
-    )
 
     # Only keep certain columns in dataframe
     try:
@@ -247,26 +242,19 @@ def get_mpr_data(
         df["I (A)"] = 0.0
     df["cycle_number"] = data.data_vars["half cycle"].to_numpy() // 2 if "half cycle" in data.data_vars else 0
     df["technique"] = data.data_vars["mode"].to_numpy() if "mode" in data.data_vars else 0
+    if all(col in data.data_vars for col in ["freq", "Re(Z)", "-Im(Z)"]) and any(data.data_vars["freq"]):
+        df["f (Hz)"] = data.data_vars["freq"]
+        df["Re(Z) (ohm)"] = data.data_vars["Re(Z)"].to_numpy()
+        df["Im(Z) (ohm)"] = -data.data_vars["-Im(Z)"].to_numpy()
+        df = df.astype({"f (Hz)": "float32", "Re(Z) (ohm)": "float32", "Im(Z) (ohm)": "float32"})
     df = df.astype({"V (V)": "float32", "I (A)": "float32"})
     df = df.astype({"technique": "int16", "cycle_number": "int32"})
-
-    if eis_mask is not None and any(eis_mask):
-        eis_df = df.copy()
-        eis_df["f (Hz)"] = data.data_vars["freq"].to_numpy()
-        eis_df["Re(Z) (ohm)"] = data.data_vars["Re(Z)"].to_numpy()
-        eis_df["Im(Z) (ohm)"] = -data.data_vars["-Im(Z)"].to_numpy()
-        eis_df = eis_df.astype({"Re(Z) (ohm)": "float32", "Im(Z) (ohm)": "float32"})
-        eis_df = eis_df[eis_mask]
-        eis_df = eis_df.drop(columns=["cycle_number"])
-        df = df[~eis_mask]
-    else:
-        eis_df = None
 
     # Get metadata
     mpr_metadata = json.loads(data.attrs["original_metadata"])
     mpr_metadata["job_type"] = "eclab_mpr"
     yadg_metadata = {k: v for k, v in data.attrs.items() if k.startswith("yadg")}
-    return df, eis_df, mpr_metadata, yadg_metadata
+    return pl.DataFrame(df), mpr_metadata, yadg_metadata
 
 
 def check_mpr_uts(
@@ -302,7 +290,7 @@ def check_mpr_uts(
                     df["uts"] = df["uts"] + uts_timestamp
                     break
             else:
-                msg = f"Incorrect start time in {mpr_file} and no start time in found {mpl_file}"
+                msg = f"Incorrect start time in {mpr_file!s} and no start time in found {mpl_file!s}"
                 raise ValueError(msg)
         except FileNotFoundError as e:
             msg = "Incorrect start time in mpr file, cannot find associated mpl file"
@@ -319,7 +307,7 @@ def convert_mpr(
     file_name: str | None = None,
     *,
     update_database: bool = True,
-) -> tuple[pd.DataFrame, dict]:
+) -> tuple[pl.DataFrame, dict]:
     """Convert a ec-lab mpr to dataframe, optionally update database.
 
     Args:
@@ -365,7 +353,7 @@ def convert_mpr(
         raise TypeError(msg)
 
     # Get data and metadata from mpr (and mpl) files
-    df, eis_df, mpr_metadata, yadg_metadata = get_mpr_data(mpr_file, mpl_file)
+    df, mpr_metadata, yadg_metadata = get_mpr_data(mpr_file, mpl_file)
 
     # get sample data from database
     try:
@@ -400,12 +388,15 @@ def convert_mpr(
         },
     }
 
+    # TODO: integrate polars better
+    df = pl.DataFrame(df)
+
     # Save and update database
     if update_database:
         if not sample_id:
             logger.warning("Not saving %s, no valid Sample ID found", mpr_file)
             return df, metadata
-        folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample_id
+        folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample_id / "snapshots"
         if not folder.exists():
             folder.mkdir(parents=True)
 
@@ -415,34 +406,14 @@ def convert_mpr(
         else:
             assert isinstance(mpr_file, (str, Path))  # noqa: S101
             file_stem = Path(mpr_file).stem
-        hdf5_filepath = folder / f"snapshot.{file_stem}.h5"
+
+        parquet_filepath = folder / f"snapshot.{file_stem}.parquet"
 
         # Add the file/job information to the database
-        all_uts = pd.concat([d["uts"] for d in [df, eis_df] if d is not None and len(d) > 0], ignore_index=True)
-        add_data_to_db(sample_id, file_stem, all_uts.min(), all_uts.max(), job_id)
+        add_data_to_db(sample_id, file_stem, df["uts"][0], df["uts"][-1], job_id)
 
-        # Create the 'data/cycling' hdf5 dataset
-        df.to_hdf(
-            hdf5_filepath,
-            key="data/cycling",
-            mode="w",
-            complib="blosc",
-            complevel=9,
-        )
-
-        if eis_df is not None:
-            eis_df.to_hdf(
-                hdf5_filepath,
-                key="data/eis",
-                mode="a",
-                complib="blosc",
-                complevel=9,
-            )
-
-        # Create a dataset called metadata and json dump the metadata
-        with h5py.File(hdf5_filepath, "a") as f:
-            f.create_dataset("metadata", data=json.dumps(metadata))
-        logger.info("Saved %s", hdf5_filepath)
+        # Write to parquet file
+        df.write_parquet(parquet_filepath, metadata={"AURORA:metadata": json.dumps(metadata)})
 
         # Update the database
         with sqlite3.connect(CONFIG["Database path"]) as conn:

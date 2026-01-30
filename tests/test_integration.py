@@ -74,9 +74,9 @@ def test_analyse_download_eclab_sample(
 
     # Should make some hdf5 and cycles json files
     file_io.process_file(res[3], zip_path, [])
-    assert (sample_folder / f"full.{sample_id}.h5").exists()
-    assert (sample_folder / f"cycles.{sample_id}.json").exists()
-    assert len(list(sample_folder.glob("snapshot.*.h5"))) == 2
+    assert (sample_folder / f"full.{sample_id}.parquet").exists()
+    assert (sample_folder / f"cycles.{sample_id}.parquet").exists()
+    assert len(list(sample_folder.rglob("snapshot.*"))) == 2
 
     # Uploading again should not add new files, should overwrite
     zip_path = tmp_path / "data.zip"
@@ -88,7 +88,7 @@ def test_analyse_download_eclab_sample(
     assert res[3]["file"] == "zip"
     file_io.process_file(res[3], zip_path, [])
     # Should still only be 2 snapshot files
-    assert len(list(sample_folder.glob("snapshot.*.h5"))) == 2
+    assert len(list(sample_folder.rglob("snapshot.*"))) == 2
 
     # Should make some Job IDs in the database
     jobs = get_jobs_from_sample(sample_id)
@@ -204,7 +204,7 @@ def test_analyse_download_eclab_sample(
     zip_file = tmp_path / "file.zip"
     file_io.create_rocrate(
         [sample_id],
-        {"hdf5", "bdf-parquet", "bdf-csv", "cycles-json", "metadata-jsonld"},
+        {"bdf-parquet", "bdf-csv", "cycles-csv", "cycles-parquet", "metadata-jsonld"},
         zip_file,
         zenodo_info_str,
         set_progress,
@@ -212,10 +212,10 @@ def test_analyse_download_eclab_sample(
     assert zip_file.exists()
     with ZipFile(zip_file, mode="r") as zf:
         files = zf.namelist()
-        assert f"{sample_id}/full.{sample_id}.h5" in files
         assert f"{sample_id}/full.{sample_id}.bdf.parquet" in files
         assert f"{sample_id}/full.{sample_id}.bdf.csv" in files
-        assert f"{sample_id}/cycles.{sample_id}.json" in files
+        assert f"{sample_id}/cycles.{sample_id}.parquet" in files
+        assert f"{sample_id}/cycles.{sample_id}.csv" in files
         assert f"{sample_id}/metadata.{sample_id}.jsonld" in files
         assert "ro-crate-metadata.json" in files
 

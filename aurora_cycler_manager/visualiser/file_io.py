@@ -3,7 +3,6 @@
 Functions for file upload and download.
 """
 
-import builtins
 import contextlib
 import io
 import json
@@ -21,7 +20,7 @@ import aurora_cycler_manager.battinfo_utils as bu
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.bdf_converter import aurora_to_bdf
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_bundle import read_hdf_cycling
+from aurora_cycler_manager.data_bundle import get_cycles_summary, get_cycling
 from aurora_cycler_manager.database_funcs import (
     add_protocol_to_job,
     add_samples_from_object,
@@ -358,7 +357,7 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
                                             mpl_file = f.read()
                                     else:
                                         mpl_file = None
-                                    # Convert and save hdf from mpr file
+                                    # Convert mpr file and save
                                     logger.info("Processing file: %s", filename)
                                     convert_mpr(
                                         file.read(),
@@ -417,7 +416,7 @@ def create_rocrate(
     Args:
         sample_ids: List of sample IDs to add to ro-crate.
         filetypes: set of file types, subset of:
-            {"hdf5","bdf-csv","bdf-parquet","cycles-json","metadata-jsonld"}
+            {"bdf-csv","bdf-parquet","cycles-json","metadata-jsonld"}
         zip_path: Path of where to save zip.
         zenodo_info (optional): Path to zenodo info xlsx file.
         set_progress (used by app): Function for progress bar.
@@ -470,99 +469,90 @@ def create_rocrate(
             messages += f"{sample_id} - "
             warnings = []
             errors = []
-            hdf5_file = None
-            bdf_df = None
+            df = None
 
-            # If time-series data is requested, get the hdf5 file
-            if {"hdf5", "bdf-csv", "bdf-parquet"} & filetypes:
-                hdf5_file = next(Path(sample_folder).glob("full.*.h5"), None)
-                # If bdf is requested, convert the dataframe
-                if hdf5_file and {"bdf-csv", "bdf-parquet"} & filetypes:
-                    with contextlib.suppress(builtins.BaseException):
-                        bdf_df = aurora_to_bdf(read_hdf_cycling(hdf5_file))
-
+            # If bdf is requested, convert the file
+            if {"bdf-csv", "bdf-parquet"} & filetypes:
+                with contextlib.suppress(FileNotFoundError):
+                    df = aurora_to_bdf(get_cycling(sample_id))
             # Loop through requested files
             for filetype in filetypes:
                 i += 1
                 try:
-                    if filetype == "hdf5":
-                        if hdf5_file is None:
-                            logger.warning("No time-series data for %s", sample_id)
+                    if filetype == "cycles-csv":
+                        cycles_df = get_cycles_summary(sample_id)
+                        if cycles_df is None:
+                            logger.warning("No cycles summary file found for %s", sample_id)
                             messages += "⚠️"
                             warnings.append(filetype)
                             color = "orange"
                             continue
-                        rel_file_path = sample_id + "/" + hdf5_file.name
-                        zf.write(hdf5_file, rel_file_path)
-                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
-                        rocrate["@graph"].append(
-                            {
-                                "@id": rel_file_path,
-                                "@type": "File",
-                                "about": {"@id": ccid if ccid else sample_id},
-                                "encodingFormat": "application/octet-stream",
-                                "description": (
-                                    f"Time-series battery cycling data for sample: '{sample_id}'"
-                                    + (f" with CCID: '{ccid}'. " if ccid else ". ")
-                                    + "Data is in HDF5 format, keys are 'data' and 'metadata'. "
-                                    "'data' contains an export from a Python Pandas dataframe. "
-                                    "'metadata' contains a JSON-string with info about the sample and experiment."
-                                ),
-                            }
-                        )
-                        battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
+                        buffer = io.BytesIO()
+                        cycles_df.write_csv(buffer)
+                        buffer.seek(0)
+                        rel_file_path = sample_id + f"/cycles.{sample_id}.csv"
+                        zf.writestr(rel_file_path, buffer.read())
                         messages += "✅"
 
-                    if filetype == "cycles-json":
-                        json_file = next(Path(sample_folder).glob("cycles.*.json"), None)
-                        if not json_file:
-                            logger.warning("No JSON summary file found for %s", sample_id)
-                            messages += "⚠️"
-                            warnings.append("JSON summary")
-                            color = "orange"
-                            continue
-                        with json_file.open("rb") as f:
-                            json_bytes = f.read()
-                        rel_file_path = sample_id + "/" + json_file.name
-                        zf.writestr(rel_file_path, json_bytes)
-                        messages += "✅"
                         rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
                         rocrate["@graph"].append(
                             {
                                 "@id": rel_file_path,
                                 "@type": "File",
-                                "encodingFormat": "text/json",
+                                "encodingFormat": "text/csv",
                                 "about": {"@id": ccid if ccid else sample_id},
                                 "description": (
                                     f"Summary data from battery cycling for sample: '{sample_id}'"
                                     + (f" with CCID: '{ccid}'. " if ccid else ". ")
-                                    + "File is in JSON format, top level keys are 'data' and 'metadata'. "
-                                    "'data' contains lists with per-cycle summary stastics, e.g. discharge capacity. "
-                                    "'metadata' contains sample and experiment information."
+                                    + "File is in CSV format, and per-cycle summary stastics, e.g. discharge capacity."
+                                ),
+                            }
+                        )
+                        battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
+
+                    if filetype == "cycles-parquet":
+                        cycles_df = get_cycles_summary(sample_id)
+                        if cycles_df is None:
+                            logger.warning("No cycles summary file found for %s", sample_id)
+                            messages += "⚠️"
+                            warnings.append(filetype)
+                            color = "orange"
+                            continue
+                        buffer = io.BytesIO()
+                        cycles_df.write_parquet(buffer)
+                        buffer.seek(0)
+                        rel_file_path = sample_id + f"/cycles.{sample_id}.parquet"
+                        zf.writestr(rel_file_path, buffer.read())
+                        messages += "✅"
+
+                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                        rocrate["@graph"].append(
+                            {
+                                "@id": rel_file_path,
+                                "@type": "File",
+                                "encodingFormat": "text/csv",
+                                "about": {"@id": ccid if ccid else sample_id},
+                                "description": (
+                                    f"Summary data from battery cycling for sample: '{sample_id}'"
+                                    + (f" with CCID: '{ccid}'. " if ccid else ". ")
+                                    + "File is in CSV format, and per-cycle summary stastics, e.g. discharge capacity."
                                 ),
                             }
                         )
                         battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
 
                     if filetype == "bdf-csv":
-                        if hdf5_file is None:
+                        if df is None:
                             logger.warning("No time-series data for %s", sample_id)
                             messages += "⚠️"
                             warnings.append(filetype)
                             color = "orange"
                             continue
-                        if bdf_df is None:
-                            logger.exception("Failed to convert to BDF %s", sample_id)
-                            messages += "⁉️"
-                            errors.append(filetype)
-                            color = "orange"
-                            continue
                         # convert to csv file and write to zip
                         buffer = io.BytesIO()
-                        bdf_df.to_csv(buffer, index=False)  # or index=True, depending on your needs
+                        df.write_csv(buffer)
                         buffer.seek(0)
-                        parquet_name = hdf5_file.with_suffix(".bdf.csv").name
-                        rel_file_path = sample_id + "/" + parquet_name
+                        rel_file_path = sample_id + f"/full.{sample_id}.bdf.csv"
                         zf.writestr(rel_file_path, buffer.read())
                         messages += "✅"
                         rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
@@ -582,23 +572,17 @@ def create_rocrate(
                         battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
 
                     if filetype == "bdf-parquet":
-                        if hdf5_file is None:
+                        if df is None:
                             logger.warning("No time-series data for %s", sample_id)
                             messages += "⚠️"
                             warnings.append(filetype)
                             color = "orange"
                             continue
-                        if bdf_df is None:
-                            logger.exception("Failed to convert to BDF %s", sample_id)
-                            messages += "⁉️"
-                            errors.append(filetype)
-                            color = "orange"
-                            continue
                         # convert to parquet file and write to zip
                         buffer = io.BytesIO()
-                        bdf_df.to_parquet(buffer, index=False)  # or index=True, depending on your needs
+                        df.write_parquet(buffer)
                         buffer.seek(0)
-                        parquet_name = hdf5_file.with_suffix(".bdf.parquet").name
+                        parquet_name = f"full.{sample_id}.bdf.parquet"
                         rel_file_path = sample_id + "/" + parquet_name
                         zf.writestr(rel_file_path, buffer.read())
                         messages += "✅"

@@ -17,7 +17,7 @@ from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 from plotly.colors import hex_to_rgb, label_rgb, sample_colorscale
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_bundle import get_cycle_summary, get_overall_summary
+from aurora_cycler_manager.data_bundle import get_cycles_summary, get_overall_summary
 from aurora_cycler_manager.visualiser.funcs import correlation_matrix
 
 CONFIG = get_config()
@@ -532,8 +532,8 @@ def register_batches_callbacks(app: Dash) -> None:
         for s in sample_set:
             if s in data:
                 continue
-            if (df := get_cycle_summary(s)) is not None and (overall_dict := get_overall_summary(s)) is not None:
-                data[s] = {**df.to_dict(orient="list"), **overall_dict}
+            if (df := get_cycles_summary(s)) is not None and (overall_dict := get_overall_summary(s)) is not None:
+                data[s] = {**df.to_dict(as_series=False), **overall_dict}
 
         # y-axis options are lists in data
         # color options are non-lists

@@ -1,6 +1,6 @@
 """Copyright © 2025-2026, Empa.
 
-Harvest Neware data files and convert to aurora-compatible hdf5 files.
+Harvest Neware data files and convert to aurora-compatible parquet files.
 
 Define the machines to grab files from in the config.json file.
 
@@ -18,7 +18,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import fastnda
-import h5py
 import pandas as pd
 import paramiko
 import polars as pl
@@ -74,7 +73,7 @@ def harvest_neware_files(
         server_hostname (str): Hostname of the server
         server_username (str): Username to login with
         server_shell_type (str): Type of shell to use (powershell or cmd)
-        server_copy_folder (str): Folder to search and copy TODO file types
+        server_copy_folder (str): Folder to search and copy files
         local_folder (str): Folder to copy files to
         force_copy (bool): Copy all files regardless of modification date
 
@@ -342,7 +341,7 @@ def harvest_all_neware_files(*, force_copy: bool = False) -> list[Path]:
     return all_new_files
 
 
-def get_neware_data(filepath: Path) -> pd.DataFrame:
+def get_neware_data(filepath: Path) -> pl.DataFrame:
     """Get dataframe from a Neware ndax or xlsx file."""
     if filepath.suffix == ".xlsx":
         df = get_neware_xlsx_data(filepath)
@@ -674,8 +673,8 @@ def get_sampleid_from_metadata(metadata: dict, known_samples: list[str] | None =
     return sampleid
 
 
-def get_neware_xlsx_data(file_path: Path) -> pd.DataFrame:
-    """Convert Neware xlsx file to dictionary."""
+def get_neware_xlsx_data(file_path: Path) -> pl.DataFrame:
+    """Convert Neware xlsx file to dictionary. DEPRACATED: use ndax not xlsx."""
     df = pd.read_excel(file_path, sheet_name="record", header=0, engine="calamine")
     required_columns = ["Voltage(V)", "Current(A)", "Step Type", "Date", "Time"]
     if not all(col in df.columns for col in required_columns):
@@ -694,10 +693,10 @@ def get_neware_xlsx_data(file_path: Path) -> pd.DataFrame:
     output_df["uts"] = df["Date"].apply(lambda x: datetime.strptime(x, "%Y-%m-%d %H:%M:%S").timestamp())  # noqa: DTZ007
     # add 1e-6 to Timestamp where Time is 0 - negligible and avoids errors when sorting
     output_df["uts"] = output_df["uts"] + (df["Time"] == 0) * 1e-6
-    return output_df
+    return pl.DataFrame(output_df)
 
 
-def get_neware_ndax_data(file_path: Path) -> pd.DataFrame:
+def get_neware_ndax_data(file_path: Path) -> pl.DataFrame:
     """Convert Neware ndax file to dictionary."""
     df = fastnda.read(file_path)
     if len(df) == 0:
@@ -715,7 +714,7 @@ def get_neware_ndax_data(file_path: Path) -> pd.DataFrame:
             (pl.col(["total_time_s"]) + df["unix_time_s"][0] + (df["step_time_s"] == 0) * 1e-6).alias("uts"),
         ]
     )
-    return df.select(["V (V)", "I (A)", "technique", "cycle_number", "uts"]).to_pandas()
+    return df.select(["V (V)", "I (A)", "technique", "cycle_number", "uts"])
 
 
 def update_database_job(
@@ -785,15 +784,15 @@ def convert_neware_data(
     sampleid: str | None = None,
     known_samples: list[str] | None = None,
     *,
-    output_hdf5_file: bool = True,
-) -> tuple[pd.DataFrame, dict]:
-    """Convert a neware file to a dataframe and save as hdf5.
+    save_file: bool = True,
+) -> tuple[pl.DataFrame, dict]:
+    """Convert a neware file to a dataframe and save as parquet.
 
     Args:
         file_path (Path): Path to the neware file
         sampleid (str, optional): Sample ID to use, otherwise find from metadata
-        output_hdf5_file (bool): Whether to save the file as a hdf5
         known_samples (list[str], optional): List of known Sample IDs to check against
+        save_file (bool): Whether to save the file to the data lake
 
     Returns:
         tuple[pd.DataFrame, dict]: DataFrame containing the cycling data and metadata
@@ -801,7 +800,7 @@ def convert_neware_data(
     """
     # Get test information and Sample ID
     file_path = Path(file_path)
-    data = get_neware_data(file_path)
+    df = get_neware_data(file_path)
     job_data = get_neware_metadata(file_path)
     if sampleid is None:
         sampleid = get_sampleid_from_metadata(job_data, known_samples)
@@ -838,30 +837,21 @@ def convert_neware_data(
         },
     }
 
-    if output_hdf5_file:
+    if save_file:
         if not sampleid:
             logger.warning("Not saving %s, no valid Sample ID found", file_path)
-            return data, metadata
+            return df, metadata
         run_id = run_from_sample(sampleid)
-        folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sampleid
+        folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sampleid / "snapshots"
         if not folder.exists():
             folder.mkdir(parents=True)
+        parquet_filepath = folder / f"snapshot.{file_path.stem}.parquet"
 
-        if output_hdf5_file:  # Save as hdf5
-            file_name = f"snapshot.{file_path.stem}.h5"
-            # Ensure smallest data types are used
-            data = data.astype({"V (V)": "float32", "I (A)": "float32"})
-            data = data.astype({"technique": "int16", "cycle_number": "int32"})
-            data.to_hdf(
-                folder / file_name,
-                key="data/cycling",
-                mode="w",
-                complib="blosc",
-                complevel=9,
-            )
-            # create a dataset called metadata and json dump the metadata
-            with h5py.File(folder / file_name, "a") as f:
-                f.create_dataset("metadata", data=json.dumps(metadata))
+        # Ensure smallest data types are used
+        df = df.cast({"V (V)": pl.Float32, "I (A)": pl.Float32, "technique": pl.Int16, "cycle_number": pl.Int32})
+
+        # Write to parquet file
+        df.write_parquet(parquet_filepath, metadata={"AURORA:metadata": json.dumps(metadata)})
 
         # Update the database
         creation_date = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc).isoformat(timespec="seconds")
@@ -877,11 +867,11 @@ def convert_neware_data(
             )
             cursor.close()
 
-    return data, metadata
+    return df, metadata
 
 
 def convert_all_neware_data() -> None:
-    """Convert all neware files to hdf5 files."""
+    """Convert all neware files to parquet files."""
     # Get all xlsx and ndax files in the raw folder recursively
     snapshots_folder = get_neware_snapshot_folder()
     neware_files = [file for file in snapshots_folder.rglob("*") if file.suffix in [".xlsx", ".ndax"]]
@@ -890,7 +880,7 @@ def convert_all_neware_data() -> None:
     for file in neware_files:
         logger.info("Converting %s", file)
         try:
-            _data, metadata = convert_neware_data(file, output_hdf5_file=True, known_samples=known_samples)
+            _data, metadata = convert_neware_data(file, save_file=True, known_samples=known_samples)
             if metadata is not None:
                 sampleid = metadata.get("sample_data", {}).get("Sample ID") if metadata.get("sample_data") else None
                 if sampleid:
@@ -917,7 +907,7 @@ def main() -> None:
     for file in new_files:
         logger.info("Processing %s", file)
         try:
-            _data, metadata = convert_neware_data(file, output_hdf5_file=True, known_samples=known_samples)
+            _data, metadata = convert_neware_data(file, save_file=True, known_samples=known_samples)
             update_database_job(file, known_samples=known_samples)
             if metadata is not None:
                 sampleid = metadata.get("sample_data", {}).get("Sample ID")

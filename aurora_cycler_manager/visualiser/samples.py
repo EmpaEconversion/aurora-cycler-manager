@@ -13,7 +13,7 @@ from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
 from aurora_cycler_manager.analysis import calc_dqdv
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_bundle import get_combined_summary, get_cycling, get_cycling_shrunk
+from aurora_cycler_manager.data_bundle import get_cycles_summary, get_cycling, get_cycling_shrunk
 
 CONFIG = get_config()
 logger = logging.getLogger(__name__)
@@ -301,7 +301,7 @@ def register_samples_callbacks(app: Dash) -> None:
             # Get time series data
             logger.info("Searching for %s", sample)
             if compressed and (df := get_cycling_shrunk(sample)) is not None:
-                data_dict = df.to_dict(orient="list")
+                data_dict = df.to_dict(as_series=False)
                 data_dict["Shrunk"] = True
                 logger.info("Found shrunk for %s", sample)
                 data["data_sample_time"][sample] = data_dict
@@ -310,17 +310,17 @@ def register_samples_callbacks(app: Dash) -> None:
                 try:
                     logger.info("Getting full for %s", sample)
                     df = get_cycling(sample)
-                    data["data_sample_time"][sample] = df.to_dict(orient="list")
+                    data["data_sample_time"][sample] = df.to_dict(as_series=False)
                 except ValueError:
                     logger.info("No cycling found for %s", sample)
                     continue
 
             # Get cycle summary data
             logger.info("Getting summary data for %s", sample)
-            df = get_combined_summary(sample)
+            df = get_cycles_summary(sample)
             if df is not None:
                 logger.info("Found summary data for %s", sample)
-                data["data_sample_cycle"][sample] = df.to_dict(orient="list")
+                data["data_sample_cycle"][sample] = df.to_dict(as_series=False)
             else:
                 logger.info("Couldn't get summary data for %s", sample)
 

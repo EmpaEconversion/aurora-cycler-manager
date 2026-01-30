@@ -7,8 +7,8 @@ from contextlib import suppress
 from datetime import datetime, timezone
 
 import numpy as np
-import pandas as pd
 import paramiko
+import polars as pl
 
 from aurora_cycler_manager.config import get_config
 
@@ -25,9 +25,9 @@ def ssh_connect(ssh: paramiko.SSHClient, username: str, hostname: str) -> None:
 
 
 def weighted_median(
-    values: list[float] | np.ndarray | pd.Series,
-    weights: list[float] | np.ndarray | pd.Series,
-) -> float:
+    values: list[float] | np.ndarray | pl.Series,
+    weights: list[float] | np.ndarray | pl.Series,
+) -> float | None:
     """Calculate the weighted median of a list of values.
 
     Args:
@@ -42,8 +42,7 @@ def weighted_median(
         msg = "Values and weights must have the same length."
         raise ValueError(msg)
     if len(values) == 0:
-        msg = "Values and weights cannot be empty."
-        raise ValueError(msg)
+        return None
     values = np.array(values)
     weights = np.array(weights)
 

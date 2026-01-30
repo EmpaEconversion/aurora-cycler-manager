@@ -114,8 +114,7 @@ class TestWeightedMedian:
 
     def test_empty_input(self) -> None:
         """Empty input."""
-        with pytest.raises(ValueError):
-            weighted_median([], [])
+        assert weighted_median([], []) is None
 
     def test_different_length(self) -> None:
         """Different length of values and weights."""

@@ -1,19 +1,15 @@
 """Copyright © 2025-2026, Empa.
 
-DataBundle Typed dict and functions to read/write hdf5.
+Functions to read and write data files. Provides SampleDataBundle interface.
 """
 
 import json
+from functools import cached_property
 from pathlib import Path
-from typing import TypedDict
-
-try:
-    from typing import NotRequired
-except ImportError:  # Python 3.10
-    from typing_extensions import NotRequired
 
 import h5py
 import pandas as pd
+import polars as pl
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.stdlib_utils import run_from_sample
@@ -21,177 +17,179 @@ from aurora_cycler_manager.stdlib_utils import run_from_sample
 CONFIG = get_config()
 
 
-class DataBundle(TypedDict):
-    """Bundle of cycling data and metadata mimicking hdf5 layout."""
-
-    data_cycling: pd.DataFrame
-    data_cycling_shrunk: NotRequired[pd.DataFrame]
-    data_eis: NotRequired[pd.DataFrame]
-    data_cycle_summary: NotRequired[pd.DataFrame]
-    data_overall_summary: NotRequired[dict[str, str | int | float]]
-    metadata: dict
-
-
-def read_hdf_cycling(file: str | Path) -> pd.DataFrame:
-    """Read cycling data from aurora-style hdf5 file to DataFrame."""
-    keys = ["data/cycling", "cycling", "data"]
-    with h5py.File(file, "r") as f:
-        for key in keys:
-            if key in f:
-                df = pd.read_hdf(file, key=key)
-                if isinstance(df, pd.DataFrame):
-                    return df
-    msg = f"Time-series key not found, tried {', '.join(keys)}"
+def read_cycling(file: str | Path) -> pl.DataFrame:
+    """Read cycling data from aurora-style hdf5 or parquet file to DataFrame."""
+    file = Path(file)
+    if file.suffix == ".parquet":
+        return pl.read_parquet(file)
+    if file.suffix == ".h5":
+        return pl.DataFrame(pd.read_hdf(file))
+    msg = f"Unsupported file format {file.suffix}"
     raise ValueError(msg)
 
 
-def read_hdf_cycling_shrunk(file: str | Path) -> pd.DataFrame | None:
-    """Read cycling data from aurora-style hdf5 file to DataFrame."""
-    keys = ["data/cycling_shrunk", "data_cycling_shrunk", "cycling_shrunk"]
-    with h5py.File(file, "r") as f:
-        for key in keys:
-            if key in f:
-                df = pd.read_hdf(file, key=key)
-                if isinstance(df, pd.DataFrame):
-                    return df
-    return None
-
-
-def read_hdf_eis(file: str | Path) -> pd.DataFrame | None:
-    """Read EIS data from aurora-style hdf5 file to DataFrame."""
-    with h5py.File(file, "r") as f:
-        for key in ["data/eis", "data-eis", "eis"]:
-            if key in f:
-                df = pd.read_hdf(file, key=key)
-                if isinstance(df, pd.DataFrame):
-                    return df
-    return None
-
-
-def read_hdf_cycle_summary(file: str | Path) -> pd.DataFrame | None:
-    """Read cycle summary from aurora-style hdf5 file to DataFrame."""
-    with h5py.File(file, "r") as f:
-        for key in ["data/cycle_summary", "data-cycle-summary", "data_cycle_summary"]:
-            if key in f:
-                df = pd.read_hdf(file, key=key)
-                if isinstance(df, pd.DataFrame):
-                    return df
-    return None
-
-
-def read_hdf_overall_summary(file: str | Path) -> dict | None:
-    """Read overall summary from aurora-style hdf5 file to a dict."""
-    with h5py.File(file, "r") as f:
-        for key in ["data/overall_summary", "data-overall-summary", "data_overall_summary"]:
-            if key in f:
-                return json.loads(f[key][()])
-    return None
-
-
-def read_hdf_combined_summary(file: str | Path) -> pd.DataFrame | None:
-    """Read cycle and overall summary from aurora-style hdf5 file, combine to one DataFrame."""
-    df = read_hdf_cycle_summary(file)
-    summary_dict = read_hdf_overall_summary(file)
-    if df is not None and summary_dict is not None:
-        df.assign(**summary_dict)
-    return df
-
-
-def read_hdf_metadata(file: str | Path) -> dict:
+def read_metadata(file: str | Path) -> dict:
     """Read metadata from aurora-style hdf5 file."""
-    with h5py.File(file, "r") as f:
-        return json.loads(f["metadata"][()])
+    file = Path(file)
+    if file.suffix == ".parquet":
+        return json.loads(pl.read_parquet_metadata(file)["AURORA:metadata"])
+    if file.suffix == ".h5":
+        with h5py.File(file, "r") as f:
+            return json.loads(f["metadata"][()])
+    msg = f"Unsupported file format {file.suffix}"
+    raise ValueError(msg)
 
 
-def read_hdf_data_bundle(file: str | Path) -> DataBundle:
-    """Read hdf data and metadata into a data bundle."""
-    data: DataBundle = {
-        "data_cycling": read_hdf_cycling(file),
-        "metadata": read_hdf_metadata(file),
-    }
-    if (eis := read_hdf_eis(file)) is not None:
-        data["data_eis"] = eis
-    if (cycle_summary := read_hdf_cycle_summary(file)) is not None:
-        data["data_cycle_summary"] = cycle_summary
-    if (overall_summary := read_hdf_overall_summary(file)) is not None:
-        data["data_overall_summary"] = overall_summary
-    if (shrunk := read_hdf_cycling_shrunk(file)) is not None:
-        data["data_cycling_shrunk"] = shrunk
-    return data
-
-
-def write_hdf(data: DataBundle, output_file: str | Path) -> None:
-    """Write a data bundle to hdf."""
-    data["data_cycling"].to_hdf(
-        output_file,
-        key="data/cycling",
-        mode="w",
-        complib="blosc",
-        complevel=9,
-    )
-    if (eis_df := data.get("data_eis")) is not None:
-        eis_df.to_hdf(
-            output_file,
-            key="data/eis",
-            mode="a",
-            complib="blosc",
-            complevel=9,
-        )
-    if (summary_df := data.get("data_cycle_summary")) is not None:
-        summary_df.to_hdf(
-            output_file,
-            key="data/cycle_summary",
-            mode="a",
-            complib="blosc",
-            complevel=9,
-        )
-    with h5py.File(output_file, "a") as f:
-        if (overall := data.get("data_overall_summary")) is not None:
-            f.create_dataset("data/overall_summary", data=json.dumps(overall))
-        f.create_dataset("metadata", data=json.dumps(data["metadata"]))
-
-
-def get_full_file(sample_id: str) -> Path:
-    """Get Path to sample data."""
+def get_sample_folder(sample_id: str) -> Path:
+    """Get sample data folder."""
     run_id = run_from_sample(sample_id)
-    return CONFIG["Processed snapshots folder path"] / run_id / sample_id / f"full.{sample_id}.h5"
+    return CONFIG["Processed snapshots folder path"] / run_id / sample_id
 
 
-def get_data_bundle(sample_id: str) -> DataBundle:
-    """Get data bundle from Sample ID."""
-    return read_hdf_data_bundle(get_full_file(sample_id))
-
-
-def get_cycling(sample_id: str) -> pd.DataFrame:
+def get_cycling(sample_id: str) -> pl.DataFrame:
     """Get cycling data from Sample ID."""
-    return read_hdf_cycling(get_full_file(sample_id))
+    folder = get_sample_folder(sample_id)
+    if (data_path := folder / f"full.{sample_id}.parquet").exists():
+        return pl.read_parquet(data_path)
+    if (data_path := folder / f"shrunk.{sample_id}.h5").exists():
+        return pl.DataFrame(pd.read_hdf(data_path))
+    msg = "No data found."
+    raise FileNotFoundError(msg)
 
 
-def get_cycling_shrunk(sample_id: str) -> pd.DataFrame | None:
-    """Get cycling data from Sample ID."""
-    return read_hdf_cycling_shrunk(get_full_file(sample_id))
+def get_cycling_shrunk(sample_id: str) -> pl.DataFrame | None:
+    """Get shrunk cycling data from Sample ID."""
+    folder = get_sample_folder(sample_id)
+    if (data_path := folder / f"shrunk.{sample_id}.parquet").exists():
+        return pl.read_parquet(data_path)
+    if (data_path := folder / f"shrunk.{sample_id}.h5").exists():
+        return pl.DataFrame(pd.read_hdf(data_path))
+    return None
 
 
-def get_eis(sample_id: str) -> pd.DataFrame | None:
+def get_eis(sample_id: str) -> pl.DataFrame | None:
     """Get EIS data from Sample ID."""
-    return read_hdf_eis(get_full_file(sample_id))
+    folder = get_sample_folder(sample_id)
+    if (data_path := folder / f"eis.{sample_id}.parquet").exists():
+        return pl.read_parquet(data_path)
+    return None
 
 
-def get_cycle_summary(sample_id: str) -> pd.DataFrame | None:
+def get_cycles_summary(sample_id: str) -> pl.DataFrame | None:
     """Get per-cycle summary data from Sample ID."""
-    return read_hdf_cycle_summary(get_full_file(sample_id))
+    folder = get_sample_folder(sample_id)
+    if (data_path := folder / f"cycles.{sample_id}.parquet").exists():
+        return pl.read_parquet(data_path)
+    if (data_path := folder / f"cycles.{sample_id}.json").exists():
+        with data_path.open("r") as f:
+            data = json.load(f)["data"]
+            data = {k: v for k, v in data.items() if isinstance(v, list)}
+        return pl.DataFrame(data)
+    return None
 
 
 def get_overall_summary(sample_id: str) -> dict | None:
-    """Get per-cycle summary data from Sample ID."""
-    return read_hdf_overall_summary(get_full_file(sample_id))
-
-
-def get_combined_summary(sample_id: str) -> pd.DataFrame | None:
-    """Get per-cycle summary data with extra info from Sample ID."""
-    return read_hdf_combined_summary(get_full_file(sample_id))
+    """Get overall data, single scalar quantites from cycling."""
+    folder = get_sample_folder(sample_id)
+    if (data_path := folder / f"overall.{sample_id}.json").exists():
+        with data_path.open("r") as f:
+            return json.load(f)
+    if (data_path := folder / f"cycles.{sample_id}.json").exists():
+        with data_path.open("r") as f:
+            data = json.load(f)["data"]
+            return {k: v for k, v in data.items() if not isinstance(v, list)}
+    return None
 
 
 def get_metadata(sample_id: str) -> dict | None:
-    """Get metadata from a sample."""
-    return read_hdf_metadata(get_full_file(sample_id))
+    """Get sample metadata dictionary."""
+    folder = get_sample_folder(sample_id)
+    if (data_path := folder / f"metadata.{sample_id}.json").exists():
+        with data_path.open("r") as f:
+            return json.load(f)["metadata"]
+    if (data_path := folder / f"cycles.{sample_id}.json").exists():
+        with data_path.open("r") as f:
+            return json.load(f)["metadata"]
+    if (data_path := folder / f"full.{sample_id}.h5").exists():
+        with h5py.File(data_path, "r") as f:
+            return json.loads(f["metadata"][()])
+    return None
+
+
+class SampleDataBundle:
+    """Lazy-loading wrapper for sample data with support for pre-loaded data."""
+
+    def __init__(
+        self,
+        sample_id: str,
+        *,
+        cycling: pl.DataFrame | None = None,
+        cycling_shrunk: pl.DataFrame | None = None,
+        eis: pl.DataFrame | None = None,
+        cycles_summary: pl.DataFrame | None = None,
+        overall_summary: dict | None = None,
+        metadata: dict | None = None,
+    ) -> None:
+        """Initialize with sample_id and optionally pre-loaded data.
+
+        Args:
+            sample_id: Sample identifier
+            cycling: Pre-loaded cycling data (optional)
+            cycling_shrunk: Pre-loaded shrunk cycling data (optional)
+            eis: Pre-loaded electrochemical impedance (optional)
+            cycles_summary: Pre-loaded cycles summary (optional)
+            overall_summary: Pre-loaded overall summary (optional)
+            metadata: Pre-loaded metadata (optional)
+
+        """
+        self.sample_id = sample_id
+        self._preloaded = {
+            "cycling": cycling,
+            "cycling_shrunk": cycling_shrunk,
+            "eis": eis,
+            "cycles_summary": cycles_summary,
+            "overall_summary": overall_summary,
+            "metadata": metadata,
+        }
+
+    @cached_property
+    def cycling(self) -> pl.DataFrame | None:
+        """Time series cycling data."""
+        if self._preloaded["cycling"] is not None:
+            return self._preloaded["cycling"]
+        return get_cycling(self.sample_id)
+
+    @cached_property
+    def cycling_shrunk(self) -> pl.DataFrame | None:
+        """Shrunk time series cycling data."""
+        if self._preloaded["cycling_shrunk"] is not None:
+            return self._preloaded["cycling_shrunk"]
+        return get_cycling_shrunk(self.sample_id)
+
+    @cached_property
+    def eis(self) -> pl.DataFrame | None:
+        """Shrunk time series cycling data."""
+        if self._preloaded["eis"] is not None:
+            return self._preloaded["eis"]
+        return get_cycling_shrunk(self.sample_id)
+
+    @cached_property
+    def cycles_summary(self) -> pl.DataFrame | None:
+        """Per-cycle summary data."""
+        if self._preloaded["cycles_summary"] is not None:
+            return self._preloaded["cycles_summary"]
+        return get_cycles_summary(self.sample_id)
+
+    @cached_property
+    def overall_summary(self) -> dict | None:
+        """Overall summary stats."""
+        if self._preloaded["overall_summary"] is not None:
+            return self._preloaded["overall_summary"]
+        return get_overall_summary(self.sample_id)
+
+    @cached_property
+    def metadata(self) -> dict | None:
+        """Metadata."""
+        if self._preloaded["metadata"] is not None:
+            return self._preloaded["metadata"]
+        return get_metadata(self.sample_id)
