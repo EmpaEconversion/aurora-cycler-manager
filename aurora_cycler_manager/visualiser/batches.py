@@ -3,9 +3,7 @@
 Batches tab layout and callbacks for the visualiser app.
 """
 
-import json
 import textwrap
-from pathlib import Path
 
 import dash_mantine_components as dmc
 import numpy as np
@@ -19,7 +17,7 @@ from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 from plotly.colors import hex_to_rgb, label_rgb, sample_colorscale
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.stdlib_utils import run_from_sample
+from aurora_cycler_manager.data_bundle import get_cycles_summary, get_overall_summary
 from aurora_cycler_manager.visualiser.funcs import correlation_matrix
 
 CONFIG = get_config()
@@ -534,12 +532,8 @@ def register_batches_callbacks(app: Dash) -> None:
         for s in sample_set:
             if s in data:
                 continue
-            run_id = run_from_sample(s)
-            file_location = Path(CONFIG["Processed snapshots folder path"]) / run_id / s / f"cycles.{s}.json"
-            if not file_location.exists():
-                continue
-            with file_location.open(encoding="utf-8") as f:
-                data[s] = json.load(f)["data"]
+            if (df := get_cycles_summary(s)) is not None and (overall_dict := get_overall_summary(s)) is not None:
+                data[s] = {**df.to_dict(as_series=False), **overall_dict}
 
         # y-axis options are lists in data
         # color options are non-lists

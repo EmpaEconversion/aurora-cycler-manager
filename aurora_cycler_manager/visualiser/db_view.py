@@ -3,7 +3,6 @@
 Database view tab layout and callbacks for the visualiser app.
 """
 
-import base64
 import json
 import logging
 import tempfile
@@ -15,6 +14,7 @@ from typing import Literal
 
 import dash_ag_grid as dag
 import dash_mantine_components as dmc
+import dash_uploader as du
 import paramiko
 from dash import ALL, Dash, Input, NoUpdate, Output, State, callback, clientside_callback, dcc, html, no_update
 from dash import callback_context as ctx
@@ -66,8 +66,10 @@ except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
 
 # ---------------------------- Utility functions ----------------------------- #
 
-DOWNLOAD_DIR = Path(tempfile.gettempdir()) / "aurora_tmp"
+DOWNLOAD_DIR = Path(tempfile.gettempdir()) / "aurora_download_tmp"
 DOWNLOAD_DIR.mkdir(exist_ok=True, parents=True)
+UPLOAD_DIR = Path(tempfile.gettempdir()) / "aurora_upload_tmp"
+UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
 
 
 def cleanup_temp_folder() -> None:
@@ -533,10 +535,10 @@ download_modal = dmc.Modal(
                 legend="Select files to download",
                 children=dmc.Stack(
                     [
-                        dmc.Checkbox(label="HDF5 time-series", id="download-hdf"),
                         dmc.Checkbox(label="BDF CSV time-series", id="download-bdf-csv"),
                         dmc.Checkbox(label="BDF parquet time-series", id="download-bdf-parquet"),
-                        dmc.Checkbox(label="JSON cycling summary", id="download-json-summary"),
+                        dmc.Checkbox(label="CSV cycling summary", id="download-cycles-csv"),
+                        dmc.Checkbox(label="Parquet cycling summary", id="download-cycles-parquet"),
                         dmc.Checkbox(label="JSON-LD ontologised metadata", id="download-jsonld"),
                     ]
                 ),
@@ -619,7 +621,6 @@ upload_modal = dmc.Modal(
     title="Upload",
     children=dmc.Stack(
         [
-            dcc.Store(id="upload-store", data={"file": None, "data": None}),
             dmc.Text("You can upload:"),
             dmc.List(
                 [
@@ -629,19 +630,9 @@ upload_modal = dmc.Modal(
                     dmc.ListItem("Unicycler protocols as a .json file"),
                 ]
             ),
-            dcc.Upload(
-                dmc.Button(
-                    "Drag & drop or select file",
-                    id="upload-data-button-element",
-                    fullWidth=True,
-                    style={"width": "100%"},
-                ),
-                id="upload-data-button",
-                accept=".json,.zip,.xlsx,.jsonld",
-                max_size=512 * 1024 * 1024,
-                multiple=False,
-                style={"display": "block", "width": "100%"},
-            ),
+            du.Upload(id="dash-uploader", max_file_size=2048),
+            dcc.Store(id="upload-filepath", data=""),
+            dcc.Store(id="upload-store", data={"file": None, "data": None}),
             dmc.Alert(
                 title="File status",
                 children="You haven't uploaded anything",
@@ -727,6 +718,7 @@ def register_db_view_callbacks(app: Dash) -> None:
     """Register callbacks for the database view layout."""
     register_batch_edit_callbacks(app)
     register_protocol_edit_callbacks(app)
+    du.configure_upload(app, UPLOAD_DIR)
 
     # Update data in tables when it changes
     @app.callback(
@@ -1380,7 +1372,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         sample_ids = [s["Sample ID"] for s in selected_rows]
         logger.info("Labelling [%s] with '%s'", ", ".join(sample_ids), label)
         update_sample_label(sample_ids, label)
-        logger.info("Updating metadata in cycles.*.json and full.*.h5 files")
+        logger.info("Updating metadata in data files")
         update_sample_metadata(sample_ids)
         return 1
 
@@ -1445,8 +1437,8 @@ def register_db_view_callbacks(app: Dash) -> None:
         Input("download-button", "n_clicks"),
         Input("upload-zenodo-info-button", "contents"),
         Input("download-jsonld", "checked"),
-        Input("download-hdf", "checked"),
-        Input("download-json-summary", "checked"),
+        Input("download-cycles-csv", "checked"),
+        Input("download-cycles-parquet", "checked"),
         Input("download-bdf-parquet", "checked"),
         Input("download-bdf-csv", "checked"),
         prevent_initial_call=True,
@@ -1488,16 +1480,16 @@ def register_db_view_callbacks(app: Dash) -> None:
         ],
         state=[
             State("selected-rows-store", "data"),
-            State("download-hdf", "checked"),
-            State("download-json-summary", "checked"),
+            State("download-cycles-parquet", "checked"),
+            State("download-cycles-csv", "checked"),
             State("download-bdf-parquet", "checked"),
             State("download-bdf-csv", "checked"),
             State("download-jsonld", "checked"),
             State("upload-zenodo-info-button", "contents"),
         ],
         running=[
-            (Output("download-hdf", "disabled"), True, False),
-            (Output("download-json-summary", "disabled"), True, False),
+            (Output("download-cycles-parquet", "disabled"), True, False),
+            (Output("download-cycles-csv", "disabled"), True, False),
             (Output("download-bdf-parquet", "disabled"), True, False),
             (Output("download-bdf-csv", "disabled"), True, False),
             (Output("download-jsonld", "disabled"), True, False),
@@ -1517,8 +1509,8 @@ def register_db_view_callbacks(app: Dash) -> None:
         set_progress: Callable,
         _yes_clicks: int,
         selected_rows: list,
-        download_hdf: bool | None,
-        download_json: bool | None,
+        download_cycles_parquet: bool | None,
+        download_cycles_csv: bool | None,
         download_bdf_parquet: bool | None,
         download_bdf_csv: bool | None,
         download_jsonld: bool | None,
@@ -1528,16 +1520,16 @@ def register_db_view_callbacks(app: Dash) -> None:
         cleanup_temp_folder()
         sample_ids = [s["Sample ID"] for s in selected_rows]
         filetypes = {
-            "hdf5": download_hdf,
             "bdf-parquet": download_bdf_parquet,
             "bdf-csv": download_bdf_csv,
-            "cycles-json": download_json,
+            "cycles-csv": download_cycles_csv,
+            "cycles-parquet": download_cycles_parquet,
             "metadata-jsonld": download_jsonld,
         }
-        filetypes = {ft for ft, enabled in filetypes.items() if enabled}  # Convert to set
+        filetype_set = {ft for ft, enabled in filetypes.items() if enabled}  # Convert to set
         temp_zip_path = DOWNLOAD_DIR / f"aurora_{uuid.uuid4().hex}.zip"
         try:
-            file_io.create_rocrate(sample_ids, filetypes, temp_zip_path, zenodo_info, set_progress)
+            file_io.create_rocrate(sample_ids, filetype_set, temp_zip_path, zenodo_info, set_progress)
         except ValueError:
             return "", True, True
         else:
@@ -1575,20 +1567,28 @@ def register_db_view_callbacks(app: Dash) -> None:
         raise PreventUpdate
 
     # Figure out what was just uploaded and tell the user
+    @du.callback(
+        output=Output("upload-filepath", "data"),
+        id="dash-uploader",
+    )
+    def callback_on_completion(status: du.UploadStatus) -> str:
+        """Update filepath when upload finished."""
+        return str(status.uploaded_files[0])
+
     @app.callback(
         Output("upload-alert", "children"),
         Output("upload-alert", "color"),
         Output("upload-data-confirm-button", "disabled"),
         Output("upload-store", "data"),
-        Input("upload-data-button", "contents"),
-        State("upload-data-button", "filename"),
+        Input("upload-filepath", "data"),
         State("selected-rows-store", "data"),
+        running=[
+            (Output("upload-data-button-element", "loading"), True, False),
+        ],
         prevent_initial_call=True,
     )
-    def figure_out_files(contents: str, filename: str, selected_rows: list) -> tuple[str, str, bool, dict]:
-        _content_type, content_string = contents.split(",")
-        decoded = base64.b64decode(content_string)
-        return file_io.determine_uploaded(decoded, filename, selected_rows)
+    def figure_out_files(filepath: str, selected_rows: list) -> tuple[str, str, bool, dict]:
+        return file_io.determine_file(filepath, selected_rows)
 
     # If you leave the upload modal, wipe the contents
     @app.callback(
@@ -1607,7 +1607,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("upload-data-confirm-button", "n_clicks"),
         State("upload-store", "data"),
-        State("upload-data-button", "contents"),
+        State("upload-filepath", "data"),
         State("selected-rows-store", "data"),
         running=[
             (Output("loading-message-store", "data"), "Processing data...", ""),
@@ -1615,9 +1615,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         ],
         prevent_initial_call=True,
     )
-    def process_file(n_clicks: int, data: dict, contents: str, selected_rows: list) -> int:
+    def process_file(n_clicks: int, data: dict, filepath: str, selected_rows: list) -> int:
         if not n_clicks:
             raise PreventUpdate
-        _content_type, content_string = contents.split(",")
-        decoded = base64.b64decode(content_string)
-        return file_io.process_uploaded(data, decoded, selected_rows)
+        return file_io.process_file(data, filepath, selected_rows)

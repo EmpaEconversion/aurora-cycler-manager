@@ -3,7 +3,6 @@
 Functions for file upload and download.
 """
 
-import builtins
 import contextlib
 import io
 import json
@@ -21,6 +20,7 @@ import aurora_cycler_manager.battinfo_utils as bu
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.bdf_converter import aurora_to_bdf
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.data_bundle import get_cycles_summary, get_cycling
 from aurora_cycler_manager.database_funcs import (
     add_protocol_to_job,
     add_samples_from_object,
@@ -65,14 +65,17 @@ def is_unicycler_protocol(obj: list | str | dict) -> bool:
     return isinstance(obj, dict) and bool(obj.get("unicycler"))
 
 
-def determine_uploaded(decoded_bytes: bytes, filename: str, selected_rows: list) -> tuple[str, str, bool, dict]:
+def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str, bool, dict]:
     """Determine what the uploaded file should do."""
-    if not decoded_bytes:
+    logger.info("Determining upload")
+    filepath = Path(filepath)
+    if not filepath or not filepath.exists():
         return "Nothing uploaded", "grey", True, {"file": None, "data": None}
 
-    if filename.endswith((".jsonld", ".json")):
+    if filepath.suffix in {".jsonld", ".json"}:
         # It could be ontology or samples
-        data = json.loads(decoded_bytes)
+        with filepath.open("r") as f:
+            data = json.load(f)
         if is_samples_json(data):
             samples = [d.get("Sample ID") for d in data]
             known_samples = set(get_all_sampleids())
@@ -150,9 +153,9 @@ def determine_uploaded(decoded_bytes: bytes, filename: str, selected_rows: list)
                 {"file": "unicycler-json", "data": data},
             )
 
-    elif filename.endswith(".xlsx"):
+    elif filepath.suffix == ".xlsx":
         # It is probably a battinfo xlsx file
-        excel_file = pd.ExcelFile(io.BytesIO(decoded_bytes))
+        excel_file = pd.ExcelFile(filepath)
         sheet_names = [str(s) for s in excel_file.sheet_names]
         expected_sheets = ["Schema", "@context-TopLevel", "@context-Connector", "Ontology - Unit", "Unique ID"]
         if not all(sheet in expected_sheets for sheet in sheet_names):
@@ -176,12 +179,9 @@ def determine_uploaded(decoded_bytes: bytes, filename: str, selected_rows: list)
             {"file": "battinfo-xlsx", "data": None},  # Don't copy the content_string
         )
 
-    elif filename.endswith(".zip"):
-        # Wrap in BytesIO so we can use it like a file
-        zip_buffer = io.BytesIO(decoded_bytes)
-
+    elif filepath.suffix == ".zip":
         # Open the zip archive
-        with zipfile.ZipFile(zip_buffer, "r") as zip_file:
+        with zipfile.ZipFile(filepath, "r") as zip_file:
             # List the contents
             valid_files = {}
             invalid_files = {}
@@ -201,13 +201,13 @@ def determine_uploaded(decoded_bytes: bytes, filename: str, selected_rows: list)
                     invalid_files[file] = f"Folder {folder} is not a Sample ID in the database"
                     continue
                 filetype = file.split(".")[-1]
-                if filetype in ["mpl"]:  # silently ignore - sidecar file
+                if filetype == "mpl":  # silently ignore - sidecar file
                     continue
-                if filetype not in ["mpr"]:
-                    invalid_files[file] = f"Filetype {filetype} is not supported"
+                if filetype in {"mpr", "xlsx"}:
+                    valid_files[file] = folder
                     continue
+                invalid_files[file] = f"Filetype {filetype} is not supported"
 
-                valid_files[file] = folder
         if valid_files:
             msg = "Got a zip with valid files\nAdding data for the following samples:\n" + "\n".join(
                 sorted(set(valid_files.values()))
@@ -227,10 +227,31 @@ def determine_uploaded(decoded_bytes: bytes, filename: str, selected_rows: list)
     return "File not understood", "red", True, {"file": None, "data": None}
 
 
-def process_uploaded(data: dict, decoded_bytes: bytes, selected_rows: list) -> int:
+def save_battinfo(data: dict, file: str | Path | io.BytesIO, sample_ids: list[str]) -> None:
+    """Convert BattINFO to jsonld and save in sample folder."""
+    battinfo_jsonld = (
+        convert_excel_to_jsonld(file, debug_mode=False) if data["file"] == "battinfo-xlsx" else data["data"]
+    )
+    # Merge json with database info and save
+    for s in sample_ids:
+        sample_data = get_sample_data(s)
+        merged_jsonld = bu.merge_battinfo_with_db_data(battinfo_jsonld, sample_data)
+        run_id = run_from_sample(s)
+        save_path = CONFIG["Processed snapshots folder path"] / run_id / s / f"battinfo.{s}.jsonld"
+        logger.info("Saving battinfo json-ld file to %s", save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        with save_path.open("w", encoding="utf-8") as f:
+            json.dump(merged_jsonld, f, indent=4)
+
+
+def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
     """Process the uploaded file."""
-    if not decoded_bytes:
-        msg = "No contents"
+    filepath = Path(filepath)
+    if not data.get("file"):
+        msg = "No file type provided"
+        raise ValueError(msg)
+    if not filepath or not filepath.exists():
+        msg = "No file provided"
         raise ValueError(msg)
     match data.get("file"):
         case "samples-json":
@@ -256,27 +277,11 @@ def process_uploaded(data: dict, decoded_bytes: bytes, selected_rows: list) -> i
 
         case "battinfo-jsonld" | "battinfo-xlsx":
             try:
-                # If xlsx, first convert to dict
-                battinfo_jsonld = (
-                    convert_excel_to_jsonld(io.BytesIO(decoded_bytes))
-                    if data["file"] == "battinfo-xlsx"
-                    else data["data"]
-                )
-
-                # Merge json with database info and save
-                samples = [s.get("Sample ID") for s in selected_rows if s.get("Sample ID")]
-                for s in samples:
-                    sample_data = get_sample_data(s)
-                    merged_jsonld = bu.merge_battinfo_with_db_data(battinfo_jsonld, sample_data)
-                    run_id = run_from_sample(s)
-                    save_path = CONFIG["Processed snapshots folder path"] / run_id / s / f"battinfo.{s}.jsonld"
-                    logger.info("Saving battinfo json-ld file to %s", save_path)
-                    save_path.parent.mkdir(parents=True, exist_ok=True)
-                    with save_path.open("w", encoding="utf-8") as f:
-                        json.dump(merged_jsonld, f, indent=4)
+                sample_ids = [s.get("Sample ID") for s in selected_rows if s.get("Sample ID")]
+                save_battinfo(data, filepath, sample_ids)
                 success_notification(
                     "BattINFO json-ld uploaded",
-                    f"JSON-LD merged with data from {len(samples)} samples",
+                    f"JSON-LD merged with data from {len(sample_ids)} samples",
                     queue=True,
                 )
             except Exception as e:
@@ -336,24 +341,23 @@ def process_uploaded(data: dict, decoded_bytes: bytes, selected_rows: list) -> i
             return 1
 
         case "zip":
-            zip_buffer = io.BytesIO(decoded_bytes)
             valid_files = data["data"]
             successful_samples = set()
-            with zipfile.ZipFile(zip_buffer, "r") as zip_file:
-                for filepath, sample_id in valid_files.items():
-                    filename = filepath.split("/")[-1]
+            with zipfile.ZipFile(filepath, "r") as zip_file:
+                for subfilepath, sample_id in valid_files.items():
+                    filename = subfilepath.split("/")[-1]
                     try:
-                        with zip_file.open(filepath) as file:
+                        with zip_file.open(subfilepath) as file:
                             match filename.split(".")[-1]:
                                 case "mpr":
                                     # Check if there is an associated mpl file
-                                    mpl_filename = filename.replace(".mpr", ".mpl")
+                                    mpl_filename = subfilepath.replace(".mpr", ".mpl")
                                     if mpl_filename in zip_file.namelist():
                                         with zip_file.open(mpl_filename) as f:
                                             mpl_file = f.read()
                                     else:
                                         mpl_file = None
-                                    # Convert and save hdf from mpr file
+                                    # Convert mpr file and save
                                     logger.info("Processing file: %s", filename)
                                     convert_mpr(
                                         file.read(),
@@ -366,6 +370,14 @@ def process_uploaded(data: dict, decoded_bytes: bytes, selected_rows: list) -> i
                                     success_notification(
                                         "File processed",
                                         f"{filename}",
+                                        queue=True,
+                                    )
+                                case "xlsx":
+                                    xlsx_bytes = io.BytesIO(file.read())
+                                    save_battinfo({"file": "battinfo-xlsx"}, xlsx_bytes, [sample_id])
+                                    success_notification(
+                                        "File processed",
+                                        f"BattINFO json-ld added to {sample_id}",
                                         queue=True,
                                     )
                     except Exception as e:
@@ -404,7 +416,7 @@ def create_rocrate(
     Args:
         sample_ids: List of sample IDs to add to ro-crate.
         filetypes: set of file types, subset of:
-            {"hdf5","bdf-csv","bdf-parquet","cycles-json","metadata-jsonld"}
+            {"bdf-csv","bdf-parquet","cycles-json","metadata-jsonld"}
         zip_path: Path of where to save zip.
         zenodo_info (optional): Path to zenodo info xlsx file.
         set_progress (used by app): Function for progress bar.
@@ -457,99 +469,90 @@ def create_rocrate(
             messages += f"{sample_id} - "
             warnings = []
             errors = []
-            hdf5_file = None
-            bdf_df = None
+            df = None
 
-            # If time-series data is requested, get the hdf5 file
-            if {"hdf5", "bdf-csv", "bdf-parquet"} & filetypes:
-                hdf5_file = next(Path(sample_folder).glob("full.*.h5"), None)
-                # If bdf is requested, convert the dataframe
-                if hdf5_file and {"bdf-csv", "bdf-parquet"} & filetypes:
-                    with contextlib.suppress(builtins.BaseException):
-                        bdf_df = aurora_to_bdf(pd.read_hdf(hdf5_file))
-
+            # If bdf is requested, convert the file
+            if {"bdf-csv", "bdf-parquet"} & filetypes:
+                with contextlib.suppress(FileNotFoundError):
+                    df = aurora_to_bdf(get_cycling(sample_id))
             # Loop through requested files
             for filetype in filetypes:
                 i += 1
                 try:
-                    if filetype == "hdf5":
-                        if hdf5_file is None:
-                            logger.warning("No time-series data for %s", sample_id)
+                    if filetype == "cycles-csv":
+                        cycles_df = get_cycles_summary(sample_id)
+                        if cycles_df is None:
+                            logger.warning("No cycles summary file found for %s", sample_id)
                             messages += "⚠️"
                             warnings.append(filetype)
                             color = "orange"
                             continue
-                        rel_file_path = sample_id + "/" + hdf5_file.name
-                        zf.write(hdf5_file, rel_file_path)
-                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
-                        rocrate["@graph"].append(
-                            {
-                                "@id": rel_file_path,
-                                "@type": "File",
-                                "about": {"@id": ccid if ccid else sample_id},
-                                "encodingFormat": "application/octet-stream",
-                                "description": (
-                                    f"Time-series battery cycling data for sample: '{sample_id}'"
-                                    + (f" with CCID: '{ccid}'. " if ccid else ". ")
-                                    + "Data is in HDF5 format, keys are 'data' and 'metadata'. "
-                                    "'data' contains an export from a Python Pandas dataframe. "
-                                    "'metadata' contains a JSON-string with info about the sample and experiment."
-                                ),
-                            }
-                        )
-                        battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
+                        buffer = io.BytesIO()
+                        cycles_df.write_csv(buffer)
+                        buffer.seek(0)
+                        rel_file_path = sample_id + f"/cycles.{sample_id}.csv"
+                        zf.writestr(rel_file_path, buffer.read())
                         messages += "✅"
 
-                    if filetype == "cycles-json":
-                        json_file = next(Path(sample_folder).glob("cycles.*.json"), None)
-                        if not json_file:
-                            logger.warning("No JSON summary file found for %s", sample_id)
-                            messages += "⚠️"
-                            warnings.append("JSON summary")
-                            color = "orange"
-                            continue
-                        with json_file.open("rb") as f:
-                            json_bytes = f.read()
-                        rel_file_path = sample_id + "/" + json_file.name
-                        zf.writestr(rel_file_path, json_bytes)
-                        messages += "✅"
                         rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
                         rocrate["@graph"].append(
                             {
                                 "@id": rel_file_path,
                                 "@type": "File",
-                                "encodingFormat": "text/json",
+                                "encodingFormat": "text/csv",
                                 "about": {"@id": ccid if ccid else sample_id},
                                 "description": (
                                     f"Summary data from battery cycling for sample: '{sample_id}'"
                                     + (f" with CCID: '{ccid}'. " if ccid else ". ")
-                                    + "File is in JSON format, top level keys are 'data' and 'metadata'. "
-                                    "'data' contains lists with per-cycle summary stastics, e.g. discharge capacity. "
-                                    "'metadata' contains sample and experiment information."
+                                    + "File is in CSV format, and per-cycle summary stastics, e.g. discharge capacity."
+                                ),
+                            }
+                        )
+                        battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
+
+                    if filetype == "cycles-parquet":
+                        cycles_df = get_cycles_summary(sample_id)
+                        if cycles_df is None:
+                            logger.warning("No cycles summary file found for %s", sample_id)
+                            messages += "⚠️"
+                            warnings.append(filetype)
+                            color = "orange"
+                            continue
+                        buffer = io.BytesIO()
+                        cycles_df.write_parquet(buffer)
+                        buffer.seek(0)
+                        rel_file_path = sample_id + f"/cycles.{sample_id}.parquet"
+                        zf.writestr(rel_file_path, buffer.read())
+                        messages += "✅"
+
+                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                        rocrate["@graph"].append(
+                            {
+                                "@id": rel_file_path,
+                                "@type": "File",
+                                "encodingFormat": "text/csv",
+                                "about": {"@id": ccid if ccid else sample_id},
+                                "description": (
+                                    f"Summary data from battery cycling for sample: '{sample_id}'"
+                                    + (f" with CCID: '{ccid}'. " if ccid else ". ")
+                                    + "File is in CSV format, and per-cycle summary stastics, e.g. discharge capacity."
                                 ),
                             }
                         )
                         battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
 
                     if filetype == "bdf-csv":
-                        if hdf5_file is None:
+                        if df is None:
                             logger.warning("No time-series data for %s", sample_id)
                             messages += "⚠️"
                             warnings.append(filetype)
                             color = "orange"
                             continue
-                        if bdf_df is None:
-                            logger.exception("Failed to convert to BDF %s", sample_id)
-                            messages += "⁉️"
-                            errors.append(filetype)
-                            color = "orange"
-                            continue
                         # convert to csv file and write to zip
                         buffer = io.BytesIO()
-                        bdf_df.to_csv(buffer, index=False)  # or index=True, depending on your needs
+                        df.write_csv(buffer)
                         buffer.seek(0)
-                        parquet_name = hdf5_file.with_suffix(".bdf.csv").name
-                        rel_file_path = sample_id + "/" + parquet_name
+                        rel_file_path = sample_id + f"/full.{sample_id}.bdf.csv"
                         zf.writestr(rel_file_path, buffer.read())
                         messages += "✅"
                         rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
@@ -569,23 +572,17 @@ def create_rocrate(
                         battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
 
                     if filetype == "bdf-parquet":
-                        if hdf5_file is None:
+                        if df is None:
                             logger.warning("No time-series data for %s", sample_id)
                             messages += "⚠️"
                             warnings.append(filetype)
                             color = "orange"
                             continue
-                        if bdf_df is None:
-                            logger.exception("Failed to convert to BDF %s", sample_id)
-                            messages += "⁉️"
-                            errors.append(filetype)
-                            color = "orange"
-                            continue
                         # convert to parquet file and write to zip
                         buffer = io.BytesIO()
-                        bdf_df.to_parquet(buffer, index=False)  # or index=True, depending on your needs
+                        df.write_parquet(buffer)
                         buffer.seek(0)
-                        parquet_name = hdf5_file.with_suffix(".bdf.parquet").name
+                        parquet_name = f"full.{sample_id}.bdf.parquet"
                         rel_file_path = sample_id + "/" + parquet_name
                         zf.writestr(rel_file_path, buffer.read())
                         messages += "✅"

@@ -49,14 +49,18 @@ def reset_all(test_dir: Path) -> Generator[None, None, None]:
     # Restore database
     shutil.copyfile(db_path.with_suffix(".bak"), db_path)
     # Remove sample files
-    for file in snapshots_path.rglob("*.h5"):
-        file.unlink()
-    for file in snapshots_path.rglob("cycles.*.json"):
-        file.unlink()
-    for file in snapshots_path.rglob("aux.*.jsonld"):
-        file.unlink()
-    for file in snapshots_path.rglob("battinfo.*.jsonld"):
-        file.unlink()
+    files_to_remove = [
+        "*.h5",
+        "*.parquet",
+        "cycles.*.json",
+        "aux.*.jsonld",
+        "battinfo.*.jsonld",
+        "metadata.*.json",
+        "overall.*.json",
+    ]
+    for rem in files_to_remove:
+        for file in snapshots_path.rglob(rem):
+            file.unlink()
     # Reset config
     with (test_dir / "test_config.json").open("w") as f:
         f.write(

@@ -526,11 +526,6 @@ def add_data(
             "csvw:tableSchema": "https://w3id.org/battery-data-alliance/ontology/battery-data-format/schema",
             "csvw:dialect": {"@type": "csvw:Dialect", "csvw:delimiter": ",", "csvw:skipRows": 0},
         }
-    elif rel_file_path.endswith(".h5"):
-        # Not a BDF but lets add it anyway
-        additions = {
-            "dcat:mediaType": "application/x-hdf5",
-        }
     elif rel_file_path.endswith(".json"):
         additions = {
             "dcat:mediaType": "application/json",
