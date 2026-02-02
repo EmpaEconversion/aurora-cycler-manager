@@ -8,7 +8,11 @@ from zipfile import ZipFile
 
 import pytest
 
+from aurora_cycler_manager.analysis import analyse_all_samples, shrink_all_samples
+from aurora_cycler_manager.data_bundle import get_cycling
 from aurora_cycler_manager.database_funcs import get_job_data, get_jobs_from_sample
+from aurora_cycler_manager.eclab_harvester import convert_all_mprs
+from aurora_cycler_manager.neware_harvester import convert_all_neware_data
 from aurora_cycler_manager.visualiser import file_io
 
 
@@ -234,3 +238,13 @@ def test_analyse_download_eclab_sample(
                 zenodo_info_str,
                 set_progress,
             )
+
+    def test_analyse_all(reset_all) -> None:
+        """Run all conversions and analysis."""
+        convert_all_neware_data()
+        convert_all_mprs()
+        analyse_all_samples()
+        shrink_all_samples()
+        df = get_cycling("250116_kigr_gen6_01")
+        assert len(df) > 10000
+        assert df["Cycle"].max() == 3
