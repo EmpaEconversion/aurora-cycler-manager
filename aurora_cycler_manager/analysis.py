@@ -425,6 +425,9 @@ def extract_voltage_crates(job_data: list[dict]) -> dict:
                         current, new_current = None, None
                         rate, new_rate = None, None
     global_max_V = round(global_max_V, 6) if global_max_V else None
+
+    finished = job_data[-1].get("Finished") if job_data else None  # Used in Newares
+
     return {
         "form_C": form_C,
         "form_max_V": form_max_V,
@@ -434,6 +437,7 @@ def extract_voltage_crates(job_data: list[dict]) -> dict:
         "cycle_min_V": cycle_min_V,
         "global_max_V": global_max_V,
         "form_cycle_count": form_cycle_count,
+        "finished": finished,
     }
 
 
@@ -444,8 +448,6 @@ def analyse_cycles(
 ) -> tuple[pl.DataFrame, dict]:
     """Analyse time-series dataframe, return per-cycle summary."""
     # Analyse each cycle in the cycling data
-    started_charge = False
-    started_discharge = False
     protocol_summary = protocol_summary or {}
     form_cycle_count = protocol_summary.get("form_cycle_count")
     finished = protocol_summary.get("finished")
@@ -491,10 +493,19 @@ def analyse_cycles(
         protocol_summary["form_cycle_count"] = form_cycle_count
 
     formed = len(summary_df) > form_cycle_count if form_cycle_count else False
-    # A row is added if charge data is complete and discharge started, but it may have incomplete discharge data
-    # If the job is not complete but a discharge has started, set the last discharge data to NaN
-    if started_charge and started_discharge and finished is False:  # job is still running
-        df["Discharge capacity (mAh)"][-1] = pl.Null
+
+    # A cycle can exist if there is charge and discharge data
+    # If discharge has started, but measurement hasn't finished, then set last discharge to None
+    if finished is False and df.filter(pl.col("Cycle") == pl.max("Cycle"), pl.col("I (A)") < 0).height > 5:
+        logger.critical("doing the thing")
+        summary_df = summary_df.with_columns(
+            pl.when(pl.int_range(pl.len()) == pl.len() - 1)
+            .then(None)
+            .otherwise(pl.col("Discharge capacity (mAh)"))
+            .alias("Discharge capacity (mAh)")
+        )
+    else:
+        logger.critical("not doing the thing")
 
     # Create a dictionary with the cycling data
     summary_df = summary_df.with_columns(
