@@ -77,16 +77,19 @@ def find_server(label: str) -> cycler_servers.CyclerServer:
 class _Pipeline:
     """A class representing a pipeline in the database."""
 
-    def __init__(self, pipeline_name: str, server_label: str, sample: "_Sample | None" = None) -> None:
+    def __init__(self, pipeline_name: str, server_label: str) -> None:
         """Initialize the _Pipeline object."""
         self.name = pipeline_name
         self.server_label = server_label
-        self.sample = sample
 
     @cached_property
     def server(self) -> CyclerServer:
         """Lazy-load the server object."""
         return find_server(self.server_label)
+
+    @property
+    def sample(self) -> "_Sample | None":
+        return _Sample.from_pipeline(self)
 
     @classmethod
     def from_id(cls, pipeline_name: str) -> "_Pipeline":
@@ -118,7 +121,7 @@ class _Pipeline:
         )
         if not result:
             return None
-        return cls(result[0][0], result[0][1], sample)
+        return cls(result[0][0], result[0][1])
 
     def load(self, sample: "_Sample") -> None:
         """Load the sample on a pipeline.
@@ -130,8 +133,8 @@ class _Pipeline:
                 The sample to load on the pipeline.
 
         """
-        if self.sample:
-            msg = f"The pipeline {self.name} on server {self.server} already has a sample loaded ({self.sample.id})."
+        if self.sample is not None:
+            msg = f"Pipeline {self.name}, server {self.server.label} already has a sample loaded: {self.sample.id}."
             raise ValueError(msg)
 
         if sample.pipeline:
@@ -141,33 +144,38 @@ class _Pipeline:
             )
             raise ValueError(msg)
 
-        self.sample = sample
-        sample.pipeline = self
-
         # Get pipeline and load
-        logger.info("Loading sample %s on server %s", self.sample.id, self.server.label)
+        logger.info("Loading sample %s on server %s", sample.id, self.server.label)
         dbf.execute_sql(
             "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
-            (self.sample.id, self.name),
+            (sample.id, self.name),
         )
 
-    def eject(self, sample: "_Sample | None" = None) -> None:
+    def eject(self, sample_id: str | None = None) -> None:
         """Eject the sample from a pipeline."""
         # Find server associated with pipeline
         logger.info("Ejecting sample from the pipeline %s on server: %s", self.name, self.server.label)
+        if self.sample is None:
+            msg = f"There is no sample to eject on pipeline {self.name}"
+            raise ValueError(msg)
+        if sample_id and self.sample and self.sample.id != sample_id:
+            msg = (
+                f"The pipeline {self.name} on server {self.server.label} has"
+                f" sample {self.sample.id} loaded, not {sample_id}."
+            )
+            raise ValueError(msg)
+        result = dbf.execute_sql(
+            "SELECT `Job ID` FROM pipelines WHERE `Pipeline` = ?",
+            (self.name,),
+        )
+        if result[0][0]:
+            msg = f"Cannot eject sample {self.sample.id} from {self.name}, job is currently running: {result[0][0]}"
+            raise ValueError(msg)
+        # Eject the sample
         dbf.execute_sql(
             "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = ? WHERE `Pipeline` = ?",
             (True, self.name),
         )
-        if self.sample:
-            if sample and self.sample.id != sample.id:
-                msg = (
-                    f"The pipeline {self.name} on server {self.server.label} has"
-                    f" sample {self.sample.id} loaded, not {sample.id}."
-                )
-                raise ValueError(msg)
-            self.sample.pipeline = None
-            self.sample = None
 
     def set_jobid(self, job_id: str, jobid_on_server: str | None = None) -> None:
         """Set the job ID on the pipeline in the database."""
@@ -274,7 +282,18 @@ class _Sample:
 
         return sample
 
-    @cached_property
+    @classmethod
+    def from_pipeline(cls, pipeline: "_Pipeline") -> "_Sample | None":
+        """Create a _Sample object from a _Pipeline object."""
+        result = dbf.execute_sql(
+            "SELECT `Sample ID` FROM pipelines WHERE `Pipeline` = ?",
+            (pipeline.name,),
+        )
+        if not result[0][0]:
+            return None
+        return cls(str(result[0][0]))
+
+    @property
     def pipeline(self) -> "_Pipeline | None":
         return _Pipeline.from_sample(self)
 
@@ -515,7 +534,7 @@ class ServerManager:
                 )
             conn.commit()
 
-    def load(self, sample_id: str, pipeline_id: str) -> None:
+    def load(self, pipeline_id: str, sample_id: str) -> None:
         """Load a sample on a pipeline.
 
         The appropriate server is found based on the pipeline, and the sample is loaded.
@@ -531,19 +550,17 @@ class ServerManager:
         pipeline = _Pipeline.from_id(pipeline_id)
         pipeline.load(sample)
 
-    def eject(self, sample_id: str, pipeline_id: str) -> None:
+    def eject(self, pipeline_id: str, sample_id: str | None = None) -> None:
         """Eject a sample from a pipeline.
 
         Args:
-            sample_id (str):
-                The sample ID to eject. Must exist in samples table of database
             pipeline_id (str):
                 The pipeline to eject the sample from, must exist in pipelines table of database
+            sample_id (str, optional):
+                Check that this sample is on the pipeline before ejecting
 
         """
-        sample = _Sample.from_id(sample_id)
-        pipeline = _Pipeline.from_id(pipeline_id)
-        pipeline.eject(sample)
+        _Pipeline.from_id(pipeline_id).eject(sample_id)
 
     def submit(
         self,

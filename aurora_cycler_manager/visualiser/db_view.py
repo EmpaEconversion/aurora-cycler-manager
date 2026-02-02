@@ -941,7 +941,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             return 0
         for row in selected_rows:
             logger.info("Ejecting Sample %s from the Pipeline %s", row["Sample ID"], row["Pipeline"])
-            sm.eject(row["Sample ID"], row["Pipeline"])
+            sm.eject(row["Pipeline"], row["Sample ID"])
         return 1
 
     # Load button pop up, includes dynamic dropdowns for selecting samples to load
@@ -1044,7 +1044,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             if not sample:
                 continue
             logger.info("Loading %s to %s", sample, pipeline)
-            sm.load(sample, pipeline)
+            sm.load(pipeline, sample)
         return 1
 
     # Submit button pop up
