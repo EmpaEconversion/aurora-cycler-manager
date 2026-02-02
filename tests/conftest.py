@@ -40,6 +40,7 @@ def reset_all(test_dir: Path) -> Generator[None, None, None]:
     # Make backup of database
     shutil.copyfile(db_path, db_path.with_suffix(".bak"))
     assert not any(snapshots_path.rglob("*.h5")), "Already h5 files in snapshots folder!"
+    assert not any(snapshots_path.rglob("*.parquet")), "Already parquet files in snapshots folder!"
     assert not any(snapshots_path.rglob("*.json")), "Already json files in snapshots folder!"
     assert not any(snapshots_path.rglob("*.jsonld")), "Already jsonld files in snapshots folder!"
     assert not any(test_dir.glob("temp_*")), "Already temp folders!"
