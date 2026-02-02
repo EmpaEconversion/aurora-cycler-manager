@@ -8,7 +8,15 @@ from zipfile import ZipFile
 
 import pytest
 
-from aurora_cycler_manager.database_funcs import get_job_data, get_jobs_from_sample
+from aurora_cycler_manager.analysis import (
+    analyse_all_batches,
+    analyse_all_samples,
+    shrink_all_samples,
+)
+from aurora_cycler_manager.data_bundle import get_cycling
+from aurora_cycler_manager.database_funcs import get_job_data, get_jobs_from_sample, save_or_overwrite_batch
+from aurora_cycler_manager.eclab_harvester import convert_all_mprs
+from aurora_cycler_manager.neware_harvester import convert_all_neware_data
 from aurora_cycler_manager.visualiser import file_io
 
 
@@ -49,10 +57,9 @@ def test_analyse_download_eclab_sample(
         zf.writestr("not_a_sample_in_the_db/thing.txt", "hello there")
         # Add file without sample folder
         zf.writestr("thing.txt", "hello there")
-    zip_buffer = zip_path.read_bytes()
 
     # 'Upload' the raw data
-    res = file_io.determine_uploaded(zip_buffer, zip_path.name, [])
+    res = file_io.determine_file(zip_path, [])
     assert "No valid files" in res[0]
     assert res[3]["file"] is None
 
@@ -67,31 +74,29 @@ def test_analyse_download_eclab_sample(
         zf.writestr("not_a_sample_in_the_db/thing.txt", "hello there")
         # Add file without sample folder
         zf.writestr("thing.txt", "hello there")
-    zip_buffer = zip_path.read_bytes()
 
     # 'Upload' the raw data
-    res = file_io.determine_uploaded(zip_buffer, zip_path.name, [])
+    res = file_io.determine_file(zip_path, [])
     assert "zip" in res[0]
     assert res[3]["file"] == "zip"
 
     # Should make some hdf5 and cycles json files
-    file_io.process_uploaded(res[3], zip_buffer, [])
-    assert (sample_folder / f"full.{sample_id}.h5").exists()
-    assert (sample_folder / f"cycles.{sample_id}.json").exists()
-    assert len(list(sample_folder.glob("snapshot.*.h5"))) == 2
+    file_io.process_file(res[3], zip_path, [])
+    assert (sample_folder / f"full.{sample_id}.parquet").exists()
+    assert (sample_folder / f"cycles.{sample_id}.parquet").exists()
+    assert len(list(sample_folder.rglob("snapshot.*"))) == 2
 
     # Uploading again should not add new files, should overwrite
     zip_path = tmp_path / "data.zip"
     with ZipFile(zip_path, mode="w") as zf:
         for file in raw_data_folder.iterdir():
             zf.write(file, arcname=Path(sample_id) / file.name)
-    zip_buffer = zip_path.read_bytes()
-    res = file_io.determine_uploaded(zip_buffer, zip_path.name, [])
+    res = file_io.determine_file(zip_path, [])
     assert "zip" in res[0]
     assert res[3]["file"] == "zip"
-    file_io.process_uploaded(res[3], zip_buffer, [])
+    file_io.process_file(res[3], zip_path, [])
     # Should still only be 2 snapshot files
-    assert len(list(sample_folder.glob("snapshot.*.h5"))) == 2
+    assert len(list(sample_folder.rglob("snapshot.*"))) == 2
 
     # Should make some Job IDs in the database
     jobs = get_jobs_from_sample(sample_id)
@@ -130,54 +135,55 @@ def test_analyse_download_eclab_sample(
             },
         ],
     }
-    unicycler_bytes = json.dumps(unicycler_dict).encode()
-
+    unicycler_file = tmp_path / "unicycler.json"
+    with unicycler_file.open("w") as f:
+        f.write(json.dumps(unicycler_dict))
     # 'Upload' the dict without job selected
-    res = file_io.determine_uploaded(unicycler_bytes, "unicycler.json", [])
+    res = file_io.determine_file(unicycler_file, [])
     assert "you must select jobs" in res[0]
     assert res[3]["file"] is None
     assert res[3]["data"] is None
 
     # 'Upload' the dict
-    res = file_io.determine_uploaded(unicycler_bytes, "unicycler.json", [{"Sample ID": sample_id, "Job ID": jobs[0]}])
+    res = file_io.determine_file(unicycler_file, [{"Sample ID": sample_id, "Job ID": jobs[0]}])
     assert "unicycler" in res[0]
     assert res[3]["file"] == "unicycler-json"
     assert res[3]["data"] == unicycler_dict
 
     # Should add a unicycler protocol to the database
-    file_io.process_uploaded(res[3], unicycler_bytes, [{"Sample ID": sample_id, "Job ID": jobs[0]}])
+    file_io.process_file(res[3], unicycler_file, [{"Sample ID": sample_id, "Job ID": jobs[0]}])
     job_data = get_job_data(jobs[0])
     assert job_data["Unicycler protocol"] == unicycler_dict
 
     # 'Upload' the dict again, should warn
-    res = file_io.determine_uploaded(unicycler_bytes, "unicycler.json", [job_data])
+    res = file_io.determine_file(unicycler_file, [job_data])
     assert "unicycler" in res[0]
     assert "this will overwrite data" in res[0]
     assert res[3]["file"] == "unicycler-json"
     assert res[3]["data"] == unicycler_dict
 
     # Upload a battinfo xlsx
-    zenodoinfo_xlsx_bytes = (test_dir / "misc" / "aurora_zenodo_info.xlsx").read_bytes()
-    battinfo_xlsx_bytes = (test_dir / "misc" / "BattINFO_example.xlsx").read_bytes()
+    zenodoinfo_xlsx = test_dir / "misc" / "aurora_zenodo_info.xlsx"
+    battinfo_xlsx = test_dir / "misc" / "BattINFO_example.xlsx"
 
     # Without samples selected warns
-    res = file_io.determine_uploaded(battinfo_xlsx_bytes, "some.xlsx", [])
+    res = file_io.determine_file(battinfo_xlsx, [])
     assert "must select samples" in res[0]
     assert res[3]["file"] is None
 
     # Wrong xslx complains
-    res = file_io.determine_uploaded(zenodoinfo_xlsx_bytes, "some.xlsx", [])
+    res = file_io.determine_file(zenodoinfo_xlsx, [])
     assert "does not have the expected sheets" in res[0]
     assert res[3]["file"] is None
 
     # With selected works
-    res = file_io.determine_uploaded(battinfo_xlsx_bytes, "some.xlsx", [{"Sample ID": sample_id}])
+    res = file_io.determine_file(battinfo_xlsx, [{"Sample ID": sample_id}])
     assert "BattINFO" in res[0]
     assert res[3]["file"] == "battinfo-xlsx"
     assert res[3]["data"] is None
 
     # Should add a unicycler protocol to the database
-    file_io.process_uploaded(res[3], battinfo_xlsx_bytes, [{"Sample ID": sample_id}])
+    file_io.process_file(res[3], battinfo_xlsx, [{"Sample ID": sample_id}])
     assert (sample_folder / f"battinfo.{sample_id}.jsonld").exists()
 
     # Upload an auxiliary jsonld
@@ -186,25 +192,27 @@ def test_analyse_download_eclab_sample(
         "@type": "CoinCell",
         "hasThing": "stuff",
     }
-    aux_jsonld_bytes = json.dumps(aux_jsonld).encode()
+    aux_json_file = tmp_path / "aux.json"
+    with aux_json_file.open("w") as f:
+        f.write(json.dumps(aux_jsonld))
     # 'Upload' the dict
-    res = file_io.determine_uploaded(aux_jsonld_bytes, "some.json", [{"Sample ID": sample_id}])
+    res = file_io.determine_file(aux_json_file, [{"Sample ID": sample_id}])
     assert "auxiliary" in res[0]
     assert res[3]["file"] == "aux-jsonld"
     assert res[3]["data"] == aux_jsonld
 
     # Should add a unicycler protocol to the database
-    file_io.process_uploaded(res[3], aux_jsonld_bytes, [{"Sample ID": sample_id}])
+    file_io.process_file(res[3], aux_json_file, [{"Sample ID": sample_id}])
     assert (sample_folder / f"aux.{sample_id}.jsonld").exists()
 
     # Include publication info - this is how data is uploaded to Dash
-    zenodo_info_str = f"xlsx,{base64.b64encode(zenodoinfo_xlsx_bytes).decode('utf-8')}"
+    zenodo_info_str = f"xlsx,{base64.b64encode(zenodoinfo_xlsx.read_bytes()).decode('utf-8')}"
 
     # Test downloading the files
     zip_file = tmp_path / "file.zip"
     file_io.create_rocrate(
         [sample_id],
-        {"hdf5", "bdf-parquet", "bdf-csv", "cycles-json", "metadata-jsonld"},
+        {"bdf-parquet", "bdf-csv", "cycles-csv", "cycles-parquet", "metadata-jsonld"},
         zip_file,
         zenodo_info_str,
         set_progress,
@@ -212,10 +220,10 @@ def test_analyse_download_eclab_sample(
     assert zip_file.exists()
     with ZipFile(zip_file, mode="r") as zf:
         files = zf.namelist()
-        assert f"{sample_id}/full.{sample_id}.h5" in files
         assert f"{sample_id}/full.{sample_id}.bdf.parquet" in files
         assert f"{sample_id}/full.{sample_id}.bdf.csv" in files
-        assert f"{sample_id}/cycles.{sample_id}.json" in files
+        assert f"{sample_id}/cycles.{sample_id}.parquet" in files
+        assert f"{sample_id}/cycles.{sample_id}.csv" in files
         assert f"{sample_id}/metadata.{sample_id}.jsonld" in files
         assert "ro-crate-metadata.json" in files
 
@@ -234,3 +242,32 @@ def test_analyse_download_eclab_sample(
                 zenodo_info_str,
                 set_progress,
             )
+
+
+def test_analyse_all(reset_all, test_dir: Path) -> None:
+    """Run all conversions and analysis."""
+    convert_all_neware_data()
+    convert_all_mprs()
+    analyse_all_samples()
+    analyse_all_samples(mode="if_not_exists")
+    analyse_all_samples(mode="always")
+    for shrunk_file in test_dir.rglob("shrunk.*.parquet"):
+        shrunk_file.unlink()
+    assert not any(test_dir.rglob("shrunk.*.parquet"))
+    shrink_all_samples()
+    assert any(test_dir.rglob("shrunk.*.parquet"))
+    save_or_overwrite_batch(
+        "test",
+        "this tests if batch analysis works",
+        [
+            "250116_kigr_gen6_01",
+            "240606_svfe_gen1_15",
+            "250127_svfe_gen21_01",
+        ],
+    )
+    analyse_all_batches()
+    assert (test_dir / "batches" / "test" / "batch.test.xlsx").exists()
+    assert (test_dir / "batches" / "test" / "batch.test.json").exists()
+    df = get_cycling("250116_kigr_gen6_01")
+    assert len(df) == 4183
+    assert df["Cycle"].max() == 3

@@ -3,21 +3,17 @@
 Samples tab layout and callbacks for the visualiser app.
 """
 
-import json
 import logging
-import os
-from pathlib import Path
 
 import dash_mantine_components as dmc
 import numpy as np
-import pandas as pd
 import plotly.graph_objs as go
 from dash import Dash, Input, Output, State, dcc, html
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
-from aurora_cycler_manager.analysis import calc_dqdv, combine_jobs
+from aurora_cycler_manager.analysis import calc_dqdv
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.stdlib_utils import run_from_sample
+from aurora_cycler_manager.data_bundle import get_cycles_summary, get_cycling, get_cycling_shrunk
 
 CONFIG = get_config()
 logger = logging.getLogger(__name__)
@@ -302,45 +298,30 @@ def register_samples_callbacks(app: Dash) -> None:
                     continue
 
             # Otherwise import the data
-            run_id = run_from_sample(sample)
-            data_folder = CONFIG["Processed snapshots folder path"]
-            file_location = str(data_folder / run_id / sample)
-
-            # Get raw data
-            try:
-                files = os.listdir(file_location)
-            except FileNotFoundError:
-                continue
-            if compressed and any(f.startswith("shrunk") and f.endswith(".h5") for f in files):
-                filepath = next(f for f in files if f.startswith("shrunk") and f.endswith(".h5"))
-                df = pd.read_hdf(f"{file_location}/{filepath}")
-                data_dict = df.to_dict(orient="list")
+            # Get time series data
+            logger.info("Searching for %s", sample)
+            if compressed and (df := get_cycling_shrunk(sample)) is not None:
+                data_dict = df.to_dict(as_series=False)
                 data_dict["Shrunk"] = True
+                logger.info("Found shrunk for %s", sample)
                 data["data_sample_time"][sample] = data_dict
-            elif any(f.startswith("full") and f.endswith(".h5") for f in files):
-                filepath = next(f for f in files if f.startswith("full") and f.endswith(".h5"))
-                df = pd.read_hdf(f"{file_location}/{filepath}")
-                data["data_sample_time"][sample] = df.to_dict(orient="list")
             else:
-                cycling_files = [
-                    os.path.join(file_location, f) for f in files if (f.startswith("snapshot") and f.endswith(".h5"))
-                ]
-                if not cycling_files:
-                    logger.info("No cycling files found in %s", file_location)
+                try:
+                    logger.info("Getting full for %s", sample)
+                    df = get_cycling(sample)
+                    data["data_sample_time"][sample] = df.to_dict(as_series=False)
+                except ValueError:
+                    logger.info("No cycling found for %s", sample)
                     continue
-                df, _metadata = combine_jobs([Path(f) for f in cycling_files])
-                data["data_sample_time"][sample] = df.to_dict(orient="list")
 
-            # Get the analysed file
-            try:
-                analysed_file = next(f for f in files if (f.startswith("cycles") and f.endswith(".json")))
-            except StopIteration:
-                continue
-            with open(f"{file_location}/{analysed_file}", encoding="utf-8") as f:
-                cycle_dict = json.load(f)["data"]
-            if not cycle_dict or "Cycle" not in cycle_dict:
-                continue
-            data["data_sample_cycle"][sample] = cycle_dict
+            # Get cycle summary data
+            logger.info("Getting summary data for %s", sample)
+            df = get_cycles_summary(sample)
+            if df is not None:
+                logger.info("Found summary data for %s", sample)
+                data["data_sample_cycle"][sample] = df.to_dict(as_series=False)
+            else:
+                logger.info("Couldn't get summary data for %s", sample)
 
         # Update the y-axis options
         time_y_vars = {"V (V)"}

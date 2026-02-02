@@ -435,7 +435,7 @@ def get_unicycler_protocols(sample_id: str) -> list[dict]:
     return [dict(row) for row in rows]
 
 
-def add_data_to_db_without_job(sample_id: str, file_stem: str, df: pd.DataFrame) -> str:
+def add_data_to_db_without_job(sample_id: str, file_stem: str, data_start: str, data_end: str) -> str:
     """Add data with unknown or non-existent Job ID.
 
     Checks if data is already associated with a job, if not add a new job to the database.
@@ -443,14 +443,13 @@ def add_data_to_db_without_job(sample_id: str, file_stem: str, df: pd.DataFrame)
     Args:
         sample_id: Sample ID that the data is associated with
         file_stem: Filename of the file uploaded without snapshot. or extension
-        df: Time-series dataframe of the data
+        data_start: iso format time of data start
+        data_end: iso format time of data end
 
     Returns:
         str: Job ID
 
     """
-    data_start = datetime.fromtimestamp(df["uts"].iloc[0], tz=timezone.utc).isoformat()
-    data_end = datetime.fromtimestamp(df["uts"].iloc[-1], tz=timezone.utc).isoformat()
     modified = datetime.now(timezone.utc).isoformat()
     with sqlite3.connect(CONFIG["Database path"]) as conn:
         cursor = conn.cursor()
@@ -482,7 +481,7 @@ def add_data_to_db_without_job(sample_id: str, file_stem: str, df: pd.DataFrame)
     return job_id
 
 
-def add_data_to_db_with_job(sample_id: str, file_stem: str, df: pd.DataFrame, job_id: str) -> str:
+def add_data_to_db_with_job(sample_id: str, file_stem: str, data_start: str, data_end: str, job_id: str) -> str:
     """Add data to the database with a known Job ID.
 
     If there is already data associated with the job with a different Job ID, overwrite the info.
@@ -490,15 +489,14 @@ def add_data_to_db_with_job(sample_id: str, file_stem: str, df: pd.DataFrame, jo
     Args:
         sample_id: Sample ID that the data is associated with
         file_stem: Filename of the file uploaded without snapshot. or extension
-        df: Time-series dataframe of the data
+        data_start: iso format time of data start
+        data_end: iso format time of data end
         job_id: Job ID that the data is associated with
 
     Returns:
         str: Job ID
 
     """
-    data_start = datetime.fromtimestamp(df["uts"].iloc[0], tz=timezone.utc).isoformat()
-    data_end = datetime.fromtimestamp(df["uts"].iloc[-1], tz=timezone.utc).isoformat()
     modified = datetime.now(timezone.utc).isoformat()
     with sqlite3.connect(CONFIG["Database path"]) as conn:
         cursor = conn.cursor()
@@ -547,22 +545,25 @@ def add_data_to_db_with_job(sample_id: str, file_stem: str, df: pd.DataFrame, jo
     return job_id
 
 
-def add_data_to_db(sample_id: str, file_stem: str, df: pd.DataFrame, job_id: str | None = None) -> str:
+def add_data_to_db(sample_id: str, file_stem: str, start_uts: float, end_uts: float, job_id: str | None = None) -> str:
     """Add data to the database.
 
     Args:
         sample_id: Sample ID that the data is associated with
         file_stem: Filename of the file uploaded without snapshot. or extension
-        df: Time-series dataframe of the data
+        start_uts: Data start unix time stamp
+        end_uts: Data end unix time stamp
         job_id: Job ID that the data is associated with
 
     Returns:
         str: Job ID
 
     """
+    data_start = datetime.fromtimestamp(start_uts, tz=timezone.utc).isoformat()
+    data_end = datetime.fromtimestamp(end_uts, tz=timezone.utc).isoformat()
     if job_id:
-        return add_data_to_db_with_job(sample_id, file_stem, df, job_id)
-    return add_data_to_db_without_job(sample_id, file_stem, df)
+        return add_data_to_db_with_job(sample_id, file_stem, data_start, data_end, job_id)
+    return add_data_to_db_without_job(sample_id, file_stem, data_start, data_end)
 
 
 def add_protocol_to_job(job_id: str, protocol: dict | str, capacity: float | None = None) -> None:

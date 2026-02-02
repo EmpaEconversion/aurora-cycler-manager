@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from aurora_cycler_manager.eclab_harvester import convert_mpr
+from aurora_cycler_manager.analysis import analyse_sample
+from aurora_cycler_manager.eclab_harvester import convert_mpr, get_mpr_data
 
 
 def test_convert_data(reset_all, test_dir: Path) -> None:
@@ -143,3 +144,32 @@ def test_convert_data_update_database(reset_all, test_dir: Path) -> None:
         result = cursor.fetchone()
         assert result is not None
         cursor.close()
+
+
+def test_convert_eis(reset_all, test_dir: Path) -> None:
+    """Check EIS works without any cycling data."""
+    mpr = test_dir / "misc" / "PEIS.mpr"
+    df, _metadata, _yadg_metadata = get_mpr_data(mpr)
+    assert all(x in df.columns for x in ["uts", "V (V)", "I (A)", "technique", "f (Hz)", "Re(Z) (ohm)", "Im(Z) (ohm)"])
+    # Save to database analyse etc.
+    sample_id = "240701_svfe_gen6_01"
+    convert_mpr(mpr, sample_id=sample_id)
+    data = analyse_sample(sample_id)
+    assert data.eis is not None
+
+
+def test_convert_eis_with_other_data(reset_all, test_dir: Path) -> None:
+    """Check EIS works with cycling data."""
+    sample_id = "240701_svfe_gen6_01"
+    cycling_data = test_dir / "eclab_harvester" / "test_C01.mpr"
+    eis_data = test_dir / "misc" / "PEIS.mpr"
+    convert_mpr(cycling_data, sample_id=sample_id)
+    convert_mpr(eis_data, sample_id=sample_id)
+    data = analyse_sample(sample_id)
+
+    assert data.cycling is not None
+    assert len(data.cycling) == 18001
+    assert data.eis is not None
+    assert len(data.eis) == 244
+    assert data.cycles_summary is not None
+    assert data.eis["Cycle"][0] == max(data.cycling["Cycle"])

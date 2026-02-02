@@ -1,6 +1,6 @@
 """Copyright © 2025-2026, Empa.
 
-Harvest EC-lab .mpr files and convert to aurora-compatible hdf5 files.
+Harvest EC-lab .mpr files and convert to aurora-compatible parquet files.
 
 Define the machines to grab files from in the config.json file.
 
@@ -14,10 +14,9 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-import h5py
 import numpy as np
-import pandas as pd
 import paramiko
+import polars as pl
 import yadg
 from dgbowl_schemas.yadg.dataschema import ExtractorFactory
 
@@ -199,7 +198,7 @@ def get_all_mprs(*, force_copy: bool = False) -> list[str]:
 def get_mpr_data(
     mpr_file: str | Path | bytes,
     mpl_file: str | Path | bytes | None = None,
-) -> tuple[pd.DataFrame, dict, dict]:
+) -> tuple[pl.DataFrame, dict, dict]:
     """Convert mpr file to dataframe."""
     if isinstance(mpr_file, (str, Path)):
         mpr_file = Path(mpr_file)
@@ -214,49 +213,63 @@ def get_mpr_data(
         msg = "mpr_file must be str, Path, or raw bytes of mpr file."
         raise TypeError(msg)
 
-    # Create dataframe
-    df = pd.DataFrame()
-    df["uts"] = data.coords["uts"].to_numpy()
+    # Build dict of arrays
+    cols: dict[str, np.ndarray | int] = {}
 
-    # Check if the time is incorrect and fix it
-    df = check_mpr_uts(df, mpr_file, mpl_file)
+    # Unix time - get start time from mpl if missing in mpr
+    uts = data.coords["uts"].to_numpy()
+    finished = bool(uts[0] != 0)  # If the start time is 0, job is ongoing, start time still only in mpl
+    cols["uts"] = check_mpr_uts(uts, mpr_file, mpl_file)
 
-    # Only keep certain columns in dataframe
-    try:
-        voltage_col = next(col for col in ("Ewe", "<Ewe>") if col in data.data_vars)
-    except StopIteration as e:
-        msg = "No voltage column found in data"
-        raise KeyError(msg) from e
-    df["V (V)"] = data.data_vars[voltage_col].to_numpy()
+    # Voltage
+    voltage_col = next(col for col in ("Ewe", "<Ewe>") if col in data.data_vars)
+    cols["V (V)"] = data[voltage_col].to_numpy()
+
+    # Current
     I_units = {"A": 1, "mA": 1e-3, "uA": 1e-6}
     dq_units = {"mA·h": 3600 / 1000, "A·h": 3600}
-    if "I" in data.data_vars:
-        multiplier = I_units.get(data.data_vars["I"].attrs.get("units"), 1)
-        df["I (A)"] = data.data_vars["I"].to_numpy() * multiplier
-    elif "dq" in data.data_vars:  # If no current, calculate from dq
-        multiplier = dq_units.get(data.data_vars["dq"].attrs.get("units"), 1)
-        df["I (A)"] = (
-            multiplier * data.data_vars["dq"].to_numpy() / np.diff(data.coords["uts"].to_numpy(), prepend=[np.inf])
-        )
+    if "I" in data:
+        multiplier = I_units.get(data["I"].attrs.get("units"), 1)
+        cols["I (A)"] = data["I"].to_numpy() * multiplier
+    elif "dq" in data:
+        multiplier = dq_units.get(data["dq"].attrs.get("units"), 1)
+        dt = np.diff(cols["uts"], prepend=np.inf)
+        cols["I (A)"] = multiplier * data["dq"].to_numpy() / dt
     else:
-        df["I (A)"] = 0.0
-    df["cycle_number"] = data.data_vars["half cycle"].to_numpy() // 2 if "half cycle" in data.data_vars else 0
-    df["technique"] = data.data_vars["mode"].to_numpy() if "mode" in data.data_vars else 0
-    df = df.astype({"V (V)": "float32", "I (A)": "float32"})
-    df = df.astype({"technique": "int16", "cycle_number": "int32"})
+        cols["I (A)"] = np.zeros_like(cols["uts"])
+
+    # Cycle number
+    cols["cycle_number"] = data["half cycle"].to_numpy() // 2 if "half cycle" in data else 0
+
+    # Technique code
+    cols["technique"] = data["mode"].to_numpy() if "mode" in data else 0
+
+    # impedance block
+    if all(k in data for k in ["freq", "Re(Z)", "-Im(Z)"]) and np.any(data["freq"]):
+        cols["f (Hz)"] = data["freq"].to_numpy().astype("float32")
+        cols["Re(Z) (ohm)"] = data["Re(Z)"].to_numpy().astype("float32")
+        cols["Im(Z) (ohm)"] = (-data["-Im(Z)"]).to_numpy().astype("float32")
+
+    df = pl.DataFrame(cols).with_columns(
+        pl.col("V (V)").cast(pl.Float32),
+        pl.col("I (A)").cast(pl.Float32),
+        pl.col("technique").cast(pl.Int16),
+        pl.col("cycle_number").cast(pl.Int32),
+    )
 
     # Get metadata
     mpr_metadata = json.loads(data.attrs["original_metadata"])
+    mpr_metadata["Finished"] = finished
     mpr_metadata["job_type"] = "eclab_mpr"
     yadg_metadata = {k: v for k, v in data.attrs.items() if k.startswith("yadg")}
-    return df, mpr_metadata, yadg_metadata
+    return pl.DataFrame(df), mpr_metadata, yadg_metadata
 
 
 def check_mpr_uts(
-    df: pd.DataFrame, mpr_file: str | Path | bytes, mpl_file: str | Path | bytes | None = None
-) -> pd.DataFrame:
+    uts: np.ndarray, mpr_file: str | Path | bytes, mpl_file: str | Path | bytes | None = None
+) -> np.ndarray:
     """Check if the unix timestamp is correct, attempts to find it from .mpl if not."""
-    if df["uts"].to_numpy()[0] < 1000000000:  # The measurement started before 2001, assume wrong
+    if uts[0] < 1000000000:  # The measurement started before 2001, assume wrong
         if not isinstance(mpr_file, (str, Path)) and not mpl_file:
             msg = "Incorrect start time in mpr file, reading from bytes, cannot auto-find mpl and no mpl provided."
             raise ValueError(msg)
@@ -281,16 +294,16 @@ def check_mpr_uts(
                     datetime_str = line.split(":", 1)[1].strip()
                     # EC-lab mpl has no timezone info - assume it is in the same timezone
                     datetime_object = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")  # noqa: DTZ007
-                    uts_timestamp = datetime_object.replace(tzinfo=CONFIG["tz"]).timestamp()
-                    df["uts"] = df["uts"] + uts_timestamp
+                    uts_start = datetime_object.replace(tzinfo=CONFIG["tz"]).timestamp()
+                    uts = uts + uts_start
                     break
             else:
-                msg = f"Incorrect start time in {mpr_file} and no start time in found {mpl_file}"
+                msg = f"Incorrect start time in {mpr_file!s} and no start time in found {mpl_file!s}"
                 raise ValueError(msg)
         except FileNotFoundError as e:
             msg = "Incorrect start time in mpr file, cannot find associated mpl file"
             raise ValueError(msg) from e
-    return df
+    return uts
 
 
 def convert_mpr(
@@ -302,7 +315,7 @@ def convert_mpr(
     file_name: str | None = None,
     *,
     update_database: bool = True,
-) -> tuple[pd.DataFrame, dict]:
+) -> tuple[pl.DataFrame, dict]:
     """Convert a ec-lab mpr to dataframe, optionally update database.
 
     Args:
@@ -388,7 +401,7 @@ def convert_mpr(
         if not sample_id:
             logger.warning("Not saving %s, no valid Sample ID found", mpr_file)
             return df, metadata
-        folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample_id
+        folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample_id / "snapshots"
         if not folder.exists():
             folder.mkdir(parents=True)
 
@@ -398,24 +411,14 @@ def convert_mpr(
         else:
             assert isinstance(mpr_file, (str, Path))  # noqa: S101
             file_stem = Path(mpr_file).stem
-        hdf5_filepath = folder / f"snapshot.{file_stem}.h5"
+
+        parquet_filepath = folder / f"snapshot.{file_stem}.parquet"
 
         # Add the file/job information to the database
-        add_data_to_db(sample_id, file_stem, df, job_id)
+        add_data_to_db(sample_id, file_stem, df["uts"][0], df["uts"][-1], job_id)
 
-        # Create the 'data' hdf5 dataset
-        df.to_hdf(
-            hdf5_filepath,
-            key="data",
-            mode="w",
-            complib="blosc",
-            complevel=9,
-        )
-
-        # Create a dataset called metadata and json dump the metadata
-        with h5py.File(hdf5_filepath, "a") as f:
-            f.create_dataset("metadata", data=json.dumps(metadata))
-        logger.info("Saved %s", hdf5_filepath)
+        # Write to parquet file
+        df.write_parquet(parquet_filepath, metadata={"AURORA:metadata": json.dumps(metadata)})
 
         # Update the database
         with sqlite3.connect(CONFIG["Database path"]) as conn:
@@ -490,7 +493,7 @@ def get_sampleid_from_mpr(mpr_rel_path: str | Path) -> tuple[str, str]:
 
 
 def convert_all_mprs() -> None:
-    """Convert all raw .mpr files to .h5.
+    """Convert all raw .mpr files to parquet.
 
     Looks in configuration for "Servers" with "server_type": "biologic" or
     "biologic_harvester".

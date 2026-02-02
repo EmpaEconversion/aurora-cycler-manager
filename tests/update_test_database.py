@@ -96,12 +96,14 @@ if __name__ == "__main__":
         "240709_svfe_gen8_01",
         "250116_kigr_gen6_01",
         "commercial_cell_009",
+        "250127_svfe_gen21_01",
     ]
     jobs = [
         "tt1-68",
         "tt1-100",
         "tt1-69",
         "nw4-120-1-1-48",
+        "nw4-120-9-5-33",
     ]
     copy_rows(DB_PATH, TEST_DB_PATH, "samples", "Sample ID", samples)
     copy_rows(DB_PATH, TEST_DB_PATH, "jobs", "Job ID", jobs)
