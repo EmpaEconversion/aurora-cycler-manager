@@ -147,13 +147,13 @@ def calc_dq(df: pl.DataFrame) -> pl.DataFrame:
 
 def merge_dfs(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, pl.DataFrame | None]:
     """Merge cycling dataframes and add cycles. Seperate out EIS."""
-    # Add an EIS thing
     for i, df in enumerate(dfs):
         dfs[i] = df.with_columns(pl.lit(i).alias("job_number"))
 
     df = pl.concat(dfs, how="diagonal")
-    eis_df = None
 
+    # If EIS exists, filter into its own df
+    eis_df = None
     if "f (Hz)" in df.columns:
         eis_mask = (df["f (Hz)"].is_not_null()) & (df["f (Hz)"] != 0)
         eis_df = df.filter(eis_mask)
@@ -199,7 +199,7 @@ def merge_dfs(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, pl.DataFrame | Non
         # Join back to main dataframe
         df = df.join(step_stats.select(["Step", "Cycle"]), on="Step", how="left")
 
-        # Handle EIS merge - find last non-zero cycle before the EIS
+        # EIS merge - find last non-zero cycle before the EIS
         if eis_df is not None:
             eis_df = eis_df.join_asof(
                 df.filter(pl.col("Cycle") != 0).select(["uts", "Cycle"]), on="uts", strategy="backward"
@@ -497,15 +497,12 @@ def analyse_cycles(
     # A cycle can exist if there is charge and discharge data
     # If discharge has started, but measurement hasn't finished, then set last discharge to None
     if finished is False and df.filter(pl.col("Cycle") == pl.max("Cycle"), pl.col("I (A)") < 0).height > 5:
-        logger.critical("doing the thing")
         summary_df = summary_df.with_columns(
             pl.when(pl.int_range(pl.len()) == pl.len() - 1)
             .then(None)
             .otherwise(pl.col("Discharge capacity (mAh)"))
             .alias("Discharge capacity (mAh)")
         )
-    else:
-        logger.critical("not doing the thing")
 
     # Create a dictionary with the cycling data
     summary_df = summary_df.with_columns(
