@@ -394,9 +394,6 @@ def convert_mpr(
         },
     }
 
-    # TODO: integrate polars better
-    df = pl.DataFrame(df)
-
     # Save and update database
     if update_database:
         if not sample_id:
@@ -494,7 +491,7 @@ def get_sampleid_from_mpr(mpr_rel_path: str | Path) -> tuple[str, str]:
 
 
 def convert_all_mprs() -> None:
-    """Convert all raw .mpr files to .h5.
+    """Convert all raw .mpr files to parquet.
 
     Looks in configuration for "Servers" with "server_type": "biologic" or
     "biologic_harvester".

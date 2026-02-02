@@ -18,7 +18,7 @@ CONFIG = get_config()
 
 
 def read_cycling(file: str | Path) -> pl.DataFrame:
-    """Read cycling data from aurora-style hdf5 or parquet file to DataFrame."""
+    """Read cycling data from aurora-style parquet/hdf5 file to DataFrame."""
     file = Path(file)
     if file.suffix == ".parquet":
         return pl.read_parquet(file)
@@ -29,7 +29,7 @@ def read_cycling(file: str | Path) -> pl.DataFrame:
 
 
 def read_metadata(file: str | Path) -> dict:
-    """Read metadata from aurora-style hdf5 file."""
+    """Read metadata from aurora-style parquet/hdf5 file."""
     file = Path(file)
     if file.suffix == ".parquet":
         return json.loads(pl.read_parquet_metadata(file)["AURORA:metadata"])
