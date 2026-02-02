@@ -15,11 +15,14 @@ from aurora_cycler_manager.data_bundle import read_cycling, read_metadata
 logger = logging.getLogger(__name__)
 
 aurora_to_bdf_map: dict[str, str] = {
-    "uts": "unix_time_seconds",
+    "uts": "unix_time_second",
     "V (V)": "voltage_volt",
     "I (A)": "current_ampere",
     "Step": "step_count",
     "Cycle": "cycle_count",
+    "f (Hz)": "frequency_hertz",
+    "Re(Z) (ohm)": "real_impedance_ohm",
+    "Im(Z) (ohm)": "imaginary_impedance_ohm",
 }
 
 bdf_to_aurora_map_extras: dict[str, str] = {
@@ -28,6 +31,9 @@ bdf_to_aurora_map_extras: dict[str, str] = {
     "Voltage / V": "V (V)",
     "Step Count / 1": "Step",
     "Cycle Count / 1": "Cycle",
+    "Freqency / Hz": "f (Hz)",
+    "Real Impedance / ohm": "Re(Z) (ohm)",
+    "Imaginary Impedance / ohm": "Im(Z) (ohm)",
 }
 
 bdf_to_aurora_map: dict[str, str] = {
@@ -40,8 +46,10 @@ def aurora_to_bdf(df: pl.DataFrame) -> pl.DataFrame:
     """Convert an Aurora dataframe to BDF compliant dataframe."""
     df.select([k for k in aurora_to_bdf_map if k in df.columns])
     df = df.rename(aurora_to_bdf_map, strict=False)
-    t0 = df["unix_time_seconds"][0]  # TODO: handle empty case
-    return df.with_columns((pl.col("unix_time_seconds") - t0).alias("test_time_seconds"))
+    if df.is_empty():
+        return df.with_columns(pl.lit(None).alias("test_time_second"))
+    t0 = df["unix_time_second"][0]
+    return df.with_columns((pl.col("unix_time_second") - t0).alias("test_time_second"))
 
 
 def bdf_to_aurora(df: pl.DataFrame) -> pl.DataFrame:
