@@ -887,7 +887,7 @@ def shrink_df(df: pl.DataFrame) -> pl.DataFrame:
         return group_df.with_columns(pl.Series("dQ/dV (mAh/V)", dqdv))
 
     # Apply to each cycle group
-    df = df.group_by("Cycle", maintain_order=True).map_groups(compute_dqdv)
+    df = df.group_by("Cycle", maintain_order=True).map_groups(compute_dqdv).sort("uts")
 
     # Reduce precision of some columns
     df.cast(
