@@ -31,6 +31,7 @@ from aurora_cycler_manager.stdlib_utils import run_from_sample
 SERVER_CORRESPONDENCE = {
     "neware": cycler_servers.NewareServer,
     "biologic": cycler_servers.BiologicServer,
+    "neware-aiida": cycler_servers.NewareAiidaServer,
 }
 
 SERVER_OBJECTS: dict[str, cycler_servers.CyclerServer] = {}
