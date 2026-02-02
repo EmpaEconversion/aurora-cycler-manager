@@ -218,6 +218,7 @@ def get_mpr_data(
 
     # Unix time - get start time from mpl if missing in mpr
     uts = data.coords["uts"].to_numpy()
+    finished = bool(uts[0] != 0)  # If the start time is 0, job is ongoing, start time still only in mpl
     cols["uts"] = check_mpr_uts(uts, mpr_file, mpl_file)
 
     # Voltage
@@ -258,6 +259,7 @@ def get_mpr_data(
 
     # Get metadata
     mpr_metadata = json.loads(data.attrs["original_metadata"])
+    mpr_metadata["Finished"] = finished
     mpr_metadata["job_type"] = "eclab_mpr"
     yadg_metadata = {k: v for k, v in data.attrs.items() if k.startswith("yadg")}
     return pl.DataFrame(df), mpr_metadata, yadg_metadata

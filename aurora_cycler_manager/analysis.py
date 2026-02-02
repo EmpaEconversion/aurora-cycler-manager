@@ -426,7 +426,7 @@ def extract_voltage_crates(job_data: list[dict]) -> dict:
                         rate, new_rate = None, None
     global_max_V = round(global_max_V, 6) if global_max_V else None
 
-    finished = job_data[-1].get("Finished") if job_data else None  # Used in Newares
+    finished = job_data[-1].get("Finished") if job_data else None
 
     return {
         "form_C": form_C,
