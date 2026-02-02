@@ -12,6 +12,7 @@ import pandas as pd
 import polars as pl
 
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.dicts import bdf_to_aurora_map
 from aurora_cycler_manager.stdlib_utils import run_from_sample
 
 CONFIG = get_config()
@@ -21,7 +22,10 @@ def read_cycling(file: str | Path) -> pl.DataFrame:
     """Read cycling data from aurora-style parquet/hdf5 file to DataFrame."""
     file = Path(file)
     if file.suffix == ".parquet":
-        return pl.read_parquet(file)
+        df = pl.read_parquet(file)
+        if "voltage_volt" in df.columns:  # bdf
+            return df.rename(bdf_to_aurora_map, strict=False)
+        return df
     if file.suffix == ".h5":
         return pl.DataFrame(pd.read_hdf(file))
     msg = f"Unsupported file format {file.suffix}"
@@ -50,9 +54,9 @@ def get_cycling(sample_id: str) -> pl.DataFrame:
     """Get cycling data from Sample ID."""
     folder = get_sample_folder(sample_id)
     if (data_path := folder / f"full.{sample_id}.parquet").exists():
-        return pl.read_parquet(data_path)
-    if (data_path := folder / f"shrunk.{sample_id}.h5").exists():
-        return pl.DataFrame(pd.read_hdf(data_path))
+        return read_cycling(data_path)
+    if (data_path := folder / f"full.{sample_id}.h5").exists():
+        return read_cycling(data_path)
     msg = "No data found."
     raise FileNotFoundError(msg)
 
@@ -61,9 +65,9 @@ def get_cycling_shrunk(sample_id: str) -> pl.DataFrame | None:
     """Get shrunk cycling data from Sample ID."""
     folder = get_sample_folder(sample_id)
     if (data_path := folder / f"shrunk.{sample_id}.parquet").exists():
-        return pl.read_parquet(data_path)
+        return read_cycling(data_path)
     if (data_path := folder / f"shrunk.{sample_id}.h5").exists():
-        return pl.DataFrame(pd.read_hdf(data_path))
+        return read_cycling(data_path)
     return None
 
 
@@ -71,7 +75,7 @@ def get_eis(sample_id: str) -> pl.DataFrame | None:
     """Get EIS data from Sample ID."""
     folder = get_sample_folder(sample_id)
     if (data_path := folder / f"eis.{sample_id}.parquet").exists():
-        return pl.read_parquet(data_path)
+        return read_cycling(data_path)
     return None
 
 

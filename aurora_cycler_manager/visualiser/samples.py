@@ -306,7 +306,6 @@ def register_samples_callbacks(app: Dash) -> None:
                 logger.info("Found shrunk for %s", sample)
                 data["data_sample_time"][sample] = data_dict
             else:
-                logger.info("Couldn't find shrunk for %s", sample)
                 try:
                     logger.info("Getting full for %s", sample)
                     df = get_cycling(sample)
