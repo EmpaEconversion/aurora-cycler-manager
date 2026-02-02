@@ -106,7 +106,7 @@ def get_metadata(sample_id: str) -> dict | None:
     folder = get_sample_folder(sample_id)
     if (data_path := folder / f"metadata.{sample_id}.json").exists():
         with data_path.open("r") as f:
-            return json.load(f)["metadata"]
+            return json.load(f)
     if (data_path := folder / f"cycles.{sample_id}.json").exists():
         with data_path.open("r") as f:
             return json.load(f)["metadata"]

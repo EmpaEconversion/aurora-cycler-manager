@@ -19,14 +19,17 @@ from typing import Literal
 
 import h5py
 import numpy as np
-import pandas as pd
 import polars as pl
 from tsdownsample import MinMaxLTTBDownsampler
+from xlsxwriter import Workbook
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.data_bundle import (
     SampleDataBundle,
+    get_cycles_summary,
     get_cycling,
+    get_metadata,
+    get_overall_summary,
     get_sample_folder,
     read_cycling,
     read_metadata,
@@ -979,36 +982,22 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
     if not save_location.exists():
         save_location.mkdir(parents=True, exist_ok=True)
     samples = batch.get("samples", [])
-    cycle_dicts = []
+    summary_dfs = []
+    overall_dicts = []
     metadata: dict[str, dict] = {"sample_metadata": {}}
     for sample in samples:
         # get the anaylsed data
-        run_id = run_from_sample(sample)
-        sample_folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample
-        if not sample_folder.exists():
-            logger.warning("Folder %s does not exist", sample_folder)
-            continue
-        try:
-            analysed_file = next(
-                f for f in sample_folder.iterdir() if (f.name.startswith("cycles.") and f.name.endswith(".json"))
-            )
-            with analysed_file.open(encoding="utf-8") as f:
-                data = json.load(f)
-                cycle_dict = data.get("data", {})
-                metadata["sample_metadata"][sample] = data.get("metadata", {})
-            if cycle_dict.get("Cycle") and cycle_dict["Cycle"]:
-                cycle_dicts.append(cycle_dict)
-            else:
-                logger.warning("No cycling data found for %s", sample)
-                continue
-        except StopIteration:
-            # Handle the case where no file starts with 'cycles'
-            logger.warning("No files starting with 'cycles' found in %s", sample_folder)
-            continue
-    cycle_dicts = [d for d in cycle_dicts if d.get("Cycle") and d["Cycle"]]
-    if len(cycle_dicts) == 0:
+        summary_df = get_cycles_summary(sample)
+        if summary_df is not None:
+            summary_df = summary_df.with_columns(pl.lit(sample).alias("Sample ID"))
+            summary_dfs.append(summary_df)
+            overall_dicts.append(get_overall_summary(sample))
+            metadata["sample_metadata"][sample] = get_metadata(sample)
+    if len(summary_dfs) == 0:
         msg = "No cycling data found for any sample"
         raise ValueError(msg)
+    summary_df = pl.concat(summary_dfs, how="diagonal")
+    overall_df = pl.DataFrame(overall_dicts, strict=False)
 
     # update the metadata
     metadata["provenance"] = {
@@ -1021,23 +1010,22 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
             },
         },
     }
+    with Workbook(save_location / f"batch.{plot_name}.xlsx") as wb:
+        summary_df.write_excel(
+            workbook=wb,
+            worksheet="Data by cycle",
+            table_style="Table Style Medium 16",
+            autofit=True,
+        )
+        overall_df.write_excel(
+            workbook=wb,
+            worksheet="Results by sample",
+            table_style="Table Style Medium 16",
+            autofit=True,
+        )
 
-    # make another df where we only keep the lists from the dictionaries in the list
-    only_lists = pd.concat(
-        [
-            pd.DataFrame({k: v for k, v in cycle_dict.items() if isinstance(v, list) or k == "Sample ID"})
-            for cycle_dict in cycle_dicts
-        ],
-    )
-    only_vals = pd.DataFrame(
-        [{k: v for k, v in cycle_dict.items() if not isinstance(v, list)} for cycle_dict in cycle_dicts],
-    )
-
-    with pd.ExcelWriter(f"{save_location}/batch.{plot_name}.xlsx") as writer:
-        only_lists.to_excel(writer, sheet_name="Data by cycle", index=False)
-        only_vals.to_excel(writer, sheet_name="Results by sample", index=False)
     with (save_location / f"batch.{plot_name}.json").open("w", encoding="utf-8") as f:
-        json.dump({"data": cycle_dicts, "metadata": metadata}, f)
+        json.dump({"data": summary_df.to_dict(as_series=False), "metadata": metadata}, f, indent=4)
 
 
 def analyse_all_batches() -> None:
