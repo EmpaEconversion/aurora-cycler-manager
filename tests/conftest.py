@@ -36,21 +36,11 @@ def reset_all(test_dir: Path) -> Generator[None, None, None]:
     """Reset samples folders and database to original state."""
     db_path = test_dir / "database" / "test_database.db"
     snapshots_path = test_dir / "snapshots"
+    batches_path = test_dir / "batches"
 
     # Make backup of database
     shutil.copyfile(db_path, db_path.with_suffix(".bak"))
-    assert not any(snapshots_path.rglob("*.h5")), "Already h5 files in snapshots folder!"
-    assert not any(snapshots_path.rglob("*.parquet")), "Already parquet files in snapshots folder!"
-    assert not any(snapshots_path.rglob("*.json")), "Already json files in snapshots folder!"
-    assert not any(snapshots_path.rglob("*.jsonld")), "Already jsonld files in snapshots folder!"
-    assert not any(test_dir.glob("temp_*")), "Already temp folders!"
-
-    yield
-
-    # Restore database
-    shutil.copyfile(db_path.with_suffix(".bak"), db_path)
-    # Remove sample files
-    files_to_remove = [
+    test_files = [
         "*.h5",
         "*.parquet",
         "cycles.*.json",
@@ -58,9 +48,23 @@ def reset_all(test_dir: Path) -> Generator[None, None, None]:
         "battinfo.*.jsonld",
         "metadata.*.json",
         "overall.*.json",
+        "batch.*.json",
+        "batch.*.xlsx",
     ]
-    for rem in files_to_remove:
-        for file in snapshots_path.rglob(rem):
+    for test_file in test_files:
+        assert not any(snapshots_path.rglob(test_file)), f"Already {test_file} in snapshots folder!"
+        assert not any(batches_path.rglob(test_file)), f"Already {test_file} in batches folder!"
+
+    yield
+
+    # Restore database
+    shutil.copyfile(db_path.with_suffix(".bak"), db_path)
+    # Remove sample files
+
+    for test_file in test_files:
+        for file in snapshots_path.rglob(test_file):
+            file.unlink()
+        for file in batches_path.rglob(test_file):
             file.unlink()
     # Reset config
     with (test_dir / "test_config.json").open("w") as f:

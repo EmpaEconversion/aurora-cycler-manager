@@ -8,9 +8,13 @@ from zipfile import ZipFile
 
 import pytest
 
-from aurora_cycler_manager.analysis import analyse_all_samples, shrink_all_samples
+from aurora_cycler_manager.analysis import (
+    analyse_all_batches,
+    analyse_all_samples,
+    shrink_all_samples,
+)
 from aurora_cycler_manager.data_bundle import get_cycling
-from aurora_cycler_manager.database_funcs import get_job_data, get_jobs_from_sample
+from aurora_cycler_manager.database_funcs import get_job_data, get_jobs_from_sample, save_or_overwrite_batch
 from aurora_cycler_manager.eclab_harvester import convert_all_mprs
 from aurora_cycler_manager.neware_harvester import convert_all_neware_data
 from aurora_cycler_manager.visualiser import file_io
@@ -239,12 +243,31 @@ def test_analyse_download_eclab_sample(
                 set_progress,
             )
 
-    def test_analyse_all(reset_all) -> None:
-        """Run all conversions and analysis."""
-        convert_all_neware_data()
-        convert_all_mprs()
-        analyse_all_samples()
-        shrink_all_samples()
-        df = get_cycling("250116_kigr_gen6_01")
-        assert len(df) > 10000
-        assert df["Cycle"].max() == 3
+
+def test_analyse_all(reset_all, test_dir: Path) -> None:
+    """Run all conversions and analysis."""
+    convert_all_neware_data()
+    convert_all_mprs()
+    analyse_all_samples()
+    analyse_all_samples(mode="if_not_exists")
+    analyse_all_samples(mode="always")
+    for shrunk_file in test_dir.rglob("shrunk.*.parquet"):
+        shrunk_file.unlink()
+    assert not any(test_dir.rglob("shrunk.*.parquet"))
+    shrink_all_samples()
+    assert any(test_dir.rglob("shrunk.*.parquet"))
+    save_or_overwrite_batch(
+        "test",
+        "this tests if batch analysis works",
+        [
+            "250116_kigr_gen6_01",
+            "240606_svfe_gen1_15",
+            "250127_svfe_gen21_01",
+        ],
+    )
+    analyse_all_batches()
+    assert (test_dir / "batches" / "test" / "batch.test.xlsx").exists()
+    assert (test_dir / "batches" / "test" / "batch.test.json").exists()
+    df = get_cycling("250116_kigr_gen6_01")
+    assert len(df) == 4183
+    assert df["Cycle"].max() == 3
