@@ -26,6 +26,7 @@ from tsdownsample import MinMaxLTTBDownsampler
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.data_bundle import (
     SampleDataBundle,
+    get_cycling,
     get_sample_folder,
     read_cycling,
     read_metadata,
@@ -923,7 +924,7 @@ def shrink_all_samples(sampleid_contains: str = "") -> None:
                 if sampleid_contains and sampleid_contains not in sample_id:
                     continue
                 try:
-                    df = read_cycling(sample_id)
+                    df = get_cycling(sample_id)
                     df = shrink_df(df)
                     df.write_parquet(sample_folder / f"shrunk.{sample_id}.parquet")
                     logger.info("Shrunk %s", sample_id)
