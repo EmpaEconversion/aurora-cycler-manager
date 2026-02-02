@@ -168,9 +168,7 @@ def merge_dfs(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, pl.DataFrame | Non
             df = calc_dq(df)
 
         # Increment step if any job, cycle, or loop changes
-        df = df.with_columns(
-            pl.struct(["job_number", "cycle_number", "loop_number"]).rank(method="dense").alias("Step")
-        )
+        df = df.with_columns(pl.struct(["job_number", "cycle_number", "loop_number"]).rle_id().add(1).alias("Step"))
 
         # Drop columns
         df = df.drop("job_number", "cycle_number", "loop_number", "index", strict=False)
@@ -957,6 +955,8 @@ def analyse_all_samples(
             cursor.execute("SELECT `Sample ID` FROM results WHERE `Last analysis` IS NULL")
             results = cursor.fetchall()
         samples_to_analyse = [r[0] for r in results]
+    else:
+        samples_to_analyse = []
 
     for batch_folder in Path(CONFIG["Processed snapshots folder path"]).iterdir():
         if batch_folder.is_dir():
