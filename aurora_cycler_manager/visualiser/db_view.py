@@ -1632,18 +1632,6 @@ def register_db_view_callbacks(app: Dash) -> None:
     def figure_out_files(filepath: str, selected_rows: list) -> tuple[str, str, bool, dict]:
         return file_io.determine_file(filepath, selected_rows)
 
-    # If you leave the upload modal, wipe the contents
-    @app.callback(
-        Output("upload-data-button", "contents"),
-        Output("upload-data-button", "filename"),
-        Input("upload-modal", "opened"),
-        prevent_initial_call=True,
-    )
-    def wipe_upload(is_open: bool) -> tuple[str, str]:
-        if not is_open:
-            return ",", ""
-        raise PreventUpdate
-
     # When hitting confirm, process the file
     @app.callback(
         Output("refresh-database", "n_clicks", allow_duplicate=True),
