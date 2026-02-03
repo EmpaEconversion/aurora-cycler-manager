@@ -7,7 +7,7 @@
     
     "Servers" : [
         {
-            "label": "fakebiologic",
+            "label": "bio",
             "hostname": "fakehostname",
             "username": "fakeuser",
             "server_type": "biologic",
@@ -17,7 +17,7 @@
             "data_path": "C:/aurora/data/"
         },
         {
-			"label": "fakeneware",
+			"label": "nw",
 			"hostname": "fakehostname",
 			"username": "fakeuser",
 			"server_type": "neware",
