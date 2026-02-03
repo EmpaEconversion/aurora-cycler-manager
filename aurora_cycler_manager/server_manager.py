@@ -10,7 +10,7 @@ Server manager takes functions like load, submit, snapshot, update etc. sends
 commands to the appropriate server, and handles the database updates.
 """
 
-import contextlib
+import json
 import logging
 import sqlite3
 import traceback
@@ -378,14 +378,27 @@ class _CyclingJob:
                 (Biologic) A .mps path or mps string with a Biologic protocol
 
         """
-        # Check if the payload is a unicycler protocol
+        # Try to convert str to Path or dict
+        if isinstance(payload, str):
+            if payload.endswith((".json", ".mps", ".xml")):
+                payload = Path(payload)
+            elif payload.startswith("{"):
+                payload = json.loads(payload)
+        # Convert json path to dict, leave mps and xml as path
+        if isinstance(payload, Path):
+            if payload.suffix not in {".json", ".mps", ".xml"}:
+                msg = "If payload is a path, it must be a json, mps, or xml file."
+                raise AssertionError(msg)
+            if payload.suffix == ".json":
+                with payload.open("r") as f:
+                    payload = json.load(f)
+        # Convert dict to unicycler
         if isinstance(payload, dict):
-            with contextlib.suppress(ValueError, AttributeError, KeyError):
-                self.unicycler_protocol = Protocol.from_dict(
-                    payload,
-                    sample_name=self.sample.id,
-                    sample_capacity_mAh=self.capacity_Ah * 1000,
-                ).model_dump_json(exclude_none=True)
+            self.unicycler_protocol = Protocol.from_dict(
+                payload,
+                sample_name=self.sample.id,
+                sample_capacity_mAh=self.capacity_Ah * 1000,
+            ).model_dump_json(exclude_none=True)
         self.payload = payload
 
     def cancel(self) -> None:

@@ -68,18 +68,27 @@ SAMPLE_METADATA_TO_DATA = [
 
 
 def _sort_times(start_times: list | np.ndarray, end_times: list | np.ndarray) -> np.ndarray:
-    """Sort by start time, if equal only keep the longest."""
-    start_times = np.array(start_times)
-    end_times = np.array(end_times)
+    """Sort by start time, if equal only keep the longest. Skip None values."""
+    start_times = np.array(start_times, dtype=object)
+    end_times = np.array(end_times, dtype=object)
 
-    # reverse sort by end time, then sort by start time
-    sorted_indices = np.lexsort((np.array(end_times) * -1, np.array(start_times)))
-    start_times = start_times[sorted_indices]
-    end_times = end_times[sorted_indices]
+    # Mask to ignore None values
+    valid_mask = np.array([s is not None and e is not None for s, e in zip(start_times, end_times, strict=True)])
+    valid_indices = np.where(valid_mask)[0]
+    if len(valid_indices) == 0:
+        return np.array([], dtype=int)
+    valid_starts = start_times[valid_indices].astype(float)
+    valid_ends = end_times[valid_indices].astype(float)
 
-    # remove duplicate start times, leaving only the first element = the latest end time
-    unique_mask = np.concatenate(([True], start_times[1:] != start_times[:-1]))
-    return sorted_indices[unique_mask]
+    # Sort by reverse end time, then by start time
+    sorted_positions = np.lexsort((valid_ends * -1, valid_starts))
+    sorted_starts = valid_starts[sorted_positions]
+
+    # Remove duplicate start times, keep only the first element (longest)
+    unique_mask = np.concatenate(([True], sorted_starts[1:] != sorted_starts[:-1]))
+
+    # Map back to original indices
+    return valid_indices[sorted_positions[unique_mask]]
 
 
 def merge_metadata(job_files: list[Path], metadatas: list[dict]) -> dict:
@@ -120,8 +129,8 @@ def read_and_order_job_files(job_files: list[Path]) -> tuple[list[Path], list[pl
     if len(set(sampleids)) > 1:
         msg = "All files must be from the same sample"
         raise ValueError(msg)
-    start_times = [df["uts"][0] for df in dfs]
-    end_times = [df["uts"][-1] for df in dfs]
+    start_times = [df["uts"][0] if not df.is_empty() else None for df in dfs]
+    end_times = [df["uts"][-1] if not df.is_empty() else None for df in dfs]
     order = _sort_times(start_times, end_times)
     job_files = [job_files[i] for i in order]
     dfs = [dfs[i] for i in order]
@@ -752,6 +761,10 @@ def analyse_sample(sample_id: str) -> SampleDataBundle:
     # Read dfs into the correct order
     job_files, dfs, metadatas = read_and_order_job_files(job_files)
 
+    if len(dfs) == 0:
+        msg = f"No data for {sample_id}"
+        raise ValueError(msg)
+
     # Merge into one df, plus optional eis df
     df, eis_df = merge_dfs(dfs)
 
@@ -1004,8 +1017,8 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
     if len(summary_dfs) == 0:
         msg = "No cycling data found for any sample"
         raise ValueError(msg)
-    summary_df = pl.concat(summary_dfs, how="diagonal")
-    overall_df = pl.DataFrame(overall_dicts, strict=False)
+    summary_df = pl.concat(summary_dfs, how="diagonal").fill_nan(None)
+    overall_df = pl.DataFrame(overall_dicts, strict=False).fill_nan(None)
 
     # update the metadata
     metadata["provenance"] = {
@@ -1122,4 +1135,5 @@ def calc_dqdv(v: np.ndarray, q: np.ndarray, dq: np.ndarray) -> np.ndarray:
         dvdq_neg[bad_neg] = np.nan
         dvdq[neg_mask] = -dvdq_neg
 
-    return 1 / dvdq
+    # Divide by zero -> np.nan
+    return np.divide(1, dvdq, out=np.full_like(dvdq, np.nan, dtype=float), where=dvdq != 0)

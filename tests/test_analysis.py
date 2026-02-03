@@ -9,6 +9,7 @@ import polars as pl
 from polars.testing import assert_frame_equal
 
 from aurora_cycler_manager.analysis import (
+    _sort_times,
     analyse_cycles,
     analyse_overall,
     analyse_sample,
@@ -266,3 +267,13 @@ class TestAnalysis:
         # Skip first and last points of charge/discharge - they are nan due to moving window average
         np.testing.assert_almost_equal(res[5:95], dQdV_expected[5:95], decimal=6)
         np.testing.assert_almost_equal(res[105:195], dQdV_expected[105:195], decimal=6)
+
+    def test_sort_times(self) -> None:
+        """Test _sort_times function."""
+        # Normal sort
+        assert all(_sort_times([2, 4, 6], [3, 5, 7]) == [0, 1, 2])
+        assert all(_sort_times([6, 4, 2], [8, 5, 3]) == [2, 1, 0])
+        # Duplicate starts, picks longer duration
+        assert all(_sort_times([6, 4, 2, 6], [7, 5, 3, 8]) == [2, 1, 3])
+        # Nones are ignored
+        assert all(_sort_times([2, 4, 6, None, 8, 8], [3, 5, 7, None, 9, 10]) == [0, 1, 2, 5])
