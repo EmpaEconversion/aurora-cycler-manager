@@ -761,6 +761,10 @@ def analyse_sample(sample_id: str) -> SampleDataBundle:
     # Read dfs into the correct order
     job_files, dfs, metadatas = read_and_order_job_files(job_files)
 
+    if len(dfs) == 0:
+        msg = f"No data for {sample_id}"
+        raise ValueError(msg)
+
     # Merge into one df, plus optional eis df
     df, eis_df = merge_dfs(dfs)
 
