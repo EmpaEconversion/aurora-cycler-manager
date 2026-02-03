@@ -1013,8 +1013,8 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
     if len(summary_dfs) == 0:
         msg = "No cycling data found for any sample"
         raise ValueError(msg)
-    summary_df = pl.concat(summary_dfs, how="diagonal")
-    overall_df = pl.DataFrame(overall_dicts, strict=False)
+    summary_df = pl.concat(summary_dfs, how="diagonal").fill_nan(None)
+    overall_df = pl.DataFrame(overall_dicts, strict=False).fill_nan(None)
 
     # update the metadata
     metadata["provenance"] = {
