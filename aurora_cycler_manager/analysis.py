@@ -1135,4 +1135,5 @@ def calc_dqdv(v: np.ndarray, q: np.ndarray, dq: np.ndarray) -> np.ndarray:
         dvdq_neg[bad_neg] = np.nan
         dvdq[neg_mask] = -dvdq_neg
 
-    return 1 / dvdq
+    # Divide by zero -> np.nan
+    return np.divide(1, dvdq, out=np.full_like(dvdq, np.nan, dtype=float), where=dvdq != 0)
