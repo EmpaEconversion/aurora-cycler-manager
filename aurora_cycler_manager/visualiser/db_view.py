@@ -104,13 +104,6 @@ DEFAULT_TABLE_OPTIONS: dict[str, str | dict] = {
         "floatingFilter": True,
         "cellRenderer": "agAnimateShowChangeCellRenderer",
     },
-    "style": {
-        "height": "calc(100vh - 200px)",
-        "width": "100%",
-        "minHeight": "300px",
-        "display": "none",
-        "padding-top": "10px",
-    },
     "className": "ag-theme-quartz",
 }
 TABLES = [
@@ -146,7 +139,6 @@ results_table = dag.AgGrid(
 
 # ----------------------------- Layout - buttons ----------------------------- #
 
-
 # Define visibility settings for buttons and divs when switching between tabs
 CONTAINERS = [
     "table-container",
@@ -167,6 +159,12 @@ BUTTONS = [
     "download-button",
     "upload-button",
 ]
+SHOW_CONTAINER_STYLE = {
+    "flex": "1",
+    "minHeight": 0,
+    "display": "flex",
+    "flexDirection": "column",
+}
 visibility_settings = {
     "batches": {
         "batch-container",
@@ -217,10 +215,9 @@ visibility_settings = {
     },
 }
 
+# Buttons under tables
 button_layout = dmc.Flex(
-    pt="xs",
     justify="space-between",
-    align="center",
     children=[
         # Left aligned buttons
         dmc.Group(
@@ -333,6 +330,59 @@ button_layout = dmc.Flex(
     ],
 )
 
+# Tabs for tables, batch/protocol edit
+tabs_layout = dmc.Tabs(
+    [
+        dmc.TabsList(
+            [
+                dmc.TabsTab("Samples", value="samples"),
+                dmc.TabsTab("Pipelines", value="pipelines"),
+                dmc.TabsTab("Jobs", value="jobs"),
+                dmc.TabsTab("Results", value="results"),
+                dmc.TabsTab("Batches", value="batches"),
+                dmc.TabsTab("Protocols", value="protocols"),
+            ],
+        ),
+    ],
+    id="table-select",
+    value="samples",
+)
+
+# ------------------------- Layout - Table container ------------------------- #
+
+table_container_layout = html.Div(
+    id="table-container",
+    style={
+        "display": "flex",
+        "flexDirection": "column",
+        "flex": "1",
+        "minHeight": 0,
+    },
+    children=[
+        # Tables - grows
+        html.Div(
+            style={
+                "flex": "1",
+                "overflow": "auto",
+                "minHeight": 0,
+            },
+            children=[
+                samples_table,
+                pipelines_table,
+                jobs_table,
+                results_table,
+            ],
+        ),
+        # Buttons - minimum space
+        html.Div(
+            style={
+                "padding": "10px",
+                "flexShrink": 0,
+            },
+            children=[button_layout],
+        ),
+    ],
+)
 
 # ------------------------------ Layout - modals ----------------------------- #
 
@@ -654,49 +704,40 @@ upload_modal = dmc.Modal(
 
 # ------------------------------- Main layout -------------------------------- #
 
-
 db_view_layout = html.Div(
-    style={"height": "100%", "padding": "10px"},
+    style={
+        "flex": 1,
+        "display": "flex",
+        "flexDirection": "column",
+        "minHeight": 0,
+    },
     children=[
+        # Sub-tabs
         html.Div(
-            style={"height": "100%", "overflow": "auto"},
+            style={
+                "padding": "10px",
+                "flexShrink": 0,
+            },
+            children=[tabs_layout],
+        ),
+        # Content
+        html.Div(
+            style={
+                "flex": "1",
+                "minHeight": 0,
+                "display": "flex",
+                "flexDirection": "column",
+            },
             children=[
-                # Buttons to select which table to display
-                dmc.Tabs(
-                    [
-                        dmc.TabsList(
-                            [
-                                dmc.TabsTab("Samples", value="samples"),
-                                dmc.TabsTab("Pipelines", value="pipelines"),
-                                dmc.TabsTab("Jobs", value="jobs"),
-                                dmc.TabsTab("Results", value="results"),
-                                dmc.TabsTab("Batches", value="batches"),
-                                dmc.TabsTab("Protocols", value="protocols"),
-                            ],
-                        ),
-                    ],
-                    id="table-select",
-                    value="samples",
-                ),
-                # Main table for displaying info from database
-                html.Div(
-                    id="table-container",
-                    children=[
-                        dcc.Clipboard(id="clipboard", style={"display": "none"}),
-                        dcc.Store(id="selected-rows-store", data={}),
-                        dcc.Store(id="len-store", data={}),
-                        samples_table,
-                        pipelines_table,
-                        jobs_table,
-                        results_table,
-                        button_layout,  # Buttons along bottom of table
-                    ],
-                ),
-                batch_edit_layout,  # When viewing 'batches' tab
-                protocol_edit_layout,  # When viewing 'protocols' tab
+                table_container_layout,
+                batch_edit_layout,
+                protocol_edit_layout,
             ],
         ),
-        # Pop ups after clicking buttons
+        # Invisible stuff
+        dcc.Clipboard(id="clipboard", style={"display": "none"}),
+        dcc.Store(id="selected-rows-store", data={}),
+        dcc.Store(id="len-store", data={}),
         eject_modal,
         load_modal,
         submit_modal,
@@ -709,7 +750,6 @@ db_view_layout = html.Div(
         upload_modal,
     ],
 )
-
 
 # -------------------------------- Callbacks --------------------------------- #
 
@@ -755,21 +795,23 @@ def register_db_view_callbacks(app: Dash) -> None:
 
     # Update the buttons displayed depending on the table selected
     @app.callback(
-        [Output(element, "style") for element in CONTAINERS + BUTTONS],
+        [Output(element, "style") for element in CONTAINERS],
+        [Output(element, "style") for element in BUTTONS],
         [Output(element, "style") for element in TABLES],
         Input("table-select", "value"),
     )
     def update_table(table: str) -> tuple:
         settings: set = visibility_settings.get(table, set())
-        show: dict = {}
+        show_container = SHOW_CONTAINER_STYLE
+        show_table = {"height": "100%"}
+        show_button: dict = {}
         hide = {"display": "none"}
-        visibilities = [show if element in settings else hide for element in CONTAINERS + BUTTONS]
-        table_style: dict = DEFAULT_TABLE_OPTIONS["style"]
-        show_table = DEFAULT_TABLE_OPTIONS["style"].copy()
-        show_table["display"] = "block"
-        table_visibilities = [show_table if element == f"{table}-table" else table_style for element in TABLES]
+        container_visibilities = [show_container if element in settings else hide for element in CONTAINERS]
+        button_visibilities = [show_button if element in settings else hide for element in BUTTONS]
+        table_visibilities = [show_table if element == f"{table}-table" else hide for element in TABLES]
         return (
-            *visibilities,
+            *container_visibilities,
+            *button_visibilities,
             *table_visibilities,
         )
 
