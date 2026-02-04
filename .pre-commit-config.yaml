@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.11
+    rev: v0.15.0
     hooks:
       - id: ruff-check
         # These rules are kept as warnings in an IDE and discouraged, but will not fail pre-commit
