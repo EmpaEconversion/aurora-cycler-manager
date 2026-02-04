@@ -18,7 +18,6 @@ from pathlib import Path
 
 import fastnda
 import pandas as pd
-import paramiko
 import polars as pl
 import xmltodict
 
@@ -33,7 +32,7 @@ from aurora_cycler_manager.database_funcs import (
     update_harvester,
 )
 from aurora_cycler_manager.setup_logging import setup_logging
-from aurora_cycler_manager.ssh import check_new_files, get_files, normalise_command, ssh_connect
+from aurora_cycler_manager.ssh import SSHConnection
 from aurora_cycler_manager.stdlib_utils import run_from_sample
 from aurora_cycler_manager.utils import parse_datetime
 from aurora_cycler_manager.version import __url__, __version__
@@ -96,16 +95,15 @@ def harvest_neware_files(
             cutoff_uts = parse_datetime(result[0]).timestamp()
 
     # Connect to the server and copy the files
-    with paramiko.SSHClient() as ssh:
-        ssh_connect(ssh, server)
-        remote_files = check_new_files(ssh, server, server_copy_folder, extensions=[".ndax"], since_uts=cutoff_uts)
+    with SSHConnection(server) as ssh:
+        remote_files = ssh.check_new_files(server_copy_folder, [".ndax"], cutoff_uts)
         job_ids = [
             get_or_create_job_id_from_server(server["label"], Path(file).stem.replace("_", "-"))
             for file in remote_files
         ]
         local_files = [Path(local_folder) / (job_id + ".ndax") for job_id in job_ids]
         copy_datetime = datetime.now(timezone.utc)
-        get_files(ssh, local_files, remote_files)
+        ssh.get_files(local_files, remote_files)
 
     update_harvester(server, server_copy_folder, copy_datetime)
     return local_files
@@ -191,9 +189,9 @@ def snapshot_raw_data(job_id: str) -> Path | None:
     """
 
     # Connect to the server
-    with paramiko.SSHClient() as ssh:
-        ssh_connect(ssh, server)
-        _stdin, stdout, stderr = ssh.exec_command(normalise_command(server, ps_command))
+    with SSHConnection(server) as ssh:
+        # Run pattern matching command
+        _stdin, stdout, stderr = ssh.exec_command(ps_command)
 
         # Parse the output
         output = stdout.read().decode("utf-8").strip()
@@ -220,9 +218,10 @@ def snapshot_raw_data(job_id: str) -> Path | None:
                     zf.extractall(tmp_path)
 
             # Copy the new files over, replacing any existing ones
-            with ssh.open_sftp() as sftp:
-                for ending, file in found_files.items():
-                    sftp.get(file, tmp_path / ("data" + ending))
+            local_files = [tmp_path / ("data" + ending) for ending in found_files]
+            remote_files = list(found_files.values())
+
+            ssh.get_files(local_files, remote_files)
 
             # Write a new zip
             with zipfile.ZipFile(ndax_path, "w", zipfile.ZIP_DEFLATED) as zf:

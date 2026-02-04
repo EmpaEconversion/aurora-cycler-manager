@@ -15,7 +15,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
-import paramiko
 import polars as pl
 import yadg
 from dgbowl_schemas.yadg.dataschema import ExtractorFactory
@@ -23,7 +22,7 @@ from dgbowl_schemas.yadg.dataschema import ExtractorFactory
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import add_data_to_db, get_sample_data, update_harvester
 from aurora_cycler_manager.setup_logging import setup_logging
-from aurora_cycler_manager.ssh import check_new_files, get_files, ssh_connect
+from aurora_cycler_manager.ssh import SSHConnection
 from aurora_cycler_manager.stdlib_utils import run_from_sample
 from aurora_cycler_manager.utils import parse_datetime
 from aurora_cycler_manager.version import __url__, __version__
@@ -82,12 +81,11 @@ def get_mprs(
             cutoff_uts = parse_datetime(result[0]).timestamp()
 
     # Connect to the server and copy the files
-    with paramiko.SSHClient() as ssh:
-        ssh_connect(ssh, server)
-        remote_files = check_new_files(ssh, server, server_copy_folder, [".mpr", ".mpl"], cutoff_uts)
+    with SSHConnection(server) as ssh:
+        remote_files = ssh.check_new_files(server_copy_folder, [".mpr", ".mpl"], cutoff_uts)
         local_files = [Path(local_folder) / os.path.relpath(file, server_copy_folder) for file in remote_files]
         copy_datetime = datetime.now(timezone.utc)  # Keep time of copying for database
-        get_files(ssh, local_files, remote_files)
+        ssh.get_files(local_files, remote_files)
 
     update_harvester(server, server_copy_folder, copy_datetime)
     return local_files
