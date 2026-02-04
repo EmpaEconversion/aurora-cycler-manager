@@ -29,8 +29,11 @@ from aurora_cycler_manager.version import __url__, __version__
 
 CONFIG = get_config()
 logger = logging.getLogger(__name__)
-# This problem is handled
-logging.getLogger("yadg").addFilter(lambda record: "No 'log' module" not in record.getMessage())
+# These warnings from yadg is handled
+logging.getLogger("yadg.extractors.eclab.mpr").addFilter(lambda record: "No 'log' module" not in record.getMessage())
+logging.getLogger("yadg.extractors.eclab.mpr").addFilter(
+    lambda record: "I Range could not be understood" not in record.getMessage()
+)
 
 
 def get_eclab_snapshot_folder() -> Path:

@@ -554,7 +554,7 @@ def add_zenodo_url(
         "@type": "BatteryTest",
         "hasOutput": {
             "dcat:accessURL": zenodo_doi_url,
-            "dcat:endpointURL": f"https://zenodo.org/api/records/{zenodo_doi_url.split('.')[-1]}",
+            "dcat:endpointURL": f"https://zenodo.org/api/records/{zenodo_doi_url.rsplit('.', maxsplit=1)[-1]}",
         },
     }
 

@@ -655,7 +655,7 @@ def register_batches_callbacks(app: Dash) -> None:
             lines = [line_styles[s % len(line_styles)] for s in symbols]
         return {
             "colormap": colormap,
-            "color_by": color if color else None,
+            "color_by": color or None,
             "color_mode": color_mode,
             "colors": colors,
             "color_values": color_values,
@@ -663,7 +663,7 @@ def register_batches_callbacks(app: Dash) -> None:
             "unique_color_indices": unique_color_indices,
             "cmin": cmin if color else None,
             "cmax": cmax if color else None,
-            "style_by": style if style else None,
+            "style_by": style or None,
             "symbols": symbols if style else None,
             "lines": lines if style else None,
             "unique_style_labels": unique_style_labels if style else None,
@@ -972,8 +972,8 @@ def register_batches_callbacks(app: Dash) -> None:
             mode="markers",
             marker={
                 "size": 10,
-                "color": sdata["colors"] if sdata["colors"] else None,
-                "symbol": sdata["symbols"] if sdata["symbols"] else None,
+                "color": sdata["colors"] or None,
+                "symbol": sdata["symbols"] or None,
                 "line": {"width": 1, "color": "black"},
             },
             showlegend=False,

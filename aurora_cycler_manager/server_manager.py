@@ -756,7 +756,7 @@ class ServerManager:
             msg = f"Invalid mode: {mode}. Must be one of 'always', 'new_data', 'if_not_exists'."
             raise ValueError(msg)
         where = "`Status` IN ( 'c', 'r', 'rd', 'cd', 'ce') AND `Sample ID` IS NOT 'Unknown'"
-        if mode in ["new_data"]:
+        if mode == "new_data":
             where += " AND (`Snapshot status` NOT LIKE 'c%' OR `Snapshot status` IS NULL)"
         if sampleid_contains:
             result = dbf.execute_sql(
@@ -782,7 +782,7 @@ class ServerManager:
                 continue
             except Exception as e:
                 tb = traceback.format_exc()
-                error_message = str(e) if str(e) else "An error occurred but no message was provided."
+                error_message = str(e) or "An error occurred but no message was provided."
                 logger.warning("Unexpected error snapshotting %s: %s\n%s", jobid, error_message, tb)
                 sleep(10)  # to not overload the server
                 continue

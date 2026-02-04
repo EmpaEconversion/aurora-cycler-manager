@@ -1035,7 +1035,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
                 if name in technique_cls.model_fields
             },
         ).model_dump()
-        new_technique["id"] = technique_id if technique_id else uuid.uuid4()
+        new_technique["id"] = technique_id or uuid.uuid4()
 
         # If a technique is selected (index not None), update that technique
         if index is not None:

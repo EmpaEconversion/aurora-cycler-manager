@@ -151,7 +151,7 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
     rename = {}
     drop = []
     for column in df.columns:
-        new_col_name = alt_name_dict.get(column.lower(), None)
+        new_col_name = alt_name_dict.get(column.lower())
         if new_col_name:
             rename[column] = new_col_name
         else:
@@ -213,9 +213,9 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
         )
     # Run ID - if column is missing or where it is empty, find from the sample ID
     if "Run ID" not in df.columns:
-        df["Run ID"] = df["Sample ID"].apply(lambda x: run_from_sample(x))
+        df["Run ID"] = df["Sample ID"].apply(run_from_sample)
     else:
-        df["Run ID"] = df["Run ID"].fillna(df["Sample ID"].apply(lambda x: run_from_sample(x)))
+        df["Run ID"] = df["Run ID"].fillna(df["Sample ID"].apply(run_from_sample))
     return df
 
 

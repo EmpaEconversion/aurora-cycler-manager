@@ -500,7 +500,7 @@ def create_rocrate(
                                 "@id": rel_file_path,
                                 "@type": "File",
                                 "encodingFormat": "text/csv",
-                                "about": {"@id": ccid if ccid else sample_id},
+                                "about": {"@id": ccid or sample_id},
                                 "description": (
                                     f"Summary data from battery cycling for sample: '{sample_id}'"
                                     + (f" with CCID: '{ccid}'. " if ccid else ". ")
@@ -531,7 +531,7 @@ def create_rocrate(
                                 "@id": rel_file_path,
                                 "@type": "File",
                                 "encodingFormat": "text/csv",
-                                "about": {"@id": ccid if ccid else sample_id},
+                                "about": {"@id": ccid or sample_id},
                                 "description": (
                                     f"Summary data from battery cycling for sample: '{sample_id}'"
                                     + (f" with CCID: '{ccid}'. " if ccid else ". ")
@@ -561,7 +561,7 @@ def create_rocrate(
                                 "@id": rel_file_path,
                                 "@type": "File",
                                 "encodingFormat": "text/csv",
-                                "about": {"@id": ccid if ccid else sample_id},
+                                "about": {"@id": ccid or sample_id},
                                 "description": (
                                     f"Time-series battery cycling data for sample: '{sample_id}'"
                                     + (f" with barcode: '{ccid}'. " if ccid else ". ")
@@ -592,7 +592,7 @@ def create_rocrate(
                                 "@id": rel_file_path,
                                 "@type": "File",
                                 "encodingFormat": "application/vnd.apache.parquet",
-                                "about": {"@id": ccid if ccid else sample_id},
+                                "about": {"@id": ccid or sample_id},
                                 "description": (
                                     f"Time-series battery cycling data for sample: '{sample_id}'"
                                     + (f" with barcode: '{ccid}'. " if ccid else ". ")
@@ -687,7 +687,7 @@ def create_rocrate(
                                 "@id": rel_file_path,
                                 "@type": "File",
                                 "encodingFormat": "text/json",
-                                "about": {"@id": ccid if ccid else sample_id},
+                                "about": {"@id": ccid or sample_id},
                                 "description": (
                                     f"Metadata for sample: '{sample_id}'"
                                     + (f" with CCID: '{ccid}'. " if ccid else ". ")

@@ -292,8 +292,8 @@ def extract_voltage_crates(job_data: list[dict]) -> dict:
                     # First time more than 10 cycles, assume longterm
                     elif cycle_count >= 10 and not (cycle_C or cycle_max_V or cycle_min_V):
                         cycle_C = round_c_rate(current / (capacity / 3.6e6), 10) if (current and capacity) else None
-                        cycle_max_V = max_V if max_V else None
-                        cycle_min_V = min_V if min_V else None
+                        cycle_max_V = max_V or None
+                        cycle_min_V = min_V or None
                     if (cycle_C and form_C) or (cycle_max_V and form_max_V):
                         break
                     # Reset current and voltage

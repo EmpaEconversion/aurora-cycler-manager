@@ -88,7 +88,7 @@ def get_cycles_summary(sample_id: str) -> pl.DataFrame | None:
         with data_path.open("r") as f:
             data = json.load(f)["data"]
             data = {k: v for k, v in data.items() if isinstance(v, list)}
-        return pl.DataFrame(data)
+        return pl.DataFrame(data).cast({"Cycle": pl.UInt32})
     return None
 
 

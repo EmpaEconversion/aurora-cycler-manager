@@ -453,8 +453,8 @@ def register_samples_callbacks(app: Dash) -> None:
     def update_cycle_graph(fig: dict, cycle: int, data: dict, xvar: str, yvar: str) -> dict:
         """When data or x/y variables change, update the one cycle graph."""
         fig["data"] = []
-        fig["layout"]["xaxis"]["title"] = xvar if xvar else "Select x variable"
-        fig["layout"]["yaxis"]["title"] = yvar if yvar else "Select y variable"
+        fig["layout"]["xaxis"]["title"] = xvar or "Select x variable"
+        fig["layout"]["yaxis"]["title"] = yvar or "Select y variable"
         if not data["data_sample_cycle"]:
             fig["layout"]["title"] = "No data..."
             return fig
