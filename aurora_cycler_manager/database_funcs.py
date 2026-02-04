@@ -578,3 +578,24 @@ def add_protocol_to_job(job_id: str, protocol: dict | str, capacity: float | Non
             (protocol, capacity, job_id),
         )
         conn.commit()
+
+
+### HARVESTERS ###
+
+
+# Update the database
+def update_harvester(server: dict, folder: str, copy_datetime: datetime) -> None:
+    """Update last copy time in harvester table."""
+    with sqlite3.connect(CONFIG["Database path"]) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO harvester (`Server label`, `Server hostname`, `Folder`) VALUES (?, ?, ?)",
+            (server["label"], server["hostname"], folder),
+        )
+        cursor.execute(
+            "UPDATE harvester "
+            "SET `Last snapshot` = ? "
+            "WHERE `Server label` = ? AND `Server hostname` = ? AND `Folder` = ?",
+            (copy_datetime.isoformat(timespec="seconds"), server["label"], server["hostname"], folder),
+        )
+        cursor.close()
