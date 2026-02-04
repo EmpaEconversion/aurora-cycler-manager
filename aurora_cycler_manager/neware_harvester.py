@@ -40,6 +40,11 @@ from aurora_cycler_manager.version import __url__, __version__
 # Load configuration
 CONFIG = get_config()
 logger = logging.getLogger(__name__)
+# This warning from yadg is handled
+logging.getLogger("fastnda.ndax").addFilter(
+    lambda record: "negative jumps in the 'timestamp' column" not in record.getMessage()
+)
+logging.getLogger("fastnda.ndax").addFilter(lambda record: "Reading ndc" not in record.getMessage())
 
 
 def get_neware_snapshot_folder() -> Path:
