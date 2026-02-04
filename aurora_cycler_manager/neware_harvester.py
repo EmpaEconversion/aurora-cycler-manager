@@ -585,7 +585,7 @@ def get_neware_ndax_metadata(file_path: Path) -> dict:
         metadata["Barcode"] = testinfo.get("Barcode")
         metadata["Start time"] = testinfo.get("StartTime")
         endtime = testinfo.get("EndTime")
-        metadata["End time"] = endtime if endtime else None
+        metadata["End time"] = endtime or None
         metadata["Finished"] = bool(endtime)
         metadata["Step name"] = testinfo.get("StepName")
         metadata["Device type"] = testinfo.get("DevType")

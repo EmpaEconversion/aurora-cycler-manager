@@ -111,9 +111,9 @@ def register_batch_edit_callbacks(app: Dash) -> None:
         # normal batch selected
         if batch:
             description = str(batch_defs.get(batch, {}).get("description", ""))
-            description = description if description else ""
+            description = description or ""
             samples = batch_defs.get(batch, {}).get("samples", [])
-            samples = samples if samples else []
+            samples = samples or []
             return batch, description, samples, no_update, no_update
         return "", "", [], no_update, no_update
 
