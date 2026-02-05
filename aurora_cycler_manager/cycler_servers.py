@@ -68,24 +68,10 @@ class CyclerServer:
             logger.warning("Command completed with warnings running '%s' on %s: %s", command, self.label, error)
         return output
 
-    def check_connection(self) -> bool:
-        """Check if the server is reachable by running a simple command.
-
-        Returns:
-            bool: True if the server is reachable
-
-        Raises:
-            ValueError: If the server is unreachable
-
-        """
-        with SSHConnection(self.server_config) as ssh:
-            test_phrase = "test"
-            output = self._command(ssh, f"echo {test_phrase}", timeout=5).strip()
-            if output != test_phrase:
-                msg = f"Connection error, expected output '{test_phrase}', got '{output}'"
-                raise ValueError(msg)
-            logger.info("Succesfully connected to %s", self.label)
-            return True
+    def check_connection(self) -> None:
+        """Connect and check if the server is reachable."""
+        with SSHConnection(self.server_config):
+            return
 
     def submit(
         self, sample: str, capacity_Ah: float, payload: str | dict | Path | None, pipeline: str
