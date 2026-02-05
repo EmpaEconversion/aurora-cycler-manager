@@ -7,7 +7,6 @@ Define the machines to grab files from in the config.json file.
 Run the script to harvest and convert all neware files.
 """
 
-import base64
 import json
 import logging
 import re
@@ -19,7 +18,6 @@ from pathlib import Path
 
 import fastnda
 import pandas as pd
-import paramiko
 import polars as pl
 import xmltodict
 
@@ -31,10 +29,12 @@ from aurora_cycler_manager.database_funcs import (
     get_job_data,
     get_or_create_job_id_from_server,
     get_sample_data,
+    update_harvester,
 )
 from aurora_cycler_manager.setup_logging import setup_logging
+from aurora_cycler_manager.ssh import SSHConnection
 from aurora_cycler_manager.stdlib_utils import run_from_sample
-from aurora_cycler_manager.utils import parse_datetime, ssh_connect
+from aurora_cycler_manager.utils import parse_datetime
 from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
@@ -62,10 +62,7 @@ def get_neware_snapshot_folder() -> Path:
 
 
 def harvest_neware_files(
-    server_label: str,
-    server_hostname: str,
-    server_username: str,
-    server_shell_type: str,
+    server: dict,
     server_copy_folder: str,
     local_folder: str | Path,
     *,
@@ -74,10 +71,7 @@ def harvest_neware_files(
     """Get Neware files from subfolders of specified folder.
 
     Args:
-        server_label (str): Label of the server
-        server_hostname (str): Hostname of the server
-        server_username (str): Username to login with
-        server_shell_type (str): Type of shell to use (powershell or cmd)
+        server (dict): Server dictionary, as defined in config
         server_copy_folder (str): Folder to search and copy files
         local_folder (str): Folder to copy files to
         force_copy (bool): Copy all files regardless of modification date
@@ -87,85 +81,32 @@ def harvest_neware_files(
 
     """
     # Set default cutoff date, use local timezone
-    cutoff_datetime = datetime.fromtimestamp(0, tz=CONFIG["tz"])
+    cutoff_uts = 0.0
     if not force_copy:  # Set cutoff date to last snapshot from database
         with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT `Last snapshot` FROM harvester WHERE `Server label`=? AND `Server hostname`=? AND `Folder`=?",
-                (server_label, server_hostname, server_copy_folder),
+                (server["label"], server["hostname"], server_copy_folder),
             )
             result = cursor.fetchone()
             cursor.close()
         if result:
-            cutoff_datetime = parse_datetime(result[0])
-
-    # Cannot use timezone or ISO8061 - not supported in PowerShell 5.1
-    cutoff_date_str = cutoff_datetime.strftime("%Y-%m-%d %H:%M:%S")
+            cutoff_uts = parse_datetime(result[0]).timestamp()
 
     # Connect to the server and copy the files
-    with paramiko.SSHClient() as ssh:
-        ssh_connect(ssh, server_username, server_hostname)
+    with SSHConnection(server) as ssh:
+        remote_files = ssh.check_new_files(server_copy_folder, [".ndax"], cutoff_uts)
+        job_ids = [
+            get_or_create_job_id_from_server(server["label"], Path(file).stem.replace("_", "-"))
+            for file in remote_files
+        ]
+        local_files = [Path(local_folder) / (job_id + ".ndax") for job_id in job_ids]
+        copy_datetime = datetime.now(timezone.utc)
+        ssh.get_files(local_files, remote_files)
 
-        # Shell commands to find files modified since cutoff date
-        # TODO: grab all the filenames and modified dates, copy if they are newer than local files not just cutoff date
-        if server_shell_type == "powershell":
-            command = (
-                f"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
-                "| Where-Object { "
-                f"$_.LastWriteTime -gt '{cutoff_date_str}' -and "
-                "($_.Extension -eq '.xlsx' -or $_.Extension -eq '.ndax') "
-                "} | Select-Object -ExpandProperty FullName"
-            )
-        elif server_shell_type == "cmd":
-            command = (
-                'powershell.exe -Command "'
-                f"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
-                "| Where-Object { "
-                f"$_.LastWriteTime -gt '{cutoff_date_str}' -and "
-                "($_.Extension -eq '.xlsx' -or $_.Extension -eq '.ndax') "
-                "} | Select-Object -ExpandProperty FullName"
-                '"'
-            )
-        _stdin, stdout, stderr = ssh.exec_command(command)
-
-        # Parse the output
-        output = stdout.read().decode("utf-8").strip()
-        error = stderr.read().decode("utf-8").strip()
-        if error:
-            msg = f"Error finding modified files: {error}"
-            raise RuntimeError(msg)
-        modified_files = output.splitlines()
-        logger.info("Found %d files modified since %s", len(modified_files), cutoff_date_str)
-
-        # Copy the files using SFTP
-        current_datetime = datetime.now(timezone.utc)  # Keep time of copying for database
-        new_files = []
-        with ssh.open_sftp() as sftp:
-            for file in modified_files:
-                job_id_on_server = Path(file).stem.replace("_", "-")
-                job_id = get_or_create_job_id_from_server(server_label, job_id_on_server)
-                local_path = (Path(local_folder) / job_id).with_suffix(Path(file).suffix)
-                logger.info("Copying '%s' to '%s'", file, local_path)
-                sftp.get(file, local_path)
-                new_files.append(local_path)
-
-    # Update the database
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT OR IGNORE INTO harvester (`Server label`, `Server hostname`, `Folder`) VALUES (?, ?, ?)",
-            (server_label, server_hostname, server_copy_folder),
-        )
-        cursor.execute(
-            "UPDATE harvester "
-            "SET `Last snapshot` = ? "
-            "WHERE `Server label` = ? AND `Server hostname` = ? AND `Folder` = ?",
-            (current_datetime.isoformat(timespec="seconds"), server_label, server_hostname, server_copy_folder),
-        )
-        cursor.close()
-
-    return new_files
+    update_harvester(server, server_copy_folder, copy_datetime)
+    return local_files
 
 
 def snapshot_raw_data(job_id: str) -> Path | None:
@@ -206,14 +147,11 @@ def snapshot_raw_data(job_id: str) -> Path | None:
         raise ValueError(msg)
 
     # Get the server from the config
-    server_config = CONFIG["Servers"].get(job_data["Server label"])
-    if not server_config:
+    server = CONFIG["Servers"].get(job_data["Server label"])
+    if not server:
         msg = f"No server found with label '{job_data['Server label']}' in config."
         raise ValueError(msg)
-    server_hostname = server_config["hostname"]
-    server_username = server_config["username"]
-    server_shell_type = server_config["shell_type"]
-    raw_data_folder = server_config.get("neware_raw_data_path", "C:/Program Files (x86)/NEWARE/BTSServer80/NdcFile/")
+    raw_data_folder = server.get("neware_raw_data_path", "C:/Program Files (x86)/NEWARE/BTSServer80/NdcFile/")
 
     # Build the paths to check - assumes device type 27
     full_folder = raw_data_folder + submitted
@@ -223,7 +161,7 @@ def snapshot_raw_data(job_id: str) -> Path | None:
     )
 
     # Powershell command to return paths of files matching the pattern
-    powershell_command = f"""
+    ps_command = f"""
         $ProgressPreference = 'SilentlyContinue'
 
         $searchFolders = @("{full_folder}", "{full_folder_alt}")
@@ -251,20 +189,9 @@ def snapshot_raw_data(job_id: str) -> Path | None:
     """
 
     # Connect to the server
-    with paramiko.SSHClient() as ssh:
-        ssh_connect(ssh, server_username, server_hostname)
-
-        # Use powershell command to search for the files on the server
-        if server_shell_type == "powershell":
-            command = powershell_command
-        elif server_shell_type == "cmd":
-            # Base64 encode the command to avoid quote/semicolon issues
-            encoded_script = base64.b64encode(powershell_command.encode("utf-16le")).decode("ascii")
-            command = f"powershell.exe -EncodedCommand {encoded_script}"
-        else:
-            msg = f"Unsupported shell type '{server_shell_type}' for server {job_data['Server label']}."
-            raise ValueError(msg)
-        _stdin, stdout, stderr = ssh.exec_command(command)
+    with SSHConnection(server) as ssh:
+        # Run pattern matching command
+        _stdin, stdout, stderr = ssh.exec_command(ps_command)
 
         # Parse the output
         output = stdout.read().decode("utf-8").strip()
@@ -291,9 +218,10 @@ def snapshot_raw_data(job_id: str) -> Path | None:
                     zf.extractall(tmp_path)
 
             # Copy the new files over, replacing any existing ones
-            with ssh.open_sftp() as sftp:
-                for ending, file in found_files.items():
-                    sftp.get(file, tmp_path / ("data" + ending))
+            local_files = [tmp_path / ("data" + ending) for ending in found_files]
+            remote_files = list(found_files.values())
+
+            ssh.get_files(local_files, remote_files)
 
             # Write a new zip
             with zipfile.ZipFile(ndax_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -315,28 +243,22 @@ def harvest_all_neware_files(*, force_copy: bool = False) -> list[Path]:
     snapshots_folder = get_neware_snapshot_folder()
 
     # Find all neware servers
-    for server_label, server_config in CONFIG["Servers"].items():
-        if server_config.get("server_type") in {"neware", "neware_harvester"}:
+    for server in CONFIG["Servers"].values():
+        if server.get("server_type") in {"neware", "neware_harvester"}:
             # Check activate data path folder
-            if server_config.get("data_path"):
+            if server.get("data_path"):
                 new_files = harvest_neware_files(
-                    server_label,
-                    server_config["hostname"],
-                    server_config["username"],
-                    server_config["shell_type"],
-                    server_config["data_path"],
+                    server,
+                    server["data_path"],
                     snapshots_folder,
                     force_copy=force_copy,
                 )
                 all_new_files.extend(new_files)
 
             # Check passive harvesters
-            for folder in server_config.get("harvester_folders", []):
+            for folder in server.get("harvester_folders", []):
                 new_files = harvest_neware_files(
-                    server_label,
-                    server_config["hostname"],
-                    server_config["username"],
-                    server_config["shell_type"],
+                    server,
                     folder,
                     snapshots_folder,
                     force_copy=force_copy,

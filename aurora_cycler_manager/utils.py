@@ -7,21 +7,11 @@ from contextlib import suppress
 from datetime import datetime, timezone
 
 import numpy as np
-import paramiko
 import polars as pl
 
 from aurora_cycler_manager.config import get_config
 
 CONFIG = get_config()
-
-
-def ssh_connect(ssh: paramiko.SSHClient, username: str, hostname: str) -> None:
-    """Connect via SSH."""
-    ssh.load_host_keys(CONFIG["SSH known hosts path"])
-    ssh.load_system_host_keys()
-    ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
-    # Paramiko is case sensitive
-    ssh.connect(hostname.lower(), username=username.lower(), key_filename=CONFIG.get("SSH private key path"))
 
 
 def weighted_median(

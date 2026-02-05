@@ -11,23 +11,21 @@ or get the status of a pipeline.
 These classes are used by server_manager.
 """
 
-import base64
 import json
 import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
+from tempfile import TemporaryDirectory
 
-import paramiko
 from aurora_unicycler import Protocol
-from scp import SCPClient
 from typing_extensions import override
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.eclab_harvester import convert_mpr, get_eclab_snapshot_folder
 from aurora_cycler_manager.neware_harvester import convert_neware_data, snapshot_raw_data
+from aurora_cycler_manager.ssh import SSHConnection
 from aurora_cycler_manager.stdlib_utils import run_from_sample
-from aurora_cycler_manager.utils import ssh_connect
 
 logger = logging.getLogger(__name__)
 CONFIG = get_config()
@@ -39,6 +37,7 @@ class CyclerServer:
     def __init__(self, server_config: dict, label: str | None = None) -> None:
         """Initialise server object."""
         self.label = label or server_config["label"]
+        self.server_config = server_config
         self.hostname = server_config["hostname"]
         self.username = server_config["username"]
         self.server_type = server_config["server_type"]
@@ -47,21 +46,19 @@ class CyclerServer:
         self.command_suffix = server_config.get("command_suffix", "")
         self.check_connection()
 
-    def _command(self, command: str, timeout: float = 300) -> str:
+    def _command(self, ssh: SSHConnection, command: str, timeout: float = 300) -> str:
         """Send a command to the server and return the output.
 
         The command is prefixed with the command_prefix specified in the server_config, is run on
         the server's default shell, the standard output is returned as a string.
         """
-        with paramiko.SSHClient() as ssh:
-            ssh_connect(ssh, self.username, self.hostname)
-            _stdin, stdout, stderr = ssh.exec_command(
-                self.command_prefix + command + self.command_suffix,
-                timeout=timeout,
-            )
-            output = stdout.read().decode("utf-8").strip()
-            error = stderr.read().decode("utf-8").strip()
-            exit_status = stdout.channel.recv_exit_status()
+        _stdin, stdout, stderr = ssh.exec_command(
+            self.command_prefix + command + self.command_suffix,
+            timeout=timeout,
+        )
+        output = stdout.read().decode("utf-8").strip()
+        error = stderr.read().decode("utf-8").strip()
+        exit_status = stdout.channel.recv_exit_status()
         if exit_status != 0:
             logger.error("Command '%s' on %s failed with exit status %d", command, self.label, exit_status)
             logger.error("Error: %s", error)
@@ -71,23 +68,10 @@ class CyclerServer:
             logger.warning("Command completed with warnings running '%s' on %s: %s", command, self.label, error)
         return output
 
-    def check_connection(self) -> bool:
-        """Check if the server is reachable by running a simple command.
-
-        Returns:
-            bool: True if the server is reachable
-
-        Raises:
-            ValueError: If the server is unreachable
-
-        """
-        test_phrase = "hellothere"
-        output = self._command(f"echo {test_phrase}", timeout=5).strip()
-        if output != test_phrase:
-            msg = f"Connection error, expected output '{test_phrase}', got '{output}'"
-            raise ValueError(msg)
-        logger.info("Succesfully connected to %s", self.label)
-        return True
+    def check_connection(self) -> None:
+        """Connect and check if the server is reachable."""
+        with SSHConnection(self.server_config):
+            return
 
     def submit(
         self, sample: str, capacity_Ah: float, payload: str | dict | Path | None, pipeline: str
@@ -132,6 +116,7 @@ class NewareServer(CyclerServer):
         Use the start command on the aurora-neware CLI installed on Neware machine.
         """
         # Parse the input into an xml string
+        xml_string = None
         if not isinstance(payload, str | Path | dict):
             msg = (
                 "For Neware, payload must be a unicycler protocol (dict, or path to JSON file) "
@@ -157,6 +142,9 @@ class NewareServer(CyclerServer):
             else:
                 msg = "Payload must be a path to an xml or json file or xml string or dict."
                 raise TypeError(msg)
+        if xml_string is None:
+            msg = "Could not extract XML string."
+            raise AssertionError(msg)
 
         # Check the xml string is valid
         if not xml_string.startswith("<?xml"):
@@ -175,23 +163,16 @@ class NewareServer(CyclerServer):
 
         # Write the xml string to a temporary file
         current_datetime = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
-        try:
-            with Path("./temp.xml").open("w", encoding="utf-8") as f:
+
+        # Transfer the file to the remote PC and start the job
+        with TemporaryDirectory() as temp_dir, SSHConnection(self.server_config) as ssh:
+            with (Path(temp_dir) / "temp.xml").open("w", encoding="utf-8") as f:
                 f.write(xml_string)
-            # Transfer the file to the remote PC and start the job
-            with paramiko.SSHClient() as ssh:
-                ssh_connect(ssh, self.username, self.hostname)
-                with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
-                    remote_xml_dir = PureWindowsPath("C:/submitted_payloads/")
-                    remote_xml_path = remote_xml_dir / f"{sample}__{current_datetime}.xml"
-                    # Create the directory if it doesn't exist
-                    if self.shell_type == "cmd":
-                        ssh.exec_command(f'mkdir "{remote_xml_dir!s}"')
-                    elif self.shell_type == "powershell":
-                        ssh.exec_command(f'New-Item -ItemType Directory -Path "{remote_xml_dir!s}"')
-                    scp.put("./temp.xml", remote_xml_path.as_posix())  # SCP hates windows \
+            remote_xml_dir = PureWindowsPath("C:/submitted_payloads/")
+            remote_xml_path = remote_xml_dir / f"{sample}__{current_datetime}.xml"
+            ssh.put_file(Path("./temp.xml"), remote_xml_path.as_posix())
             # Submit the file on the remote PC
-            output = self._command(f"neware start {pipeline} {sample} {remote_xml_path}")
+            output = self._command(ssh, f"neware start {pipeline} {sample} {remote_xml_path}")
             # Expect the output to be empty if successful, otherwise raise error
             if output:
                 msg = (
@@ -200,13 +181,12 @@ class NewareServer(CyclerServer):
                     "You must check the Neware client logs for more information."
                 )
                 raise ValueError(msg)
-            logger.info("Submitted job to Neware server %s", self.label)
-            # Then ask for the jobid
-            jobid_on_server = self._get_job_id(pipeline)
-            jobid = f"{self.label}-{jobid_on_server}"
-            logger.info("Job started on Neware server with ID %s", jobid)
-        finally:
-            Path("temp.xml").unlink()  # Remove the file on local machine
+            output = self._command(ssh, f"neware get-job-id {pipeline} --full-id")
+            jobid_on_server = json.loads(output).get(pipeline)
+        logger.info("Submitted job to Neware server %s", self.label)
+        jobid = f"{self.label}-{jobid_on_server}"
+        logger.info("Job started on Neware server with ID %s", jobid)
+
         return jobid, jobid_on_server, xml_string
 
     @override
@@ -216,23 +196,25 @@ class NewareServer(CyclerServer):
         Use the STOP command on the Neware-api.
         """
         # Check that sample ID matches
-        output = self._command(f"neware status {pipeline}")
-        barcode = json.loads(output).get(pipeline, {}).get("barcode")
-        if barcode != sampleid:
-            msg = "Barcode on server does not match Sample ID being cancelled"
-            raise ValueError(msg)
-        # Check that a job is running
-        workstatus = json.loads(output).get(pipeline, {}).get("workstatus")
-        if workstatus not in ["working", "pause", "protect"]:
-            msg = "Pipeline is not running, cannot cancel job"
-            raise ValueError(msg)
-        # Check that job ID matches
-        full_test_id = self._get_job_id(pipeline)
-        if full_test_id != job_id_on_server:
-            msg = "Job ID on server does not match Job ID being cancelled"
-            raise ValueError(msg)
-        # Stop the pipeline
-        output = self._command(f"neware stop {pipeline}")
+        with SSHConnection(self.server_config) as ssh:
+            output = self._command(ssh, f"neware status {pipeline}")
+            barcode = json.loads(output).get(pipeline, {}).get("barcode")
+            if barcode != sampleid:
+                msg = "Barcode on server does not match Sample ID being cancelled"
+                raise ValueError(msg)
+            # Check that a job is running
+            workstatus = json.loads(output).get(pipeline, {}).get("workstatus")
+            if workstatus not in ["working", "pause", "protect"]:
+                msg = "Pipeline is not running, cannot cancel job"
+                raise ValueError(msg)
+            # Check that job ID matches
+            output = self._command(ssh, f"neware get-job-id {pipeline} --full-id")
+            full_test_id = json.loads(output).get(pipeline)
+            if full_test_id != job_id_on_server:
+                msg = "Job ID on server does not match Job ID being cancelled"
+                raise ValueError(msg)
+            # Stop the pipeline
+            output = self._command(ssh, f"neware stop {pipeline}")
         # Expect the output to be empty if successful, otherwise raise error
         if output:
             msg = (
@@ -244,7 +226,8 @@ class NewareServer(CyclerServer):
     @override
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
-        result = json.loads(self._command("neware status"))
+        with SSHConnection(self.server_config) as ssh:
+            result = json.loads(self._command(ssh, "neware status"))
         # result is a dict with keys=pipeline and value a dict of stuff
         # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
         pipelines, sampleids, readys = [], [], []
@@ -269,7 +252,8 @@ class NewareServer(CyclerServer):
 
     def _get_job_id(self, pipeline: str | None) -> str:
         """Get the testid for a pipeline."""
-        output = self._command(f"neware get-job-id {pipeline} --full-id")
+        with SSHConnection(self.server_config) as ssh:
+            output = self._command(ssh, f"neware get-job-id {pipeline} --full-id")
         return json.loads(output).get(pipeline)
 
 
@@ -344,39 +328,28 @@ class BiologicServer(CyclerServer):
         run_id = run_from_sample(sample)
         jobid_on_server = str(uuid.uuid4())
         jobid = jobid_on_server  # Do not need separate IDs
-        try:
-            with Path("./temp.mps").open("w", encoding="utf-8") as f:
-                f.write(mps_string)
-            # Transfer the file to the remote PC and start the job
-            with paramiko.SSHClient() as ssh:
-                ssh_connect(ssh, self.username, self.hostname)
-                with SCPClient(ssh.get_transport(), socket_timeout=120) as scp:
-                    # One folder per job, EC-lab generates multiple files per job
-                    # EC-lab will make files with suffix _C01, _C02, etc. and extensions .mpr .mpl etc.
-                    remote_output_path = (
-                        self.biologic_data_path / run_id / sample / jobid_on_server / f"{jobid_on_server}.mps"
-                    )
-                    # Create the directory if it doesn't exist - data directory must also exist
-                    if self.shell_type == "cmd":
-                        ssh.exec_command(f'mkdir "{remote_output_path.parent.as_posix()}"')
-                    elif self.shell_type == "powershell":
-                        ssh.exec_command(f'New-Item -ItemType Directory -Path "{remote_output_path.parent.as_posix()}"')
-                    scp.put("./temp.mps", remote_output_path.as_posix())  # SCP hates Windows \
 
+        # Transfer the file to the remote PC and start the job
+        with TemporaryDirectory() as tmp_dir, SSHConnection(self.server_config) as ssh:
+            with (Path(tmp_dir) / "temp.mps").open("w", encoding="cp1252") as f:
+                f.write(mps_string)
+            remote_output_path = self.biologic_data_path / run_id / sample / jobid_on_server / f"{jobid_on_server}.mps"
+            ssh.put_file(Path(tmp_dir) / "temp.mps", remote_output_path.as_posix())
             # Submit the file on the remote PC
-            output = self._command(f"biologic start {pipeline} {remote_output_path!s} {remote_output_path!s} --ssh")
-            # Expect the output to be empty if successful, otherwise raise error
-            if output:
-                msg = (
-                    f"Command 'biologic start' failed with response:\n{output}\n"
-                    "Probably an issue with the mps input file. "
-                    "You must check on the server for more information. "
-                    f"Try manually loading the mps file at {remote_output_path}."
-                )
-                raise ValueError(msg)
-            logger.info("Job started on Biologic server with ID %s", jobid)
-        finally:
-            Path("temp.mps").unlink()  # Remove the file on local machine
+            output = self._command(
+                ssh, f"biologic start {pipeline} {remote_output_path!s} {remote_output_path!s} --ssh"
+            )
+        # Expect the output to be empty if successful, otherwise raise error
+        if output:
+            msg = (
+                f"Command 'biologic start' failed with response:\n{output}\n"
+                "Probably an issue with the mps input file. "
+                "You must check on the server for more information. "
+                f"Try manually loading the mps file at {remote_output_path}."
+            )
+            raise ValueError(msg)
+        logger.info("Job started on Biologic server with ID %s", jobid)
+
         return jobid, jobid_on_server, mps_string
 
     @override
@@ -385,28 +358,30 @@ class BiologicServer(CyclerServer):
 
         Use the STOP command on the Neware-api.
         """
-        # Get job ID on server
-        output = self._command(f"biologic get-job-id {pipeline} --ssh")
-        job_id_on_biologic = json.loads(output).get(pipeline, {})
-        # Check that a job is running
-        if not job_id_on_biologic:
-            msg = "No job is running on the server, cannot cancel job"
-            raise ValueError(msg)
-        # Check that a job_id matches
-        if job_id_on_server != job_id_on_biologic:
-            msg = "Job ID on server does not match job ID being cancelled"
-            raise ValueError(msg)
-        # Stop the pipeline
-        output = self._command(f"biologic stop {pipeline} --ssh")
-        # Expect the output to be empty if successful, otherwise raise error
-        if output:
-            msg = f"Command 'biologic stop {pipeline}' failed with response:\n{output}\n"
-            raise ValueError(output)
+        with SSHConnection(self.server_config) as ssh:
+            # Get job ID on server
+            output = self._command(ssh, f"biologic get-job-id {pipeline} --ssh")
+            job_id_on_biologic = json.loads(output).get(pipeline, {})
+            # Check that a job is running
+            if not job_id_on_biologic:
+                msg = "No job is running on the server, cannot cancel job"
+                raise ValueError(msg)
+            # Check that a job_id matches
+            if job_id_on_server != job_id_on_biologic:
+                msg = "Job ID on server does not match job ID being cancelled"
+                raise ValueError(msg)
+            # Stop the pipeline
+            output = self._command(ssh, f"biologic stop {pipeline} --ssh")
+            # Expect the output to be empty if successful, otherwise raise error
+            if output:
+                msg = f"Command 'biologic stop {pipeline}' failed with response:\n{output}\n"
+                raise ValueError(output)
 
     @override
     def get_pipelines(self) -> dict:
         """Get the status of all pipelines on the server."""
-        result = json.loads(self._command("biologic status --ssh"))
+        with SSHConnection(self.server_config) as ssh:
+            result = json.loads(self._command(ssh, "biologic status --ssh"))
         # Result is a dict with keys=pipeline and value a dict of stuff
         # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
         # Biologic does not give sample ID or job IDs from status
@@ -434,42 +409,27 @@ class BiologicServer(CyclerServer):
         remote_job_folder = self.biologic_data_path / run_id / sample_id / jobid_on_server
 
         # Connect to the remote server
-        with paramiko.SSHClient() as ssh:
-            ssh_connect(ssh, self.username, self.hostname)
-
+        with SSHConnection(self.server_config) as ssh:
             # Find all the .mpr and .mpl files in the job folder
             ps_command = (
                 f"Get-ChildItem -Path '{remote_job_folder}' -Recurse -File "
                 f"| Where-Object {{ ($_.Extension -in '.mpl', '.mpr')}} "
                 f"| Select-Object -ExpandProperty FullName"
             )
-            if self.shell_type == "powershell":
-                command = ps_command
-            elif self.shell_type == "cmd":
-                # Base64 encode the command to avoid quote/semicolon issues
-                encoded_ps_command = base64.b64encode(ps_command.encode("utf-16le")).decode("ascii")
-                command = f"powershell.exe -EncodedCommand {encoded_ps_command}"
-            else:
-                msg = f"Unknown shell type {self.shell_type} for server {self.label}"
-                raise ValueError(msg)
-            _stdin, stdout, stderr = ssh.exec_command(command)
+            _stdin, stdout, stderr = ssh.exec_command(ps_command)
             exit_status = stdout.channel.recv_exit_status()
             if exit_status != 0:
                 msg = f"Command failed with exit status {exit_status}: {stderr.read().decode('utf-8')}"
                 raise RuntimeError(msg)
             output = stdout.read().decode("utf-8").strip()
-            files_to_copy = output.splitlines()
+            remote_files = output.splitlines()
             local_folder = get_eclab_snapshot_folder()
 
             # Local files will have the same relative path as the remote files
-            local_files = [local_folder / run_id / sample_id / jobid / file.split("\\")[-1] for file in files_to_copy]
+            local_files = [local_folder / run_id / sample_id / jobid / file.split("\\")[-1] for file in remote_files]
 
             # Copy the files across with SFTP
-            with ssh.open_sftp() as sftp:
-                for remote_file, local_file in zip(files_to_copy, local_files, strict=True):
-                    local_file.parent.mkdir(parents=True, exist_ok=True)
-                    logger.info("Downloading file %s to %s", remote_file, local_file)
-                    sftp.get(remote_file, str(local_file))
+            ssh.get_files(local_files, remote_files)
 
             # Convert copied files to aurora style
             for local_file in local_files:
@@ -483,5 +443,6 @@ class BiologicServer(CyclerServer):
 
     def _get_job_id(self, pipeline: str) -> str:
         """Get the testid for a pipeline."""
-        output = self._command(f"biologic get-job-id {pipeline} --ssh")
+        with SSHConnection(self.server_config) as ssh:
+            output = self._command(ssh, f"biologic get-job-id {pipeline} --ssh")
         return json.loads(output).get(pipeline)

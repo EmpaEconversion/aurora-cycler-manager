@@ -7,8 +7,13 @@ import shutil
 import warnings
 from collections.abc import Generator
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+
+from aurora_cycler_manager import config
+
+from .mocks import MockSSHClient
 
 logger = logging.getLogger(__name__)
 
@@ -78,3 +83,11 @@ def reset_all(test_dir: Path) -> Generator[None, None, None]:
                 indent=4,
             )
         )
+    config.CONFIG = None
+
+
+@pytest.fixture
+def mock_ssh() -> Generator[None, None, None]:
+    """Mock SSH client."""
+    with patch("aurora_cycler_manager.ssh.paramiko.SSHClient", return_value=MockSSHClient()):
+        yield

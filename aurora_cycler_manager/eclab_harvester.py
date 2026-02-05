@@ -15,16 +15,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
-import paramiko
 import polars as pl
 import yadg
 from dgbowl_schemas.yadg.dataschema import ExtractorFactory
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.database_funcs import add_data_to_db, get_sample_data
+from aurora_cycler_manager.database_funcs import add_data_to_db, get_sample_data, update_harvester
 from aurora_cycler_manager.setup_logging import setup_logging
+from aurora_cycler_manager.ssh import SSHConnection
 from aurora_cycler_manager.stdlib_utils import run_from_sample
-from aurora_cycler_manager.utils import parse_datetime, ssh_connect
+from aurora_cycler_manager.utils import parse_datetime
 from aurora_cycler_manager.version import __url__, __version__
 
 CONFIG = get_config()
@@ -51,115 +51,47 @@ def get_eclab_snapshot_folder() -> Path:
 
 
 def get_mprs(
-    server_label: str,
-    server_hostname: str,
-    server_username: str,
-    server_shell_type: str,
+    server: dict,
     server_copy_folder: str,
     local_folder: Path | str,
     *,
     force_copy: bool = False,
-) -> list[str]:
+) -> list[Path]:
     """Get .mpr files from subfolders of specified folder.
 
     Args:
-        server_label (str): Label of the server
-        server_hostname (str): Hostname of the server
-        server_username (str): Username to login with
-        server_shell_type (str): Type of shell to use (powershell or cmd)
+        server (dict): Server dictionary, as defined in config
         server_copy_folder (str): Folder to search and copy .mpr and .mpl files
         local_folder (Path | str): Folder to copy files to
         force_copy (bool, optional): Copy all files regardless of modification date
 
     """
     # Set default cutoff date, use local timezone
-    cutoff_datetime = datetime.fromtimestamp(0, tz=CONFIG["tz"])
+    cutoff_uts = 0.0
     if not force_copy:  # Set cutoff date to last snapshot from database
         with sqlite3.connect(CONFIG["Database path"]) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT `Last snapshot` FROM harvester WHERE `Server label`=? AND `Server hostname`=? AND `Folder`=?",
-                (server_label, server_hostname, server_copy_folder),
+                (server["label"], server["hostname"], server_copy_folder),
             )
             result = cursor.fetchone()
             cursor.close()
         if result:
-            cutoff_datetime = parse_datetime(result[0])
-    # Cannot use timezone or ISO8061 - not supported in PowerShell 5.1
-    cutoff_date_str = cutoff_datetime.strftime("%Y-%m-%d %H:%M:%S")
+            cutoff_uts = parse_datetime(result[0]).timestamp()
 
     # Connect to the server and copy the files
-    with paramiko.SSHClient() as ssh:
-        ssh_connect(ssh, server_username, server_hostname)
+    with SSHConnection(server) as ssh:
+        remote_files = ssh.check_new_files(server_copy_folder, [".mpr", ".mpl"], cutoff_uts)
+        local_files = [Path(local_folder) / os.path.relpath(file, server_copy_folder) for file in remote_files]
+        copy_datetime = datetime.now(timezone.utc)  # Keep time of copying for database
+        ssh.get_files(local_files, remote_files)
 
-        # Shell commands to find files modified since cutoff date
-        # TODO: grab all the filenames and modified dates, copy if they are newer than local files not just cutoff date
-        if server_shell_type == "powershell":
-            command = (
-                f"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
-                "| Where-Object { "
-                f"$_.LastWriteTime -gt '{cutoff_date_str}' -and "
-                "($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr')} "
-                "| Select-Object -ExpandProperty FullName"
-            )
-        elif server_shell_type == "cmd":
-            command = (
-                'powershell.exe -Command "'
-                f"Get-ChildItem -Path '{server_copy_folder}' -Recurse "
-                "| Where-Object { "
-                f"$_.LastWriteTime -gt '{cutoff_date_str}' -and "
-                "($_.Extension -eq '.mpl' -or $_.Extension -eq '.mpr') "
-                "} | Select-Object -ExpandProperty FullName"
-                '"'
-            )
-        else:
-            msg = f"Unknown shell type {server_shell_type} for server {server_label}"
-            raise ValueError(msg)
-        _stdin, stdout, stderr = ssh.exec_command(command)
-
-        # Parse the output
-        output = stdout.read().decode("utf-8").strip()
-        error = stderr.read().decode("utf-8").strip()
-        if error:
-            msg = f"Error finding modified files: {error}"
-            raise RuntimeError(msg)
-        modified_files = output.splitlines()
-        logger.info("Found %d modified files since %s", len(modified_files), cutoff_date_str)
-
-        # Copy the files using SFTP
-        current_datetime = datetime.now(timezone.utc)  # Keep time of copying for database
-        new_files = []
-        with ssh.open_sftp() as sftp:
-            for file in modified_files:
-                # Maintain the folder structure when copying
-                relative_path = os.path.relpath(file, server_copy_folder)
-                local_path = os.path.join(local_folder, relative_path)
-                local_dir = os.path.dirname(local_path)
-                if not os.path.exists(local_dir):
-                    os.makedirs(local_dir)
-                logger.info("Copying %s to %s", file, local_path)
-                sftp.get(file, local_path)
-                new_files.append(local_path)
-
-    # Update the database
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT OR IGNORE INTO harvester (`Server label`, `Server hostname`, `Folder`) VALUES (?, ?, ?)",
-            (server_label, server_hostname, server_copy_folder),
-        )
-        cursor.execute(
-            "UPDATE harvester "
-            "SET `Last snapshot` = ? "
-            "WHERE `Server label` = ? AND `Server hostname` = ? AND `Folder` = ?",
-            (current_datetime.isoformat(timespec="seconds"), server_label, server_hostname, server_copy_folder),
-        )
-        cursor.close()
-
-        return new_files
+    update_harvester(server, server_copy_folder, copy_datetime)
+    return local_files
 
 
-def get_all_mprs(*, force_copy: bool = False) -> list[str]:
+def get_all_mprs(*, force_copy: bool = False) -> list[Path]:
     """Get all MPR files from the folders specified in the config.
 
     Searches in the active "data_path" folder as well as a list of passive
@@ -169,28 +101,22 @@ def get_all_mprs(*, force_copy: bool = False) -> list[str]:
     snapshot_folder = get_eclab_snapshot_folder()
 
     # Find all biologic servers
-    for server_label, server_config in CONFIG["Servers"].items():
-        if server_config.get("server_type") in {"biologic", "biologic_harvester"}:
+    for server in CONFIG["Servers"].values():
+        if server.get("server_type") in {"biologic", "biologic_harvester"}:
             # Check active data path folder
-            if server_config.get("data_path"):
+            if server.get("data_path"):
                 new_files = get_mprs(
-                    server_label,
-                    server_config["hostname"],
-                    server_config["username"],
-                    server_config["shell_type"],
-                    server_config["data_path"],
+                    server,
+                    server["data_path"],
                     snapshot_folder,
                     force_copy=force_copy,
                 )
                 all_new_files.extend(new_files)
 
             # Check passive harvesters
-            for folder in server_config.get("harvester_folders", []):
+            for folder in server.get("harvester_folders", []):
                 new_files = get_mprs(
-                    server_label,
-                    server_config["hostname"],
-                    server_config["username"],
-                    server_config["shell_type"],
+                    server,
                     folder,
                     snapshot_folder,
                     force_copy=force_copy,

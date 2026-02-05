@@ -1,26 +1,28 @@
 """Test server_manager.py module."""
 
-import sqlite3
 from pathlib import Path
 
 import pytest
 from aurora_unicycler import Protocol
 
-from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.server_manager import _CyclingJob, _Sample
-
-CONFIG = get_config()
+from aurora_cycler_manager.cycler_servers import CyclerServer
+from aurora_cycler_manager.server_manager import ServerManager, _CyclingJob, _Sample
 
 
-def test_cycling_job_add_payload(reset_all, tmp_path: Path) -> None:
+def test_connections(reset_all, mock_ssh) -> None:
+    """Test mock SSH connections."""
+    sm = ServerManager()
+    assert all(s in sm.servers for s in ["nw", "bio"])
+    assert all(isinstance(s, CyclerServer) for s in sm.servers.values())
+
+
+def test_cycling_job_add_payload(reset_all, mock_ssh, tmp_path: Path) -> None:
     """Test adding payload to cycling job."""
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO pipelines (`Pipeline`, `Server label`, `Sample ID`) VALUES ('test','nw','240701_svfe_gen6_01')"
-        )
+    sample_id = "240701_svfe_gen6_01"
+    sm = ServerManager()
+    sm.load("10-1-1", sample_id)
 
-    cj = _CyclingJob(_Sample.from_id("240701_svfe_gen6_01"), "test-job", 1, "testing")
+    cj = _CyclingJob(_Sample.from_id(sample_id), "test-job", 1, "testing")
 
     # Biologic
     payload_path = tmp_path / "test.mps"
@@ -86,3 +88,42 @@ def test_cycling_job_add_payload(reset_all, tmp_path: Path) -> None:
     file_path = tmp_path / "test.docx"
     with pytest.raises(AssertionError, match="If payload is a path, it must be"):
         cj.add_payload(file_path)
+
+
+def test_load_eject(reset_all, mock_ssh) -> None:
+    """Test loading and ejecting samples."""
+    sm = ServerManager()
+
+    sample1 = "240701_svfe_gen6_01"
+    sample2 = "240709_svfe_gen8_01"
+    sample3 = "250116_kigr_gen6_01"
+
+    pip1 = "10-1-1"
+    pip2 = "10-1-2"
+    pip3 = "MPG2-1-1"
+    pip4 = "MPG2-1-2"
+
+    sm.load(pip1, sample1)
+
+    with pytest.raises(ValueError, match="already has a sample loaded"):
+        sm.load(pip1, sample2)
+
+    with pytest.raises(ValueError, match=f"has sample {sample1} loaded, not {sample2}"):
+        sm.eject(pip1, sample2)
+
+    sm.eject(pip1, sample1)
+    sm.load(pip1, sample2)
+
+    with pytest.raises(ValueError, match=f"There is no sample to eject on pipeline {pip2}"):
+        sm.eject(pip2, sample2)
+
+    sm.load(pip3, sample3)
+    sm.load(pip4, sample1)
+    sm.eject(pip3)
+    sm.eject(pip4)
+
+    with pytest.raises(ValueError, match="Sample ID 'err' not found in the database"):
+        sm.load(pip2, "err")
+
+    with pytest.raises(ValueError, match="Pipeline 'err' not found in the database"):
+        sm.load("err", sample1)

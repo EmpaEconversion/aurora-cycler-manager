@@ -75,6 +75,17 @@ def copy_rows(source_db: Path, target_db: Path, table: str, id_col: str, row_ids
         conn_target.commit()
 
 
+def add_rows(target_db: Path, table: str, rows: list[dict]) -> None:
+    """Add row to table."""
+    with sqlite3.connect(target_db) as conn:
+        cur = conn.cursor()
+        for row in rows:
+            columns_str = ", ".join("`" + k + "`" for k in row)
+            values_str = ", ".join("'" + v + "'" for v in row.values())
+            cur.execute(f"INSERT OR REPLACE INTO {table} ({columns_str}) VALUES ({values_str})")  # noqa: S608
+            logger.info("Row copied: %s", next(iter(row.values())))
+
+
 if __name__ == "__main__":
     # Check if the script is run directly
     if "PYTEST_RUNNING" in os.environ:
@@ -107,3 +118,16 @@ if __name__ == "__main__":
     ]
     copy_rows(DB_PATH, TEST_DB_PATH, "samples", "Sample ID", samples)
     copy_rows(DB_PATH, TEST_DB_PATH, "jobs", "Job ID", jobs)
+
+    # Add fake pipelines
+    rows = [
+        {"Pipeline": "10-1-1", "Server label": "nw", "Server type": "neware"},
+        {"Pipeline": "10-1-2", "Server label": "nw", "Server type": "neware"},
+        {"Pipeline": "10-1-3", "Server label": "nw", "Server type": "neware"},
+        {"Pipeline": "10-1-4", "Server label": "nw", "Server type": "neware"},
+        {"Pipeline": "MPG2-1-1", "Server label": "bio", "Server type": "biologic"},
+        {"Pipeline": "MPG2-1-2", "Server label": "bio", "Server type": "biologic"},
+        {"Pipeline": "MPG2-1-3", "Server label": "bio", "Server type": "biologic"},
+        {"Pipeline": "MPG2-1-4", "Server label": "bio", "Server type": "biologic"},
+    ]
+    add_rows(TEST_DB_PATH, "pipelines", rows)
