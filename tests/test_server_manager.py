@@ -5,11 +5,8 @@ from pathlib import Path
 import pytest
 from aurora_unicycler import Protocol
 
-from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.cycler_servers import CyclerServer
 from aurora_cycler_manager.server_manager import ServerManager, _CyclingJob, _Sample
-
-CONFIG = get_config()
 
 
 def test_connections(reset_all, mock_ssh) -> None:
