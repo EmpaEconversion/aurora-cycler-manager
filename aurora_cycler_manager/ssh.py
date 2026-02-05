@@ -1,6 +1,6 @@
 """Copyright © 2026, Empa.
 
-Functions for connecting to instruments with SSH.
+Functions for connecting to instrument servers with SSH.
 """
 
 import base64
@@ -8,9 +8,9 @@ import logging
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path, PureWindowsPath
-from typing import Self
 
 import paramiko
+from typing_extensions import Self
 
 from aurora_cycler_manager.config import get_config
 
@@ -26,7 +26,7 @@ def _ps_to_cmd(ps_command: str) -> str:
 
 
 class SSHConnection:
-    """Wrapper around paramiko."""
+    """Wrapper around paramiko SSHClient."""
 
     def __init__(self, server: dict) -> None:
         """Store server info."""
