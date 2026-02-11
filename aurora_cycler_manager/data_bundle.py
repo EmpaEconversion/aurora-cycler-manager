@@ -36,7 +36,7 @@ def read_metadata(file: str | Path) -> dict:
     """Read metadata from aurora-style parquet/hdf5 file."""
     file = Path(file)
     if file.suffix == ".parquet":
-        return json.loads(pl.read_parquet_metadata(file)["AURORA:metadata"])
+        return json.loads(pl.read_parquet_metadata(file).get("AURORA:metadata", "{}"))
     if file.suffix == ".h5":
         with h5py.File(file, "r") as f:
             return json.loads(f["metadata"][()])

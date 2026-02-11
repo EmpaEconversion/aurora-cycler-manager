@@ -7,12 +7,14 @@ import contextlib
 import io
 import json
 import logging
+import uuid
 import zipfile
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+import polars as pl
 from aurora_unicycler import Protocol
 from battinfoconverter_backend.json_convert import convert_excel_to_jsonld
 
@@ -20,14 +22,16 @@ import aurora_cycler_manager.battinfo_utils as bu
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.bdf_converter import aurora_to_bdf
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_bundle import get_cycles_summary, get_cycling
+from aurora_cycler_manager.data_bundle import get_cycles_summary, get_cycling, get_metadata, get_sample_folder
 from aurora_cycler_manager.database_funcs import (
+    add_data_to_db,
     add_protocol_to_job,
     add_samples_from_object,
     get_all_sampleids,
     get_sample_data,
     get_unicycler_protocols,
 )
+from aurora_cycler_manager.dicts import bdf_to_aurora_map
 from aurora_cycler_manager.eclab_harvester import convert_mpr
 from aurora_cycler_manager.server_manager import _Sample
 from aurora_cycler_manager.stdlib_utils import run_from_sample
@@ -189,8 +193,9 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
             known_samples = set(get_all_sampleids())
             for file in file_list:
                 logger.info("Checking file %s", file)
-                if file.endswith("/"):
-                    # Just a folder
+                if file.endswith("/"):  # Just a folder
+                    continue
+                if file == "ro-crate-metadata.json":  # silently ignore
                     continue
                 parts = file.split("/")
                 if len(parts) < 2:
@@ -200,16 +205,18 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
                 if folder not in known_samples:
                     invalid_files[file] = f"Folder {folder} is not a Sample ID in the database"
                     continue
+
+                # Its a file, check if it is supported type
                 filetype = file.split(".")[-1]
                 if filetype == "mpl":  # silently ignore - sidecar file
                     continue
-                if filetype in {"mpr", "xlsx"}:
+                if filetype in {"mpr", "xlsx", "parquet"}:
                     valid_files[file] = folder
                     continue
                 invalid_files[file] = f"Filetype {filetype} is not supported"
 
         if valid_files:
-            msg = "Got a zip with valid files\nAdding data for the following samples:\n" + "\n".join(
+            msg = "Got a zip with valid format\nAdding data for the following samples:\n" + "\n".join(
                 sorted(set(valid_files.values()))
             )
             if not invalid_files:
@@ -242,6 +249,28 @@ def save_battinfo(data: dict, file: str | Path | io.BytesIO, sample_ids: list[st
         save_path.parent.mkdir(parents=True, exist_ok=True)
         with save_path.open("w", encoding="utf-8") as f:
             json.dump(merged_jsonld, f, indent=4)
+
+
+def save_parquet(file: str | Path | bytes, sample_id: str, file_stem: str | None = None) -> None:
+    """Normalize a parquet and save as a snapshot."""
+    df = pl.read_parquet(file)
+    metadata = pl.read_parquet_metadata(file)
+    metadata.pop("ARROW:schema", None)
+    if "voltage_volt" in df.columns:  # bdf
+        df = df.rename(bdf_to_aurora_map, strict=False)
+    if not all(c in df.columns for c in ["uts", "V (V)", "I (A)", "Cycle"]):
+        if "Discharge capacity (mAh)" in df.columns:
+            return  # Silent - this is recalculated after
+        logger.warning("Dataframe not time-series, not saving")
+        return
+    if file_stem is None:
+        file_stem = Path(file).stem if isinstance(file, str | Path) else str(uuid.uuid4())
+    job_id = add_data_to_db(sample_id, file_stem, df["uts"][0], df["uts"][-1])
+    add_data_to_db(sample_id, file_stem, df["uts"][0], df["uts"][-1], job_id)
+    folder = get_sample_folder(sample_id) / "snapshots"
+    if not folder.exists():
+        folder.mkdir(parents=True)
+    df.write_parquet(folder / f"snapshot.{file_stem}.parquet", metadata=metadata)
 
 
 def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
@@ -348,6 +377,7 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
                     filename = subfilepath.split("/")[-1]
                     try:
                         with zip_file.open(subfilepath) as file:
+                            logger.info("Processing file: %s", filename)
                             match filename.split(".")[-1]:
                                 case "mpr":
                                     # Check if there is an associated mpl file
@@ -358,7 +388,6 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
                                     else:
                                         mpl_file = None
                                     # Convert mpr file and save
-                                    logger.info("Processing file: %s", filename)
                                     convert_mpr(
                                         file.read(),
                                         mpl_file=mpl_file,
@@ -367,19 +396,12 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
                                         file_name=filename,
                                     )
                                     successful_samples.add(sample_id)
-                                    success_notification(
-                                        "File processed",
-                                        f"{filename}",
-                                        queue=True,
-                                    )
                                 case "xlsx":
                                     xlsx_bytes = io.BytesIO(file.read())
                                     save_battinfo({"file": "battinfo-xlsx"}, xlsx_bytes, [sample_id])
-                                    success_notification(
-                                        "File processed",
-                                        f"BattINFO json-ld added to {sample_id}",
-                                        queue=True,
-                                    )
+                                case "parquet":
+                                    save_parquet(file.read(), sample_id, filename.rsplit(".", 1)[0])
+                                    successful_samples.add(sample_id)
                     except Exception as e:
                         logger.exception("Error processing file: %s", filename)
                         error_notification(
@@ -387,6 +409,11 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
                             f"{filename}: {e!s}",
                             queue=True,
                         )
+                success_notification(
+                    "Complete",
+                    "All files processed",
+                    queue=True,
+                )
 
             for sample_id in successful_samples:
                 logger.info("Analysing sample: %s", sample_id)
@@ -394,7 +421,7 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
                 success_notification("Sample analysed", f"{sample_id}", queue=True)
             success_notification(
                 "All data processed and analysed",
-                f"{len(valid_files)} files added to database",
+                f"Files added for {len(successful_samples)} samples",
                 queue=True,
             )
             return 1
@@ -470,11 +497,13 @@ def create_rocrate(
             warnings = []
             errors = []
             df = None
+            metadata = None
 
             # If bdf is requested, convert the file
             if {"bdf-csv", "bdf-parquet"} & filetypes:
                 with contextlib.suppress(FileNotFoundError):
                     df = aurora_to_bdf(get_cycling(sample_id))
+                    metadata = get_metadata(sample_id)
             # Loop through requested files
             for filetype in filetypes:
                 i += 1
@@ -580,7 +609,10 @@ def create_rocrate(
                             continue
                         # convert to parquet file and write to zip
                         buffer = io.BytesIO()
-                        df.write_parquet(buffer)
+                        df.write_parquet(
+                            buffer,
+                            metadata={"AURORA:metadata": json.dumps(metadata)} if metadata else None,
+                        )
                         buffer.seek(0)
                         parquet_name = f"full.{sample_id}.bdf.parquet"
                         rel_file_path = sample_id + "/" + parquet_name
