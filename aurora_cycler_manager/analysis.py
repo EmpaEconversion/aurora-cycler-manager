@@ -93,12 +93,33 @@ def _sort_times(start_times: list | np.ndarray, end_times: list | np.ndarray) ->
 
 def merge_metadata(job_files: list[Path], metadatas: list[dict]) -> dict:
     """Merge several job metadata, add provenance, replace sample data with latest from db."""
-    sample_id = metadatas[0].get("sample_data", {}).get("Sample ID", "")
+    # Get sample_id from first metadata
+    first_sample_data = metadatas[0].get("sample_data", {})
+    if isinstance(first_sample_data, list):
+        sample_id = first_sample_data[0].get("Sample ID", "") if first_sample_data else ""
+    else:
+        sample_id = first_sample_data.get("Sample ID", "")
     sample_data = get_sample_data(sample_id)
-    # Merge glossary dicts
+
+    # Flatten / merge glossary dicts
     glossary = {}
-    for g in [m.get("glossary", {}) for m in metadatas]:
-        glossary.update(g)
+    for m in metadatas:
+        g = m.get("glossary", {})
+        if isinstance(g, list):
+            for item in g:
+                glossary.update(item)
+        elif g:
+            glossary.update(g)
+
+    # Flatten job_data to one list
+    job_data = []
+    for m in metadatas:
+        jd = m.get("job_data", {})
+        if isinstance(jd, list):
+            job_data.extend(jd)
+        elif jd:
+            job_data.append(jd)
+
     return {
         "provenance": {
             "aurora_metadata": {
@@ -113,7 +134,7 @@ def merge_metadata(job_files: list[Path], metadatas: list[dict]) -> dict:
             "original_file_provenance": {str(f): m["provenance"] for f, m in zip(job_files, metadatas, strict=True)},
         },
         "sample_data": sample_data,
-        "job_data": [m.get("job_data", {}) for m in metadatas],
+        "job_data": job_data,
         "glossary": glossary,
     }
 
