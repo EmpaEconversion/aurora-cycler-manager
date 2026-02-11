@@ -91,14 +91,9 @@ def _sort_times(start_times: list | np.ndarray, end_times: list | np.ndarray) ->
     return valid_indices[sorted_positions[unique_mask]]
 
 
-def merge_metadata(job_files: list[Path], metadatas: list[dict]) -> dict:
+def merge_metadata(job_files: list[Path], metadatas: list[dict], sample_id: str) -> dict:
     """Merge several job metadata, add provenance, replace sample data with latest from db."""
-    # Get sample_id from first metadata
-    first_sample_data = metadatas[0].get("sample_data", {})
-    if isinstance(first_sample_data, list):
-        sample_id = first_sample_data[0].get("Sample ID", "") if first_sample_data else ""
-    else:
-        sample_id = first_sample_data.get("Sample ID", "")
+    # Get sample data from database
     sample_data = get_sample_data(sample_id)
 
     # Flatten / merge glossary dicts
@@ -794,7 +789,7 @@ def analyse_sample(sample_id: str) -> SampleDataBundle:
     df, eis_df = merge_dfs(dfs)
 
     # Merge metadatas together
-    metadata = merge_metadata(job_files, metadatas)
+    metadata = merge_metadata(job_files, metadatas, sample_id)
 
     # Get sample and job data
     sample_data = metadata.get("sample_data", {})

@@ -60,7 +60,7 @@ class TestAnalysis:
         assert len(df) == sum(lens)
         assert df["Cycle"][-1] == 3
 
-        metadata = merge_metadata(job_files, metadatas)
+        metadata = merge_metadata(job_files, metadatas, sample_id)
         assert isinstance(metadata, dict)
         assert metadata.get("Sample ID") == metadatas[0].get("Sample ID")
 
