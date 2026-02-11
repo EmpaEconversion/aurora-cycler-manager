@@ -188,7 +188,9 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
         with zipfile.ZipFile(filepath, "r") as zip_file:
             # List the contents
             valid_files = {}
+            warning_files = {}
             invalid_files = {}
+            new_samples = set()
             file_list = zip_file.namelist()
             known_samples = set(get_all_sampleids())
             for file in file_list:
@@ -201,37 +203,46 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
                 if len(parts) < 2:
                     invalid_files[file] = "File must be inside a Sample ID folder"
                     continue
-                folder = parts[-2]
-                if folder not in known_samples:
-                    invalid_files[file] = f"Folder {folder} is not a Sample ID in the database"
-                    continue
+                sample_id = parts[-2]
 
                 # Its a file, check if it is supported type
                 filetype = file.split(".")[-1]
                 if filetype == "mpl":  # silently ignore - sidecar file
                     continue
                 if filetype in {"mpr", "xlsx", "parquet"}:
-                    valid_files[file] = folder
+                    if sample_id in known_samples:
+                        valid_files[file] = sample_id
+                    else:
+                        warning_files[file] = sample_id
+                        new_samples.add(sample_id)
                     continue
                 invalid_files[file] = f"Filetype {filetype} is not supported"
 
-        if valid_files:
-            msg = "Got a zip with valid format\nAdding data for the following samples:\n" + "\n".join(
-                sorted(set(valid_files.values()))
-            )
-            if not invalid_files:
-                return msg, "green", False, {"file": "zip", "data": valid_files}
+        if valid_files or warning_files:
+            msg = "Got a zip with valid format\n"
+            color = "green"
+            if valid_files:
+                msg = "Found data for the following EXISTING samples:\n" + "\n".join(sorted(set(valid_files.values())))
+            if warning_files:
+                color = "orange"
+                msg += "Found data for the following NEW samples:\n" + "\n".join(sorted(set(warning_files.values())))
             if invalid_files:
+                color = "orange"
                 msg += "\n\nSKIPPING the following files:\n" + "\n".join(
                     file + "\n" + reason for file, reason in invalid_files.items()
                 )
-                return msg, "orange", False, {"file": "zip", "data": valid_files}
+            return (
+                msg,
+                color,
+                False,
+                {"file": "zip", "data": {**valid_files, **warning_files}, "new_samples": list(new_samples)},
+            )
         if invalid_files:
             msg = "No valid files found:\n" + "\n".join(file + "\n" + reason for file, reason in invalid_files.items())
-            return msg, "red", True, {"file": None, "data": None}
-        return "No files found in zip", "red", False, {"file": None, "data": None}
+            return msg, "red", True, {"file": None, "data": None, "new_samples": None}
+        return "No files found in zip", "red", False, {"file": None, "data": None, "new_samples": None}
 
-    return "File not understood", "red", True, {"file": None, "data": None}
+    return "File not understood", "red", True, {"file": None, "data": None, "new_samples": None}
 
 
 def save_battinfo(data: dict, file: str | Path | io.BytesIO, sample_ids: list[str]) -> None:
@@ -370,6 +381,10 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
             return 1
 
         case "zip":
+            # Add new samples if required
+            if new_samples := data.get("new_samples"):
+                add_samples_from_object([{"Sample ID": s} for s in new_samples])
+                logger.info("Added new samples: %s", ",".join(new_samples))
             valid_files = data["data"]
             successful_samples = set()
             with zipfile.ZipFile(filepath, "r") as zip_file:
