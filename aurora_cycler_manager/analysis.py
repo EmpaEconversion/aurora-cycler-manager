@@ -126,7 +126,9 @@ def merge_metadata(job_files: list[Path], metadatas: list[dict], sample_id: str)
                     "datetime": datetime.now(timezone.utc).isoformat(),
                 },
             },
-            "original_file_provenance": {str(f): m["provenance"] for f, m in zip(job_files, metadatas, strict=True)},
+            "original_file_provenance": {
+                str(f): m.get("provenance") for f, m in zip(job_files, metadatas, strict=True)
+            },
         },
         "sample_data": sample_data,
         "job_data": job_data,
