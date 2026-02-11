@@ -178,7 +178,18 @@ def calc_dq(df: pl.DataFrame) -> pl.DataFrame:
 def merge_dfs(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, pl.DataFrame | None]:
     """Merge cycling dataframes and add cycles. Seperate out EIS."""
     for i, df in enumerate(dfs):
-        dfs[i] = df.with_columns(pl.lit(i).alias("job_number"))
+        exprs = [pl.lit(i).alias("job_number")]
+        if "loop_number" not in df.columns:
+            exprs.append(pl.lit(0).alias("loop_number"))
+        if "cycle_number" not in df.columns:
+            if "Cycle" in df.columns:
+                exprs.append(pl.col("Cycle").alias("cycle_number"))
+            else:
+                exprs.append(pl.lit(0).alias("cycle_number"))
+        dfs[i] = df.with_columns(exprs)
+
+        if "dQ (mAh)" not in df.columns:
+            dfs[i] = calc_dq(dfs[i])
 
     df = pl.concat(dfs, how="diagonal")
 
@@ -193,13 +204,6 @@ def merge_dfs(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, pl.DataFrame | Non
 
     if not df.is_empty():
         df = df.sort("uts")
-        if "loop_number" not in df.columns:
-            df = df.with_columns(pl.lit(0).alias("loop_number"))
-        else:
-            df = df.with_columns(pl.col("loop_number").fill_null(0))
-
-        if "dQ (mAh)" not in df.columns:
-            df = calc_dq(df)
 
         # Increment step if any job, cycle, or loop changes
         df = df.with_columns(pl.struct(["job_number", "cycle_number", "loop_number"]).rle_id().add(1).alias("Step"))
