@@ -231,7 +231,7 @@ def merge_dfs(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, pl.DataFrame | Non
         )
 
         # Join back to main dataframe
-        df = df.join(step_stats.select(["Step", "Cycle"]), on="Step", how="left")
+        df = df.drop("Cycle", strict=False).join(step_stats.select(["Step", "Cycle"]), on="Step", how="left")
 
         # EIS merge - find last non-zero cycle before the EIS
         if eis_df is not None:
