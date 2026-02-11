@@ -28,6 +28,14 @@ def aurora_to_bdf(df: pl.DataFrame) -> pl.DataFrame:
 
 def bdf_to_aurora(df: pl.DataFrame) -> pl.DataFrame:
     """Convert a BDF compliant dataframe to Aurora."""
+    exprs = []
+    if "test_time_millisecond" in df.columns:
+        exprs += [(pl.col("test_time_millisecond") / 1000).alias("test_time_second")]
+    if "date_time_millisecond" in df.columns:
+        exprs += [(pl.col("date_time_millisecond") / 1000).alias("unix_time_second")]
+    if "cycle_dimensionless" in df.columns:
+        exprs += [(pl.col("cycle_dimensionless")).alias("cycle_count")]
+    df = df.with_columns(exprs)
     df = df.select([k for k in bdf_to_aurora_map if k in df.columns])
     df = df.rename(bdf_to_aurora_map, strict=False)
     if "uts" not in df:
