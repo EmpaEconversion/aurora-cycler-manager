@@ -963,9 +963,9 @@ def shrink_all_samples(sampleid_contains: str = "") -> None:
         sampleid_contains (str, optional): only shrink samples with this string in the sampleid
 
     """
-    for batch_folder in Path(CONFIG["Processed snapshots folder path"]).iterdir():
-        if batch_folder.is_dir():
-            for sample_folder in batch_folder.iterdir():
+    for run_folder in Path(CONFIG["Data folder path"]).iterdir():
+        if run_folder.is_dir():
+            for sample_folder in run_folder.iterdir():
                 sample_id = sample_folder.name
                 if sampleid_contains and sampleid_contains not in sample_id:
                     continue
@@ -1005,9 +1005,9 @@ def analyse_all_samples(
     else:
         samples_to_analyse = []
 
-    for batch_folder in Path(CONFIG["Processed snapshots folder path"]).iterdir():
-        if batch_folder.is_dir():
-            for sample in batch_folder.iterdir():
+    for run_folder in Path(CONFIG["Data folder path"]).iterdir():
+        if run_folder.is_dir():
+            for sample in run_folder.iterdir():
                 if sampleid_contains and sampleid_contains not in sample.name:
                     continue
                 if mode != "always" and sample.name not in samples_to_analyse:

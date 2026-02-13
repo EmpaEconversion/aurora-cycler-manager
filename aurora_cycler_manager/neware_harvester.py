@@ -23,6 +23,7 @@ import xmltodict
 
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.data_bundle import get_sample_folder
 from aurora_cycler_manager.database_funcs import (
     check_job_running,
     get_all_sampleids,
@@ -33,7 +34,6 @@ from aurora_cycler_manager.database_funcs import (
 )
 from aurora_cycler_manager.setup_logging import setup_logging
 from aurora_cycler_manager.ssh import SSHConnection
-from aurora_cycler_manager.stdlib_utils import run_from_sample
 from aurora_cycler_manager.utils import parse_datetime
 from aurora_cycler_manager.version import __url__, __version__
 
@@ -768,8 +768,7 @@ def convert_neware_data(
         if not sampleid:
             logger.warning("Not saving %s, no valid Sample ID found", file_path)
             return df, metadata
-        run_id = run_from_sample(sampleid)
-        folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sampleid / "snapshots"
+        folder = get_sample_folder(sampleid) / "snapshots"
         if not folder.exists():
             folder.mkdir(parents=True)
         parquet_filepath = folder / f"snapshot.{file_path.stem}.parquet"

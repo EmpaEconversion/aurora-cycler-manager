@@ -47,7 +47,7 @@ def read_metadata(file: str | Path) -> dict:
 def get_sample_folder(sample_id: str) -> Path:
     """Get sample data folder."""
     run_id = run_from_sample(sample_id)
-    return CONFIG["Processed snapshots folder path"] / run_id / sample_id
+    return CONFIG["Data folder path"] / run_id / sample_id
 
 
 def get_cycling(sample_id: str) -> pl.DataFrame:

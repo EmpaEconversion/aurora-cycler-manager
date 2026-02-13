@@ -20,6 +20,7 @@ import yadg
 from dgbowl_schemas.yadg.dataschema import ExtractorFactory
 
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.data_bundle import get_sample_folder
 from aurora_cycler_manager.database_funcs import add_data_to_db, get_sample_data, update_harvester
 from aurora_cycler_manager.setup_logging import setup_logging
 from aurora_cycler_manager.ssh import SSHConnection
@@ -274,9 +275,7 @@ def convert_mpr(
     if isinstance(mpr_file, (str, Path)):
         mpr_file = Path(mpr_file).resolve()
         if not sample_id:
-            run_id, sample_id = get_sampleid_from_mpr(mpr_file)
-        else:
-            run_id = run_from_sample(sample_id)
+            sample_id = get_sampleid_from_mpr(mpr_file)
         if not modified_date:
             modified_date = datetime.fromtimestamp(mpr_file.stat().st_mtime, tz=timezone.utc)
     elif isinstance(mpr_file, bytes):  # file-like object
@@ -286,7 +285,6 @@ def convert_mpr(
         if not file_name:
             msg = "File name is required if reading from bytes"
             raise ValueError(msg)
-        run_id = run_from_sample(sample_id)
     else:
         msg = "mpr_file must be str, Path, or file-like object"
         raise TypeError(msg)
@@ -332,7 +330,7 @@ def convert_mpr(
         if not sample_id:
             logger.warning("Not saving %s, no valid Sample ID found", mpr_file)
             return df, metadata
-        folder = Path(CONFIG["Processed snapshots folder path"]) / run_id / sample_id / "snapshots"
+        folder = get_sample_folder(sample_id) / "snapshots"
         if not folder.exists():
             folder.mkdir(parents=True)
 
@@ -366,7 +364,7 @@ def convert_mpr(
     return df, metadata
 
 
-def get_sampleid_from_mpr(mpr_rel_path: str | Path) -> tuple[str, str]:
+def get_sampleid_from_mpr(mpr_rel_path: str | Path) -> str:
     """Try to get the sample ID based on the remote file path."""
     # split the relative path into parts
     parts = Path(mpr_rel_path).parts
@@ -377,9 +375,7 @@ def get_sampleid_from_mpr(mpr_rel_path: str | Path) -> tuple[str, str]:
     # From aurora-biologic API, files are stored base_folder/run_id/sample_id/job_id/files.mpr
     try:
         if parts[-4] == run_from_sample(parts[-3]):  # if this works, it was stored correctly
-            run_id = parts[-4]
-            sample_id = parts[-3]
-            return run_id, sample_id
+            return parts[-3]
     except IndexError:
         pass
 
@@ -420,7 +416,7 @@ def get_sampleid_from_mpr(mpr_rel_path: str | Path) -> tuple[str, str]:
     if not run_id or not sample_id:
         msg = f"Could not get Sample ID and Run ID for {mpr_rel_path}"
         raise ValueError(msg)
-    return run_id, sample_id
+    return sample_id
 
 
 def convert_all_mprs() -> None:

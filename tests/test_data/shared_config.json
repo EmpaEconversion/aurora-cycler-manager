@@ -1,7 +1,7 @@
 {
     "Database path" : "database/test_database.db",
     "Database backup folder path" : "database/backup",
-    "Processed snapshots folder path" : "snapshots",
+    "Data folder path" : "data",
     "Time zone" : "Europe/Zurich",
     "Batches folder path": "batches",
     

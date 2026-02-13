@@ -50,7 +50,7 @@ def default_config(base_dir: Path) -> dict:
         "Database backup folder path": str(base_dir / "database" / "backup"),
         "Samples folder path": str(base_dir / "samples"),
         "Protocols folder path": str(base_dir / "protocols"),
-        "Processed snapshots folder path": str(base_dir / "snapshots"),
+        "Data folder path": str(base_dir / "data"),
         "Servers": {
             "example-label": {
                 "hostname": "example-hostname",
@@ -420,7 +420,7 @@ def connect_to_config(shared_config_folder: str | Path) -> None:
         "Database backup folder path",
         "Samples folder path",
         "Protocols folder path",
-        "Processed snapshots folder path",
+        "Data folder path",
     ]
     with confirmed_shared_config_path.open("r") as f:
         shared_config = json.load(f)

@@ -253,8 +253,7 @@ def save_battinfo(data: dict, file: str | Path | io.BytesIO, sample_ids: list[st
     for s in sample_ids:
         sample_data = get_sample_data(s)
         merged_jsonld = bu.merge_battinfo_with_db_data(battinfo_jsonld, sample_data, allow_empty_battinfo=True)
-        run_id = run_from_sample(s)
-        save_path = CONFIG["Processed snapshots folder path"] / run_id / s / f"battinfo.{s}.jsonld"
+        save_path = get_sample_folder(s) / f"battinfo.{s}.jsonld"
         logger.info("Saving battinfo json-ld file to %s", save_path)
         save_path.parent.mkdir(parents=True, exist_ok=True)
         with save_path.open("w", encoding="utf-8") as f:
@@ -346,8 +345,7 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
                 aux_jsonld = data["data"]
                 samples = [s.get("Sample ID") for s in selected_rows if s.get("Sample ID")]
                 for s in samples:
-                    run_id = run_from_sample(s)
-                    save_path = CONFIG["Processed snapshots folder path"] / run_id / s / f"aux.{s}.jsonld"
+                    save_path = get_sample_folder(s) / f"aux.{s}.jsonld"
                     logger.info("Saving auxiliary json-ld to %s", save_path)
                     save_path.parent.mkdir(parents=True, exist_ok=True)
                     with save_path.open("w", encoding="utf-8") as f:
@@ -512,7 +510,7 @@ def create_rocrate(
             sample_id: str = sample.get("Sample ID")
             ccid: str = sample.get("Barcode")
             run_id = run_from_sample(sample_id)
-            data_folder = CONFIG["Processed snapshots folder path"]
+            data_folder = CONFIG["Data folder path"]
             sample_folder = str(data_folder / run_id / sample_id)
             battinfo_files = []
             messages += f"{sample_id} - "

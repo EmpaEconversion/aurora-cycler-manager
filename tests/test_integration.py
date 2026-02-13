@@ -13,7 +13,7 @@ from aurora_cycler_manager.analysis import (
     analyse_all_samples,
     shrink_all_samples,
 )
-from aurora_cycler_manager.data_bundle import get_cycling
+from aurora_cycler_manager.data_bundle import get_cycling, get_sample_folder
 from aurora_cycler_manager.database_funcs import get_job_data, get_jobs_from_sample, save_or_overwrite_batch
 from aurora_cycler_manager.eclab_harvester import convert_all_mprs
 from aurora_cycler_manager.neware_harvester import convert_all_neware_data
@@ -34,7 +34,7 @@ def test_analyse_download_eclab_sample(
     """Generate test data, run analysis."""
     sample_id = "250116_kigr_gen6_01"
     run_id = "250116_kigr_gen6"
-    sample_folder = test_dir / "snapshots" / run_id / sample_id
+    sample_folder = get_sample_folder(sample_id)
     raw_data_folder = test_dir / "local_snapshots" / "eclab_snapshots" / run_id / "1"
 
     # Test downloading without data - should just have some metadata
@@ -88,7 +88,7 @@ def test_analyse_download_eclab_sample(
     assert "zip" in res[0]
     assert res[3]["file"] == "zip"
 
-    # Should make some hdf5 and cycles json files
+    # Should make some parquet and cycles json files
     file_io.process_file(res[3], zip_path, [])
     assert (sample_folder / f"full.{sample_id}.parquet").exists()
     assert (sample_folder / f"cycles.{sample_id}.parquet").exists()
