@@ -899,13 +899,13 @@ def register_db_view_callbacks(app: Dash) -> None:
     def enable_buttons(selected_rows: list, table: str) -> tuple[bool, ...]:
         enabled = set()
         # Add buttons to enabled set with union operator |=
-        if sm and sm.servers:
+        if sm is not None:
             enabled |= {"upload-button"}
         if selected_rows:
             enabled |= {"copy-button"}
             if len(selected_rows) <= 200:  # To avoid enormous zip files being stored
                 enabled |= {"download-button"}
-            if sm and sm.servers:  # Need cycler permissions to do anything except copy, view, upload, download
+            if sm is not None:
                 if table == "samples":
                     if all(s.get("Sample ID") is not None for s in selected_rows):
                         enabled |= {"delete-button", "label-button", "create-batch-button"}

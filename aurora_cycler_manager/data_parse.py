@@ -12,7 +12,7 @@ import pandas as pd
 import polars as pl
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.dicts import bdf_to_aurora_map
+from aurora_cycler_manager.dicts import aurora_dtypes, aurora_to_bdf_map, bdf_to_aurora_map
 from aurora_cycler_manager.stdlib_utils import run_from_sample
 
 CONFIG = get_config()
@@ -24,10 +24,11 @@ def read_cycling(file: str | Path) -> pl.DataFrame:
     if file.suffix == ".parquet":
         df = pl.read_parquet(file)
         if "voltage_volt" in df.columns:  # bdf
-            return df.rename(bdf_to_aurora_map, strict=False)
-        return df
+            return bdf_to_aurora(df)
+        return df.cast({k: v for k, v in aurora_dtypes.items() if k in df.columns}, strict=False)
     if file.suffix == ".h5":
-        return pl.DataFrame(pd.read_hdf(file))
+        df = pl.DataFrame(pd.read_hdf(file))
+        return df.cast({k: v for k, v in aurora_dtypes.items() if k in df.columns}, strict=False)
     msg = f"Unsupported file format {file.suffix}"
     raise ValueError(msg)
 
@@ -36,7 +37,7 @@ def read_metadata(file: str | Path) -> dict:
     """Read metadata from aurora-style parquet/hdf5 file."""
     file = Path(file)
     if file.suffix == ".parquet":
-        return json.loads(pl.read_parquet_metadata(file)["AURORA:metadata"])
+        return json.loads(pl.read_parquet_metadata(file).get("AURORA:metadata", "{}"))
     if file.suffix == ".h5":
         with h5py.File(file, "r") as f:
             return json.loads(f["metadata"][()])
@@ -47,7 +48,7 @@ def read_metadata(file: str | Path) -> dict:
 def get_sample_folder(sample_id: str) -> Path:
     """Get sample data folder."""
     run_id = run_from_sample(sample_id)
-    return CONFIG["Processed snapshots folder path"] / run_id / sample_id
+    return CONFIG["Data folder path"] / run_id / sample_id
 
 
 def get_cycling(sample_id: str) -> pl.DataFrame:
@@ -197,3 +198,52 @@ class SampleDataBundle:
         if self._preloaded["metadata"] is not None:
             return self._preloaded["metadata"]
         return get_metadata(self.sample_id)
+
+
+##### BDF convertsion #####
+
+
+def aurora_to_bdf(df: pl.DataFrame) -> pl.DataFrame:
+    """Convert an Aurora dataframe to BDF compliant dataframe."""
+    df.select([k for k in aurora_to_bdf_map if k in df.columns])
+    df = df.rename(aurora_to_bdf_map, strict=False)
+    if df.is_empty():
+        return df.with_columns(pl.lit(None).alias("test_time_second"))
+    t0 = df["unix_time_second"][0]
+    return df.with_columns((pl.col("unix_time_second") - t0).alias("test_time_second"))
+
+
+def bdf_to_aurora(df: pl.DataFrame) -> pl.DataFrame:
+    """Convert a BDF compliant dataframe to Aurora."""
+    exprs = []
+    if "test_time_millisecond" in df.columns:
+        exprs += [(pl.col("test_time_millisecond") / 1000).alias("test_time_second")]
+    if "date_time_millisecond" in df.columns:
+        exprs += [(pl.col("date_time_millisecond") / 1000).alias("unix_time_second")]
+    if "cycle_dimensionless" in df.columns:
+        exprs += [(pl.col("cycle_dimensionless")).alias("cycle_count")]
+    df = df.with_columns(exprs)
+    df = df.select([k for k in bdf_to_aurora_map if k in df.columns])
+    df = df.rename(bdf_to_aurora_map, strict=False)
+    if "uts" not in df:
+        msg = "Aurora dataframes must include unix time in seconds."
+        raise ValueError(msg)
+    return df.cast({k: v for k, v in aurora_dtypes.items() if k in df.columns}, strict=False)
+
+
+def aurora_to_bdf_parquet(aurora_full_file: str | Path, bdf_file: str | Path | None = None) -> None:
+    """Convert Aurora full file to BDF parquet file."""
+    aurora_full_file = Path(aurora_full_file)
+    df = read_cycling(aurora_full_file)
+    metadata = read_metadata(aurora_full_file)
+
+    # Convert to BDF style columns
+    df = aurora_to_bdf(df)
+
+    # Save parquet file
+    if not bdf_file:
+        bdf_file = aurora_full_file.with_suffix(".bdf.parquet")
+    else:
+        bdf_file = Path(bdf_file).with_suffix(".bdf.parquet")
+        bdf_file.parent.mkdir(exist_ok=True)
+    df.write_parquet(bdf_file, compression="brotli", metadata={"AURORA:metadata": json.dumps(metadata)})

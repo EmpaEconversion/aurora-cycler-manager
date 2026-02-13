@@ -146,6 +146,10 @@ def _read_config_file() -> dict:
 
     config["User config path"] = user_config_path
 
+    # Also accept "Data folder path" - will be prefered in future as it contains more than just snapshots
+    if not config.get("Data folder path"):
+        config["Data folder path"] = config.get("Processed snapshots folder path")
+
     # For SSH connections, paths must be str | None, does not accept Path
     if config.get("SSH private key path"):
         config["SSH private key path"] = str(config["SSH private key path"])

@@ -6,14 +6,16 @@ from pathlib import Path
 from unittest.mock import patch
 from zipfile import ZipFile
 
+import polars as pl
 import pytest
+from polars.testing import assert_frame_equal
 
 from aurora_cycler_manager.analysis import (
     analyse_all_batches,
     analyse_all_samples,
     shrink_all_samples,
 )
-from aurora_cycler_manager.data_bundle import get_cycling
+from aurora_cycler_manager.data_parse import get_cycling, get_sample_folder
 from aurora_cycler_manager.database_funcs import get_job_data, get_jobs_from_sample, save_or_overwrite_batch
 from aurora_cycler_manager.eclab_harvester import convert_all_mprs
 from aurora_cycler_manager.neware_harvester import convert_all_neware_data
@@ -34,19 +36,27 @@ def test_analyse_download_eclab_sample(
     """Generate test data, run analysis."""
     sample_id = "250116_kigr_gen6_01"
     run_id = "250116_kigr_gen6"
-    sample_folder = test_dir / "snapshots" / run_id / sample_id
+    sample_folder = get_sample_folder(sample_id)
     raw_data_folder = test_dir / "local_snapshots" / "eclab_snapshots" / run_id / "1"
 
-    # Test downloading without data - should not make zip
+    # Test downloading without data - should just have some metadata
     zip_file = tmp_path / "empty.zip"
-    with pytest.raises(ValueError, match="Zip has no content"):
-        file_io.create_rocrate(
-            [sample_id],
-            {"hdf5", "bdf-parquet", "bdf-csv", "cycles-json", "metadata-jsonld"},
-            zip_file,
-            None,
-            set_progress,
-        )
+    file_io.create_rocrate(
+        [sample_id],
+        {"hdf5", "bdf-parquet", "bdf-csv", "cycles-json", "metadata-jsonld"},
+        zip_file,
+        None,
+        set_progress,
+    )
+    assert zip_file.exists()
+    with ZipFile(zip_file, mode="r") as zf:
+        files = zf.namelist()
+        assert f"{sample_id}/full.{sample_id}.bdf.parquet" not in files
+        assert f"{sample_id}/full.{sample_id}.bdf.csv" not in files
+        assert f"{sample_id}/cycles.{sample_id}.parquet" not in files
+        assert f"{sample_id}/cycles.{sample_id}.csv" not in files
+        assert f"{sample_id}/metadata.{sample_id}.jsonld" in files
+        assert "ro-crate-metadata.json" in files
 
     # Zip the raw data
     zip_path = tmp_path / "data.zip"
@@ -80,11 +90,12 @@ def test_analyse_download_eclab_sample(
     assert "zip" in res[0]
     assert res[3]["file"] == "zip"
 
-    # Should make some hdf5 and cycles json files
+    # Should make some parquet and cycles json files
     file_io.process_file(res[3], zip_path, [])
     assert (sample_folder / f"full.{sample_id}.parquet").exists()
     assert (sample_folder / f"cycles.{sample_id}.parquet").exists()
     assert len(list(sample_folder.rglob("snapshot.*"))) == 2
+    df1 = pl.read_parquet(sample_folder / f"full.{sample_id}.parquet")  # compared later
 
     # Uploading again should not add new files, should overwrite
     zip_path = tmp_path / "data.zip"
@@ -226,6 +237,22 @@ def test_analyse_download_eclab_sample(
         assert f"{sample_id}/cycles.{sample_id}.csv" in files
         assert f"{sample_id}/metadata.{sample_id}.jsonld" in files
         assert "ro-crate-metadata.json" in files
+
+    # Test reuploading the files
+    res = file_io.determine_file(zip_file, selected_rows=[])
+    assert "zip" in res[0]
+    assert res[3]["file"] == "zip"
+    file_io.process_file(res[3], zip_file, [])
+    assert (sample_folder / f"full.{sample_id}.parquet").exists()
+    assert (sample_folder / f"cycles.{sample_id}.parquet").exists()
+    assert len(list(sample_folder.rglob("snapshot.*"))) == 3  # It has put the full thing in as one snapshot
+    df2 = pl.read_parquet(sample_folder / f"full.{sample_id}.parquet")
+    # The dataframe should not have changed
+    assert_frame_equal(
+        df1.drop("technique", strict=False),
+        df2.drop("technique", strict=False),
+        check_column_order=False,
+    )
 
     # Test downloading the files when every one breaks
     with (

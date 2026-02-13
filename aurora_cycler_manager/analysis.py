@@ -24,7 +24,7 @@ from tsdownsample import MinMaxLTTBDownsampler
 from xlsxwriter import Workbook
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_bundle import (
+from aurora_cycler_manager.data_parse import (
     SampleDataBundle,
     get_cycles_summary,
     get_cycling,
@@ -83,22 +83,47 @@ def _sort_times(start_times: list | np.ndarray, end_times: list | np.ndarray) ->
     # Sort by reverse end time, then by start time
     sorted_positions = np.lexsort((valid_ends * -1, valid_starts))
     sorted_starts = valid_starts[sorted_positions]
+    sorted_ends = valid_ends[sorted_positions]
 
-    # Remove duplicate start times, keep only the first element (longest)
-    unique_mask = np.concatenate(([True], sorted_starts[1:] != sorted_starts[:-1]))
+    # Keep only non-overlapping intervals
+    keep_mask = np.ones(len(sorted_starts), dtype=bool)
+    current_max_end = -np.inf
+    for i in range(len(sorted_starts)):
+        if sorted_starts[i] >= current_max_end:
+            current_max_end = sorted_ends[i]
+        elif sorted_ends[i] <= current_max_end:
+            keep_mask[i] = False
+        else:
+            current_max_end = sorted_ends[i]
 
     # Map back to original indices
-    return valid_indices[sorted_positions[unique_mask]]
+    return valid_indices[sorted_positions[keep_mask]]
 
 
-def merge_metadata(job_files: list[Path], metadatas: list[dict]) -> dict:
+def merge_metadata(job_files: list[Path], metadatas: list[dict], sample_id: str) -> dict:
     """Merge several job metadata, add provenance, replace sample data with latest from db."""
-    sample_id = metadatas[0].get("sample_data", {}).get("Sample ID", "")
+    # Get sample data from database
     sample_data = get_sample_data(sample_id)
-    # Merge glossary dicts
+
+    # Flatten / merge glossary dicts
     glossary = {}
-    for g in [m.get("glossary", {}) for m in metadatas]:
-        glossary.update(g)
+    for m in metadatas:
+        g = m.get("glossary", {})
+        if isinstance(g, list):
+            for item in g:
+                glossary.update(item)
+        elif g:
+            glossary.update(g)
+
+    # Flatten job_data to one list
+    job_data = []
+    for m in metadatas:
+        jd = m.get("job_data", {})
+        if isinstance(jd, list):
+            job_data.extend(jd)
+        elif jd:
+            job_data.append(jd)
+
     return {
         "provenance": {
             "aurora_metadata": {
@@ -110,10 +135,12 @@ def merge_metadata(job_files: list[Path], metadatas: list[dict]) -> dict:
                     "datetime": datetime.now(timezone.utc).isoformat(),
                 },
             },
-            "original_file_provenance": {str(f): m["provenance"] for f, m in zip(job_files, metadatas, strict=True)},
+            "original_file_provenance": {
+                str(f): m.get("provenance") for f, m in zip(job_files, metadatas, strict=True)
+            },
         },
         "sample_data": sample_data,
-        "job_data": [m.get("job_data", {}) for m in metadatas],
+        "job_data": job_data,
         "glossary": glossary,
     }
 
@@ -157,7 +184,18 @@ def calc_dq(df: pl.DataFrame) -> pl.DataFrame:
 def merge_dfs(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, pl.DataFrame | None]:
     """Merge cycling dataframes and add cycles. Seperate out EIS."""
     for i, df in enumerate(dfs):
-        dfs[i] = df.with_columns(pl.lit(i).alias("job_number"))
+        exprs = [pl.lit(i).alias("job_number")]
+        if "loop_number" not in df.columns:
+            exprs.append(pl.lit(0).alias("loop_number"))
+        if "cycle_number" not in df.columns:
+            if "Cycle" in df.columns:
+                exprs.append(pl.col("Cycle").alias("cycle_number"))
+            else:
+                exprs.append(pl.lit(0).alias("cycle_number"))
+        dfs[i] = df.with_columns(exprs)
+
+        if "dQ (mAh)" not in df.columns:
+            dfs[i] = calc_dq(dfs[i])
 
     df = pl.concat(dfs, how="diagonal")
 
@@ -172,13 +210,6 @@ def merge_dfs(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, pl.DataFrame | Non
 
     if not df.is_empty():
         df = df.sort("uts")
-        if "loop_number" not in df.columns:
-            df = df.with_columns(pl.lit(0).alias("loop_number"))
-        else:
-            df = df.with_columns(pl.col("loop_number").fill_null(0))
-
-        if "dQ (mAh)" not in df.columns:
-            df = calc_dq(df)
 
         # Increment step if any job, cycle, or loop changes
         df = df.with_columns(pl.struct(["job_number", "cycle_number", "loop_number"]).rle_id().add(1).alias("Step"))
@@ -206,7 +237,7 @@ def merge_dfs(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, pl.DataFrame | Non
         )
 
         # Join back to main dataframe
-        df = df.join(step_stats.select(["Step", "Cycle"]), on="Step", how="left")
+        df = df.drop("Cycle", strict=False).join(step_stats.select(["Step", "Cycle"]), on="Step", how="left")
 
         # EIS merge - find last non-zero cycle before the EIS
         if eis_df is not None:
@@ -769,7 +800,7 @@ def analyse_sample(sample_id: str) -> SampleDataBundle:
     df, eis_df = merge_dfs(dfs)
 
     # Merge metadatas together
-    metadata = merge_metadata(job_files, metadatas)
+    metadata = merge_metadata(job_files, metadatas, sample_id)
 
     # Get sample and job data
     sample_data = metadata.get("sample_data", {})
@@ -941,9 +972,9 @@ def shrink_all_samples(sampleid_contains: str = "") -> None:
         sampleid_contains (str, optional): only shrink samples with this string in the sampleid
 
     """
-    for batch_folder in Path(CONFIG["Processed snapshots folder path"]).iterdir():
-        if batch_folder.is_dir():
-            for sample_folder in batch_folder.iterdir():
+    for run_folder in Path(CONFIG["Data folder path"]).iterdir():
+        if run_folder.is_dir():
+            for sample_folder in run_folder.iterdir():
                 sample_id = sample_folder.name
                 if sampleid_contains and sampleid_contains not in sample_id:
                     continue
@@ -983,9 +1014,9 @@ def analyse_all_samples(
     else:
         samples_to_analyse = []
 
-    for batch_folder in Path(CONFIG["Processed snapshots folder path"]).iterdir():
-        if batch_folder.is_dir():
-            for sample in batch_folder.iterdir():
+    for run_folder in Path(CONFIG["Data folder path"]).iterdir():
+        if run_folder.is_dir():
+            for sample in run_folder.iterdir():
                 if sampleid_contains and sampleid_contains not in sample.name:
                     continue
                 if mode != "always" and sample.name not in samples_to_analyse:

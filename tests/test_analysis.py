@@ -23,7 +23,7 @@ from aurora_cycler_manager.analysis import (
     update_sample_metadata,
 )
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_bundle import get_sample_folder, read_cycling, read_metadata
+from aurora_cycler_manager.data_parse import get_sample_folder, read_cycling, read_metadata
 from aurora_cycler_manager.database_funcs import update_sample_label
 from aurora_cycler_manager.eclab_harvester import convert_all_mprs
 from aurora_cycler_manager.neware_harvester import convert_all_neware_data
@@ -60,7 +60,7 @@ class TestAnalysis:
         assert len(df) == sum(lens)
         assert df["Cycle"][-1] == 3
 
-        metadata = merge_metadata(job_files, metadatas)
+        metadata = merge_metadata(job_files, metadatas, sample_id)
         assert isinstance(metadata, dict)
         assert metadata.get("Sample ID") == metadatas[0].get("Sample ID")
 
@@ -275,5 +275,7 @@ class TestAnalysis:
         assert all(_sort_times([6, 4, 2], [8, 5, 3]) == [2, 1, 0])
         # Duplicate starts, picks longer duration
         assert all(_sort_times([6, 4, 2, 6], [7, 5, 3, 8]) == [2, 1, 3])
+        # Overlaps are removed
+        assert all(_sort_times([2, 4, 6], [10, 9, 8]) == [0])
         # Nones are ignored
         assert all(_sort_times([2, 4, 6, None, 8, 8], [3, 5, 7, None, 9, 10]) == [0, 1, 2, 5])

@@ -7,21 +7,30 @@ import contextlib
 import io
 import json
 import logging
+import uuid
 import zipfile
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+import polars as pl
 from aurora_unicycler import Protocol
 from battinfoconverter_backend.json_convert import convert_excel_to_jsonld
 
 import aurora_cycler_manager.battinfo_utils as bu
 from aurora_cycler_manager.analysis import analyse_sample
-from aurora_cycler_manager.bdf_converter import aurora_to_bdf
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_bundle import get_cycles_summary, get_cycling
+from aurora_cycler_manager.data_parse import (
+    aurora_to_bdf,
+    bdf_to_aurora,
+    get_cycles_summary,
+    get_cycling,
+    get_metadata,
+    get_sample_folder,
+)
 from aurora_cycler_manager.database_funcs import (
+    add_data_to_db,
     add_protocol_to_job,
     add_samples_from_object,
     get_all_sampleids,
@@ -184,47 +193,61 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
         with zipfile.ZipFile(filepath, "r") as zip_file:
             # List the contents
             valid_files = {}
+            warning_files = {}
             invalid_files = {}
+            new_samples = set()
             file_list = zip_file.namelist()
             known_samples = set(get_all_sampleids())
             for file in file_list:
                 logger.info("Checking file %s", file)
-                if file.endswith("/"):
-                    # Just a folder
+                if file.endswith("/"):  # Just a folder
+                    continue
+                if file == "ro-crate-metadata.json":  # silently ignore
                     continue
                 parts = file.split("/")
                 if len(parts) < 2:
                     invalid_files[file] = "File must be inside a Sample ID folder"
                     continue
-                folder = parts[-2]
-                if folder not in known_samples:
-                    invalid_files[file] = f"Folder {folder} is not a Sample ID in the database"
-                    continue
+                sample_id = parts[-2]
+
+                # Its a file, check if it is supported type
                 filetype = file.split(".")[-1]
                 if filetype == "mpl":  # silently ignore - sidecar file
                     continue
-                if filetype in {"mpr", "xlsx"}:
-                    valid_files[file] = folder
+                if filetype in {"mpr", "xlsx", "parquet"}:
+                    if sample_id in known_samples:
+                        valid_files[file] = sample_id
+                    else:
+                        warning_files[file] = sample_id
+                        new_samples.add(sample_id)
                     continue
                 invalid_files[file] = f"Filetype {filetype} is not supported"
 
-        if valid_files:
-            msg = "Got a zip with valid files\nAdding data for the following samples:\n" + "\n".join(
-                sorted(set(valid_files.values()))
-            )
-            if not invalid_files:
-                return msg, "green", False, {"file": "zip", "data": valid_files}
+        if valid_files or warning_files:
+            msg = "Got a zip with valid format\n"
+            color = "green"
+            if valid_files:
+                msg += "Found data for the following EXISTING samples:\n" + "\n".join(sorted(set(valid_files.values())))
+            if warning_files:
+                color = "orange"
+                msg += "Found data for the following NEW samples:\n" + "\n".join(sorted(set(warning_files.values())))
             if invalid_files:
+                color = "orange"
                 msg += "\n\nSKIPPING the following files:\n" + "\n".join(
                     file + "\n" + reason for file, reason in invalid_files.items()
                 )
-                return msg, "orange", False, {"file": "zip", "data": valid_files}
+            return (
+                msg,
+                color,
+                False,
+                {"file": "zip", "data": {**valid_files, **warning_files}, "new_samples": list(new_samples)},
+            )
         if invalid_files:
             msg = "No valid files found:\n" + "\n".join(file + "\n" + reason for file, reason in invalid_files.items())
-            return msg, "red", True, {"file": None, "data": None}
-        return "No files found in zip", "red", False, {"file": None, "data": None}
+            return msg, "red", True, {"file": None, "data": None, "new_samples": None}
+        return "No files found in zip", "red", False, {"file": None, "data": None, "new_samples": None}
 
-    return "File not understood", "red", True, {"file": None, "data": None}
+    return "File not understood", "red", True, {"file": None, "data": None, "new_samples": None}
 
 
 def save_battinfo(data: dict, file: str | Path | io.BytesIO, sample_ids: list[str]) -> None:
@@ -235,13 +258,42 @@ def save_battinfo(data: dict, file: str | Path | io.BytesIO, sample_ids: list[st
     # Merge json with database info and save
     for s in sample_ids:
         sample_data = get_sample_data(s)
-        merged_jsonld = bu.merge_battinfo_with_db_data(battinfo_jsonld, sample_data)
-        run_id = run_from_sample(s)
-        save_path = CONFIG["Processed snapshots folder path"] / run_id / s / f"battinfo.{s}.jsonld"
+        merged_jsonld = bu.merge_battinfo_with_db_data(battinfo_jsonld, sample_data, allow_empty_battinfo=True)
+        save_path = get_sample_folder(s) / f"battinfo.{s}.jsonld"
         logger.info("Saving battinfo json-ld file to %s", save_path)
         save_path.parent.mkdir(parents=True, exist_ok=True)
         with save_path.open("w", encoding="utf-8") as f:
             json.dump(merged_jsonld, f, indent=4)
+
+
+def save_parquet(file: str | Path | bytes, sample_id: str, file_stem: str | None = None) -> None:
+    """Normalize a parquet and save as a snapshot."""
+    df = pl.read_parquet(file)
+    metadata = pl.read_parquet_metadata(file)
+    metadata.pop("ARROW:schema", None)
+    if "voltage_volt" in df.columns or "Voltage / V" in df.columns:  # bdf
+        df = bdf_to_aurora(df)
+    if not all(c in df.columns for c in ["uts", "V (V)", "I (A)", "Cycle"]):
+        if "Discharge capacity (mAh)" in df.columns:
+            return  # Silent - this is recalculated after
+        logger.warning("Dataframe not time-series, not saving")
+        return
+    if file_stem is None:
+        file_stem = Path(file).stem if isinstance(file, str | Path) else str(uuid.uuid4())
+    job_id = add_data_to_db(sample_id, file_stem, df["uts"][0], df["uts"][-1])
+    add_data_to_db(sample_id, file_stem, df["uts"][0], df["uts"][-1], job_id)
+    folder = get_sample_folder(sample_id) / "snapshots"
+    if not folder.exists():
+        folder.mkdir(parents=True)
+    if (aurora_metadata := metadata.get("AURORA:metadata")) and (
+        sample_data := json.loads(aurora_metadata).get("sample_data")
+    ):
+        data_sample_id = sample_data.get("Sample ID")
+        if data_sample_id == sample_id:
+            add_samples_from_object([sample_data], overwrite=True)
+        else:
+            logger.warning("Sample ID in metadata does not match expected: %s vs %s", data_sample_id, sample_id)
+    df.write_parquet(folder / f"snapshot.{file_stem}.parquet", metadata=metadata)
 
 
 def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
@@ -299,8 +351,7 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
                 aux_jsonld = data["data"]
                 samples = [s.get("Sample ID") for s in selected_rows if s.get("Sample ID")]
                 for s in samples:
-                    run_id = run_from_sample(s)
-                    save_path = CONFIG["Processed snapshots folder path"] / run_id / s / f"aux.{s}.jsonld"
+                    save_path = get_sample_folder(s) / f"aux.{s}.jsonld"
                     logger.info("Saving auxiliary json-ld to %s", save_path)
                     save_path.parent.mkdir(parents=True, exist_ok=True)
                     with save_path.open("w", encoding="utf-8") as f:
@@ -341,6 +392,10 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
             return 1
 
         case "zip":
+            # Add new samples if required
+            if new_samples := data.get("new_samples"):
+                add_samples_from_object([{"Sample ID": s} for s in new_samples])
+                logger.info("Added new samples: %s", ",".join(new_samples))
             valid_files = data["data"]
             successful_samples = set()
             with zipfile.ZipFile(filepath, "r") as zip_file:
@@ -348,6 +403,7 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
                     filename = subfilepath.split("/")[-1]
                     try:
                         with zip_file.open(subfilepath) as file:
+                            logger.info("Processing file: %s", filename)
                             match filename.split(".")[-1]:
                                 case "mpr":
                                     # Check if there is an associated mpl file
@@ -358,7 +414,6 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
                                     else:
                                         mpl_file = None
                                     # Convert mpr file and save
-                                    logger.info("Processing file: %s", filename)
                                     convert_mpr(
                                         file.read(),
                                         mpl_file=mpl_file,
@@ -367,19 +422,12 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
                                         file_name=filename,
                                     )
                                     successful_samples.add(sample_id)
-                                    success_notification(
-                                        "File processed",
-                                        f"{filename}",
-                                        queue=True,
-                                    )
                                 case "xlsx":
                                     xlsx_bytes = io.BytesIO(file.read())
                                     save_battinfo({"file": "battinfo-xlsx"}, xlsx_bytes, [sample_id])
-                                    success_notification(
-                                        "File processed",
-                                        f"BattINFO json-ld added to {sample_id}",
-                                        queue=True,
-                                    )
+                                case "parquet":
+                                    save_parquet(file.read(), sample_id, filename.rsplit(".", 1)[0])
+                                    successful_samples.add(sample_id)
                     except Exception as e:
                         logger.exception("Error processing file: %s", filename)
                         error_notification(
@@ -387,6 +435,11 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
                             f"{filename}: {e!s}",
                             queue=True,
                         )
+                success_notification(
+                    "Complete",
+                    "All files processed",
+                    queue=True,
+                )
 
             for sample_id in successful_samples:
                 logger.info("Analysing sample: %s", sample_id)
@@ -394,7 +447,7 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
                 success_notification("Sample analysed", f"{sample_id}", queue=True)
             success_notification(
                 "All data processed and analysed",
-                f"{len(valid_files)} files added to database",
+                f"Files added for {len(successful_samples)} samples",
                 queue=True,
             )
             return 1
@@ -463,18 +516,20 @@ def create_rocrate(
             sample_id: str = sample.get("Sample ID")
             ccid: str = sample.get("Barcode")
             run_id = run_from_sample(sample_id)
-            data_folder = CONFIG["Processed snapshots folder path"]
+            data_folder = CONFIG["Data folder path"]
             sample_folder = str(data_folder / run_id / sample_id)
             battinfo_files = []
             messages += f"{sample_id} - "
             warnings = []
             errors = []
             df = None
+            metadata = None
 
             # If bdf is requested, convert the file
             if {"bdf-csv", "bdf-parquet"} & filetypes:
                 with contextlib.suppress(FileNotFoundError):
                     df = aurora_to_bdf(get_cycling(sample_id))
+                    metadata = get_metadata(sample_id)
             # Loop through requested files
             for filetype in filetypes:
                 i += 1
@@ -580,7 +635,10 @@ def create_rocrate(
                             continue
                         # convert to parquet file and write to zip
                         buffer = io.BytesIO()
-                        df.write_parquet(buffer)
+                        df.write_parquet(
+                            buffer,
+                            metadata={"AURORA:metadata": json.dumps(metadata)} if metadata else None,
+                        )
                         buffer.seek(0)
                         parquet_name = f"full.{sample_id}.bdf.parquet"
                         rel_file_path = sample_id + "/" + parquet_name
@@ -608,12 +666,11 @@ def create_rocrate(
                         aux_file = next(Path(sample_folder).glob("aux.*.jsonld"), None)
                         if battinfo_file is None:
                             logger.warning("No BattINFO file for %s", sample_id)
-                            messages += "⚠️"
-                            warnings.append(filetype)
-                            color = "orange"
-                            continue
-                        with battinfo_file.open("r") as f:
-                            battinfo_json = json.load(f)
+                            sample_data = get_sample_data(sample_id)
+                            battinfo_json = bu.merge_battinfo_with_db_data({}, sample_data, allow_empty_battinfo=True)
+                        else:
+                            with battinfo_file.open("r") as f:
+                                battinfo_json = json.load(f)
                         battinfo_json = bu.make_test_object(battinfo_json)
 
                         # Check for auxiliary jsonld file

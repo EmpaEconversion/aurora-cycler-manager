@@ -40,7 +40,7 @@ def ignore_sqlite_warns() -> None:
 def reset_all(test_dir: Path) -> Generator[None, None, None]:
     """Reset samples folders and database to original state."""
     db_path = test_dir / "database" / "test_database.db"
-    snapshots_path = test_dir / "snapshots"
+    snapshots_path = test_dir / "data"
     batches_path = test_dir / "batches"
 
     # Make backup of database

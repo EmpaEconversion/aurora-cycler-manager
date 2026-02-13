@@ -26,7 +26,7 @@ from aurora_unicycler import Protocol
 from aurora_cycler_manager import analysis, config, cycler_servers
 from aurora_cycler_manager import database_funcs as dbf
 from aurora_cycler_manager.cycler_servers import CyclerServer
-from aurora_cycler_manager.stdlib_utils import run_from_sample
+from aurora_cycler_manager.data_parse import get_sample_folder
 
 SERVER_CORRESPONDENCE = {
     "neware": cycler_servers.NewareServer,
@@ -457,9 +457,9 @@ class ServerManager:
             msg = "'Snapshots folder path' not found in config file. Cannot save snapshots."
             raise ValueError(msg)
         if not self.config.get("Servers"):
-            msg = "No servers in project configuration."
-            raise ValueError(msg)
-        logger.info("Server manager initialised, consider updating database with update_db()")
+            logger.info("There are no servers in the configuration.")
+        else:
+            logger.info("Server manager initialised, consider updating database with update_db()")
 
     @cached_property
     def servers(self) -> dict[str, CyclerServer]:
@@ -673,9 +673,8 @@ class ServerManager:
             if sample_id == "Unknown":
                 logger.warning("Job %s has no sample name or payload, skipping.", jobid)
                 continue
-            run_id = run_from_sample(sample_id)
 
-            local_save_location_processed = Path(self.config["Processed snapshots folder path"]) / run_id / sample_id
+            local_save_location_processed = get_sample_folder(sample_id)
 
             files_exist = (local_save_location_processed / f"snapshot.{jobid}.h5").exists()
             if files_exist and mode != "always":
