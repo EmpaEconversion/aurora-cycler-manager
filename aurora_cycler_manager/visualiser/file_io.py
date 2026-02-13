@@ -20,7 +20,7 @@ from battinfoconverter_backend.json_convert import convert_excel_to_jsonld
 
 import aurora_cycler_manager.battinfo_utils as bu
 from aurora_cycler_manager.analysis import analyse_sample
-from aurora_cycler_manager.bdf_converter import aurora_to_bdf
+from aurora_cycler_manager.bdf_converter import aurora_to_bdf, bdf_to_aurora
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.data_bundle import get_cycles_summary, get_cycling, get_metadata, get_sample_folder
 from aurora_cycler_manager.database_funcs import (
@@ -31,7 +31,6 @@ from aurora_cycler_manager.database_funcs import (
     get_sample_data,
     get_unicycler_protocols,
 )
-from aurora_cycler_manager.dicts import bdf_to_aurora_map
 from aurora_cycler_manager.eclab_harvester import convert_mpr
 from aurora_cycler_manager.server_manager import _Sample
 from aurora_cycler_manager.stdlib_utils import run_from_sample
@@ -267,8 +266,8 @@ def save_parquet(file: str | Path | bytes, sample_id: str, file_stem: str | None
     df = pl.read_parquet(file)
     metadata = pl.read_parquet_metadata(file)
     metadata.pop("ARROW:schema", None)
-    if "voltage_volt" in df.columns:  # bdf
-        df = df.rename(bdf_to_aurora_map, strict=False)
+    if "voltage_volt" in df.columns or "Voltage / V" in df.columns:  # bdf
+        df = bdf_to_aurora(df)
     if not all(c in df.columns for c in ["uts", "V (V)", "I (A)", "Cycle"]):
         if "Discharge capacity (mAh)" in df.columns:
             return  # Silent - this is recalculated after
@@ -281,6 +280,14 @@ def save_parquet(file: str | Path | bytes, sample_id: str, file_stem: str | None
     folder = get_sample_folder(sample_id) / "snapshots"
     if not folder.exists():
         folder.mkdir(parents=True)
+    if (aurora_metadata := metadata.get("AURORA:metadata")) and (
+        sample_data := json.loads(aurora_metadata).get("sample_data")
+    ):
+        data_sample_id = sample_data.get("Sample ID")
+        if data_sample_id == sample_id:
+            add_samples_from_object([sample_data], overwrite=True)
+        else:
+            logger.warning("Sample ID in metadata does not match expected: %s vs %s", data_sample_id, sample_id)
     df.write_parquet(folder / f"snapshot.{file_stem}.parquet", metadata=metadata)
 
 
