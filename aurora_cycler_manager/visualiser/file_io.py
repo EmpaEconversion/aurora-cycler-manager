@@ -221,7 +221,7 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
             msg = "Got a zip with valid format\n"
             color = "green"
             if valid_files:
-                msg = "Found data for the following EXISTING samples:\n" + "\n".join(sorted(set(valid_files.values())))
+                msg += "Found data for the following EXISTING samples:\n" + "\n".join(sorted(set(valid_files.values())))
             if warning_files:
                 color = "orange"
                 msg += "Found data for the following NEW samples:\n" + "\n".join(sorted(set(warning_files.values())))

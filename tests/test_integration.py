@@ -37,16 +37,24 @@ def test_analyse_download_eclab_sample(
     sample_folder = test_dir / "snapshots" / run_id / sample_id
     raw_data_folder = test_dir / "local_snapshots" / "eclab_snapshots" / run_id / "1"
 
-    # Test downloading without data - should not make zip
+    # Test downloading without data - should just have some metadata
     zip_file = tmp_path / "empty.zip"
-    with pytest.raises(ValueError, match="Zip has no content"):
-        file_io.create_rocrate(
-            [sample_id],
-            {"hdf5", "bdf-parquet", "bdf-csv", "cycles-json", "metadata-jsonld"},
-            zip_file,
-            None,
-            set_progress,
-        )
+    file_io.create_rocrate(
+        [sample_id],
+        {"hdf5", "bdf-parquet", "bdf-csv", "cycles-json", "metadata-jsonld"},
+        zip_file,
+        None,
+        set_progress,
+    )
+    assert zip_file.exists()
+    with ZipFile(zip_file, mode="r") as zf:
+        files = zf.namelist()
+        assert f"{sample_id}/full.{sample_id}.bdf.parquet" not in files
+        assert f"{sample_id}/full.{sample_id}.bdf.csv" not in files
+        assert f"{sample_id}/cycles.{sample_id}.parquet" not in files
+        assert f"{sample_id}/cycles.{sample_id}.csv" not in files
+        assert f"{sample_id}/metadata.{sample_id}.jsonld" in files
+        assert "ro-crate-metadata.json" in files
 
     # Zip the raw data
     zip_path = tmp_path / "data.zip"
