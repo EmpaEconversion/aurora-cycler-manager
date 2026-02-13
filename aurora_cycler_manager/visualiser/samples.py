@@ -13,7 +13,7 @@ from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
 from aurora_cycler_manager.analysis import calc_dqdv
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_bundle import get_cycles_summary, get_cycling, get_cycling_shrunk
+from aurora_cycler_manager.data_parse import get_cycles_summary, get_cycling, get_cycling_shrunk
 
 CONFIG = get_config()
 logger = logging.getLogger(__name__)

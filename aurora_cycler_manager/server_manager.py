@@ -26,7 +26,7 @@ from aurora_unicycler import Protocol
 from aurora_cycler_manager import analysis, config, cycler_servers
 from aurora_cycler_manager import database_funcs as dbf
 from aurora_cycler_manager.cycler_servers import CyclerServer
-from aurora_cycler_manager.data_bundle import get_sample_folder
+from aurora_cycler_manager.data_parse import get_sample_folder
 
 SERVER_CORRESPONDENCE = {
     "neware": cycler_servers.NewareServer,

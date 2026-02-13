@@ -20,7 +20,7 @@ import yadg
 from dgbowl_schemas.yadg.dataschema import ExtractorFactory
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_bundle import get_sample_folder
+from aurora_cycler_manager.data_parse import get_sample_folder
 from aurora_cycler_manager.database_funcs import add_data_to_db, get_sample_data, update_harvester
 from aurora_cycler_manager.setup_logging import setup_logging
 from aurora_cycler_manager.ssh import SSHConnection

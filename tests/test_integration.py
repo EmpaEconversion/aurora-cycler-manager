@@ -6,14 +6,16 @@ from pathlib import Path
 from unittest.mock import patch
 from zipfile import ZipFile
 
+import polars as pl
 import pytest
+from polars.testing import assert_frame_equal
 
 from aurora_cycler_manager.analysis import (
     analyse_all_batches,
     analyse_all_samples,
     shrink_all_samples,
 )
-from aurora_cycler_manager.data_bundle import get_cycling, get_sample_folder
+from aurora_cycler_manager.data_parse import get_cycling, get_sample_folder
 from aurora_cycler_manager.database_funcs import get_job_data, get_jobs_from_sample, save_or_overwrite_batch
 from aurora_cycler_manager.eclab_harvester import convert_all_mprs
 from aurora_cycler_manager.neware_harvester import convert_all_neware_data
@@ -93,6 +95,7 @@ def test_analyse_download_eclab_sample(
     assert (sample_folder / f"full.{sample_id}.parquet").exists()
     assert (sample_folder / f"cycles.{sample_id}.parquet").exists()
     assert len(list(sample_folder.rglob("snapshot.*"))) == 2
+    df1 = pl.read_parquet(sample_folder / f"full.{sample_id}.parquet")  # compared later
 
     # Uploading again should not add new files, should overwrite
     zip_path = tmp_path / "data.zip"
@@ -234,6 +237,22 @@ def test_analyse_download_eclab_sample(
         assert f"{sample_id}/cycles.{sample_id}.csv" in files
         assert f"{sample_id}/metadata.{sample_id}.jsonld" in files
         assert "ro-crate-metadata.json" in files
+
+    # Test reuploading the files
+    res = file_io.determine_file(zip_file, selected_rows=[])
+    assert "zip" in res[0]
+    assert res[3]["file"] == "zip"
+    file_io.process_file(res[3], zip_file, [])
+    assert (sample_folder / f"full.{sample_id}.parquet").exists()
+    assert (sample_folder / f"cycles.{sample_id}.parquet").exists()
+    assert len(list(sample_folder.rglob("snapshot.*"))) == 3  # It has put the full thing in as one snapshot
+    df2 = pl.read_parquet(sample_folder / f"full.{sample_id}.parquet")
+    # The dataframe should not have changed
+    assert_frame_equal(
+        df1.drop("technique", strict=False),
+        df2.drop("technique", strict=False),
+        check_column_order=False,
+    )
 
     # Test downloading the files when every one breaks
     with (

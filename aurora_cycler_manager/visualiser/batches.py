@@ -17,7 +17,7 @@ from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 from plotly.colors import hex_to_rgb, label_rgb, sample_colorscale
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_bundle import get_cycles_summary, get_overall_summary
+from aurora_cycler_manager.data_parse import get_cycles_summary, get_overall_summary
 from aurora_cycler_manager.visualiser.funcs import correlation_matrix
 
 CONFIG = get_config()

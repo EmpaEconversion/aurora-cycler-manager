@@ -24,7 +24,7 @@ from tsdownsample import MinMaxLTTBDownsampler
 from xlsxwriter import Workbook
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_bundle import (
+from aurora_cycler_manager.data_parse import (
     SampleDataBundle,
     get_cycles_summary,
     get_cycling,

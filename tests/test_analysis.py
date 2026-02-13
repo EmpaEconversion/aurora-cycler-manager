@@ -23,7 +23,7 @@ from aurora_cycler_manager.analysis import (
     update_sample_metadata,
 )
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_bundle import get_sample_folder, read_cycling, read_metadata
+from aurora_cycler_manager.data_parse import get_sample_folder, read_cycling, read_metadata
 from aurora_cycler_manager.database_funcs import update_sample_label
 from aurora_cycler_manager.eclab_harvester import convert_all_mprs
 from aurora_cycler_manager.neware_harvester import convert_all_neware_data

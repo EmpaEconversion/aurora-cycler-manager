@@ -20,9 +20,15 @@ from battinfoconverter_backend.json_convert import convert_excel_to_jsonld
 
 import aurora_cycler_manager.battinfo_utils as bu
 from aurora_cycler_manager.analysis import analyse_sample
-from aurora_cycler_manager.bdf_converter import aurora_to_bdf, bdf_to_aurora
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_bundle import get_cycles_summary, get_cycling, get_metadata, get_sample_folder
+from aurora_cycler_manager.data_parse import (
+    aurora_to_bdf,
+    bdf_to_aurora,
+    get_cycles_summary,
+    get_cycling,
+    get_metadata,
+    get_sample_folder,
+)
 from aurora_cycler_manager.database_funcs import (
     add_data_to_db,
     add_protocol_to_job,

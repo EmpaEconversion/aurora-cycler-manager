@@ -23,7 +23,7 @@ import xmltodict
 
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_bundle import get_sample_folder
+from aurora_cycler_manager.data_parse import get_sample_folder
 from aurora_cycler_manager.database_funcs import (
     check_job_running,
     get_all_sampleids,
