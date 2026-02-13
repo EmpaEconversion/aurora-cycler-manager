@@ -83,12 +83,21 @@ def _sort_times(start_times: list | np.ndarray, end_times: list | np.ndarray) ->
     # Sort by reverse end time, then by start time
     sorted_positions = np.lexsort((valid_ends * -1, valid_starts))
     sorted_starts = valid_starts[sorted_positions]
+    sorted_ends = valid_ends[sorted_positions]
 
-    # Remove duplicate start times, keep only the first element (longest)
-    unique_mask = np.concatenate(([True], sorted_starts[1:] != sorted_starts[:-1]))
+    # Keep only non-overlapping intervals
+    keep_mask = np.ones(len(sorted_starts), dtype=bool)
+    current_max_end = -np.inf
+    for i in range(len(sorted_starts)):
+        if sorted_starts[i] >= current_max_end:
+            current_max_end = sorted_ends[i]
+        elif sorted_ends[i] <= current_max_end:
+            keep_mask[i] = False
+        else:
+            current_max_end = sorted_ends[i]
 
     # Map back to original indices
-    return valid_indices[sorted_positions[unique_mask]]
+    return valid_indices[sorted_positions[keep_mask]]
 
 
 def merge_metadata(job_files: list[Path], metadatas: list[dict], sample_id: str) -> dict:

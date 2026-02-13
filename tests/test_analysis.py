@@ -275,5 +275,7 @@ class TestAnalysis:
         assert all(_sort_times([6, 4, 2], [8, 5, 3]) == [2, 1, 0])
         # Duplicate starts, picks longer duration
         assert all(_sort_times([6, 4, 2, 6], [7, 5, 3, 8]) == [2, 1, 3])
+        # Overlaps are removed
+        assert all(_sort_times([2, 4, 6], [10, 9, 8]) == [0])
         # Nones are ignored
         assert all(_sort_times([2, 4, 6, None, 8, 8], [3, 5, 7, None, 9, 10]) == [0, 1, 2, 5])
