@@ -13,6 +13,44 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+blank_coin_cell = coin_cell = {
+    "@context": [
+        "https://w3id.org/emmo/domain/battery/context",
+        {
+            "schema": "https://schema.org/",
+            "emmo": "https://w3id.org/emmo#",
+            "echem": "https://w3id.org/emmo/domain/electrochemistry#",
+            "battery": "https://w3id.org/emmo/domain/battery#",
+            "chemical": "https://w3id.org/emmo/domain/chemical-substance#",
+            "unit": "https://qudt.org/vocab/unit/",
+            "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+        },
+    ],
+    "@type": "CoinCell",
+    "schema:version": "1.1.16",
+    "hasPositiveElectrode": {
+        "@type": "Electrode",
+        "hasCurrentCollector": {"@type": "CurrentCollector"},
+        "hasCoating": {"@type": "ElectrodeCoating"},
+    },
+    "hasNegativeElectrode": {
+        "@type": "Electrode",
+        "hasCurrentCollector": {"@type": "CurrentCollector"},
+        "hasCoating": {"@type": "ElectrodeCoating"},
+    },
+    "hasCase": {
+        "@type": "R2032",
+        "hasComponent": [
+            {"@type": "CellLid"},
+            {"@type": "CellCan"},
+        ],
+    },
+    "hasComponent": [
+        {"@type": "Spring"},
+    ],
+}
+
+
 def _deep_merge_dicts(target: dict, source: dict) -> dict:
     """Recursively merge source into target."""
     for k, v in source.items():
@@ -109,12 +147,19 @@ def insert_dict_in_jsonld(
         raise TypeError(msg)
 
 
-def merge_battinfo_with_db_data(battinfo_jsonld: dict, sample_data: dict) -> dict:
+def merge_battinfo_with_db_data(
+    battinfo_jsonld: dict, sample_data: dict, *, allow_empty_battinfo: bool = False
+) -> dict:
     """Merge info from the database with BattINFO ontology."""
     coin_cell = find_coin_cell(battinfo_jsonld)
     if coin_cell is None:
-        msg = "Could not find CoinCell in JSON-LD"
-        raise ValueError(msg)
+        if allow_empty_battinfo:
+            # Make a default coin cell
+            battinfo_jsonld = blank_coin_cell.copy()
+            coin_cell = battinfo_jsonld
+        else:
+            msg = "Could not find CoinCell in JSON-LD"
+            raise ValueError(msg)
 
     # Sample ID and CCID (barcode)
     if sample_data.get("Barcode"):

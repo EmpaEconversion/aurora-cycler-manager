@@ -252,7 +252,7 @@ def save_battinfo(data: dict, file: str | Path | io.BytesIO, sample_ids: list[st
     # Merge json with database info and save
     for s in sample_ids:
         sample_data = get_sample_data(s)
-        merged_jsonld = bu.merge_battinfo_with_db_data(battinfo_jsonld, sample_data)
+        merged_jsonld = bu.merge_battinfo_with_db_data(battinfo_jsonld, sample_data, allow_empty_battinfo=True)
         run_id = run_from_sample(s)
         save_path = CONFIG["Processed snapshots folder path"] / run_id / s / f"battinfo.{s}.jsonld"
         logger.info("Saving battinfo json-ld file to %s", save_path)
@@ -662,12 +662,11 @@ def create_rocrate(
                         aux_file = next(Path(sample_folder).glob("aux.*.jsonld"), None)
                         if battinfo_file is None:
                             logger.warning("No BattINFO file for %s", sample_id)
-                            messages += "⚠️"
-                            warnings.append(filetype)
-                            color = "orange"
-                            continue
-                        with battinfo_file.open("r") as f:
-                            battinfo_json = json.load(f)
+                            sample_data = get_sample_data(sample_id)
+                            battinfo_json = bu.merge_battinfo_with_db_data({}, sample_data, allow_empty_battinfo=True)
+                        else:
+                            with battinfo_file.open("r") as f:
+                                battinfo_json = json.load(f)
                         battinfo_json = bu.make_test_object(battinfo_json)
 
                         # Check for auxiliary jsonld file
