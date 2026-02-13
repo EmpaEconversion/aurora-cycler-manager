@@ -457,9 +457,9 @@ class ServerManager:
             msg = "'Snapshots folder path' not found in config file. Cannot save snapshots."
             raise ValueError(msg)
         if not self.config.get("Servers"):
-            msg = "No servers in project configuration."
-            raise ValueError(msg)
-        logger.info("Server manager initialised, consider updating database with update_db()")
+            logger.info("There are no servers in the configuration.")
+        else:
+            logger.info("Server manager initialised, consider updating database with update_db()")
 
     @cached_property
     def servers(self) -> dict[str, CyclerServer]:
