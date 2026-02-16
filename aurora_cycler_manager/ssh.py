@@ -5,7 +5,7 @@ Functions for connecting to instrument servers with SSH.
 
 import base64
 import logging
-from contextlib import suppress
+import posixpath
 from datetime import datetime
 from pathlib import Path, PureWindowsPath
 
@@ -23,6 +23,21 @@ def _ps_to_cmd(ps_command: str) -> str:
     """Convert powershell command to command prompt."""
     encoded_ps_command = base64.b64encode(ps_command.encode("utf-16le")).decode("ascii")
     return f"powershell.exe -EncodedCommand {encoded_ps_command}"
+
+
+def _sftp_mkdir_p(sftp: paramiko.SFTPClient, remote_directory: str) -> None:
+    """SFTP mkdir with parents and exist okay."""
+    remote_directory = posixpath.normpath(remote_directory)
+    current = ""
+    for part in remote_directory.split("/"):
+        if not part:
+            current = "/"
+            continue
+        current = posixpath.join(current, part)
+        try:
+            sftp.stat(current)
+        except FileNotFoundError:
+            sftp.mkdir(current)
 
 
 class SSHConnection:
@@ -73,9 +88,8 @@ class SSHConnection:
         remote_path = PureWindowsPath(remote_path)
         assert isinstance(self.client, paramiko.SSHClient)  # noqa: S101
         with self.client.open_sftp() as sftp:
-            with suppress(IOError):  # Already exists
-                sftp.mkdir(str(remote_path.parent))
-            sftp.put(str(local_path), str(remote_path))
+            _sftp_mkdir_p(sftp, remote_path.parent.as_posix())
+            sftp.put(str(local_path), str(remote_path.as_posix()))
 
     def check_new_files(
         self,
@@ -96,9 +110,9 @@ class SSHConnection:
         _stdin, stdout, stderr = self.exec_command(command)
         exit_status = stdout.channel.recv_exit_status()
         if exit_status != 0:
-            msg = f"Command failed with exit status {exit_status}: {stderr.read().decode('utf-8')}"
+            msg = f"Command failed with exit status {exit_status}: {stderr.read().decode('utf-8', errors='replace')}"
             raise RuntimeError(msg)
-        output = stdout.read().decode("utf-8").strip()
+        output = stdout.read().decode("utf-8", errors="replace").strip()
         modified_files = output.splitlines()
         logger.info("Found %d modified files since %s", len(modified_files), cutoff_date_str)
         return modified_files
