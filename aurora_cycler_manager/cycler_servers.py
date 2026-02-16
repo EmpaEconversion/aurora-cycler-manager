@@ -56,8 +56,8 @@ class CyclerServer:
             self.command_prefix + command + self.command_suffix,
             timeout=timeout,
         )
-        output = stdout.read().decode("utf-8").strip()
-        error = stderr.read().decode("utf-8").strip()
+        output = stdout.read().decode("utf-8", errors="replace").strip()
+        error = stderr.read().decode("utf-8", errors="replace").strip()
         exit_status = stdout.channel.recv_exit_status()
         if exit_status != 0:
             logger.error("Command '%s' on %s failed with exit status %d", command, self.label, exit_status)
@@ -419,9 +419,11 @@ class BiologicServer(CyclerServer):
             _stdin, stdout, stderr = ssh.exec_command(ps_command)
             exit_status = stdout.channel.recv_exit_status()
             if exit_status != 0:
-                msg = f"Command failed with exit status {exit_status}: {stderr.read().decode('utf-8')}"
+                msg = (
+                    f"Command failed with exit status {exit_status}: {stderr.read().decode('utf-8', errors='replace')}"
+                )
                 raise RuntimeError(msg)
-            output = stdout.read().decode("utf-8").strip()
+            output = stdout.read().decode("utf-8", errors="replace").strip()
             remote_files = output.splitlines()
             local_folder = get_eclab_snapshot_folder()
 
