@@ -617,7 +617,7 @@ def analyse_overall(
     # Calculate additional quantities from cycle_summary and add to overall_summary
     if cycle_summary_df.is_empty():
         logger.info("No cycles found for %s", sample_id)
-    elif len(cycle_summary_df["Cycle"]) == 1 and cycle_summary_df["Discharge capacity (mAh)"][-1].is_null():
+    elif len(cycle_summary_df["Cycle"]) == 1 and cycle_summary_df["Discharge capacity (mAh)"][-1] is None:
         logger.info("No complete cycles found for %s", sample_id)
     else:  # Analyse the cycling data
         formed = cycle_summary_df["Cycle"][-1] > formation_cycles if formation_cycles else False
