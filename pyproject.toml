@@ -18,8 +18,8 @@ classifiers = [
 requires-python = ">=3.10"
 dynamic = ["version"]
 dependencies = [
-    "aurora-unicycler>=0.4.0",
-    "battinfoconverter-backend>=2.2.5",
+    "aurora-unicycler>=0.4.4",
+    "battinfoconverter-backend>=3.1.2",
     "dash-uploader>=0.7.0a2",
     "dash[diskcache]>=3.2.0",
     "dash_ag_grid>=32.3.0",
