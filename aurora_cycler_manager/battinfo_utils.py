@@ -503,13 +503,13 @@ def generate_battery_test(ontologized_protocols: dict | list[dict]) -> dict:
         "@context": [
             "https://w3id.org/emmo/domain/battery/context",
             {
-                "schema": "https://schema.org",
+                "schema": "https://schema.org/",
                 "emmo": "https://w3id.org/emmo#",
                 "echem": "https://w3id.org/emmo/domain/electrochemistry#",
                 "battery": "https://w3id.org/emmo/domain/battery#",
-                "chemical": "https://w3id.org/emmo/domain/chemical-substance/context",
+                "chemical": "https://w3id.org/emmo/domain/chemical-substance#",
                 "unit": "https://qudt.org/vocab/unit/",
-                "rdfs": "https://www.w3.org/TR/rdf-schema/#ch_comment",
+                "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
             },
         ],
         "@type": "BatteryTest",
