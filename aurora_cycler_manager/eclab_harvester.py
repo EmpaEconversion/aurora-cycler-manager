@@ -83,10 +83,11 @@ def get_mprs(
 
     # Connect to the server and copy the files
     with SSHConnection(server) as ssh:
-        remote_files = ssh.check_new_files(server_copy_folder, [".mpr", ".mpl"], cutoff_uts)
+        remote_files = ssh.check_new_files(server_copy_folder, [".mpr"], cutoff_uts)
+        remote_files = [f for f in remote_files for f in (f, f.replace(".mpr", ".mpl"))]
         local_files = [Path(local_folder) / os.path.relpath(file, server_copy_folder) for file in remote_files]
         copy_datetime = datetime.now(timezone.utc)  # Keep time of copying for database
-        ssh.get_files(local_files, remote_files)
+        ssh.get_files(local_files, remote_files, missing_ok=True)  # mpl might be deleted, that's fine
 
     update_harvester(server, server_copy_folder, copy_datetime)
     return local_files
@@ -447,14 +448,15 @@ def main() -> None:
     """Harverst and convert all new mpr files."""
     new_files = get_all_mprs()
     for mpr_path in new_files:
-        try:
-            convert_mpr(
-                mpr_path,
-                update_database=True,
-            )
-        except (ValueError, IndexError, KeyError, RuntimeError):
-            logger.exception("Error converting %s", mpr_path)
-            continue
+        if mpr_path.suffix == ".mpr":
+            try:
+                convert_mpr(
+                    mpr_path,
+                    update_database=True,
+                )
+            except (ValueError, IndexError, KeyError, RuntimeError):
+                logger.exception("Error converting %s", mpr_path)
+                continue
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
 from aurora_cycler_manager.analysis import calc_dqdv
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_parse import get_cycles_summary, get_cycling, get_cycling_shrunk
+from aurora_cycler_manager.data_parse import get_cycles_summary, get_cycling, get_cycling_shrunk, get_metadata
 
 CONFIG = get_config()
 logger = logging.getLogger(__name__)
@@ -189,7 +189,7 @@ samples_layout = html.Div(
     children=[
         dcc.Store(
             id="samples-data-store",
-            data={"data_sample_time": {}, "data_sample_cycle": {}},
+            data={"data_sample_time": {}, "data_sample_cycle": {}, "data_sample_metadata": {}},
         ),
         PanelGroup(
             id="samples-panel-group",
@@ -285,6 +285,7 @@ def register_samples_callbacks(app: Dash) -> None:
         for sample in list(data["data_sample_time"].keys()):
             if sample not in samples:
                 data["data_sample_time"].pop(sample)
+                data["data_sample_metadata"].pop(sample)
                 if sample in data["data_sample_cycle"]:
                     data["data_sample_cycle"].pop(sample)
 
@@ -299,7 +300,7 @@ def register_samples_callbacks(app: Dash) -> None:
 
             # Otherwise import the data
             # Get time series data
-            logger.info("Searching for %s", sample)
+            logger.info("Getting time series for %s", sample)
             if compressed and (df := get_cycling_shrunk(sample)) is not None:
                 data_dict = df.to_dict(as_series=False)
                 data_dict["Shrunk"] = True
@@ -313,6 +314,11 @@ def register_samples_callbacks(app: Dash) -> None:
                 except ValueError:
                     logger.info("No cycling found for %s", sample)
                     continue
+
+            # Get metadata
+            logger.info("Getting metadata for %s", sample)
+            metadata = get_metadata(sample)
+            data["data_sample_metadata"][sample] = metadata["sample_data"] if metadata else {}
 
             # Get cycle summary data
             logger.info("Getting summary data for %s", sample)
@@ -372,7 +378,7 @@ def register_samples_callbacks(app: Dash) -> None:
                 offset = uts[next(i for i, x in enumerate(data_dict["Cycle"]) if x >= 1)]
             elif xvar == "From cycling":
                 # grab n formation
-                formation_cycle_count = data["data_sample_cycle"].get(sample, {}).get("Formation cycles", 3)
+                formation_cycle_count = data["data_sample_metadata"].get(sample, {}).get("Formation cycles", 3)
                 try:
                     offset = uts[next(i for i, x in enumerate(data_dict["Cycle"]) if x > formation_cycle_count)]
                 except StopIteration:
@@ -482,12 +488,11 @@ def register_samples_callbacks(app: Dash) -> None:
                     )
             m_mg = None
             if "Q (mAh/g)" in [xvar, yvar] or "dQ/dV (mAh/gV)" in [xvar, yvar]:
-                m_mg = data["data_sample_cycle"][sample].get("Cathode active material mass (mg)")
+                m_mg = data["data_sample_metadata"][sample].get("Cathode active material mass (mg)")
                 if "Q (mAh/g)" in [xvar, yvar]:
                     mask_dict["Q (mAh/g)"] = mask_dict["Q (mAh)"] / m_mg * 1000 if m_mg else None
                 if "dQ/dV (mAh/gV)" in [xvar, yvar]:
                     mask_dict["dQ/dV (mAh/gV)"] = mask_dict["dQ/dV (mAh/V)"] / m_mg * 1000 if m_mg else None
-
             trace = go.Scattergl(
                 x=mask_dict.get(xvar),
                 y=mask_dict.get(yvar),

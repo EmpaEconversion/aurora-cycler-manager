@@ -74,14 +74,20 @@ class SSHConnection:
         """Context manager exit."""
         self.close()
 
-    def get_files(self, local_files: list[Path], remote_files: list[str]) -> None:
+    def get_files(self, local_files: list[Path], remote_files: list[str], *, missing_ok: bool = False) -> None:
         """Copy the files across with SFTP."""
         assert isinstance(self.client, paramiko.SSHClient)  # noqa: S101
         with self.client.open_sftp() as sftp:
             for remote_file, local_file in zip(remote_files, local_files, strict=True):
                 local_file.parent.mkdir(parents=True, exist_ok=True)
                 logger.info("Downloading file %s to %s", remote_file, local_file)
-                sftp.get(remote_file, str(local_file))
+                try:
+                    sftp.get(remote_file, str(local_file))
+                except FileNotFoundError:
+                    if missing_ok:
+                        logger.warning("Remote file not found: %s", remote_file)
+                    else:
+                        raise
 
     def put_file(self, local_path: str | Path, remote_path: str | Path | PureWindowsPath) -> None:
         """Send file to Windows PC."""

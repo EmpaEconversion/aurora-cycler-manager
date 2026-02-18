@@ -617,7 +617,7 @@ def analyse_overall(
     # Calculate additional quantities from cycle_summary and add to overall_summary
     if cycle_summary_df.is_empty():
         logger.info("No cycles found for %s", sample_id)
-    elif len(cycle_summary_df["Cycle"]) == 1 and cycle_summary_df["Discharge capacity (mAh)"][-1].is_null():
+    elif len(cycle_summary_df["Cycle"]) == 1 and cycle_summary_df["Discharge capacity (mAh)"][-1] is None:
         logger.info("No complete cycles found for %s", sample_id)
     else:  # Analyse the cycling data
         formed = cycle_summary_df["Cycle"][-1] > formation_cycles if formation_cycles else False
@@ -1042,6 +1042,7 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
         summary_df = get_cycles_summary(sample)
         if summary_df is not None:
             summary_df = summary_df.with_columns(pl.lit(sample).alias("Sample ID"))
+            summary_df = summary_df.select([col for col in summary_df.columns if summary_df[col].dtype != pl.Null])
             summary_dfs.append(summary_df)
             overall_dicts.append(get_overall_summary(sample))
             metadata["sample_metadata"][sample] = get_metadata(sample)
@@ -1081,22 +1082,14 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
 
 
 def analyse_all_batches() -> None:
-    """Analyses all the batches according to the configuration file.
-
-    Args:
-        graph_config_path (str): path to the yaml file containing the plotting config
-            Defaults to "K:/Aurora/cucumber/graph_config.yml"
-
-    Will search for analysed data in the processed snapshots folder and plot and
-    save the capacity and efficiency vs cycle for each batch of samples.
-
-    """
+    """Analyses all the batches defined in the database."""
     batches = get_batch_details()
-    for plot_name, batch in batches.items():
+    for batch_name, batch in batches.items():
         try:
-            analyse_batch(plot_name, batch)
+            logger.info("Analysing batch %s", batch_name)
+            analyse_batch(batch_name, batch)
         except (ValueError, KeyError, PermissionError, RuntimeError, FileNotFoundError):
-            logger.exception("Failed to analyse %s", plot_name)
+            logger.exception("Failed to analyse %s", batch_name)
 
 
 def moving_average(x: np.ndarray, npoints: int = 11) -> np.ndarray:
