@@ -6,7 +6,6 @@ Functions for getting the configuration settings.
 import json
 import logging
 import os
-import sqlite3
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -140,10 +139,6 @@ def _read_config_file() -> dict:
     else:
         config["tz"] = ZoneInfo(get_localzone_name())
 
-    # Patch the database in case users are using an old version
-    if config.get("Database path").exists():
-        patch_database(config)
-
     config["User config path"] = user_config_path
 
     # Also accept "Data folder path" - will be prefered in future as it contains more than just snapshots
@@ -185,34 +180,6 @@ def _convert_servers_to_dict(servers: list | dict) -> dict:
     for server_label, server_config in servers.items():
         server_config["label"] = server_label
     return servers
-
-
-def patch_database(config: dict) -> None:
-    """Add missing columns to database, in case users are coming from an older version."""
-    with sqlite3.connect(config["Database path"]) as conn:
-        cursor = conn.cursor()
-        # Make columns in the jobs table if it doesn't exist
-        cursor.execute("PRAGMA table_info(jobs)")
-        columns = [col[1] for col in cursor.fetchall()]
-        if "Capacity (mAh)" not in columns:
-            cursor.execute("ALTER TABLE jobs ADD COLUMN `Capacity (mAh)` FLOAT")
-        if "Unicycler protocol" not in columns:
-            cursor.execute("ALTER TABLE jobs ADD COLUMN `Unicycler protocol` TEXT")
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS dataframes ("
-            "`Sample ID` TEXT NOT NULL, "
-            "`File stem` TEXT NOT NULL, "
-            "`Job ID` TEXT, "
-            "`From known source` BOOLEAN, "
-            "`Data start` TIMESTAMP, "
-            "`Data end` TIMESTAMP, "
-            "`Modified` TIMESTAMP, "
-            "PRIMARY KEY (`Sample ID`, `File stem`), "
-            "FOREIGN KEY(`Sample ID`) REFERENCES samples(`Sample ID`), "
-            "FOREIGN KEY(`Job ID`) REFERENCES jobs(`Job ID`)"
-            ")",
-        )
-        conn.commit()
 
 
 def get_config(*, reload: bool = False) -> dict:

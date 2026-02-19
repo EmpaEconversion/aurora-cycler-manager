@@ -11,7 +11,27 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import Engine, MetaData, String, Table, bindparam, create_engine, delete, exists, func, select, update
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Engine,
+    ForeignKey,
+    MetaData,
+    PrimaryKeyConstraint,
+    String,
+    Table,
+    Text,
+    bindparam,
+    create_engine,
+    delete,
+    exists,
+    func,
+    inspect,
+    select,
+    text,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
@@ -38,7 +58,39 @@ def get_engine(config: dict) -> Engine:
     raise ValueError(msg)
 
 
+def patch_database(engine: Engine) -> None:
+    """Add missing columns to database, in case users are coming from an older version."""
+    inspector = inspect(engine)
+
+    # Add missing columns to jobs table
+    existing_columns = [col["name"] for col in inspector.get_columns("jobs")]
+    with engine.begin() as conn:
+        if "Capacity (mAh)" not in existing_columns:
+            conn.execute(text('ALTER TABLE jobs ADD COLUMN "Capacity (mAh)" FLOAT'))
+        if "Unicycler protocol" not in existing_columns:
+            conn.execute(text('ALTER TABLE jobs ADD COLUMN "Unicycler protocol" TEXT'))
+
+    # Create dataframes table if it doesn't exist
+    if "dataframes" not in inspector.get_table_names():
+        meta = MetaData()
+        Table(
+            "dataframes",
+            meta,
+            Column("Sample ID", Text, nullable=False),
+            Column("File stem", Text, nullable=False),
+            Column("Job ID", Text, ForeignKey("jobs.Job ID")),
+            Column("From known source", Boolean),
+            Column("Data start", DateTime),
+            Column("Data end", DateTime),
+            Column("Modified", DateTime),
+            PrimaryKeyConstraint("Sample ID", "File stem"),
+            ForeignKey("samples.Sample ID"),
+        )
+        meta.create_all(engine)
+
+
 engine = get_engine(CONFIG)
+patch_database(engine)
 metadata = MetaData()
 
 samples_table = Table("samples", metadata, autoload_with=engine)
