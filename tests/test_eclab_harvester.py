@@ -1,9 +1,9 @@
 """Testing functions in the eclab_harvester.py."""
 
-import sqlite3
 from pathlib import Path
 
 import pytest
+from sqlalchemy import MetaData, Table, create_engine, select
 
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.eclab_harvester import convert_mpr, get_mpr_data
@@ -55,6 +55,11 @@ def test_convert_data_update_database(reset_all, test_dir: Path) -> None:
     db_path = test_dir / "database" / "test_database.db"
     sample_id = "240701_svfe_gen6_01"
 
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    metadata = MetaData()
+    jobs_table = Table("jobs", metadata, autoload_with=engine)
+    dataframes_table = Table("dataframes", metadata, autoload_with=engine)
+
     convert_mpr(
         test_file_1,
         sample_id=sample_id,
@@ -62,22 +67,22 @@ def test_convert_data_update_database(reset_all, test_dir: Path) -> None:
         update_database=True,
     )
     # Should have made an entry in the dataframes table
-    with sqlite3.connect(db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT `Job ID` FROM dataframes WHERE `Sample ID` = ? AND `File stem` = ?",
-            (sample_id, test_file_1.stem),
+    with engine.connect() as conn:
+        result = (
+            conn.execute(
+                select(dataframes_table.c["Job ID"])
+                .where(dataframes_table.c["Sample ID"] == sample_id)
+                .where(dataframes_table.c["File stem"] == test_file_1.stem)
+            )
+            .mappings()
+            .first()
         )
-        result = cursor.fetchone()
         assert result is not None
-        job_id = result[0]
-        cursor.execute(
-            "SELECT `Job ID` FROM jobs WHERE `Job ID` = ?",
-            (job_id,),
-        )
-        result = cursor.fetchone()
+        job_id = result["Job ID"]
+
+        result = conn.execute(select(jobs_table.c["Job ID"]).where(jobs_table.c["Job ID"] == job_id)).fetchone()
+
         assert result is not None
-        cursor.close()
 
     # If same data is submitted from a 'known source', it overwrites
     convert_mpr(
@@ -88,31 +93,26 @@ def test_convert_data_update_database(reset_all, test_dir: Path) -> None:
     )
     # Should have made an entry in the dataframes table
     previous_job_id = job_id
-    with sqlite3.connect(db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT `Job ID` FROM dataframes WHERE `Sample ID` = ? AND `File stem` = ?",
-            (sample_id, test_file_1.stem),
+    with engine.connect() as conn:
+        result = (
+            conn.execute(
+                select(dataframes_table.c["Job ID"])
+                .where(dataframes_table.c["Sample ID"] == sample_id)
+                .where(dataframes_table.c["File stem"] == test_file_1.stem)
+            )
+            .mappings()
+            .first()
         )
-        result = cursor.fetchone()
         assert result is not None
-        job_id = result[0]
+        job_id = result["Job ID"]
         assert job_id == "known_source_123"
 
-        cursor.execute(
-            "SELECT `Job ID` FROM jobs WHERE `Job ID` = ?",
-            (previous_job_id,),
-        )
-        result = cursor.fetchone()
+        result = conn.execute(
+            select(jobs_table.c["Job ID"]).where(jobs_table.c["Job ID"] == previous_job_id)
+        ).fetchone()
         assert result is None
-        cursor.execute(
-            "SELECT `Job ID` FROM jobs WHERE `Job ID` = ?",
-            (job_id,),
-        )
-        result = cursor.fetchone()
+        result = conn.execute(select(jobs_table.c["Job ID"]).where(jobs_table.c["Job ID"] == job_id)).fetchone()
         assert result is not None
-        cursor.close()
-
     # If manually uploaded again, it will keep the known source job ID
     convert_mpr(
         test_file_1,
@@ -120,30 +120,26 @@ def test_convert_data_update_database(reset_all, test_dir: Path) -> None:
         job_id=None,  # e.g. manual upload or harvesting
         update_database=True,
     )
-    with sqlite3.connect(db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT `Job ID` FROM dataframes WHERE `Sample ID` = ? AND `File stem` = ?",
-            (sample_id, test_file_1.stem),
+    with engine.connect() as conn:
+        result = (
+            conn.execute(
+                select(dataframes_table.c["Job ID"])
+                .where(dataframes_table.c["Sample ID"] == sample_id)
+                .where(dataframes_table.c["File stem"] == test_file_1.stem)
+            )
+            .mappings()
+            .first()
         )
-        result = cursor.fetchone()
         assert result is not None
-        job_id = result[0]
+        job_id = result["Job ID"]
         assert job_id == "known_source_123"
 
-        cursor.execute(
-            "SELECT `Job ID` FROM jobs WHERE `Job ID` = ?",
-            (previous_job_id,),
-        )
-        result = cursor.fetchone()
+        result = conn.execute(
+            select(jobs_table.c["Job ID"]).where(jobs_table.c["Job ID"] == previous_job_id)
+        ).fetchone()
         assert result is None
-        cursor.execute(
-            "SELECT `Job ID` FROM jobs WHERE `Job ID` = ?",
-            (job_id,),
-        )
-        result = cursor.fetchone()
+        result = conn.execute(select(jobs_table.c["Job ID"]).where(jobs_table.c["Job ID"] == job_id)).fetchone()
         assert result is not None
-        cursor.close()
 
 
 def test_convert_eis(reset_all, test_dir: Path) -> None:
