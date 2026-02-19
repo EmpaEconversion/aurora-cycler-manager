@@ -83,7 +83,7 @@ class CyclerServer:
         """Cancel a job on the server."""
         raise NotImplementedError
 
-    def get_pipelines(self) -> dict:
+    def get_pipelines(self) -> list[dict]:
         """Get the status of all pipelines on the server."""
         raise NotImplementedError
 
@@ -224,22 +224,20 @@ class NewareServer(CyclerServer):
             raise ValueError(output)
 
     @override
-    def get_pipelines(self) -> dict:
+    def get_pipelines(self) -> list[dict]:
         """Get the status of all pipelines on the server."""
         with SSHConnection(self.server_config) as ssh:
             result = json.loads(self._command(ssh, "neware status"))
         # result is a dict with keys=pipeline and value a dict of stuff
         # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
-        pipelines, sampleids, readys = [], [], []
-        for pip, data in result.items():
-            pipelines.append(pip)
-            if data["workstatus"] in ["working", "pause", "protect"]:  # working\stop\finish\protect\pause
-                sampleids.append(data["barcode"])
-                readys.append(False)
-            else:
-                sampleids.append(None)
-                readys.append(True)
-        return {"pipeline": pipelines, "sampleid": sampleids, "jobid": [None] * len(pipelines), "ready": readys}
+        rows = []
+        for k, v in result.items():
+            ready = v["workstatus"] not in ["working", "pause", "protect"]
+            row = {"Pipeline": k, "Ready": ready}
+            if not ready:  # Only write sample id if running
+                row["Sample ID"] = v["barcode"]
+            rows.append(row)
+        return rows
 
     @override
     def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
@@ -378,28 +376,23 @@ class BiologicServer(CyclerServer):
                 raise ValueError(output)
 
     @override
-    def get_pipelines(self) -> dict:
+    def get_pipelines(self) -> list[dict]:
         """Get the status of all pipelines on the server."""
         with SSHConnection(self.server_config) as ssh:
             result = json.loads(self._command(ssh, "biologic status --ssh"))
         # Result is a dict with keys=pipeline and value a dict of stuff
-        # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
         # Biologic does not give sample ID or job IDs from status
-        # The Nones are handled in server_manager.update_pipelines()
-        pipelines, readys = [], []
-        for pip, data in result.items():
-            pipelines.append(pip)
-            # Biologic status can be:
-            # Stop/Run/Pause/Sync/Stop_rec1/Stop_rec2/Pause_rec
-            # _rec means it is still recording data
-            # Pipeline is only ready is status is 'Stop'
-            readys.append(data["Status"] == "Stop")
-        return {
-            "pipeline": pipelines,
-            "sampleid": [None] * len(pipelines),
-            "jobid": [None] * len(pipelines),
-            "ready": readys,
-        }
+        # Biologic status can be:
+        # Stop/Run/Pause/Sync/Stop_rec1/Stop_rec2/Pause_rec
+        # _rec means it is still recording data
+        # Pipeline is only ready is status is 'Stop'
+        return [
+            {
+                "Pipeline": k,
+                "Ready": v["Status"] == "Stop",
+            }
+            for k, v in result.items()
+        ]
 
     @override
     def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:

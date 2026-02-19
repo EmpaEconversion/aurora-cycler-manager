@@ -356,6 +356,36 @@ def remove_batch(batch_name: str) -> None:
         conn.commit()
 
 
+### PIPELINES ###
+
+
+def add_or_update_pipeline(pipeline: str, row: dict[str, str | float | None]) -> None:
+    """Add or update job in database."""
+    # If ready is one, job gets removed
+    if row.get("Ready") == 1:
+        row["Job ID"] = None
+        row["Job ID on server"] = None
+    # If there is no Job ID, but there is a Job ID on the server, try to match it and add
+    elif (
+        isinstance(job_id_on_server := row.get("Job ID on server"), str)
+        and isinstance(job_id := row.get("Server label"), str)
+        and not row.get("Job ID")
+    ):
+        with suppress(ValueError):
+            row["Job ID"] = get_job_id_from_server(job_id, job_id_on_server)
+    # Insert or update the row
+    with engine.connect() as conn:
+        conn.execute(
+            insert(pipelines_table)
+            .values(Pipeline=pipeline, **row)
+            .on_conflict_do_update(
+                index_elements=["Pipeline"],
+                set_=row,
+            )
+        )
+        conn.commit()
+
+
 ### JOBS ###
 
 

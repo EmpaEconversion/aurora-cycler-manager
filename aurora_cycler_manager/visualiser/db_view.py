@@ -23,6 +23,7 @@ from flask import abort, send_file
 from flask.typing import ResponseReturnValue
 
 import aurora_cycler_manager.battinfo_utils as bu
+import aurora_cycler_manager.database_funcs as dbf
 from aurora_cycler_manager.analysis import update_sample_metadata
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import (
@@ -41,8 +42,6 @@ from aurora_cycler_manager.visualiser.db_protocol_edit import (
     register_protocol_edit_callbacks,
 )
 from aurora_cycler_manager.visualiser.funcs import (
-    get_database,
-    get_db_last_update,
     make_pipelines_comparable,
 )
 from aurora_cycler_manager.visualiser.notifications import (
@@ -856,9 +855,9 @@ def register_db_view_callbacks(app: Dash) -> None:
         running=[(Output("loading-message-store", "data"), "Reading database...", "")],
     )
     def refresh_database(_n_clicks: int, _n_intervals: int) -> tuple:
-        db_data = get_database()
+        db_data = dbf.get_database()
         dt_string = datetime.now(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z")
-        last_checked = get_db_last_update().astimezone(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z")
+        last_checked = dbf.get_db_last_update().astimezone(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z")
         samples = [s["Sample ID"] for s in db_data["data"]["samples"]]
         batches = get_batch_details()
         return (

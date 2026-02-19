@@ -475,63 +475,15 @@ class ServerManager:
         """Update the pipelines table in the database with the current status."""
         for label, server in self.servers.items():
             try:
-                status = server.get_pipelines()
+                pipelines = server.get_pipelines()
             except Exception as e:
                 logger.error("Error getting pipeline status from %s: %s", label, e)
                 continue
             dt = datetime.now(timezone.utc).isoformat(timespec="seconds")
-            if status:
-                with sqlite3.connect(self.config["Database path"]) as conn:
-                    cursor = conn.cursor()
-                    for ready, pipeline, sampleid, jobid_on_server in zip(
-                        status["ready"],
-                        status["pipeline"],
-                        status["sampleid"],
-                        status["jobid"],
-                        strict=True,
-                    ):
-                        cursor.execute(
-                            "INSERT OR IGNORE INTO pipelines (`Pipeline`) VALUES (?)",
-                            (pipeline,),
-                        )
-                        cursor.execute(
-                            "UPDATE pipelines "
-                            "SET `Ready` = ?, `Last checked` = ?, `Server label` = ?, "
-                            "`Server hostname` = ?, `Server type` = ? "
-                            "WHERE `Pipeline` = ?",
-                            (ready, dt, label, server.hostname, server.server_type, pipeline),
-                        )
-                        if sampleid is not None:
-                            cursor.execute(
-                                "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
-                                (sampleid, pipeline),
-                            )
-                        # There is no job running - remove job ids from pipeline
-                        if ready == 1:
-                            cursor.execute(
-                                "UPDATE pipelines SET `Job ID on server` = ?, `Job ID` = ? WHERE `Pipeline` = ?",
-                                (None, None, pipeline),
-                            )
-                        # Update the job id (if it is None, then ignore rather than remove)
-                        elif jobid_on_server is not None:
-                            cursor.execute(
-                                "SELECT `Job ID` FROM jobs "
-                                "WHERE `Job ID on server` = ? AND `Sample ID` = ? AND `Pipeline` = ?",
-                                (jobid_on_server, sampleid, pipeline),
-                            )
-                            result = cursor.fetchone()
-                            if result:
-                                cursor.execute(
-                                    "UPDATE pipelines SET `Job ID on server` = ?, `Job ID` = ? WHERE `Pipeline` = ?",
-                                    (jobid_on_server, result[0], pipeline),
-                                )
-                            else:
-                                logger.warning(
-                                    "No matching Job ID found in database for server '%s' Job ID '%s'.",
-                                    label,
-                                    jobid_on_server,
-                                )
-                    conn.commit()
+            for row in pipelines:
+                pipeline = row.pop("Pipeline")
+                row["Last checked"] = dt
+                dbf.add_or_update_pipeline(pipeline, row)
 
     def update_flags(self) -> None:
         """Update the flags in the pipelines table from the results table."""
