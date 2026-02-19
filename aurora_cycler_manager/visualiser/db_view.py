@@ -857,13 +857,14 @@ def register_db_view_callbacks(app: Dash) -> None:
     def refresh_database(_n_clicks: int, _n_intervals: int) -> tuple:
         db_data = dbf.get_database()
         dt_string = datetime.now(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z")
-        last_checked = dbf.get_db_last_update().astimezone(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z")
+        last_checked = dbf.get_db_last_update()
+        last_checked = last_checked.astimezone(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z") if last_checked else None
         samples = [s["Sample ID"] for s in db_data["data"]["samples"]]
         batches = get_batch_details()
         return (
             db_data,
             f"Refresh database, last refreshed: {dt_string}",
-            f"Update database, last updated: {last_checked}",
+            f"Update database, last updated: {last_checked}" if last_checked else "Update from cycling servers",
             samples,
             batches,
         )

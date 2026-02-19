@@ -973,9 +973,8 @@ def get_database() -> dict[str, Any]:
     return {"data": db_data, "column_defs": db_columns}
 
 
-# TODO: needs to work for postgres too, not just sqlite (or just get rid)
-def get_db_last_update() -> datetime:
+def get_db_last_update() -> datetime | None:
     """Get the last update time of the database."""
-    db_path = Path(CONFIG["Database path"])
-    modified_uts = db_path.stat().st_mtime
-    return datetime.fromtimestamp(int(modified_uts), tz=timezone.utc)
+    with engine.connect() as conn:
+        result = conn.execute(select(func.max(pipelines_table.c["Last checked"]))).scalar()
+    return parse_datetime(result) if result else None
