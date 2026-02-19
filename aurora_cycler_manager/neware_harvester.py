@@ -10,7 +10,6 @@ Run the script to harvest and convert all neware files.
 import json
 import logging
 import re
-import sqlite3
 import tempfile
 import zipfile
 from datetime import datetime, timezone
@@ -21,6 +20,7 @@ import pandas as pd
 import polars as pl
 import xmltodict
 
+import aurora_cycler_manager.database_funcs as dbf
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.data_parse import get_sample_folder
@@ -34,7 +34,6 @@ from aurora_cycler_manager.database_funcs import (
 )
 from aurora_cycler_manager.setup_logging import setup_logging
 from aurora_cycler_manager.ssh import SSHConnection
-from aurora_cycler_manager.utils import parse_datetime
 from aurora_cycler_manager.version import __url__, __version__
 
 # Load configuration
@@ -80,19 +79,8 @@ def harvest_neware_files(
         list of new files copied
 
     """
-    # Set default cutoff date, use local timezone
-    cutoff_uts = 0.0
-    if not force_copy:  # Set cutoff date to last snapshot from database
-        with sqlite3.connect(CONFIG["Database path"]) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT `Last snapshot` FROM harvester WHERE `Server label`=? AND `Server hostname`=? AND `Folder`=?",
-                (server["label"], server["hostname"], server_copy_folder),
-            )
-            result = cursor.fetchone()
-            cursor.close()
-        if result:
-            cutoff_uts = parse_datetime(result[0]).timestamp()
+    # Get last time files were grabbed
+    cutoff_uts = dbf.get_last_harvest(server, server_copy_folder) if not force_copy else 0.0
 
     # Connect to the server and copy the files
     with SSHConnection(server) as ssh:
@@ -679,31 +667,19 @@ def update_database_job(
         msg = f"Server hostname not found for server label {server_label}"
         raise ValueError(msg)
 
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT OR IGNORE INTO jobs (`Job ID`) VALUES (?)",
-            (job_id,),
-        )
-        cursor.execute(
-            "UPDATE jobs SET "
-            "`Job ID on server` = ?, `Pipeline` = ?, `Sample ID` = ?, "
-            "`Server Label` = ?, `Server Hostname` = ?, `Submitted` = ?, "
-            "`Payload` = ?, `Last Snapshot` = ?, `Job ID on server` = ? "
-            "WHERE `Job ID` = ?",
-            (
-                job_id_on_server,
-                pipeline,
-                sampleid,
-                server_label,
-                server_hostname,
-                submitted,
-                payload,
-                last_snapshot,
-                job_id_on_server,
-                job_id,
-            ),
-        )
+    dbf.add_or_update_job(
+        job_id,
+        {
+            "Job ID on server": job_id_on_server,
+            "Pipeline": pipeline,
+            "Sample ID": sampleid,
+            "Server label": server_label,
+            "Server hostname": server_hostname,
+            "Submitted": submitted,
+            "Payload": payload,
+            "Last Snapshot": last_snapshot,
+        },
+    )
 
 
 def convert_neware_data(
@@ -781,17 +757,7 @@ def convert_neware_data(
 
         # Update the database
         creation_date = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc).isoformat(timespec="seconds")
-        with sqlite3.connect(CONFIG["Database path"]) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
-                (sampleid,),
-            )
-            cursor.execute(
-                "UPDATE results SET `Last snapshot` = ? WHERE `Sample ID` = ?",
-                (creation_date, sampleid),
-            )
-            cursor.close()
+        dbf.update_results(sampleid, {"Last snapshot": creation_date})
 
     return df, metadata
 

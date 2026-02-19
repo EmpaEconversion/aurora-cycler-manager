@@ -10,7 +10,6 @@ Run the script to harvest and convert all mpr files.
 import json
 import logging
 import os
-import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -19,13 +18,13 @@ import polars as pl
 import yadg
 from dgbowl_schemas.yadg.dataschema import ExtractorFactory
 
+import aurora_cycler_manager.database_funcs as dbf
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.data_parse import get_sample_folder
 from aurora_cycler_manager.database_funcs import add_data_to_db, get_sample_data, update_harvester
 from aurora_cycler_manager.setup_logging import setup_logging
 from aurora_cycler_manager.ssh import SSHConnection
 from aurora_cycler_manager.stdlib_utils import run_from_sample
-from aurora_cycler_manager.utils import parse_datetime
 from aurora_cycler_manager.version import __url__, __version__
 
 CONFIG = get_config()
@@ -67,19 +66,8 @@ def get_mprs(
         force_copy (bool, optional): Copy all files regardless of modification date
 
     """
-    # Set default cutoff date, use local timezone
-    cutoff_uts = 0.0
-    if not force_copy:  # Set cutoff date to last snapshot from database
-        with sqlite3.connect(CONFIG["Database path"]) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT `Last snapshot` FROM harvester WHERE `Server label`=? AND `Server hostname`=? AND `Folder`=?",
-                (server["label"], server["hostname"], server_copy_folder),
-            )
-            result = cursor.fetchone()
-            cursor.close()
-        if result:
-            cutoff_uts = parse_datetime(result[0]).timestamp()
+    # Get last time files were grabbed
+    cutoff_uts = dbf.get_last_harvest(server, server_copy_folder) if not force_copy else 0.0
 
     # Connect to the server and copy the files
     with SSHConnection(server) as ssh:
@@ -351,17 +339,8 @@ def convert_mpr(
         df.write_parquet(parquet_filepath, metadata={"AURORA:metadata": json.dumps(metadata)})
 
         # Update the database
-        with sqlite3.connect(CONFIG["Database path"]) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
-                (sample_id,),
-            )
-            cursor.execute(
-                "UPDATE results SET `Last snapshot` = ? WHERE `Sample ID` = ?",
-                (modified_date.isoformat(timespec="seconds") if modified_date else None, sample_id),
-            )
-            cursor.close()
+        modified_date_iso = modified_date.isoformat(timespec="seconds") if modified_date else None
+        dbf.update_results(sample_id, {"Last snapshot": modified_date_iso})
     return df, metadata
 
 
@@ -386,10 +365,7 @@ def get_sampleid_from_mpr(mpr_rel_path: str | Path) -> str:
     run_id_lookup = CONFIG.get("Run ID lookup", {})
 
     # Get valid run IDs from the database
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT `Run ID` FROM samples")
-        valid_run_ids = {row[0] for row in cursor.fetchall()}
+    valid_run_ids = dbf.get_all_run_ids()
 
     # This is usually stored as
     # base_folder/run_id/sample_number/files.mpr (run id index -3)

@@ -37,6 +37,7 @@ insert = pg_insert if engine.dialect.name == "postgresql" else sqlite_insert
 dataframes_table.c["Data start"].type = String()
 dataframes_table.c["Data end"].type = String()
 dataframes_table.c["Modified"].type = String()
+results_table.c["Last snapshot"].type = String()
 results_table.c["Last analysis"].type = String()
 
 
@@ -292,6 +293,13 @@ def get_sample_data(sample_id: str) -> dict:
     return sample_data
 
 
+def get_all_run_ids() -> set[str]:
+    """Get all valid run IDs."""
+    with engine.connect() as conn:
+        result = conn.execute(select(samples_table.c["Run ID"]).distinct()).fetchall()
+    return {row[0] for row in result}
+
+
 ### BATCHES ###
 
 
@@ -347,6 +355,19 @@ def remove_batch(batch_name: str) -> None:
 
 
 ### JOBS ###
+
+
+def add_or_update_job(job_id: str, row: dict[str, str | float | None]) -> None:
+    """Add or update job in database."""
+    with engine.connect() as conn:
+        conn.execute(
+            insert(jobs_table)
+            .values(**{"Job ID": job_id}, **row)
+            .on_conflict_do_update(
+                index_elements=["Job ID"],
+                set_=row,
+            )
+        )
 
 
 def get_jobs_from_sample(sample_id: str) -> list[str]:
@@ -692,10 +713,24 @@ def update_harvester(server: dict, folder: str, copy_datetime: datetime) -> None
         conn.commit()
 
 
+def get_last_harvest(server: dict, folder: str) -> float:
+    """Get unix time stamp of last harvest."""
+    with engine.connect() as conn:
+        result = conn.execute(
+            select(harvester_table.c["Last snapshot"])
+            .where(harvester_table.c["Server label"] == server["label"])
+            .where(harvester_table.c["Server hostname"] == server["hostname"])
+            .where(harvester_table.c["Folder"] == folder)
+        ).fetchone()
+    if result:
+        return parse_datetime(result[0]).timestamp()
+    return 0.0
+
+
 ### RESULTS ###
 
 
-def update_results(sample_id: str, row: dict[str, str | float]) -> None:
+def update_results(sample_id: str, row: dict[str, str | float | None]) -> None:
     """Add or update results for a sample."""
     with engine.connect() as conn:
         conn.execute(
