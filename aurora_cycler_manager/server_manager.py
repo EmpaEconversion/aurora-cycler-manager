@@ -12,7 +12,6 @@ commands to the appropriate server, and handles the database updates.
 
 import json
 import logging
-import sqlite3
 import traceback
 from datetime import datetime, timezone
 from functools import cached_property
@@ -469,7 +468,7 @@ class ServerManager:
     def update_db(self) -> None:
         """Update all tables in the database."""
         self.update_pipelines()
-        self.update_flags()
+        dbf.update_flags()
 
     def update_pipelines(self) -> None:
         """Update the pipelines table in the database with the current status."""
@@ -484,20 +483,6 @@ class ServerManager:
                 pipeline = row.pop("Pipeline")
                 row["Last checked"] = dt
                 dbf.add_or_update_pipeline(pipeline, row)
-
-    def update_flags(self) -> None:
-        """Update the flags in the pipelines table from the results table."""
-        with sqlite3.connect(self.config["Database path"]) as conn:
-            cursor = conn.cursor()
-            cursor.execute("UPDATE pipelines SET `Flag` = NULL")
-            cursor.execute("SELECT `Pipeline`, `Flag`, `Sample ID` FROM results")
-            results = cursor.fetchall()
-            for pipeline, flag, sampleid in results:
-                cursor.execute(
-                    "UPDATE pipelines SET `Flag` = ? WHERE `Pipeline` = ? AND `Sample ID` = ?",
-                    (flag, pipeline, sampleid),
-                )
-            conn.commit()
 
     def load(self, pipeline_id: str, sample_id: str) -> None:
         """Load a sample on a pipeline.

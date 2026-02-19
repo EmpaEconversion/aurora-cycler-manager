@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import MetaData, String, Table, create_engine, delete, func, select, update
+from sqlalchemy import MetaData, String, Table, bindparam, create_engine, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
@@ -384,6 +384,44 @@ def add_or_update_pipeline(pipeline: str, row: dict[str, str | float | None]) ->
             )
         )
         conn.commit()
+
+
+def update_flags() -> None:
+    """Update the flags in the pipelines table from the results table."""
+    with engine.begin() as conn:
+        # Reset all flags
+        conn.execute(update(pipelines_table).values(Flag=None))
+
+        # Get Sample IDs that exist in pipelines
+        sample_ids = (
+            conn.execute(
+                select(pipelines_table.c["Sample ID"]).distinct().where(pipelines_table.c["Sample ID"].isnot(None))
+            )
+            .scalars()
+            .all()
+        )
+
+        if not sample_ids:
+            return
+
+        # Get all results
+        rows = (
+            conn.execute(
+                select(results_table.c["Sample ID"], results_table.c["Flag"]).where(
+                    results_table.c["Sample ID"].in_(sample_ids)
+                )
+            )
+            .mappings()
+            .all()
+        )
+        # Bulk update
+        if rows:
+            conn.execute(
+                update(pipelines_table).where(
+                    pipelines_table.c["Sample ID"] == bindparam("Sample ID")  # match on Sample ID
+                ),
+                [{"Sample ID": row["Sample ID"], "Flag": row["Flag"]} for row in rows],
+            )
 
 
 ### JOBS ###
