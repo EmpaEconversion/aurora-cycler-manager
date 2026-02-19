@@ -11,7 +11,6 @@ summary information, per-cycle data, and summary statistics.
 import contextlib
 import json
 import logging
-import sqlite3
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +22,7 @@ import polars as pl
 from tsdownsample import MinMaxLTTBDownsampler
 from xlsxwriter import Workbook
 
+import aurora_cycler_manager.database_funcs as dbf
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.data_parse import (
     SampleDataBundle,
@@ -34,7 +34,6 @@ from aurora_cycler_manager.data_parse import (
     read_cycling,
     read_metadata,
 )
-from aurora_cycler_manager.database_funcs import get_batch_details, get_sample_data
 from aurora_cycler_manager.stdlib_utils import (
     json_dump_compress_lists,
     max_with_none,
@@ -43,7 +42,6 @@ from aurora_cycler_manager.stdlib_utils import (
     run_from_sample,
 )
 from aurora_cycler_manager.utils import (
-    parse_datetime,
     weighted_median,
 )
 from aurora_cycler_manager.version import __url__, __version__
@@ -103,7 +101,7 @@ def _sort_times(start_times: list | np.ndarray, end_times: list | np.ndarray) ->
 def merge_metadata(job_files: list[Path], metadatas: list[dict], sample_id: str) -> dict:
     """Merge several job metadata, add provenance, replace sample data with latest from db."""
     # Get sample data from database
-    sample_data = get_sample_data(sample_id)
+    sample_data = dbf.get_sample_data(sample_id)
 
     # Flatten / merge glossary dicts
     glossary = {}
@@ -730,21 +728,12 @@ def update_results(overall: dict, job_data: list[dict]) -> None:
     last_snapshot = job_data[-1].get("Last snapshot") if job_data else None
 
     sample_id = overall.get("Sample ID")
-    pipeline, status = None, None
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT `Pipeline`, `Job ID` FROM pipelines WHERE `Sample ID` = ?", (sample_id,))
-        row = cursor.fetchone()
-        if row:
-            pipeline = row[0]
-            job_id = row[1]
-            if job_id:
-                cursor.execute("SELECT `Status` FROM jobs WHERE `Job ID` = ?", (f"{job_id}",))
-                status = cursor.fetchone()[0]
+    assert isinstance(sample_id, str)  # noqa: S101
+    job_info = dbf.get_running_job(sample_id)  # Pipeline, Job ID, Status
 
     # Update the database with some of the results
     flag = None
-    if pipeline:
+    if job_info.get("Pipeline"):
         if (cap_loss := overall.get("Capacity loss (%)")) and cap_loss > 50:
             flag = "🪫"
         if (form_eff := overall.get("First formation coulombic efficiency (%)")) and form_eff < 50:
@@ -754,8 +743,8 @@ def update_results(overall: dict, job_data: list[dict]) -> None:
         if (init_cap := overall.get("Initial specific discharge capacity (mAh/g)")) and init_cap < 50:
             flag = "🚩"
     update_row = {
-        "Pipeline": pipeline,
-        "Status": status,
+        "Pipeline": job_info.get("Pipeline"),
+        "Status": job_info.get("Status"),
         "Flag": flag,
         "Number of cycles": overall.get("Number of cycles"),
         "Capacity loss (%)": overall.get("Capacity loss (%)"),
@@ -772,21 +761,12 @@ def update_results(overall: dict, job_data: list[dict]) -> None:
         **({"Last snapshot": last_snapshot} if last_snapshot else {}),
         **({"Snapshot pipeline": snapshot_pipeline} if snapshot_pipeline else {}),
     }
-    # round any floats to 3 decimal places
+    # Round any floats to 3 decimal places
     for k, v in update_row.items():
         if isinstance(v, float):
             update_row[k] = round(v, 3)
-
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        # insert a row with sampleid if it doesn't exist
-        cursor.execute("INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)", (sample_id,))
-        # update the row
-        columns = ", ".join([f"`{k}` = ?" for k in update_row])
-        cursor.execute(
-            f"UPDATE results SET {columns} WHERE `Sample ID` = ?",  # noqa: S608
-            (*update_row.values(), sample_id),
-        )
+    # Update database
+    dbf.update_results(sample_id, update_row)
 
 
 def analyse_sample(sample_id: str) -> SampleDataBundle:
@@ -875,7 +855,7 @@ def update_sample_metadata(sample_ids: str | list[str]) -> None:
         sample_ids = [sample_ids]
     for sample_id in sample_ids:
         # Get updated database data
-        sample_data = get_sample_data(sample_id)
+        sample_data = dbf.get_sample_data(sample_id)
 
         sample_folder = get_sample_folder(sample_id)
 
@@ -1006,23 +986,7 @@ def analyse_all_samples(
         string in the sampleid
 
     """
-    if mode == "new_data":
-        with sqlite3.connect(CONFIG["Database path"]) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT `Sample ID`, `Last snapshot`, `Last analysis` FROM results")
-            results = cursor.fetchall()
-        samples_to_analyse = [
-            r[0] for r in results if r[0] and (not r[1] or not r[2] or parse_datetime(r[1]) > parse_datetime(r[2]))
-        ]
-    elif mode == "if_not_exists":
-        with sqlite3.connect(CONFIG["Database path"]) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT `Sample ID` FROM results WHERE `Last analysis` IS NULL")
-            results = cursor.fetchall()
-        samples_to_analyse = [r[0] for r in results]
-    else:
-        samples_to_analyse = []
-
+    samples_to_analyse = dbf.find_new_data(mode)
     for run_folder in Path(CONFIG["Data folder path"]).iterdir():
         if run_folder.is_dir():
             for sample in run_folder.iterdir():
@@ -1092,7 +1056,7 @@ def analyse_batch(plot_name: str, batch: dict) -> None:
 
 def analyse_all_batches() -> None:
     """Analyses all the batches defined in the database."""
-    batches = get_batch_details()
+    batches = dbf.get_batch_details()
     for batch_name, batch in batches.items():
         try:
             logger.info("Analysing batch %s", batch_name)

@@ -16,6 +16,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.stdlib_utils import check_illegal_text, run_from_sample
+from aurora_cycler_manager.utils import parse_datetime
 
 CONFIG = get_config()
 
@@ -25,6 +26,8 @@ metadata = MetaData()
 samples_table = Table("samples", metadata, autoload_with=engine)
 pipelines_table = Table("pipelines", metadata, autoload_with=engine)
 jobs_table = Table("jobs", metadata, autoload_with=engine)
+results_table = Table("results", metadata, autoload_with=engine)
+
 harvester_table = Table("harvester", metadata, autoload_with=engine)
 dataframes_table = Table("dataframes", metadata, autoload_with=engine)
 batches_table = Table("batches", metadata, autoload_with=engine)
@@ -34,6 +37,7 @@ insert = pg_insert if engine.dialect.name == "postgresql" else sqlite_insert
 dataframes_table.c["Data start"].type = String()
 dataframes_table.c["Data end"].type = String()
 dataframes_table.c["Modified"].type = String()
+results_table.c["Last analysis"].type = String()
 
 
 def execute_sql(query: str, params: tuple | None = None) -> list[tuple]:
@@ -113,7 +117,7 @@ def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
 
             # Insert or update the row
             row_dict = row.to_dict()
-            stmt = (
+            conn.execute(
                 insert(samples_table)
                 .values(**row_dict)
                 .on_conflict_do_update(
@@ -121,7 +125,6 @@ def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
                     set_=row_dict,
                 )
             )
-            conn.execute(stmt)
         conn.commit()
 
 
@@ -379,6 +382,28 @@ def check_job_running(job_id: str) -> bool:
             select(pipelines_table.c["Pipeline"]).where(pipelines_table.c["Job ID"] == job_id).limit(1)
         )
         return result.fetchone() is not None
+
+
+def get_running_job(sample_id: str) -> dict[str, str | None]:
+    """Get pipeline, job ID, and status of a job if a sample is running."""
+    with engine.connect() as conn:
+        result = (
+            conn.execute(
+                select(
+                    pipelines_table.c["Pipeline"],
+                    pipelines_table.c["Job ID"],
+                    jobs_table.c["Status"],
+                )
+                .outerjoin(jobs_table, pipelines_table.c["Job ID"] == jobs_table.c["Job ID"])
+                .where(pipelines_table.c["Sample ID"] == sample_id)
+            )
+            .mappings()
+            .fetchone()
+        )
+
+    if result:
+        return dict(result)
+    return {"Pipeline": None, "Job ID": None, "Status": None}
 
 
 def get_job_id_from_server(server_label: str, job_id_on_server: str) -> str:
@@ -664,3 +689,43 @@ def update_harvester(server: dict, folder: str, copy_datetime: datetime) -> None
             .where(harvester_table.c["Server hostname"] == server["hostname"])
             .where(harvester_table.c["Folder"] == folder)
         )
+        conn.commit()
+
+
+### RESULTS ###
+
+
+def update_results(sample_id: str, row: dict[str, str | float]) -> None:
+    """Add or update results for a sample."""
+    with engine.connect() as conn:
+        conn.execute(
+            insert(results_table)
+            .values(**{"Sample ID": sample_id}, **row)
+            .on_conflict_do_update(
+                index_elements=["Sample ID"],
+                set_=row,
+            )
+        )
+        conn.commit()
+
+
+def find_new_data(mode: str) -> list[str]:
+    """Find jobs that have new data."""
+    with engine.connect() as conn:
+        if mode == "new_data":
+            rows = conn.execute(
+                select(
+                    results_table.c["Sample ID"],
+                    results_table.c["Last snapshot"],
+                    results_table.c["Last analysis"],
+                )
+            ).fetchall()
+            return [
+                r[0] for r in rows if r[0] and (not r[1] or not r[2] or parse_datetime(r[1]) > parse_datetime(r[2]))
+            ]
+        if mode == "if_not_exists":
+            rows = conn.execute(
+                select(results_table.c["Sample ID"]).where(results_table.c["Last analysis"].is_(None))
+            ).fetchall()
+            return [r[0] for r in rows]
+    return []
