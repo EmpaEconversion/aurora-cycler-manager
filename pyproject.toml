@@ -50,6 +50,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+pg = [
+    "psycopg2-binary>=2.9.11",
+]
 dev = [
     "bumpver>=2025.1131",
     "pre-commit>=4.2.0",
