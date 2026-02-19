@@ -23,7 +23,6 @@ from sqlalchemy import (
     Table,
     Text,
     bindparam,
-    create_engine,
     delete,
     exists,
     func,
@@ -36,26 +35,11 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.database_engine import get_engine
 from aurora_cycler_manager.stdlib_utils import check_illegal_text, run_from_sample
 from aurora_cycler_manager.utils import parse_datetime
 
 CONFIG = get_config()
-
-
-def get_engine(config: dict) -> Engine:
-    """Create sqlite3 or postgres db engine."""
-    db_type = config.get("Database type", "sqlite")
-    if db_type == "sqlite":
-        return create_engine(f"sqlite:///{Path(config['Database path']).as_posix()}")
-    if db_type == "postgresql":
-        host = config["Database host"]
-        port = config.get("Database port", 5432)
-        name = config["Database name"]
-        user = config["Database user"]
-        password = config["Database password"]
-        return create_engine(f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}")
-    msg = f"Unsupported database type: {db_type}"
-    raise ValueError(msg)
 
 
 def patch_database(engine: Engine) -> None:

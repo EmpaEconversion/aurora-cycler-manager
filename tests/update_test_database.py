@@ -1,4 +1,4 @@
-"""Utility to copy parts of the prod database for testing.
+"""Utility to copy parts of the an sqlite3 database for testing.
 
 Intended to be run as a script to create a subset of the database for pytest.
 """

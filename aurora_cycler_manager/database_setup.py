@@ -39,10 +39,11 @@ from sqlalchemy import (
     UniqueConstraint,
     inspect,
     text,
+    types,
 )
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.database_funcs import get_engine
+from aurora_cycler_manager.database_engine import get_engine
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -60,17 +61,20 @@ else:
     USER_CONFIG_PATH = user_config_dir / "config.json"
 
 TYPE_MAP = {
-        "TEXT": Text,
-        "VARCHAR(255)": String(255),
-        "INTEGER": Integer,
-        "FLOAT": Float,
-        "BOOLEAN": Boolean,
-        "DATETIME": DateTime,
-        "TIMESTAMP": DateTime,
-    }
-def get_sa_type(type_str: str):
+    "TEXT": Text,
+    "VARCHAR(255)": String(255),
+    "INTEGER": Integer,
+    "FLOAT": Float,
+    "BOOLEAN": Boolean,
+    "DATETIME": DateTime,
+    "TIMESTAMP": DateTime,
+}
+
+
+def get_sa_type(type_str: str) -> types.TypeEngine:
     """Convert SQLITE to sqalchemy types."""
     return TYPE_MAP.get(type_str.upper(), Text)
+
 
 def default_config(base_dir: Path) -> dict:
     """Create default shared config file."""
@@ -212,6 +216,12 @@ def default_config(base_dir: Path) -> dict:
 
 
 def create_database(force: bool = False) -> None:
+    """Create/update sqlite3 or postgres database.
+
+    For sqlite3, just a database path is needed in the config.
+    For postgres, postgres must already be installed, running, and an empty database must be
+    provided, with host, name, user, and password in config.
+    """
     config = get_config()
     db_type = config.get("Database type", "sqlite")
 
@@ -228,17 +238,17 @@ def create_database(force: bool = False) -> None:
 
     columns = config["Sample database"]
     sample_columns = [
-        Column(col["Name"], get_sa_type(col["Type"]), primary_key=(col["Name"] == "Sample ID"))
-        for col in columns
+        Column(col["Name"], get_sa_type(col["Type"]), primary_key=(col["Name"] == "Sample ID")) for col in columns
     ]
-
 
     engine = get_engine(config)
     meta = MetaData()
 
-    samples_table = Table("samples", meta, *sample_columns)
+    samples_table = Table("samples", meta, *sample_columns)  # noqa: F841
 
-    jobs_table = Table("jobs", meta,
+    jobs_table = Table(
+        "jobs",
+        meta,
         Column("Job ID", String(255), primary_key=True),
         Column("Sample ID", String(255), ForeignKey("samples.Sample ID")),
         Column("Pipeline", String(50), ForeignKey("pipelines.Pipeline")),
@@ -257,7 +267,9 @@ def create_database(force: bool = False) -> None:
         Column("Last snapshot", DateTime),
     )
 
-    pipelines_table = Table("pipelines", meta,
+    pipelines_table = Table(
+        "pipelines",
+        meta,
         Column("Pipeline", String(50), primary_key=True),
         Column("Sample ID", String(255), ForeignKey("samples.Sample ID")),
         Column("Job ID", String(255), ForeignKey("jobs.Job ID")),
@@ -270,7 +282,9 @@ def create_database(force: bool = False) -> None:
         Column("Job ID on server", String(255)),
     )
 
-    results_table = Table("results", meta,
+    results_table = Table(  # noqa: F841
+        "results",
+        meta,
         Column("Sample ID", String(255), ForeignKey("samples.Sample ID"), primary_key=True),
         Column("Pipeline", String(50), ForeignKey("pipelines.Pipeline")),
         Column("Status", String(3)),
@@ -291,7 +305,9 @@ def create_database(force: bool = False) -> None:
         Column("Snapshot pipeline", String(50)),
     )
 
-    dataframes_table = Table("dataframes", meta,
+    dataframes_table = Table(  # noqa: F841
+        "dataframes",
+        meta,
         Column("Sample ID", Text, ForeignKey("samples.Sample ID"), nullable=False),
         Column("File stem", Text, nullable=False),
         Column("Job ID", Text, ForeignKey("jobs.Job ID")),
@@ -302,7 +318,9 @@ def create_database(force: bool = False) -> None:
         PrimaryKeyConstraint("Sample ID", "File stem"),
     )
 
-    harvester_table = Table("harvester", meta,
+    harvester_table = Table(  # noqa: F841
+        "harvester",
+        meta,
         Column("id", Integer, primary_key=True, autoincrement=True),
         Column("Server label", Text),
         Column("Server hostname", Text),
@@ -311,13 +329,17 @@ def create_database(force: bool = False) -> None:
         UniqueConstraint("Server label", "Server hostname", "Folder"),
     )
 
-    batches_table = Table("batches", meta,
+    batches_table = Table(  # noqa: F841
+        "batches",
+        meta,
         Column("id", Integer, primary_key=True, autoincrement=True),
         Column("label", Text, unique=True, nullable=False),
         Column("description", Text),
     )
 
-    batch_samples_table = Table("batch_samples", meta,
+    batch_samples_table = Table(  # noqa: F841
+        "batch_samples",
+        meta,
         Column("batch_id", Integer, ForeignKey("batches.id")),
         Column("sample_id", Text, ForeignKey("samples.Sample ID")),
         UniqueConstraint("batch_id", "sample_id"),
@@ -328,7 +350,9 @@ def create_database(force: bool = False) -> None:
     Index("idx_pipelines_sample_id", pipelines_table.c["Sample ID"])
     Index("idx_pipelines_job_id", pipelines_table.c["Job ID"])
 
-    meta.create_all(engine, checkfirst=True)  # checkfirst = IF NOT EXISTS
+    logger.info("Updating postgresql tables in %s...", config["Database name"])
+    meta.create_all(engine, checkfirst=True)
+    logger.info("Done. Tables: %s", ", ".join(meta.tables.keys()))
 
     # Handle added/removed columns in samples
     if db_existed:
