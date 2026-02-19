@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import MetaData, String, Table, bindparam, create_engine, delete, exists, func, select, update
+from sqlalchemy import Engine, MetaData, String, Table, bindparam, create_engine, delete, exists, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
@@ -21,7 +21,24 @@ from aurora_cycler_manager.utils import parse_datetime
 
 CONFIG = get_config()
 
-engine = create_engine(f"sqlite:///{CONFIG['Database path'].as_posix()}")
+
+def get_engine(config: dict) -> Engine:
+    """Create sqlite3 or postgres db engine."""
+    db_type = config.get("Database type", "sqlite")
+    if db_type == "sqlite":
+        return create_engine(f"sqlite:///{Path(config['Database path']).as_posix()}")
+    if db_type == "postgresql":
+        host = config["Database host"]
+        port = config.get("Database port", 5432)
+        name = config["Database name"]
+        user = config["Database user"]
+        password = config["Database password"]
+        return create_engine(f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}")
+    msg = f"Unsupported database type: {db_type}"
+    raise ValueError(msg)
+
+
+engine = get_engine(CONFIG)
 metadata = MetaData()
 
 samples_table = Table("samples", metadata, autoload_with=engine)
@@ -832,6 +849,13 @@ def get_last_harvest(server: dict, folder: str) -> float:
 
 
 ### RESULTS ###
+
+
+def get_results_from_sample(sample_id: str) -> dict | None:
+    """Get results summary from Sample ID."""
+    with engine.connect() as conn:
+        result = conn.execute(select(results_table).where(results_table.c["Sample ID"] == sample_id)).mappings().first()
+    return dict(result) if result else None
 
 
 def update_results(sample_id: str, row: dict[str, str | float | None]) -> None:
