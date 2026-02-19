@@ -349,8 +349,10 @@ def create_database(force: bool = False) -> None:
     Index("idx_jobs_job_on_server", jobs_table.c["Job ID on server"], jobs_table.c["Server label"])
     Index("idx_pipelines_sample_id", pipelines_table.c["Sample ID"])
     Index("idx_pipelines_job_id", pipelines_table.c["Job ID"])
-
-    logger.info("Updating postgresql tables in %s...", config["Database name"])
+    if db_type == "sqlite":
+        logger.info("Updating sqlite database at %s...", str(config["Database path"]))
+    else:
+        logger.info("Update postgresql database '%s'...", config["Database name"])
     meta.create_all(engine, checkfirst=True)
     logger.info("Done. Tables: %s", ", ".join(meta.tables.keys()))
 
