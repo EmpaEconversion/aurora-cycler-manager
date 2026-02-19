@@ -4,7 +4,6 @@ Functions for interacting with the database.
 """
 
 import json
-import sqlite3
 import uuid
 from contextlib import suppress
 from datetime import datetime, timezone
@@ -12,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import MetaData, String, Table, bindparam, create_engine, delete, func, select, update
+from sqlalchemy import MetaData, String, Table, bindparam, create_engine, delete, exists, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
@@ -43,33 +42,13 @@ results_table.c["Last snapshot"].type = String()
 results_table.c["Last analysis"].type = String()
 
 
-def execute_sql(query: str, params: tuple | None = None) -> list[tuple]:
-    """Execute a query on the database.
-
-    Args:
-        query : str
-            The query to execute
-        params : tuple, optional
-            The parameters to pass to the query
-
-    Returns:
-        list[tuple] : the result of the query
-
-    """
-    commit_keywords = ["UPDATE", "INSERT", "DELETE", "REPLACE", "CREATE", "DROP", "ALTER"]
-    commit = any(keyword in query.upper() for keyword in commit_keywords)
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        if params is not None:
-            cursor.execute(query, params)
-        else:
-            cursor.execute(query)
-        if commit:
-            conn.commit()
-        return cursor.fetchall()
-
-
 ### SAMPLES ###
+
+
+def is_sample(sample_id: str) -> bool:
+    """Check if it is a valid sample in db."""
+    with engine.connect() as conn:
+        return bool(conn.execute(select(exists().where(samples_table.c["Sample ID"] == sample_id))).scalar())
 
 
 def add_samples_from_object(samples: list[dict], overwrite: bool = False) -> None:
@@ -359,6 +338,46 @@ def remove_batch(batch_name: str) -> None:
 ### PIPELINES ###
 
 
+def get_pipeline(pipeline: str) -> dict | None:
+    """Get pipeline details."""
+    with engine.connect() as conn:
+        result = (
+            conn.execute(select(pipelines_table).where(pipelines_table.c["Pipeline"] == pipeline)).mappings().first()
+        )
+    return dict(result) if result else None
+
+
+def get_pipeline_from_sample(sample_id: str) -> dict | None:
+    """Get pipeline from a Sample ID."""
+    with engine.connect() as conn:
+        result = (
+            conn.execute(select(pipelines_table).where(pipelines_table.c["Sample ID"] == sample_id)).mappings().first()
+        )
+    return dict(result) if result else None
+
+
+def get_sample_from_pipeline(pipeline: str) -> str | None:
+    """Get Sample ID from a pipeline."""
+    with engine.connect() as conn:
+        return conn.execute(
+            select(pipelines_table.c["Sample ID"]).where(pipelines_table.c["Pipeline"] == pipeline)
+        ).scalar()
+
+
+def get_neware_pipelines() -> tuple[list[str], list[str]]:
+    """Get only running Neware pipelines."""
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(pipelines_table.c["Pipeline"], pipelines_table.c["Server label"])
+            .where(pipelines_table.c["Sample ID"].isnot(None))
+            .where(pipelines_table.c["Ready"].is_(False))
+            .where(pipelines_table.c["Server type"] == "neware")
+        ).all()
+    pipelines = [row[0] for row in rows]
+    server_labels = [row[1] for row in rows]
+    return pipelines, server_labels
+
+
 def add_or_update_pipeline(pipeline: str, row: dict[str, str | float | None]) -> None:
     """Add or update job in database."""
     # If ready is one, job gets removed
@@ -427,6 +446,13 @@ def update_flags() -> None:
 ### JOBS ###
 
 
+def get_job(job_id: str) -> dict | None:
+    """Get job information based on ID."""
+    with engine.connect() as conn:
+        result = conn.execute(select(jobs_table).where(jobs_table.c["Job ID"] == job_id)).mappings().first()
+        return dict(result) if result else None
+
+
 def add_or_update_job(job_id: str, row: dict[str, str | float | None]) -> None:
     """Add or update job in database."""
     with engine.connect() as conn:
@@ -445,6 +471,14 @@ def get_jobs_from_sample(sample_id: str) -> list[str]:
     with engine.connect() as conn:
         result = conn.execute(select(jobs_table.c["Job ID"]).where(jobs_table.c["Sample ID"] == sample_id)).fetchall()
     return [r[0] for r in result]
+
+
+def get_job_from_pipeline(pipeline: str) -> str | None:
+    """Get Job ID from a pipeline."""
+    with engine.connect() as conn:
+        return conn.execute(
+            select(pipelines_table.c["Job ID"]).where(pipelines_table.c["Pipeline"] == pipeline)
+        ).scalar()
 
 
 def get_job_data(job_id: str) -> dict:
