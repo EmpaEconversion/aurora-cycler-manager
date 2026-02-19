@@ -1,13 +1,13 @@
 """Test analysis.py."""
 
 import json
-import sqlite3
 from pathlib import Path
 
 import numpy as np
 import polars as pl
 from polars.testing import assert_frame_equal
 
+import aurora_cycler_manager.database_funcs as dbf
 from aurora_cycler_manager.analysis import (
     _sort_times,
     analyse_cycles,
@@ -22,7 +22,6 @@ from aurora_cycler_manager.analysis import (
     update_results,
     update_sample_metadata,
 )
-from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.data_parse import get_sample_folder, read_cycling, read_metadata
 from aurora_cycler_manager.database_funcs import update_sample_label
 from aurora_cycler_manager.eclab_harvester import convert_all_mprs
@@ -98,20 +97,11 @@ class TestAnalysis:
         assert "dQ/dV (mAh/V)" in shrunk_df.columns
 
         update_results(overall, job_data)
-
-        with sqlite3.connect(get_config()["Database path"]) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM results WHERE `Sample ID` = ?",
-                (sample_id,),
-            )
-            result = cursor.fetchone()
-            assert result is not None
-            result = dict(result)
-            assert result["Sample ID"] == sample_id
-            assert result["Number of cycles"] == 3
-            assert result["First formation efficiency (%)"] == 76.112
+        result = dbf.get_results_from_sample(sample_id)
+        assert result is not None
+        assert result["Sample ID"] == sample_id
+        assert result["Number of cycles"] == 3
+        assert result["First formation efficiency (%)"] == 76.112
 
         assert not (folder / f"full.{sample_id}.parquet").exists()
         assert not (folder / f"shrunk.{sample_id}.parquet").exists()
