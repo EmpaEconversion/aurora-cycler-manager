@@ -639,7 +639,8 @@ def analyse_overall(
         if formed:
             assert isinstance(formation_cycles, int)  # noqa: S101
             overall["Initial coulombic efficiency (%)"] = cycle_summary_df["Coulombic efficiency (%)"][formation_cycles]
-            overall["Capacity loss (%)"] = 100 - cycle_summary_df["Normalised discharge capacity (%)"][last_idx]
+            last_norm = cycle_summary_df["Normalised discharge capacity (%)"][last_idx]
+            overall["Capacity loss (%)"] = 100 - last_norm if last_norm else None
             overall["Formation average voltage (V)"] = cycle_summary_df["Charge average voltage (V)"][
                 :formation_cycles
             ].mean()
