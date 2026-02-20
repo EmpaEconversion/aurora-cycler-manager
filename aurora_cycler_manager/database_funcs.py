@@ -986,7 +986,7 @@ def get_database() -> dict[str, Any]:
         results = {
             "samples": conn.execute(select(samples_table).order_by(samples_table.c["Sample ID"])),
             "results": conn.execute(select(results_table).order_by(results_table.c["Sample ID"])),
-            "jobs": conn.execute(select(jobs_table).order_by(jobs_table.c["Job ID"])),
+            "jobs": conn.execute(select(jobs_table).order_by(jobs_table.c["Sample ID"])),
             "pipelines": conn.execute(select(pipelines_table)),  # Uses custom sort
         }
         db_columns = {
