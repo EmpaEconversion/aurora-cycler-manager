@@ -223,12 +223,20 @@ def merge_dfs(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, pl.DataFrame | Non
                 pl.len().alias("count"),
                 (pl.col("I (A)") > 0).sum().alias("positive_count"),
                 (pl.col("I (A)") < 0).sum().alias("negative_count"),
+                (
+                    pl.col("dQ (mAh)").clip(upper_bound=0).sum() / pl.col("dQ (mAh)").clip(lower_bound=0).abs().sum()
+                ).alias("coulombic_efficiency"),
             ]
         )
 
         # Determine which steps are valid cycles
         step_stats = step_stats.with_columns(
-            ((pl.col("count") > 10) & (pl.col("positive_count") > 5) & (pl.col("negative_count") > 5)).alias("is_cycle")
+            (
+                (pl.col("count") > 10)
+                & (pl.col("positive_count") > 5)
+                & (pl.col("negative_count") > 5)
+                & (pl.col("coulombic_efficiency") > 0.01)  # at least 1%, otherwise probably noise
+            ).alias("is_cycle")
         )
 
         # Assign cycle numbers (cumsum of is_cycle, 0 for non-cycles)
