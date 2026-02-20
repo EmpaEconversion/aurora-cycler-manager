@@ -494,9 +494,9 @@ def update_flags() -> None:
         if rows:
             conn.execute(
                 update(pipelines_table).where(
-                    pipelines_table.c["Sample ID"] == bindparam("Sample ID")  # match on Sample ID
+                    pipelines_table.c["Sample ID"] == bindparam("b_Sample ID")  # match on Sample ID
                 ),
-                [{"Sample ID": row["Sample ID"], "Flag": row["Flag"]} for row in rows],
+                [{"b_Sample ID": row["Sample ID"], "Flag": row["Flag"]} for row in rows],
             )
 
 
