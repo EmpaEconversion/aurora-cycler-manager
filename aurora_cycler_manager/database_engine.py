@@ -20,7 +20,7 @@ def get_engine(config: dict) -> Engine:
     db_type = config.get("Database type", "sqlite")
     if db_type == "sqlite":
         return create_engine(f"sqlite:///{Path(config['Database path']).as_posix()}")
-    if db_type in ["postgresql", "postgres", "pg"]:
+    if db_type == "postgresql":
         host = config["Database host"]
         port = config.get("Database port", 5432)
         name = config["Database name"]

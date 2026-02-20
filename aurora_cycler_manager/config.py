@@ -127,8 +127,19 @@ def _read_config_file() -> dict:
                     shared_config[key] = Path(shared_config[key])
         config.update(shared_config)
 
-    if not config.get("Database path"):
-        raise ValueError(err_msg)
+    if not config.get("Database type"):
+        config["Database type"] = "sqlite"
+    if config["Database type"] not in ["sqlite", "postgresql"]:
+        msg = f"Unknown database type {config['Database type']}. Supported: 'sqlite' and 'postgresql'"
+        raise ValueError(msg)
+    if config["Database type"] == "sqlite" and not config["Database path"]:
+        msg = "sqlite requires a 'Database path' in the config"
+        raise ValueError(msg)
+    if config["Database type"] == "postgresql" and any(
+        k not in config for k in ["Database host", "Database name", "Database user"]
+    ):
+        msg = "postgresql requires at least 'Database host', 'Database name', 'Database user' in the config"
+        raise ValueError(msg)
 
     # Servers should be transformed to key: dict with valid labels
     config["Servers"] = _convert_legacy_servers(config)
