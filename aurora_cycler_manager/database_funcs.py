@@ -939,23 +939,17 @@ def get_database() -> dict[str, Any]:
     Formatted for viewing in Dash AG Grid.
     """
     with engine.connect() as conn:
-        pipelines_df = pd.read_sql_query("SELECT * FROM pipelines", conn)
-        samples_df = pd.read_sql_query("SELECT * FROM samples", conn)
-        results_df = pd.read_sql_query("SELECT * FROM results", conn)
-        jobs_df = pd.read_sql_query("SELECT * FROM jobs", conn)
-    pipelines_df["Ready"] = pipelines_df["Ready"].astype(bool)
-    db_data = {
-        "samples": samples_df.to_dict("records"),
-        "results": results_df.to_dict("records"),
-        "jobs": jobs_df.to_dict("records"),
-        "pipelines": pipelines_df.to_dict("records"),
-    }
-    db_columns = {
-        "samples": [{"field": col, "filter": True, "tooltipField": col} for col in samples_df.columns],
-        "results": [{"field": col, "filter": True, "tooltipField": col} for col in results_df.columns],
-        "jobs": [{"field": col, "filter": True, "tooltipField": col} for col in jobs_df.columns],
-        "pipelines": [{"field": col, "filter": True, "tooltipField": col} for col in pipelines_df.columns],
-    }
+        results = {
+            "samples": conn.execute(select(samples_table).order_by(samples_table.c["Sample ID"])),
+            "results": conn.execute(select(results_table).order_by(results_table.c["Sample ID"])),
+            "jobs": conn.execute(select(jobs_table).order_by(jobs_table.c["Job ID"])),
+            "pipelines": conn.execute(select(pipelines_table)),  # Uses custom sort
+        }
+        db_columns = {
+            k: [{"field": col, "filter": True, "tooltipField": col} for col in v.keys()]  # noqa: SIM118 NOT a dict, needs keys()
+            for k, v in results.items()
+        }
+        db_data = {k: [dict(m) for m in v.mappings().all()] for k, v in results.items()}
 
     # Ready is boolean
     try:
