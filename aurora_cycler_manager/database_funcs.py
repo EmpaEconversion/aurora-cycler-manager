@@ -74,26 +74,30 @@ def patch_database(engine: Engine) -> None:
 
 
 engine = get_engine(CONFIG)
-patch_database(engine)
-metadata = MetaData()
+insert = pg_insert if engine.dialect.name == "postgresql" else sqlite_insert
 
+patch_database(engine)
+
+metadata = MetaData()
 samples_table = Table("samples", metadata, autoload_with=engine)
 pipelines_table = Table("pipelines", metadata, autoload_with=engine)
 jobs_table = Table("jobs", metadata, autoload_with=engine)
 results_table = Table("results", metadata, autoload_with=engine)
-
 harvester_table = Table("harvester", metadata, autoload_with=engine)
 dataframes_table = Table("dataframes", metadata, autoload_with=engine)
 batches_table = Table("batches", metadata, autoload_with=engine)
 batch_samples_table = Table("batch_samples", metadata, autoload_with=engine)
-insert = pg_insert if engine.dialect.name == "postgresql" else sqlite_insert
 
+pipelines_table.c["Last checked"].type = String()
+jobs_table.c["Submitted"].type = String()
+jobs_table.c["Last checked"].type = String()
+jobs_table.c["Last snapshot"].type = String()
+results_table.c["Last snapshot"].type = String()
+results_table.c["Last analysis"].type = String()
 dataframes_table.c["Data start"].type = String()
 dataframes_table.c["Data end"].type = String()
 dataframes_table.c["Modified"].type = String()
-results_table.c["Last snapshot"].type = String()
-results_table.c["Last analysis"].type = String()
-
+harvester_table.c["Last snapshot"].type = String()
 
 ### SAMPLES ###
 
