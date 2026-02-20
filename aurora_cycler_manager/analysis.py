@@ -224,7 +224,7 @@ def merge_dfs(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, pl.DataFrame | Non
                 (pl.col("I (A)") > 0).sum().alias("positive_count"),
                 (pl.col("I (A)") < 0).sum().alias("negative_count"),
                 (
-                    pl.col("dQ (mAh)").clip(upper_bound=0).sum() / pl.col("dQ (mAh)").clip(lower_bound=0).abs().sum()
+                    pl.col("dQ (mAh)").clip(upper_bound=0).sum().abs() / pl.col("dQ (mAh)").clip(lower_bound=0).sum()
                 ).alias("coulombic_efficiency"),
             ]
         )
