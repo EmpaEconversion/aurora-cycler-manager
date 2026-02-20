@@ -3,6 +3,7 @@
 Functions for interacting with the database.
 """
 
+import os
 from pathlib import Path
 
 from sqlalchemy import (
@@ -24,8 +25,12 @@ def get_engine(config: dict) -> Engine:
         host = config["Database host"]
         port = config.get("Database port", 5432)
         name = config["Database name"]
-        user = config["Database user"]
-        password = config["Database password"]
-        return create_engine(f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}")
+        user = config.get("Database user") or os.environ.get("AURORA_DB_USER")
+        password = config.get("Database password") or os.environ.get("AURORA_DB_PASSWORD")
+        if password:
+            connection_string = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}"
+        else:  # Will use with .pgpass
+            connection_string = f"postgresql+psycopg2://{user}@{host}:{port}/{name}"
+        return create_engine(connection_string)
     msg = f"Unsupported database type: {db_type}"
     raise ValueError(msg)
