@@ -46,11 +46,13 @@ def weighted_median(
     return sorted_values[np.where(cumulative_weights >= cutoff)[0][0]]
 
 
-def parse_datetime(datetime_str: str | float) -> datetime:
+def parse_datetime(datetime_str: datetime | str | float) -> datetime:
     """Parse a datetime string.
 
     Could be ISO8601 format, timestamp, %Y-%m-%d %H:%M:%S, %Y-%m-%d %H:%M:%S %z, or %Y-%m-%d %H:%M:%S.%f
     """
+    if isinstance(datetime_str, datetime):
+        return datetime_str.astimezone(timezone.utc)
     if isinstance(datetime_str, str):
         with suppress(ValueError):
             dt = datetime.fromisoformat(datetime_str)
