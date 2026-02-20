@@ -436,7 +436,7 @@ def get_neware_pipelines() -> tuple[list[str], list[str]]:
 
 
 def add_or_update_pipeline(pipeline: str, row: dict[str, str | float | None]) -> None:
-    """Add or update job in database."""
+    """Add or update pipeline in database. Remove job if ready == True."""
     # If ready is one, job gets removed
     if row.get("Ready") == 1:
         row["Job ID"] = None
@@ -458,6 +458,46 @@ def add_or_update_pipeline(pipeline: str, row: dict[str, str | float | None]) ->
                 index_elements=["Pipeline"],
                 set_=row,
             )
+        )
+        conn.commit()
+
+
+def bulk_add_or_update_pipeline(rows: list[dict[str, str | float | None]]) -> None:
+    """Add multiple rows to pipelines. Remove job if ready == True."""
+    processed_rows = [
+        {
+            **row,
+            **({"Job ID": None, "Job ID on server": None} if row.get("Ready") else {}),
+        }
+        for row in rows
+    ]
+    with engine.connect() as conn:
+        for row in processed_rows:
+            conn.execute(
+                insert(pipelines_table)
+                .values(row)
+                .on_conflict_do_update(
+                    index_elements=["Pipeline"],
+                    set_=row,
+                )
+            )
+        conn.commit()
+
+
+def fill_pipelines_missing_job_ids() -> None:
+    """Try to fill missing Job ID in pipelines if only Job ID on server is present."""
+    job_id_subquery = (
+        select(jobs_table.c["Job ID"])
+        .where(jobs_table.c["Job ID on server"] == pipelines_table.c["Job ID on server"])
+        .where(jobs_table.c["Server label"] == pipelines_table.c["Server label"])
+        .scalar_subquery()
+    )
+    with engine.connect() as conn:
+        conn.execute(
+            update(pipelines_table)
+            .where(pipelines_table.c["Job ID"].is_(None))
+            .where(pipelines_table.c["Job ID on server"].isnot(None))
+            .values({"Job ID": job_id_subquery})
         )
         conn.commit()
 

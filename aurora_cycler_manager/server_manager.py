@@ -456,15 +456,15 @@ class ServerManager:
         """Update the pipelines table in the database with the current status."""
         for label, server in self.servers.items():
             try:
-                pipelines = server.get_pipelines()
+                logger.info("Querying server '%s'", label)
+                rows = server.get_pipelines()
             except Exception as e:
                 logger.error("Error getting pipeline status from %s: %s", label, e)
                 continue
             dt = datetime.now(timezone.utc).isoformat(timespec="seconds")
-            for row in pipelines:
-                pipeline = row.pop("Pipeline")
-                row["Last checked"] = dt
-                dbf.add_or_update_pipeline(pipeline, row)
+            rows = [{"Last checked": dt, **r} for r in rows]
+            dbf.bulk_add_or_update_pipeline(rows)
+        dbf.fill_pipelines_missing_job_ids()
 
     def load(self, pipeline_id: str, sample_id: str) -> None:
         """Load a sample on a pipeline.
