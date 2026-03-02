@@ -17,7 +17,9 @@ from aurora_cycler_manager.database_funcs import (
     get_batch_details,
     get_job_data,
     get_sample_data,
+    is_sample,
     remove_batch,
+    sample_df_to_db,
     save_or_overwrite_batch,
     update_sample_label,
 )
@@ -144,6 +146,10 @@ class TestSampleFunctions:
         # Add samples from file
         add_samples_from_file(sample_file)
 
+        # Sample IDs should be valid
+        assert is_sample("240620_kigr_gen2_36")
+        assert not is_sample("thisdoesntexist")
+
         # Update a label
         update_sample_label("240620_kigr_gen2_01", "foo")
         sample_data = get_sample_data("240620_kigr_gen2_01")
@@ -171,6 +177,26 @@ class TestSampleFunctions:
         add_samples_from_object(sample_dict)
         sample_ids = get_all_sampleids()
         assert "240620_kigr_gen2_01" in sample_ids
+
+    def test_add_bad_samples(self, reset_all, tmpdir: Path) -> None:
+        """Test adding bad sample files."""
+        samples = pd.DataFrame([{"Sample ID": 123}])
+        with pytest.raises(TypeError, match="non-string"):
+            sample_df_to_db(samples)
+        samples = pd.DataFrame([{"Sample ID": "samp"}, {"Sample ID": "samp"}])
+        with pytest.raises(ValueError, match="duplicate"):
+            sample_df_to_db(samples)
+
+        # Repeated samples blocked unless overwrite is specified
+        samples = pd.DataFrame([{"Sample ID": "dontoverwrite"}])
+        sample_df_to_db(samples)
+        with pytest.raises(ValueError, match="already exist"):
+            sample_df_to_db(samples)
+        sample_df_to_db(samples, overwrite=True)
+
+
+class TestBatchFunctions:
+    """Test the various functions for manipulating the batches table."""
 
     def test_batch_operations(self, reset_all, sample_file: Path) -> None:
         """Create, modify, delete batches in the database."""
@@ -229,6 +255,10 @@ class TestSampleFunctions:
         remove_batch("Batch please")
         batch_details = get_batch_details()
         assert "Batch please" not in batch_details
+
+
+class TestJobFunctions:
+    """Test the various functions for manipulating the jobs table."""
 
     def test_get_job_data(self) -> None:
         """Test getting job data from database."""

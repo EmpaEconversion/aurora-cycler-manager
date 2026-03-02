@@ -411,7 +411,7 @@ class _CyclingJob:
             _CyclingJob: The _CyclingJob object.
 
         """
-        result = dbf.get_job(job_id)
+        result = dbf.get_job_data(job_id)
         if not result:
             msg = f"Job '{job_id}' not found in the database."
             raise ValueError(msg)
@@ -566,9 +566,9 @@ class ServerManager:
         # check if the input is a sample ID
         is_sample = dbf.is_sample(samp_or_jobid)
         if is_sample:
-            jobs = [dbf.get_job(j) for j in dbf.get_jobs_from_sample(samp_or_jobid)]
+            jobs = [dbf.get_job_data(j) for j in dbf.get_jobs_from_sample(samp_or_jobid)]
         else:  # it's a job ID
-            jobs = [dbf.get_job(samp_or_jobid)]
+            jobs = [dbf.get_job_data(samp_or_jobid)]
         jobs = [j for j in jobs if j is not None]
         if not jobs:
             msg = f"Sample or job ID '{samp_or_jobid}' not found in the database."

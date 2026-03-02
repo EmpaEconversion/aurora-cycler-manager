@@ -125,14 +125,14 @@ def add_samples_from_file(json_file: str | Path, overwrite: bool = False) -> Non
 def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
     """Upload the sample dataframe to the database."""
     sample_ids = df["Sample ID"].tolist()
+    if any(not isinstance(sample_id, str) for sample_id in sample_ids):
+        msg = "File contains non-string 'Sample ID' keys"
+        raise TypeError(msg)
     for sample_id in sample_ids:
         check_illegal_text(sample_id)
     if len(sample_ids) != len(set(sample_ids)):
         msg = "File contains duplicate 'Sample ID' keys"
         raise ValueError(msg)
-    if any(not isinstance(sample_id, str) for sample_id in sample_ids):
-        msg = "File contains non-string 'Sample ID' keys"
-        raise TypeError(msg)
 
     # Check if any sample already exists
     existing_sample_ids = get_all_sampleids()
@@ -148,11 +148,6 @@ def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
         for _, raw_row in df.iterrows():
             # Remove empty columns from the row
             row = raw_row.dropna()
-            if row.empty:
-                continue
-            # Check if the row has sample ID
-            if "Sample ID" not in row:
-                continue
 
             # Insert or update the row
             row_dict = row.to_dict()
@@ -543,11 +538,23 @@ def update_flags() -> None:
 ### JOBS ###
 
 
-def get_job(job_id: str) -> dict | None:
-    """Get job information based on ID."""
+def get_job_data(job_id: str) -> dict:
+    """Get all data about a job from the database."""
     with engine.connect() as conn:
-        result = conn.execute(select(jobs_table).where(jobs_table.c["Job ID"] == job_id)).mappings().first()
-        return dict(result) if result else None
+        result = conn.execute(select(jobs_table).where(jobs_table.c["Job ID"] == job_id)).mappings().fetchone()
+        if not result:
+            msg = f"Job ID '{job_id}' not found in the database"
+            raise ValueError(msg)
+        job_data = dict(result)
+        # Convert json strings to python objects
+        payload = job_data.get("Payload")
+        if payload and payload.startswith(("[", "{")):
+            job_data["Payload"] = json.loads(payload)
+        unicycler = job_data.get("Unicycler protocol")
+        if unicycler and unicycler.startswith("{"):
+            job_data["Unicycler protocol"] = json.loads(unicycler)
+
+    return job_data
 
 
 def add_or_update_job(job_id: str, row: dict[str, str | float | None]) -> None:
@@ -576,25 +583,6 @@ def get_job_from_pipeline(pipeline: str) -> str | None:
         return conn.execute(
             select(pipelines_table.c["Job ID"]).where(pipelines_table.c["Pipeline"] == pipeline)
         ).scalar()
-
-
-def get_job_data(job_id: str) -> dict:
-    """Get all data about a job from the database."""
-    with engine.connect() as conn:
-        result = conn.execute(select(jobs_table).where(jobs_table.c["Job ID"] == job_id)).mappings().fetchone()
-        if not result:
-            msg = f"Job ID '{job_id}' not found in the database"
-            raise ValueError(msg)
-        job_data = dict(result)
-        # Convert json strings to python objects
-        payload = job_data.get("Payload")
-        if payload and payload.startswith(("[", "{")):
-            job_data["Payload"] = json.loads(payload)
-        unicycler = job_data.get("Unicycler protocol")
-        if unicycler and unicycler.startswith("{"):
-            job_data["Unicycler protocol"] = json.loads(unicycler)
-
-    return job_data
 
 
 def check_job_running(job_id: str) -> bool:
