@@ -423,8 +423,8 @@ def extract_voltage_crates(job_data: list[dict]) -> dict:
                             new_rate = method.get("N")
                             rate = 1 / new_rate if new_rate else None
                         elif current_mode == "I" and capacity:
-                            current = method.get("ctrl1_val")
-                            current_unit = method.get("ctrl1_val_unit")
+                            current = method.get("ctrl1_val") or method.get("ctrl1_value")
+                            current_unit = method.get("ctrl1_val_unit") or method.get("ctrl1_value_unit")
                             if current and current_unit:
                                 if current_unit == 1:  # mA
                                     pass
@@ -434,8 +434,8 @@ def extract_voltage_crates(job_data: list[dict]) -> dict:
                         # Get voltage limits
                         for lim in [1, 2, 3]:
                             if method.get(f"lim{lim}_type") == 1:  # Voltage limit
-                                voltage = method.get(f"lim{lim}_val")
-                                voltage_unit = method.get(f"lim{lim}_val_unit")
+                                voltage = method.get(f"lim{lim}_val") or method.get(f"lim{lim}_value")
+                                voltage_unit = method.get(f"lim{lim}_val_unit") or method.get(f"lim{lim}_value_unit")
                                 lim_comp = method.get(f"lim{lim}_comp")
                                 if voltage:
                                     if voltage_unit == 0:  # V
