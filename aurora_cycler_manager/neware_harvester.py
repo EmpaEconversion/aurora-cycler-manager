@@ -113,9 +113,10 @@ def snapshot_raw_data(job_id: str) -> Path | None:
     # Neware has a different format for raw data. Folder is raw_data_folder/YYYYMMDD/,
     # file is YYYYMMDD_HHMMSS_27{len(4) 0 padded device_id}_0_{(subdevid-1)*8 + channel_id}_{test_id} + file type .ndc
 
-    # Need the start/submission time to locate the raw data on Neware server
-    if job_data["Submitted"]:
-        submitted = datetime.fromisoformat(job_data["Submitted"]).strftime("%Y%m%d")  # Get YYYYMMDD format
+    # Need the start/submission date in YYYYMMDD to locate the raw data on Neware server
+    if submitted := job_data["Submitted"]:
+        submitted = datetime.fromisoformat(submitted) if isinstance(submitted, str) else submitted
+        submitted = submitted.strftime("%Y%m%d")
     elif ndax_path.exists():
         metadata = get_neware_metadata(ndax_path)
         if metadata.get("Start time"):
