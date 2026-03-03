@@ -1,6 +1,7 @@
 """Test server_manager.py module."""
 
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import polars as pl
@@ -8,6 +9,7 @@ import pytest
 from aurora_unicycler import Protocol
 
 import aurora_cycler_manager.database_funcs as dbf
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.cycler_servers import CyclerServer
 from aurora_cycler_manager.data_parse import get_cycling
 from aurora_cycler_manager.server_manager import ServerManager, _CyclingJob, _Sample
@@ -265,6 +267,10 @@ def test_start_stop(reset_all, mock_ssh, tmp_path: Path, test_dir: Path) -> None
 def test_update_db(reset_all, mock_ssh) -> None:
     """Test querying cyclers and refreshing database."""
     sm = ServerManager()
+
+    last_update = dbf.get_db_last_update()
+    assert last_update is None
+
     biologic_response: dict[str, dict] = {
         "MPG2-1-1": {"Status": "Stop", "Ox/Red": "Reduction", "OCV": "OCV", "EIS": "No EIS", "Connection": "Ok"},
         "MPG2-1-2": {"Status": "Run", "Ox/Red": "Reduction", "OCV": "OCV", "EIS": "No EIS", "Connection": "Ok"},
@@ -315,7 +321,12 @@ def test_update_db(reset_all, mock_ssh) -> None:
         command="neware status",
         stdout=json.dumps(neware_response),
     )
+    datetime_now = datetime.now(tz=get_config()["tz"])
     sm.update_db()
+
+    last_update = dbf.get_db_last_update()
+    assert isinstance(last_update, datetime)
+    assert abs(datetime_now - last_update) < timedelta(seconds=10)
 
     res = dbf.get_database()
     assert isinstance(res["data"]["pipelines"], list)
