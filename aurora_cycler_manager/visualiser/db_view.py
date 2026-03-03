@@ -76,7 +76,7 @@ def cleanup_temp_folder() -> None:
     files = {}
     for f in DOWNLOAD_DIR.iterdir():
         if f.is_file():
-            creation_uts = f.stat().st_birthtime
+            creation_uts = f.stat().st_mtime
             now_uts = datetime.now(timezone.utc).timestamp()
             age = now_uts - creation_uts
             if age > 3600:

@@ -20,8 +20,8 @@ def test_main(reset_all, mock_ssh, test_dir: Path, caplog) -> None:
     filename = "250116_kigr_gen6_01_01_GCPL_CD8"
     local_folder = test_dir / "local_snapshots" / "eclab_snapshots"
     files = {
-        f"C:\\aurora\\data\\{run_id}\\{sample_id}\\job1.mpl": local_folder / run_id / "1" / (filename + ".mpl"),
-        f"C:\\aurora\\data\\{run_id}\\{sample_id}\\job1.mpr": local_folder / run_id / "1" / (filename + ".mpr"),
+        f"C:/aurora/data/{run_id}/{sample_id}/job1.mpl": local_folder / run_id / "1" / (filename + ".mpl"),
+        f"C:/aurora/data/{run_id}/{sample_id}/job1.mpr": local_folder / run_id / "1" / (filename + ".mpr"),
     }
     mock_ssh.add_command_response(
         command="Get-ChildItem -Path 'C:/aurora/data/'",

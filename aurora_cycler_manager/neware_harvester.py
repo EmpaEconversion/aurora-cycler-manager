@@ -653,7 +653,7 @@ def update_database_job(
     pipeline = job_data["Pipeline"]
     submitted = metadata.get("Start time")
     payload = json.dumps(metadata.get("Payload"))
-    last_snapshot_uts = filepath.stat().st_birthtime
+    last_snapshot_uts = filepath.stat().st_mtime
     last_snapshot = datetime.fromtimestamp(last_snapshot_uts, tz=timezone.utc).isoformat(timespec="seconds")
 
     server_config = CONFIG["Servers"].get(job_data["Server label"], {})
