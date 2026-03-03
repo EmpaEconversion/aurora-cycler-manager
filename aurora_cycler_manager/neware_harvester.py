@@ -14,6 +14,7 @@ import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import fastnda
 import pandas as pd
@@ -24,14 +25,6 @@ import aurora_cycler_manager.database_funcs as dbf
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.data_parse import get_sample_folder
-from aurora_cycler_manager.database_funcs import (
-    check_job_running,
-    get_all_sampleids,
-    get_job_data,
-    get_or_create_job_id_from_server,
-    get_sample_data,
-    update_harvester,
-)
 from aurora_cycler_manager.setup_logging import setup_logging
 from aurora_cycler_manager.ssh import SSHConnection
 from aurora_cycler_manager.version import __url__, __version__
@@ -86,14 +79,14 @@ def harvest_neware_files(
     with SSHConnection(server) as ssh:
         remote_files = ssh.check_new_files(server_copy_folder, [".ndax"], cutoff_uts)
         job_ids = [
-            get_or_create_job_id_from_server(server["label"], Path(file).stem.replace("_", "-"))
+            dbf.get_or_create_job_id_from_server(server["label"], Path(file).stem.replace("_", "-"))
             for file in remote_files
         ]
         local_files = [Path(local_folder) / (job_id + ".ndax") for job_id in job_ids]
         copy_datetime = datetime.now(timezone.utc)
         ssh.get_files(local_files, remote_files)
 
-    update_harvester(server, server_copy_folder, copy_datetime)
+    dbf.update_harvester(server, server_copy_folder, copy_datetime)
     return local_files
 
 
@@ -113,7 +106,7 @@ def snapshot_raw_data(job_id: str) -> Path | None:
     ndax_path = get_neware_snapshot_folder() / f"{job_id}.ndax"
 
     # Get the job info from database
-    job_data = get_job_data(job_id)
+    job_data = dbf.get_job_data(job_id)
 
     # Get device information from job ID on server
     dev_id, subdev_id, channel_id, test_id = re.split(r"[-_]", job_data["Job ID on server"])
@@ -310,7 +303,9 @@ def get_neware_xlsx_metadata(file_path: Path) -> dict:
     test_info = {
         flattened[i]: flattened[i + 1] for i in range(0, len(flattened), 2) if flattened[i] and flattened[i] != "-"
     }
-    test_info = {k: v for k, v in test_info.items() if (k and k not in ("-", "nan")) or (v and v not in ("-", "nan"))}
+    test_info: dict[str, Any] = {
+        k: v for k, v in test_info.items() if (k and k not in ("-", "nan")) or (v and v not in ("-", "nan"))
+    }
 
     # Payload
     payload = df.iloc[step_idx + 2 :, :]
@@ -522,8 +517,8 @@ def get_neware_metadata_from_db(job_id: str) -> dict:
         dict: Metadata from the database
 
     """
-    job_data = get_job_data(job_id)
-    finished = not check_job_running(job_id)
+    job_data = dbf.get_job_data(job_id)
+    finished = not dbf.check_job_running(job_id)
     # Check if payload needs parsing
     metadata = {}
     if isinstance(job_data, dict | list):  # It is already parsed
@@ -553,7 +548,7 @@ def get_sampleid_from_metadata(metadata: dict, known_samples: list[str] | None =
     sampleid = None
 
     if not known_samples:
-        known_samples = get_all_sampleids()
+        known_samples = dbf.get_all_sampleids()
     for possible_sampleid in [barcode_sampleid, remark_sampleid]:
         if possible_sampleid in known_samples:
             sampleid = possible_sampleid
@@ -652,7 +647,7 @@ def update_database_job(
         msg = f"Sample ID not found in metadata for file {filepath}"
         raise ValueError(msg)
     job_id = filepath.stem
-    job_data = get_job_data(job_id)
+    job_data = dbf.get_job_data(job_id)
     job_id_on_server = job_data["Job ID on server"]
     server_label = job_data["Server label"]
     pipeline = job_data["Pipeline"]
@@ -711,7 +706,7 @@ def convert_neware_data(
     # If there is a valid Sample ID, get sample metadata from database
     sample_data = None
     if sampleid:
-        sample_data = get_sample_data(sampleid)
+        sample_data = dbf.get_sample_data(sampleid)
 
     # Metadata to add
     job_data["Technique codes"] = state_dict
@@ -768,7 +763,7 @@ def convert_all_neware_data() -> None:
     snapshots_folder = get_neware_snapshot_folder()
     neware_files = [file for file in snapshots_folder.rglob("*") if file.suffix in [".xlsx", ".ndax"]]
     new_samples = set()
-    known_samples = get_all_sampleids()
+    known_samples = dbf.get_all_sampleids()
     for file in neware_files:
         logger.info("Converting %s", file)
         try:
@@ -794,7 +789,7 @@ def main() -> None:
     """Harvest and convert files that have changed."""
     new_files = harvest_all_neware_files()
     new_samples = set()
-    known_samples = get_all_sampleids()
+    known_samples = dbf.get_all_sampleids()
     logger.info("Processing %d files", len(new_files))
     for file in new_files:
         logger.info("Processing %s", file)

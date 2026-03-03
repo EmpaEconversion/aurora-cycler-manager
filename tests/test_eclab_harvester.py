@@ -5,8 +5,51 @@ from pathlib import Path
 import pytest
 from sqlalchemy import MetaData, Table, create_engine, select
 
+import aurora_cycler_manager.database_funcs as dbf
 from aurora_cycler_manager.analysis import analyse_sample
-from aurora_cycler_manager.eclab_harvester import convert_mpr, get_mpr_data
+from aurora_cycler_manager.data_parse import get_cycling
+from aurora_cycler_manager.eclab_harvester import convert_mpr, get_mpr_data, main
+from aurora_cycler_manager.setup_logging import setup_logging
+
+
+def test_main(reset_all, mock_ssh, test_dir: Path, caplog) -> None:
+    """Test file harvesting."""
+    # Set up mock response and files
+    run_id = "250116_kigr_gen6"
+    sample_id = "250116_kigr_gen6_01"
+    filename = "250116_kigr_gen6_01_01_GCPL_CD8"
+    local_folder = test_dir / "local_snapshots" / "eclab_snapshots"
+    files = {
+        f"C:\\aurora\\data\\{run_id}\\{sample_id}\\job1.mpl": local_folder / run_id / "1" / (filename + ".mpl"),
+        f"C:\\aurora\\data\\{run_id}\\{sample_id}\\job1.mpr": local_folder / run_id / "1" / (filename + ".mpr"),
+    }
+    mock_ssh.add_command_response(
+        command="Get-ChildItem -Path 'C:/aurora/data/'",
+        stdout="\n".join([k for k in files if k.endswith(".mpr")]),
+    )
+    for remote_path, local_path in files.items():
+        content = local_path.read_bytes()
+        mock_ssh.add_sftp_file(remote_path, content)
+
+    # Make fake jobs for both files
+    dbf.add_or_update_job("job1", {"Sample ID": sample_id, "Job ID on server": "bio-job1", "Server label": "bio"})
+    setup_logging()
+    main()
+
+    # Should have copied the files as is
+    for local_file in [
+        local_folder / run_id / sample_id / "job1.mpr",
+        local_folder / run_id / sample_id / "job1.mpl",
+    ]:
+        assert local_file.exists()
+        local_file.unlink()
+
+    # Should not warn/fail
+    assert caplog.text == ""
+
+    # Analysed data exists
+    df = get_cycling(sample_id)
+    assert df is not None
 
 
 def test_convert_data(reset_all, test_dir: Path) -> None:

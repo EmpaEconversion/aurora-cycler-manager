@@ -13,8 +13,8 @@ def test_main(reset_all, mock_ssh, test_dir: Path, caplog) -> None:
     """Test file harvesting."""
     local_folder = test_dir / "local_snapshots" / "neware_snapshots"
     files = {
-        "C:\\Neware data\\120_6_1_36.ndax": local_folder / "nw4-120-6-1-36.ndax",
-        "C:\\Neware data\\120_9_5_33.ndax": local_folder / "nw4-120-9-5-33.ndax",
+        "C:\\aurora\\data\\120_6_1_36.ndax": local_folder / "nw4-120-6-1-36.ndax",
+        "C:\\aurora\\data\\120_9_5_33.ndax": local_folder / "nw4-120-9-5-33.ndax",
     }
     mock_ssh.add_command_response(
         command="Get-ChildItem -Path 'C:/aurora/data/'",
