@@ -568,6 +568,7 @@ def add_or_update_job(job_id: str, row: dict[str, str | float | None]) -> None:
                 set_=row,
             )
         )
+        conn.commit()
 
 
 def get_jobs_from_sample(sample_id: str) -> list[str]:
