@@ -6,7 +6,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/aurora-cycler-manager.svg)](https://pypi.org/project/aurora-cycler-manager/)
 [![License](https://img.shields.io/github/license/empaeconversion/aurora-cycler-manager?color=blue)](https://github.com/empaeconversion/aurora-cycler-manager/blob/main/LICENSE)
-![Python Versions](https://img.shields.io/badge/python-3-blue)
+[![Python Versions](https://img.shields.io/pypi/pyversions/aurora-cycler-manager.svg)](https://pypi.org/project/aurora-cycler-manager/)
 [![Checks](https://img.shields.io/github/actions/workflow/status/empaeconversion/aurora-cycler-manager/CI.yml)](https://github.com/EmpaEconversion/aurora-cycler-manager/actions/workflows/CI.yml)
 [![Coverage](https://img.shields.io/codecov/c/github/empaeconversion/aurora-cycler-manager)](https://app.codecov.io/gh/EmpaEconversion/aurora-cycler-manager)
 
@@ -19,23 +19,21 @@ Cycler control, data pipeline, and data visualisation from Empa's robotic batter
 - Results in consistent, open format including metadata with provenance tracking and sample information.
 - Convenient cycler control and in-depth data exploration using `Dash`-based webapp.
 
-### Jobs
+### Controlling cyclers
 
-Aurora cycler manager can be used to control and submit experiments to Biologic and Neware cyclers.
+[`aurora-biologic`](https://github.com/EmpaEConversion/aurora-biologic) and [`aurora-neware`](https://github.com/EmpaEConversion/aurora-neware) provide a Python and command-line interface to query, start and stop cyclers, allowing programmatic and remote control.
 
 Jobs can be submitted with a cycler-specific file (e.g. .xml or .mps), or an [`aurora-unicycler`](https://github.com/EmpaEConversion/aurora-unicycler) protocol, which is automatically converted to the appropriate format on submission.
 
-Experiments can use C-rates and the program will automatically calculate the current required based on the sample information in the database.
+Experiments can be defined with C-rates and without sample names - the program will automatically attach sample info and calculate the current required based on the sample information in the database.
 
-### Data harvesting
+### Data processing
 
-Data is automatically gathered from cyclers, all incoming files are converted to one open standard - accepts Biologic .mpr, Neware .ndax, Neware .xlsx. Raw time-series data is converted to a hdf5 file including provenance tracked metadata.
+Data is automatically gathered from cyclers, all incoming files are converted to one open standard - accepts Biologic .mpr, Neware .ndax, Neware .xlsx. Incoming data is converted to fast, open, and space-efficient parquet format.
 
 Data is converted using [`fastnda`](https://github.com/g-kimbell/fastnda) and [`yadg`](https://github.com/dgbowl/yadg), processing the raw binary data directly. This is much faster and more space efficient than exporting to text or Excel formats from these cyclers.
 
-### Analysis
-
-The time-series hdf5 data is analysed to extract per-cycle summary data such as charge and discharge capacities, stored alongside metadata in a .json file.
+Time-series data is automatically analysed to extract per-cycle and summary data.
 
 ### Visualisation
 
@@ -55,27 +53,28 @@ aurora-setup connect --project-dir="path\to\your\setup"
 ```
 
 To _interact with servers on an existing set up_:
-- Interacting with servers (submitting jobs, harvesting data etc.) works with OpenSSH, servers must have OpenSSH installed and running
-- Generate a public/private key pair on the user system with `ssh-keygen`
-- Copy your public key (usually in `%USERPROFILE%\.ssh\id_rsa.pub`) to the cycler server
-- Add it to the server's `authorized_keys` file (usually in `C:\Users\username\.ssh\authorized_keys`)
-- Check the connection using `ssh user@host` from the user's terminal, confirm the connection to add the host to the user's `known_hosts` file, the Aurora app can now use the connection 
+- Interacting with servers (submitting jobs, harvesting data etc.) works with OpenSSH, servers must have OpenSSH installed and running.
+- Generate a public/private key pair on the user system with `ssh-keygen`.
+- Copy your public key (usually in `%USERPROFILE%\.ssh\id_rsa.pub`) to the cycler server.
+- Add it to the server's `authorized_keys` file (usually in `C:\Users\username\.ssh\authorized_keys`).
+- Check the connection using `ssh user@host` from the user's terminal, confirm the connection to add the host to the user's `known_hosts` file, the Aurora app can now use the connection .
 - (optional) You can make changes to your user config, this is stored in your user folder e.g. /users/yourname/appdata/local/aurora_cycler_manager/
-  - "SSH private key path" can be changed, if your key is not in a standard location
-  - "Snapshots folder path" is where raw data downloaded from cyclers is stored, this can become very large
+  - "SSH private key path" can be changed, if your key is not in a standard location.
+  - "Snapshots folder path" is where raw data downloaded from cyclers is stored, this can become very large.
 
 To _create a new set up_:
 ```shell
 aurora-setup init --project-dir="path\to\your\setup"
 ```
-- This generates subfolders within the directory, a database, and a configuation file
-- Fill in the configuration file with details about e.g. Neware and EC-Lab servers, examples are left in the default config
-- In `Servers`, the `server_type` must be `neware` or `biologic`
-- The `server_label` should be short and only letters and numbers, no special characters like `-_/\`
-- The `shell_type` is the default shell when SSH-ing into the machine, it must be `cmd` or `powershell`
-- To set up a `neware` server, follow the instructions from [`aurora-neware`](https://github.com/empaeconversion/aurora-neware)
-- To set up a `biologic` server, follow the instructions from [`aurora-biologic`](https://github.com/empaeconversion/aurora-biologic)
-- If you change database columns in the shared configuration file, you can update the database with `aurora-setup update`, use the option `--force` if you want to permanetly delete columns and their data.
+- This generates subfolders within the directory, a database, and a configuration file.
+- Fill in the configuration file with details about e.g. Neware and EC-Lab servers, examples are left in the default config.
+- In `Servers`, the `server_type` must be `neware` or `biologic` (or `neware_harvester`/`biologic_harvester` if you just want to grab data without control).
+- The `server_label` should be a short, unique key to represent a cycler server.
+- The `shell_type` is the default shell when SSH-ing into the machine, it must be `cmd` or `powershell`.
+- To set up a `neware` server, follow the instructions from [`aurora-neware`](https://github.com/empaeconversion/aurora-neware).
+- To set up a `biologic` server, follow the instructions from [`aurora-biologic`](https://github.com/empaeconversion/aurora-biologic).
+- If you change database columns in the shared configuration file, you can update the database with `aurora-setup update`, use the option `--force` if you want to permanently delete columns and their data.
+- By default, a set up uses an sqlite3 database, a postgresql database can also be used by setting `Database type` = `postgresql`, supplying `Database host`, `Database name`, `Database user`, `Database password`, and running `aurora-setup update`. You must install and set up an empty postgresql database yourself.
 
 ## Updating
 
@@ -93,11 +92,11 @@ aurora-app
 ```
 
 - There are three tabs, samples plotting, batch plotting, and database.
-- To upload sample information to the database, use the 'Add samples' button in the database tab, and select a .json file defining the cells.
-- Hand-made cells can also be added, a .json must be created with the keys defined in the configuration file.
+- To upload sample information to the database, use the 'Upload' button in the database tab, and select a .json file defining the cells.
+- Hand-made cells can also be added, a .json must be created with the keys defined in the configuration file - the only required key is a unique "Sample ID".
 - Protocols can be created in database -> protocols.
 - In database -> pipelines, load samples onto the pipelines, then submit a protocol.
-- Loading samples, submitting jobs, analysing data etc. can also be run in Python scripts directly - see the example in `server_manager.py`.
+- Loading samples, submitting jobs, analysing data etc. can also be run in Python scripts directly through the `ServerManager` class.
 
 With SSH access, automatic data harvesting and analysis is run using:
 ```shell
