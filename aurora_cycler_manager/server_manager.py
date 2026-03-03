@@ -397,7 +397,12 @@ class _CyclingJob:
             msg = f"Sample {self.sample.id} is not loaded on any pipeline."
             raise ValueError(msg)
 
-        return self.pipeline.server.cancel(self.job_id, self.jobid_on_server, self.sample.id, self.pipeline.name)
+        self.pipeline.server.cancel(self.job_id, self.jobid_on_server, self.sample.id, self.pipeline.name)
+
+        dbf.add_or_update_pipeline(
+            self.pipeline.name,
+            {"Job ID": None, "Job ID on server": None},
+        )
 
     @classmethod
     def from_id(cls, job_id: str) -> "_CyclingJob":
@@ -417,7 +422,7 @@ class _CyclingJob:
             raise ValueError(msg)
         sample = _Sample.from_id(result["Sample ID"])
         job = cls(
-            sample=result["Sample ID"],
+            sample=sample,
             job_name=f"Job for sample {sample.id}",
             capacity_Ah=result["Capacity (mAh)"] * 1e-3,
             comment=result["Comment"],
