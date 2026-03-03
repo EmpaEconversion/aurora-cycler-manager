@@ -170,7 +170,7 @@ class NewareServer(CyclerServer):
                 f.write(xml_string)
             remote_xml_dir = PureWindowsPath("C:/submitted_payloads/")
             remote_xml_path = remote_xml_dir / f"{sample}__{current_datetime}.xml"
-            ssh.put_file(Path("./temp.xml"), remote_xml_path.as_posix())
+            ssh.put_file((Path(temp_dir) / "temp.xml"), remote_xml_path.as_posix())
             # Submit the file on the remote PC
             output = self._command(ssh, f"neware start {pipeline} {sample} {remote_xml_path}")
             # Expect the output to be empty if successful, otherwise raise error
