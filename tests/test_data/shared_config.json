@@ -21,6 +21,14 @@
 			"server_type": "neware",
 			"shell_type": "powershell",
             "data_path": "C:/aurora/data/"
+		},
+        {
+			"label": "nw4",
+			"hostname": "fakehostname4",
+			"username": "fakeuser4",
+			"server_type": "neware",
+			"shell_type": "powershell",
+            "data_path": "C:/Neware data/"
 		}
     ],
     
