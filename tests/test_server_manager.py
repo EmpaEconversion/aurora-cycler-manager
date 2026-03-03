@@ -216,7 +216,7 @@ def test_start_stop(reset_all, mock_ssh, tmp_path: Path, test_dir: Path) -> None
         "_log.ndc": "bts_folder\\NdcFile\\20250128\\20250128_161756_270120_0_69_33_log.ndc",
         "_es.ndc": "bts_folder\\NdcFile\\20250128\\20250128_161756_270120_0_69_33_es.ndc",
     }
-    file_map = {p: test_dir / "ssh" / p for p in file_paths.values()}
+    file_map = {p: test_dir / "ssh" / p.replace("\\", "/") for p in file_paths.values()}
     for remote_path, local_path in file_map.items():
         content = local_path.read_bytes()
         mock_ssh.add_sftp_file(remote_path, content)
