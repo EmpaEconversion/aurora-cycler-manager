@@ -6,18 +6,25 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from sqlalchemy import text
 
+from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.database_engine import get_engine
 from aurora_cycler_manager.database_funcs import (
     _pre_check_sample_file,
     _recalculate_sample_data,
+    add_or_update_job,
     add_samples_from_file,
     add_samples_from_object,
     delete_samples,
     get_all_sampleids,
     get_batch_details,
     get_job_data,
+    get_job_id_from_server,
+    get_or_create_job_id_from_server,
     get_sample_data,
     is_sample,
+    patch_database,
     remove_batch,
     sample_df_to_db,
     save_or_overwrite_batch,
@@ -266,3 +273,54 @@ class TestJobFunctions:
         assert job_data["Job ID"] == "nw4-120-1-1-48"
         assert job_data["Server label"] == "nw4"
         assert isinstance(job_data["Payload"], list)
+
+    def test_get_job_from_server(self, reset_all) -> None:
+        """Test getting Job ID from Job ID on server."""
+        add_or_update_job("job1", {"Job ID on server": "serverjob1", "Server label": "bio"})
+        job_id = get_job_id_from_server("bio", "serverjob1")
+        assert job_id == "job1"
+        with pytest.raises(ValueError, match="No Job ID"):
+            job_id = get_job_id_from_server("bio", "serverjob2")
+        job_id = get_or_create_job_id_from_server("bio", "serverjob1")
+        assert job_id == "job1"
+        job_id = get_or_create_job_id_from_server("bio", "serverjob2")
+        assert isinstance(job_id, str)
+        assert len(job_id) == 36
+        job_id2 = get_or_create_job_id_from_server("bio", "serverjob2")
+        assert job_id == job_id2
+
+
+class TestPatchDatabase:
+    """Tests patches and stuff."""
+
+    def test_patch_database(self, reset_all) -> None:
+        """Test patching older databases with new columns."""
+        config = get_config()
+        engine = get_engine(config)
+        with engine.begin() as conn:
+            conn.execute(text('ALTER TABLE jobs DROP COLUMN "Capacity (mAh)"'))
+            conn.execute(text('ALTER TABLE jobs DROP COLUMN "Unicycler protocol"'))
+            conn.execute(text("DROP TABLE dataframes"))
+            conn.commit()
+
+        # Everything dropped
+        with engine.begin() as conn:
+            cols = conn.execute(text("PRAGMA table_info(jobs)")).fetchall()
+            col_names = [row[1] for row in cols]
+            assert "Capacity (mAh)" not in col_names
+            assert "Unicycler protocol" not in col_names
+            tables = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()
+            table_names = [row[0] for row in tables]
+            assert "dataframes" not in table_names
+
+        patch_database(engine)
+
+        # After patching they are added
+        with engine.begin() as conn:
+            cols = conn.execute(text("PRAGMA table_info(jobs)")).fetchall()
+            col_names = [row[1] for row in cols]
+            assert "Capacity (mAh)" in col_names
+            assert "Unicycler protocol" in col_names
+            tables = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()
+            table_names = [row[0] for row in tables]
+            assert "dataframes" in table_names

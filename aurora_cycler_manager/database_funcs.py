@@ -16,7 +16,6 @@ from sqlalchemy import (
     Column,
     DateTime,
     Engine,
-    ForeignKey,
     MetaData,
     PrimaryKeyConstraint,
     String,
@@ -62,13 +61,12 @@ def patch_database(engine: Engine) -> None:
             meta,
             Column("Sample ID", Text, nullable=False),
             Column("File stem", Text, nullable=False),
-            Column("Job ID", Text, ForeignKey("jobs.Job ID")),
+            Column("Job ID", Text),
             Column("From known source", Boolean),
             Column("Data start", DateTime),
             Column("Data end", DateTime),
             Column("Modified", DateTime),
             PrimaryKeyConstraint("Sample ID", "File stem"),
-            ForeignKey("samples.Sample ID"),
         )
         meta.create_all(engine)
 

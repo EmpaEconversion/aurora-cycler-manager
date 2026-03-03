@@ -1,5 +1,6 @@
 """Testing functions in the eclab_harvester.py."""
 
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,7 @@ from sqlalchemy import MetaData, Table, create_engine, select
 
 import aurora_cycler_manager.database_funcs as dbf
 from aurora_cycler_manager.analysis import analyse_sample
+from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.data_parse import get_cycling
 from aurora_cycler_manager.eclab_harvester import convert_mpr, get_mpr_data, main
 from aurora_cycler_manager.setup_logging import setup_logging
@@ -50,6 +52,9 @@ def test_main(reset_all, mock_ssh, test_dir: Path, caplog) -> None:
     # Analysed data exists
     df = get_cycling(sample_id)
     assert df is not None
+
+    last_update = dbf.get_last_harvest({"label": "bio", "hostname": "fakehostname"}, "C:/aurora/data/")
+    assert abs(last_update - datetime.now(tz=get_config()["tz"]).timestamp()) < 600
 
 
 def test_convert_data(reset_all, test_dir: Path) -> None:
