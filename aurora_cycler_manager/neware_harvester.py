@@ -677,7 +677,7 @@ def update_database_job(
             "Server hostname": server_hostname,
             "Submitted": submitted,
             "Payload": payload,
-            "Last Snapshot": last_snapshot,
+            "Last snapshot": last_snapshot,
         },
     )
 
