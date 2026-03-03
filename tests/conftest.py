@@ -87,7 +87,8 @@ def reset_all(test_dir: Path) -> Generator[None, None, None]:
 
 
 @pytest.fixture
-def mock_ssh() -> Generator[None, None, None]:
+def mock_ssh() -> Generator[MockSSHClient, None, None]:
     """Mock SSH client."""
-    with patch("aurora_cycler_manager.ssh.paramiko.SSHClient", return_value=MockSSHClient()):
-        yield
+    mock_client = MockSSHClient()
+    with patch("aurora_cycler_manager.ssh.paramiko.SSHClient", return_value=mock_client):
+        yield mock_client

@@ -11,9 +11,7 @@
             "hostname": "fakehostname",
             "username": "fakeuser",
             "server_type": "biologic",
-            "shell_type": "cmd",
-            "command_prefix" : "conda activate biologic && ",
-            "command_suffix" : "",
+            "shell_type": "powershell",
             "data_path": "C:/aurora/data/"
         },
         {
@@ -21,7 +19,7 @@
 			"hostname": "fakehostname",
 			"username": "fakeuser",
 			"server_type": "neware",
-			"shell_type": "cmd",
+			"shell_type": "powershell",
             "data_path": "C:/aurora/data/"
 		}
     ],
