@@ -170,6 +170,10 @@ def get_mpr_data(
         cols["f (Hz)"] = data["freq"].to_numpy().astype("float32")
         cols["Re(Z) (ohm)"] = data["Re(Z)"].to_numpy().astype("float32")
         cols["Im(Z) (ohm)"] = (-data["-Im(Z)"]).to_numpy().astype("float32")
+    elif all(k in data for k in ["freq", "|Z|", "Phase(Z)"]) and np.any(data["freq"]):
+        cols["f (Hz)"] = data["freq"].to_numpy().astype("float32")
+        cols["Re(Z) (ohm)"] = (data["|Z|"] * np.cos(data["Phase(Z)"] * 3.14159265 / 180)).to_numpy().astype("float32")
+        cols["Im(Z) (ohm)"] = (data["|Z|"] * np.sin(data["Phase(Z)"] * 3.14159265 / 180)).to_numpy().astype("float32")
 
     df = pl.DataFrame(cols).with_columns(
         pl.col("V (V)").cast(pl.Float32),
