@@ -142,7 +142,7 @@ def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
     df = _recalculate_sample_data(df)
 
     # Insert into database
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         for _, raw_row in df.iterrows():
             # Remove empty columns from the row
             row = raw_row.dropna()
@@ -157,7 +157,6 @@ def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
                     set_=row_dict,
                 )
             )
-        conn.commit()
 
 
 def _pre_check_sample_file(json_file: Path) -> None:
@@ -278,10 +277,9 @@ def update_sample_label(sample_ids: str | list[str], label: str | None) -> None:
     """Update the label of a sample in the database."""
     if isinstance(sample_ids, str):
         sample_ids = [sample_ids]
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         for sample_id in sample_ids:
             conn.execute(update(samples_table).where(samples_table.c["Sample ID"] == sample_id).values(Label=label))
-        conn.commit()
 
 
 def delete_samples(sample_ids: str | list) -> None:
@@ -295,9 +293,8 @@ def delete_samples(sample_ids: str | list) -> None:
     """Delete samples from the database."""
     if not isinstance(sample_ids, list):
         sample_ids = [sample_ids]
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         conn.execute(delete(samples_table).where(samples_table.c["Sample ID"].in_(sample_ids)))
-        conn.commit()
 
 
 def get_all_sampleids() -> list[str]:
@@ -319,7 +316,7 @@ def get_sample_data(sample_id: str) -> dict:
         sample_data = dict(result)
         # Convert json strings to python objects
         history = sample_data.get("Assembly history")
-        if history:
+        if history and isinstance(history, str):
             sample_data["Assembly history"] = json.loads(history)
     return sample_data
 
@@ -352,7 +349,7 @@ def get_batch_details() -> dict[str, dict]:
 
 def save_or_overwrite_batch(batch_name: str, batch_description: str, sample_ids: list, overwrite: bool = False) -> None:
     """Save a batch to the database, overwriting it if the name already exists."""
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         result = conn.execute(select(batches_table.c.id).where(batches_table.c.label == batch_name)).fetchone()
 
         if result:
@@ -373,16 +370,14 @@ def save_or_overwrite_batch(batch_name: str, batch_description: str, sample_ids:
             insert(batch_samples_table),
             [{"batch_id": batch_id, "sample_id": sample_id} for sample_id in sample_ids],
         )
-        conn.commit()
 
 
 def remove_batch(batch_name: str) -> None:
     """Remove a batch from the database."""
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         batch_id = conn.execute(select(batches_table.c.id).where(batches_table.c.label == batch_name)).fetchone()[0]
         conn.execute(delete(batches_table).where(batches_table.c.label == batch_name))
         conn.execute(delete(batch_samples_table).where(batch_samples_table.c.batch_id == batch_id))
-        conn.commit()
 
 
 ### PIPELINES ###
@@ -443,7 +438,7 @@ def add_or_update_pipeline(pipeline: str, row: dict[str, str | float | None]) ->
         with suppress(ValueError):
             row["Job ID"] = get_job_id_from_server(job_id, job_id_on_server)
     # Insert or update the row
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         conn.execute(
             insert(pipelines_table)
             .values(Pipeline=pipeline, **row)
@@ -452,7 +447,6 @@ def add_or_update_pipeline(pipeline: str, row: dict[str, str | float | None]) ->
                 set_=row,
             )
         )
-        conn.commit()
 
 
 def bulk_add_or_update_pipeline(rows: list[dict[str, str | float | None]]) -> None:
@@ -464,7 +458,7 @@ def bulk_add_or_update_pipeline(rows: list[dict[str, str | float | None]]) -> No
         }
         for row in rows
     ]
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         for row in processed_rows:
             conn.execute(
                 insert(pipelines_table)
@@ -474,7 +468,6 @@ def bulk_add_or_update_pipeline(rows: list[dict[str, str | float | None]]) -> No
                     set_=row,
                 )
             )
-        conn.commit()
 
 
 def fill_pipelines_missing_job_ids() -> None:
@@ -485,14 +478,13 @@ def fill_pipelines_missing_job_ids() -> None:
         .where(jobs_table.c["Server label"] == pipelines_table.c["Server label"])
         .scalar_subquery()
     )
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         conn.execute(
             update(pipelines_table)
             .where(pipelines_table.c["Job ID"].is_(None))
             .where(pipelines_table.c["Job ID on server"].isnot(None))
             .values({"Job ID": job_id_subquery})
         )
-        conn.commit()
 
 
 def update_flags() -> None:
@@ -540,24 +532,24 @@ def get_job_data(job_id: str) -> dict:
     """Get all data about a job from the database."""
     with engine.connect() as conn:
         result = conn.execute(select(jobs_table).where(jobs_table.c["Job ID"] == job_id)).mappings().fetchone()
-        if not result:
-            msg = f"Job ID '{job_id}' not found in the database"
-            raise ValueError(msg)
-        job_data = dict(result)
-        # Convert json strings to python objects
-        payload = job_data.get("Payload")
-        if payload and payload.startswith(("[", "{")):
-            job_data["Payload"] = json.loads(payload)
-        unicycler = job_data.get("Unicycler protocol")
-        if unicycler and unicycler.startswith("{"):
-            job_data["Unicycler protocol"] = json.loads(unicycler)
+    if not result:
+        msg = f"Job ID '{job_id}' not found in the database"
+        raise ValueError(msg)
+    job_data = dict(result)
+    # Convert json strings to python objects
+    payload = job_data.get("Payload")
+    if payload and isinstance(payload, str) and payload.startswith(("[", "{")):
+        job_data["Payload"] = json.loads(payload)
+    unicycler = job_data.get("Unicycler protocol")
+    if unicycler and isinstance(unicycler, str) and unicycler.startswith("{"):
+        job_data["Unicycler protocol"] = json.loads(unicycler)
 
     return job_data
 
 
 def add_or_update_job(job_id: str, row: dict[str, str | float | None]) -> None:
     """Add or update job in database."""
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         conn.execute(
             insert(jobs_table)
             .values(**{"Job ID": job_id}, **row)
@@ -566,7 +558,6 @@ def add_or_update_job(job_id: str, row: dict[str, str | float | None]) -> None:
                 set_=row,
             )
         )
-        conn.commit()
 
 
 def get_jobs_from_sample(sample_id: str) -> list[str]:
@@ -635,7 +626,7 @@ def get_or_create_job_id_from_server(server_label: str, job_id_on_server: str) -
         job_id = get_job_id_from_server(server_label, job_id_on_server)
     except ValueError:
         job_id = str(uuid.uuid4())
-        with engine.connect() as conn:
+        with engine.begin() as conn:
             conn.execute(
                 insert(jobs_table).values(
                     **{
@@ -645,7 +636,6 @@ def get_or_create_job_id_from_server(server_label: str, job_id_on_server: str) -
                     }
                 )
             )
-            conn.commit()
     return job_id
 
 
@@ -686,7 +676,7 @@ def add_data_to_db_without_job(sample_id: str, file_stem: str, data_start: str, 
 
     """
     modified = datetime.now(timezone.utc).isoformat()
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         # Check if there is already a job with this sample ID and data
         result = conn.execute(
             select(dataframes_table.c["Job ID"])
@@ -727,7 +717,6 @@ def add_data_to_db_without_job(sample_id: str, file_stem: str, data_start: str, 
             )
             .on_conflict_do_nothing()
         )
-        conn.commit()
 
     return job_id
 
@@ -749,7 +738,7 @@ def add_data_to_db_with_job(sample_id: str, file_stem: str, data_start: str, dat
 
     """
     modified = datetime.now(timezone.utc).isoformat()
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         # Check if there is already a job with this sample ID and data
         result = conn.execute(
             select(dataframes_table.c["Job ID"])
@@ -825,7 +814,6 @@ def add_data_to_db_with_job(sample_id: str, file_stem: str, data_start: str, dat
             .where(dataframes_table.c["Sample ID"] == sample_id)
             .where(dataframes_table.c["File stem"] == file_stem)
         )
-        conn.commit()
 
     return job_id
 
@@ -855,7 +843,7 @@ def add_protocol_to_job(job_id: str, protocol: dict | str, capacity: float | Non
     """Attach a protocol to a job in the database."""
     if isinstance(protocol, dict):
         protocol = json.dumps(protocol)
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         conn.execute(
             update(jobs_table)
             .values(
@@ -866,7 +854,6 @@ def add_protocol_to_job(job_id: str, protocol: dict | str, capacity: float | Non
             )
             .where(jobs_table.c["Job ID"] == job_id)
         )
-        conn.commit()
 
 
 ### HARVESTERS ###
@@ -875,7 +862,7 @@ def add_protocol_to_job(job_id: str, protocol: dict | str, capacity: float | Non
 # Update the database
 def update_harvester(server: dict, folder: str, copy_datetime: datetime) -> None:
     """Update last copy time in harvester table."""
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         conn.execute(
             insert(harvester_table)
             .values(
@@ -898,7 +885,6 @@ def update_harvester(server: dict, folder: str, copy_datetime: datetime) -> None
             .where(harvester_table.c["Server hostname"] == server["hostname"])
             .where(harvester_table.c["Folder"] == folder)
         )
-        conn.commit()
 
 
 def get_last_harvest(server: dict, folder: str) -> float:
@@ -927,7 +913,7 @@ def get_results_from_sample(sample_id: str) -> dict | None:
 
 def update_results(sample_id: str, row: dict[str, str | float | None]) -> None:
     """Add or update results for a sample."""
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         conn.execute(
             insert(results_table)
             .values(**{"Sample ID": sample_id}, **row)
@@ -936,7 +922,6 @@ def update_results(sample_id: str, row: dict[str, str | float | None]) -> None:
                 set_=row,
             )
         )
-        conn.commit()
 
 
 def find_new_data(mode: str) -> list[str]:

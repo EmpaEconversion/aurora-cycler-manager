@@ -301,7 +301,6 @@ class TestPatchDatabase:
             conn.execute(text('ALTER TABLE jobs DROP COLUMN "Capacity (mAh)"'))
             conn.execute(text('ALTER TABLE jobs DROP COLUMN "Unicycler protocol"'))
             conn.execute(text("DROP TABLE dataframes"))
-            conn.commit()
 
         # Everything dropped
         with engine.begin() as conn:
