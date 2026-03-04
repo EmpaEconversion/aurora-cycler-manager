@@ -13,17 +13,16 @@
 
 Cycler control, data pipeline, and data visualisation from Empa's robotic battery lab.
 
-- Tracks samples, experiments and results.
+- Track samples, experiments and results.
 - Control Neware and Biologic cyclers on multiple machines from one place.
 - Automatically collect and analyse cycling data.
-- Results in consistent, open format including metadata with provenance tracking and sample information.
-- Convenient cycler control and in-depth data exploration using `Dash`-based webapp.
+- Conveniently control cyclers and explore data with a graphical web-app.
 
 ### Controlling cyclers
 
 [`aurora-biologic`](https://github.com/EmpaEConversion/aurora-biologic) and [`aurora-neware`](https://github.com/EmpaEConversion/aurora-neware) provide a Python and command-line interface to query, start and stop cyclers, allowing programmatic and remote control.
 
-Jobs can be submitted with a cycler-specific file (e.g. .xml or .mps), or an [`aurora-unicycler`](https://github.com/EmpaEConversion/aurora-unicycler) protocol, which is automatically converted to the appropriate format on submission.
+Experiments can be submitted with a cycler-specific file (e.g. .xml or .mps), or an [`aurora-unicycler`](https://github.com/EmpaEConversion/aurora-unicycler) protocol, which is automatically converted to the appropriate format on submission.
 
 Experiments can be defined with C-rates and without sample names - the program will automatically attach sample info and calculate the current required based on the sample information in the database.
 
