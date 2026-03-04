@@ -1,4 +1,4 @@
-"""Copyright © 2025, Empa.
+"""Copyright © 2025-2026, Empa.
 
 Daemon to update database, snapshot jobs and plots graphs.
 
@@ -86,7 +86,6 @@ def daemon_loop(
         handle_exceptions(sm.update_db)
 
         if now >= next_run_time:
-            handle_exceptions(sm.snapshot_all)
             handle_exceptions(harvest_neware)
             handle_exceptions(harvest_eclab)
             handle_exceptions(analyse_all_samples)

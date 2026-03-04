@@ -1,13 +1,7 @@
-"""Copyright © 2025, Empa.
+"""Copyright © 2025-2026, Empa.
 
 Useful functions for the visualiser app.
 """
-
-import sqlite3
-from contextlib import suppress
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -17,64 +11,6 @@ from aurora_cycler_manager.config import get_config
 ArrayLike = list | np.ndarray | pd.Series
 
 CONFIG = get_config()
-
-
-def get_database() -> dict[str, Any]:
-    """Get all data from the database.
-
-    Formatted for viewing in Dash AG Grid.
-    """
-    db_path = CONFIG["Database path"]
-    unused_pipelines = CONFIG.get("Unused pipelines", [])
-
-    with sqlite3.connect(db_path) as conn:
-        if unused_pipelines:
-            not_like_conditions = " OR ".join(["Pipeline LIKE ?"] * len(unused_pipelines))
-            pipelines_df = pd.read_sql_query(
-                "SELECT * FROM pipelines WHERE NOT (" + not_like_conditions + ")",  # noqa: S608 - injection safe
-                conn,
-                params=unused_pipelines,
-            )
-        else:
-            pipelines_df = pd.read_sql_query("SELECT * FROM pipelines", conn)
-        samples_df = pd.read_sql_query("SELECT * FROM samples", conn)
-        results_df = pd.read_sql_query("SELECT * FROM results", conn)
-        jobs_df = pd.read_sql_query("SELECT * FROM jobs", conn)
-    pipelines_df["Ready"] = pipelines_df["Ready"].astype(bool)
-    db_data = {
-        "samples": samples_df.to_dict("records"),
-        "results": results_df.to_dict("records"),
-        "jobs": jobs_df.to_dict("records"),
-        "pipelines": pipelines_df.to_dict("records"),
-    }
-    db_columns = {
-        "samples": [{"field": col, "filter": True, "tooltipField": col} for col in samples_df.columns],
-        "results": [{"field": col, "filter": True, "tooltipField": col} for col in results_df.columns],
-        "jobs": [{"field": col, "filter": True, "tooltipField": col} for col in jobs_df.columns],
-        "pipelines": [{"field": col, "filter": True, "tooltipField": col} for col in pipelines_df.columns],
-    }
-
-    # Ready is boolean
-    try:
-        ready_field = next(col for col in db_columns["pipelines"] if col["field"] == "Ready")
-        ready_field["cellDataType"] = "boolean"
-    except StopIteration:
-        pass
-
-    # Use custom comparator for pipeline column
-    with suppress(StopIteration):
-        pipeline_field: dict[str, Any] = next(col for col in db_columns["pipelines"] if col["field"] == "Pipeline")
-        pipeline_field["comparator"] = {"function": "pipelineComparatorCustom"}
-        pipeline_field["sort"] = "asc"
-
-    return {"data": db_data, "column_defs": db_columns}
-
-
-def get_db_last_update() -> datetime:
-    """Get the last update time of the database."""
-    db_path = Path(CONFIG["Database path"])
-    modified_uts = db_path.stat().st_mtime
-    return datetime.fromtimestamp(int(modified_uts), tz=timezone.utc)
 
 
 def make_pipelines_comparable(pipelines: list[str | None]) -> list[str | None]:

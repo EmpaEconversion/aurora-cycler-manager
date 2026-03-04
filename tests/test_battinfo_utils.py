@@ -4,8 +4,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
 from aurora_cycler_manager.battinfo_utils import (
     find_coin_cell,
+    generate_zenodo_info_xlsx_template,
     merge_battinfo_with_db_data,
     summarise_assembly,
 )
@@ -289,3 +292,12 @@ def test_merge_battinfo_with_db(test_dir: Path) -> None:
         "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 14.0},
         "hasMeasurementUnit": "unit:MilliM",
     }
+
+
+def test_zenodo_xlsx(test_dir: Path) -> None:
+    """Check Zenodo xlsx is readable."""
+    content = generate_zenodo_info_xlsx_template(["sample1", "sample2"], ["ccid1", "ccid2"])
+    pd.read_excel(content, sheet_name="General")
+    pd.read_excel(content, sheet_name="Figures")
+    pd.read_excel(content, sheet_name="Authors")
+    pd.read_excel(content, sheet_name="Institutions")

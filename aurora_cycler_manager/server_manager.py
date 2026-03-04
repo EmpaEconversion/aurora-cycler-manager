@@ -12,12 +12,9 @@ commands to the appropriate server, and handles the database updates.
 
 import json
 import logging
-import sqlite3
-import traceback
 from datetime import datetime, timezone
 from functools import cached_property
 from pathlib import Path
-from time import sleep, time
 from typing import Any, Literal
 
 import paramiko
@@ -77,10 +74,11 @@ def find_server(label: str) -> cycler_servers.CyclerServer:
 class _Pipeline:
     """A class representing a pipeline in the database."""
 
-    def __init__(self, pipeline_name: str, server_label: str) -> None:
+    def __init__(self, pipeline_name: str, server_label: str, _data: dict | None = None) -> None:
         """Initialize the _Pipeline object."""
         self.name = pipeline_name
         self.server_label = server_label
+        self._data: dict[str, str] = _data or {}
 
     @cached_property
     def server(self) -> CyclerServer:
@@ -103,25 +101,19 @@ class _Pipeline:
             _Pipeline: The Pipeline object.
 
         """
-        result = dbf.execute_sql(
-            "SELECT `Pipeline`, `Server label` FROM pipelines WHERE `Pipeline` = ?",
-            (pipeline_name,),
-        )
+        result = dbf.get_pipeline(pipeline_name)
         if not result:
             msg = f"Pipeline '{pipeline_name}' not found in the database."
             raise ValueError(msg)
-        return cls(pipeline_name, result[0][1])
+        return cls(pipeline_name, result["Server label"], result)
 
     @classmethod
     def from_sample(cls, sample: "_Sample") -> "_Pipeline | None":
         """Create a _Pipeline object from a Sample object."""
-        result = dbf.execute_sql(
-            "SELECT `Pipeline`, `Server label` FROM pipelines WHERE `Sample ID` = ?",
-            (sample.id,),
-        )
+        result = dbf.get_pipeline_from_sample(sample.id)
         if not result:
             return None
-        return cls(result[0][0], result[0][1])
+        return cls(result["Pipeline"], result["Server label"], result)
 
     def load(self, sample: "_Sample") -> None:
         """Load the sample on a pipeline.
@@ -146,10 +138,7 @@ class _Pipeline:
 
         # Get pipeline and load
         logger.info("Loading sample %s on server %s", sample.id, self.server.label)
-        dbf.execute_sql(
-            "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
-            (sample.id, self.name),
-        )
+        dbf.add_or_update_pipeline(self.name, {"Sample ID": sample.id})
 
     def eject(self, sample_id: str | None = None) -> None:
         """Eject the sample from a pipeline."""
@@ -164,24 +153,29 @@ class _Pipeline:
                 f" sample {self.sample.id} loaded, not {sample_id}."
             )
             raise ValueError(msg)
-        result = dbf.execute_sql(
-            "SELECT `Job ID` FROM pipelines WHERE `Pipeline` = ?",
-            (self.name,),
-        )
-        if result[0][0]:
-            msg = f"Cannot eject sample {self.sample.id} from {self.name}, job is currently running: {result[0][0]}"
+        job_id = dbf.get_job_from_pipeline(self.name)
+        if job_id:
+            msg = f"Cannot eject sample {self.sample.id} from {self.name}, job is currently running: {job_id}"
             raise ValueError(msg)
         # Eject the sample
-        dbf.execute_sql(
-            "UPDATE pipelines SET `Sample ID` = NULL, `Flag` = Null, `Ready` = ? WHERE `Pipeline` = ?",
-            (True, self.name),
+        dbf.add_or_update_pipeline(
+            self.name,
+            {
+                "Sample ID": None,
+                "Flag": None,
+                "Ready": True,
+            },
         )
 
     def set_jobid(self, job_id: str, jobid_on_server: str | None = None) -> None:
         """Set the job ID on the pipeline in the database."""
-        dbf.execute_sql(
-            "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ?, `Ready` = 0 WHERE `Pipeline` = ?",
-            (job_id, jobid_on_server, self.name),
+        dbf.add_or_update_pipeline(
+            self.name,
+            {
+                "Job ID": job_id,
+                "Job ID on server": jobid_on_server,
+                "Ready": False,
+            },
         )
 
 
@@ -285,13 +279,8 @@ class _Sample:
     @classmethod
     def from_pipeline(cls, pipeline: "_Pipeline") -> "_Sample | None":
         """Create a _Sample object from a _Pipeline object."""
-        result = dbf.execute_sql(
-            "SELECT `Sample ID` FROM pipelines WHERE `Pipeline` = ?",
-            (pipeline.name,),
-        )
-        if not result[0][0]:
-            return None
-        return cls(str(result[0][0]))
+        sample_id = dbf.get_sample_from_pipeline(pipeline.name)
+        return cls(sample_id) if sample_id else None
 
     @property
     def pipeline(self) -> "_Pipeline | None":
@@ -346,25 +335,21 @@ class _CyclingJob:
             raise ValueError(msg)
 
         if self.job_id and self.jobid_on_server:
-            dbf.execute_sql(
-                "INSERT INTO jobs (`Job ID`, `Sample ID`, `Server label`, `Server hostname`, `Job ID on server`, "
-                "`Pipeline`, `Submitted`, `Payload`, `Unicycler protocol`, `Capacity (mAh)`, `Comment`) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    self.job_id,
-                    self.sample.id,
-                    self.pipeline.server.label,
-                    self.pipeline.server.hostname,
-                    self.jobid_on_server,
-                    self.pipeline.name,
-                    datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                    json_string,
-                    self.unicycler_protocol,
-                    self.capacity_Ah * 1000,
-                    self.comment,
-                ),
+            dbf.add_or_update_job(
+                self.job_id,
+                {
+                    "Sample ID": self.sample.id,
+                    "Server label": self.pipeline.server.label,
+                    "Server hostname": self.pipeline.server.hostname,
+                    "Job ID on server": self.jobid_on_server,
+                    "Pipeline": self.pipeline.name,
+                    "Submitted": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    "Payload": json_string,
+                    "Unicycler protocol": self.unicycler_protocol,
+                    "Capacity (mAh)": self.capacity_Ah * 1000,
+                    "Comment": self.comment,
+                },
             )
-
             self.pipeline.set_jobid(self.job_id, self.jobid_on_server)
 
     def add_payload(self, payload: str | Path | dict) -> None:
@@ -412,7 +397,12 @@ class _CyclingJob:
             msg = f"Sample {self.sample.id} is not loaded on any pipeline."
             raise ValueError(msg)
 
-        return self.pipeline.server.cancel(self.job_id, self.jobid_on_server, self.sample.id, self.pipeline.name)
+        self.pipeline.server.cancel(self.job_id, self.jobid_on_server, self.sample.id, self.pipeline.name)
+
+        dbf.add_or_update_pipeline(
+            self.pipeline.name,
+            {"Job ID": None, "Job ID on server": None},
+        )
 
     @classmethod
     def from_id(cls, job_id: str) -> "_CyclingJob":
@@ -426,23 +416,19 @@ class _CyclingJob:
             _CyclingJob: The _CyclingJob object.
 
         """
-        result = dbf.execute_sql(
-            "SELECT `Sample ID`, `Capacity (mAh)`, `Job ID On Server`, `Comment` FROM jobs WHERE `Job ID` = ?",
-            (job_id,),
-        )
+        result = dbf.get_job_data(job_id)
         if not result:
             msg = f"Job '{job_id}' not found in the database."
             raise ValueError(msg)
-        sample_id, capacity_mAh, jobid_on_server, comment = result[0]
-        sample = _Sample.from_id(sample_id)
+        sample = _Sample.from_id(result["Sample ID"])
         job = cls(
             sample=sample,
             job_name=f"Job for sample {sample.id}",
-            capacity_Ah=capacity_mAh * 1e-3,
-            comment=comment,
+            capacity_Ah=result["Capacity (mAh)"] * 1e-3,
+            comment=result["Comment"],
         )
         job.job_id = job_id
-        job.jobid_on_server = jobid_on_server
+        job.jobid_on_server = result["Job ID on server"]
 
         return job
 
@@ -469,83 +455,21 @@ class ServerManager:
     def update_db(self) -> None:
         """Update all tables in the database."""
         self.update_pipelines()
-        self.update_flags()
+        dbf.update_flags()
 
     def update_pipelines(self) -> None:
         """Update the pipelines table in the database with the current status."""
         for label, server in self.servers.items():
             try:
-                status = server.get_pipelines()
+                logger.info("Querying server '%s'", label)
+                rows = server.get_pipelines()
             except Exception as e:
                 logger.error("Error getting pipeline status from %s: %s", label, e)
                 continue
             dt = datetime.now(timezone.utc).isoformat(timespec="seconds")
-            if status:
-                with sqlite3.connect(self.config["Database path"]) as conn:
-                    cursor = conn.cursor()
-                    for ready, pipeline, sampleid, jobid_on_server in zip(
-                        status["ready"],
-                        status["pipeline"],
-                        status["sampleid"],
-                        status["jobid"],
-                        strict=True,
-                    ):
-                        cursor.execute(
-                            "INSERT OR IGNORE INTO pipelines (`Pipeline`) VALUES (?)",
-                            (pipeline,),
-                        )
-                        cursor.execute(
-                            "UPDATE pipelines "
-                            "SET `Ready` = ?, `Last checked` = ?, `Server label` = ?, "
-                            "`Server hostname` = ?, `Server type` = ? "
-                            "WHERE `Pipeline` = ?",
-                            (ready, dt, label, server.hostname, server.server_type, pipeline),
-                        )
-                        if sampleid is not None:
-                            cursor.execute(
-                                "UPDATE pipelines SET `Sample ID` = ? WHERE `Pipeline` = ?",
-                                (sampleid, pipeline),
-                            )
-                        # There is no job running - remove job ids from pipeline
-                        if ready == 1:
-                            cursor.execute(
-                                "UPDATE pipelines SET `Job ID on server` = ?, `Job ID` = ? WHERE `Pipeline` = ?",
-                                (None, None, pipeline),
-                            )
-                        # Update the job id (if it is None, then ignore rather than remove)
-                        elif jobid_on_server is not None:
-                            cursor.execute(
-                                "SELECT `Job ID` FROM jobs "
-                                "WHERE `Job ID on server` = ? AND `Sample ID` = ? AND `Pipeline` = ?",
-                                (jobid_on_server, sampleid, pipeline),
-                            )
-                            result = cursor.fetchone()
-                            if result:
-                                cursor.execute(
-                                    "UPDATE pipelines SET `Job ID on server` = ?, `Job ID` = ? WHERE `Pipeline` = ?",
-                                    (jobid_on_server, result[0], pipeline),
-                                )
-                            else:
-                                logger.warning(
-                                    "No matching Job ID found in database for server '%s' Job ID '%s'.",
-                                    label,
-                                    jobid_on_server,
-                                )
-                    conn.commit()
-
-    def update_flags(self) -> None:
-        """Update the flags in the pipelines table from the results table."""
-        with sqlite3.connect(self.config["Database path"]) as conn:
-            cursor = conn.cursor()
-            cursor.execute("UPDATE pipelines SET `Flag` = NULL")
-            cursor.execute("SELECT `Pipeline`, `Flag`, `Sample ID` FROM results")
-            results = cursor.fetchall()
-            for pipeline, flag, sampleid in results:
-                cursor.execute(
-                    "UPDATE pipelines SET `Flag` = ? WHERE `Pipeline` = ? AND `Sample ID` = ?",
-                    (flag, pipeline, sampleid),
-                )
-            conn.commit()
+            rows = [{"Last checked": dt, **r} for r in rows]
+            dbf.bulk_add_or_update_pipeline(rows)
+        dbf.fill_pipelines_missing_job_ids()
 
     def load(self, pipeline_id: str, sample_id: str) -> None:
         """Load a sample on a pipeline.
@@ -645,150 +569,80 @@ class ServerManager:
 
         """
         # check if the input is a sample ID
-        result = dbf.execute_sql("SELECT `Sample ID` FROM samples WHERE `Sample ID` = ?", (samp_or_jobid,))
-        if result:  # it's a sample
-            result = dbf.execute_sql(
-                "SELECT `Sample ID`, `Status`, `Job ID`, `Job ID on server`, `Server label`, `Snapshot Status` "
-                "FROM jobs WHERE `Sample ID` = ? ",
-                (samp_or_jobid,),
-            )
+        is_sample = dbf.is_sample(samp_or_jobid)
+        if is_sample:
+            jobs = [dbf.get_job_data(j) for j in dbf.get_jobs_from_sample(samp_or_jobid)]
         else:  # it's a job ID
-            result = dbf.execute_sql(
-                "SELECT `Sample ID`, `Status`, `Job ID`, `Job ID on server`, `Server label`, `Snapshot Status` "
-                "FROM jobs WHERE `Job ID` = ?",
-                (samp_or_jobid,),
-            )
-        if not result:
+            jobs = [dbf.get_job_data(samp_or_jobid)]
+        jobs = [j for j in jobs if j is not None]
+        if not jobs:
             msg = f"Sample or job ID '{samp_or_jobid}' not found in the database."
             raise ValueError(msg)
 
-        for sample_id, status, jobid, jobid_on_server, server_label, snapshot_status in result:
-            if not sample_id:
-                logger.warning("Job %s has no sample, skipping.", jobid)
+        for job in jobs:
+            sample_id = job.get("Sample ID")
+            job_id = job.get("Job ID")
+            job_id_on_server = job.get("Job ID on server")
+            if not job_id:
                 continue
-            if not jobid_on_server:
-                logger.warning("Job %s has no job ID on server, skipping.", jobid)
+            if not sample_id:
+                logger.warning("Job %s has no sample, skipping.", job["Job ID"])
+                continue
+            if not job_id_on_server:
+                logger.warning("Job %s has no job ID on server, skipping.", job["Job ID"])
                 continue
             # Check that sample is known
             if sample_id == "Unknown":
-                logger.warning("Job %s has no sample name or payload, skipping.", jobid)
+                logger.warning("Job %s has no sample name or payload, skipping.", job["Job ID"])
                 continue
 
-            local_save_location_processed = get_sample_folder(sample_id)
+            local_save_location_processed = get_sample_folder(job["Sample ID"])
 
-            files_exist = (local_save_location_processed / f"snapshot.{jobid}.h5").exists()
+            files_exist = (local_save_location_processed / f"snapshot.{job_id}.h5").exists() or (
+                local_save_location_processed / "snapshots" / f"snapshot.{job_id}.parquet"
+            ).exists()
             if files_exist and mode != "always":
                 if mode == "if_not_exists":
-                    logger.info("Snapshot for %s already exists, skipping.", jobid)
+                    logger.info("Snapshot for %s already exists, skipping.", job_id)
                     continue
-                if mode == "new_data" and snapshot_status is not None and snapshot_status.startswith("c"):
-                    logger.info("Snapshot for %s already complete, skipping.", jobid)
+                if mode == "new_data" and job["Snapshot status"] is not None and job["Snapshot status"].startswith("c"):
+                    logger.info("Snapshot for %s already complete, skipping.", job_id)
                     continue
 
             # Check that the job has started
-            if status in ["q", "qw"]:
-                logger.warning("Job %s is still queued, skipping snapshot.", jobid)
+            if job["Snapshot status"] in ["q", "qw"]:
+                logger.warning("Job %s is still queued, skipping snapshot.", job_id)
                 continue
 
             # Check that the server is accessible
             try:
-                server = find_server(server_label)
+                server = find_server(job["Server label"])
             except KeyError as e:
-                logger.warning("Could not access server %s for job %s: %s", server_label, jobid, e)
+                logger.warning("Could not access server %s for job %s: %s", job["Server label"], job_id, e)
                 continue
 
             # Snapshot the job
             try:
-                new_snapshot_status = server.snapshot(sample_id, jobid, jobid_on_server)
+                new_snapshot_status = server.snapshot(sample_id, job_id, job_id_on_server)
             except FileNotFoundError as e:
                 msg = (
-                    f"Error snapshotting {jobid}: {e}\n"
+                    f"Error snapshotting {job_id}: {e}\n"
                     "Likely the job was cancelled before starting. "
                     "Setting `Snapshot Status` to 'ce' in the database."
                 )
-                dbf.execute_sql(
-                    "UPDATE jobs SET `Snapshot status` = 'ce' WHERE `Job ID` = ?",
-                    (jobid,),
-                )
+                dbf.add_or_update_job(job_id, {"Snapshot status": "ce"})
                 raise FileNotFoundError(msg) from e
 
             # Update the snapshot status in the database
             dt = datetime.now(timezone.utc).isoformat(timespec="seconds")
-            dbf.execute_sql(
-                "INSERT OR IGNORE INTO results (`Sample ID`) VALUES (?)",
-                (sample_id,),
-            )
-            dbf.execute_sql(
-                "UPDATE results SET `Last snapshot` = ? WHERE `Sample ID` = ?",
-                (dt, sample_id),
-            )
-            dbf.execute_sql(
-                "UPDATE jobs SET `Snapshot status` = ?, `Last snapshot` = ? WHERE `Job ID` = ?",
-                (new_snapshot_status, dt, jobid),
-            )
+            dbf.update_results(sample_id, {"Last snapshot": dt})
+            dbf.add_or_update_job(job_id, {"Last snapshot": dt, "Snapshot status": new_snapshot_status})
 
         # Analyse the new data (only once per sample)
-        for unique_sample_id in {sample_id for sample_id, *_ in result}:
+        samples = [j.get("Sample ID") for j in jobs]
+        unique_samples = {s for s in samples if s is not None}
+        for unique_sample_id in unique_samples:
             analysis.analyse_sample(unique_sample_id)
-
-    def snapshot_all(
-        self,
-        sampleid_contains: str = "",
-        mode: Literal["always", "new_data", "if_not_exists"] = "new_data",
-    ) -> None:
-        """Snapshot all jobs in the database.
-
-        Args:
-            sampleid_contains : str, optional
-                A string that the sample ID must contain to be snapshot. By default all samples are
-                considered for snapshotting.
-            mode : str, optional
-                When to make a new snapshot. Can be one of the following:
-                    - 'always': Force a snapshot even if job is already done and data is downloaded.
-                    - 'new_data': Snapshot if there is new data on the server.
-                    - 'if_not_exists': Snapshot only if the file doesn't exist locally.
-                Default is 'new_data'.
-
-        """
-        # Find the jobs that need snapshotting
-        if mode not in ["always", "new_data", "if_not_exists"]:
-            msg = f"Invalid mode: {mode}. Must be one of 'always', 'new_data', 'if_not_exists'."
-            raise ValueError(msg)
-        where = "`Status` IN ( 'c', 'r', 'rd', 'cd', 'ce') AND `Sample ID` IS NOT 'Unknown'"
-        if mode == "new_data":
-            where += " AND (`Snapshot status` NOT LIKE 'c%' OR `Snapshot status` IS NULL)"
-        if sampleid_contains:
-            result = dbf.execute_sql(
-                "SELECT `Job ID` FROM jobs WHERE " + where + " AND `Sample ID` LIKE ?",  # noqa: S608
-                (f"%{sampleid_contains}%",),
-            )
-        else:
-            result = dbf.execute_sql("SELECT `Job ID` FROM jobs WHERE " + where)  # noqa: S608
-        total_jobs = len(result)
-        logger.info("Snapshotting %d jobs with mode '%s'", total_jobs, mode)
-        t0 = time()
-        # Snapshot each job, ignore errors and continue
-        # Sleeps are added after each to not overload the server
-        # If snapshotting non-stop for hours, you can stop data transfer in the machine
-        # This could result in memory filling up in the cycler and data being lost
-        for i, (jobid,) in enumerate(result):
-            try:
-                self.snapshot(jobid, mode=mode)
-            except (KeyError, NotImplementedError, FileNotFoundError) as e:
-                logger.exception("Error snapshotting job %s", jobid)
-                if isinstance(e, FileNotFoundError):  # Something ran on server, so sleep
-                    sleep(10)
-                continue
-            except Exception as e:
-                tb = traceback.format_exc()
-                error_message = str(e) or "An error occurred but no message was provided."
-                logger.warning("Unexpected error snapshotting %s: %s\n%s", jobid, error_message, tb)
-                sleep(10)  # to not overload the server
-                continue
-            time_elapsed = time() - t0
-            time_remaining = time_elapsed / (i + 1) * (total_jobs - i - 1)
-            sleep(10)  # to not overload the server
-            logger.info("%d/%d jobs done. Approx %d minutes remaining", i + 1, total_jobs, int(time_remaining / 60))
 
     def _update_neware_jobids(self) -> None:
         """Update all Job IDs on Neware servers.
@@ -798,19 +652,11 @@ class ServerManager:
         per channel.
 
         """
-        result = dbf.execute_sql(
-            "SELECT `Pipeline`, `Server label` FROM pipelines WHERE "
-            "`Sample ID` NOT NULL AND `Ready` = 0 AND `Server type` = 'neware'",
-        )
-        pipelines = [row[0] for row in result]
-        serverids = [row[1] for row in result]
-        for serverid, pipeline in zip(serverids, pipelines, strict=True):
-            logger.info("Updating job ID for %s on server %s", pipeline, serverid)
-            server = find_server(serverid)
+        pipelines, server_labels = dbf.get_neware_pipelines()
+        for pipeline, server_label in zip(pipelines, server_labels, strict=True):
+            logger.info("Updating job ID for %s on server %s", pipeline, server_label)
+            server = find_server(server_label)
             assert isinstance(server, cycler_servers.NewareServer)  # noqa: S101
             jobid_on_server = server._get_job_id(pipeline)  # noqa: SLF001
-            full_jobid = f"{server.label}-{jobid_on_server}"
-            dbf.execute_sql(
-                "UPDATE pipelines SET `Job ID` = ?, `Job ID on server` = ? WHERE `Pipeline` = ?",
-                (full_jobid, jobid_on_server, pipeline),
-            )
+            full_jobid = dbf.get_job_id_from_server(server_label, jobid_on_server)
+            dbf.add_or_update_pipeline(pipeline, {"Job ID": full_jobid, "Job ID on server": jobid_on_server})

@@ -1,4 +1,4 @@
-"""Copyright © 2025, Empa.
+"""Copyright © 2025-2026, Empa.
 
 Command line utility for setting up the Aurora Cycler Manager.
 
@@ -20,12 +20,29 @@ import contextlib
 import json
 import logging
 import os
-import sqlite3
 from pathlib import Path
 
 import platformdirs
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    Index,
+    Integer,
+    MetaData,
+    PrimaryKeyConstraint,
+    String,
+    Table,
+    Text,
+    UniqueConstraint,
+    inspect,
+    text,
+    types,
+)
 
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.database_engine import get_engine
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -42,12 +59,27 @@ else:
     user_config_dir = Path(platformdirs.user_data_dir("aurora_cycler_manager", appauthor=False))
     USER_CONFIG_PATH = user_config_dir / "config.json"
 
+TYPE_MAP = {
+    "TEXT": Text,
+    "VARCHAR(255)": String(255),
+    "INTEGER": Integer,
+    "FLOAT": Float,
+    "BOOLEAN": Boolean,
+    "DATETIME": DateTime,
+    "TIMESTAMP": DateTime,
+}
+
+
+def get_sa_type(type_str: str) -> types.TypeEngine:
+    """Convert SQLITE to sqalchemy types."""
+    return TYPE_MAP.get(type_str.upper(), Text)
+
 
 def default_config(base_dir: Path) -> dict:
     """Create default shared config file."""
     return {
+        "Database type": "sqlite",
         "Database path": str(base_dir / "database" / "database.db"),
-        "Database backup folder path": str(base_dir / "database" / "backup"),
         "Samples folder path": str(base_dir / "samples"),
         "Protocols folder path": str(base_dir / "protocols"),
         "Data folder path": str(base_dir / "data"),
@@ -183,164 +215,170 @@ def default_config(base_dir: Path) -> dict:
 
 
 def create_database(force: bool = False) -> None:
-    """Create/update a database file."""
-    # Load the configuration
+    """Create/update sqlite3 or postgres database.
+
+    For sqlite3, just a database path is needed in the config.
+    For postgres, postgres must already be installed, running, and an empty database must be
+    provided, with host, name, user, and password in config.
+    """
     config = get_config()
-    database_path = Path(config["Database path"])
+    db_type = config.get("Database type", "sqlite")
 
-    # Check if database file already exists
-    if database_path.exists() and database_path.suffix == ".db":
-        db_existed = True
-        logger.info("Found database at %s", database_path)
+    if db_type == "sqlite":
+        database_path = Path(config["Database path"])
+        db_existed = database_path.exists()
+        if not db_existed:
+            database_path.parent.mkdir(exist_ok=True)
+            logger.info("Creating new database at %s", database_path)
+        else:
+            logger.info("Found database at %s", database_path)
     else:
-        db_existed = False
-        database_path.parent.mkdir(exist_ok=True)
-        logger.info("Creating new database at %s", database_path)
+        db_existed = True  # assume postgres db already exists, we just create tables
 
-    # Get the list of columns from the configuration
     columns = config["Sample database"]
-    column_definitions = [f"`{col['Name']}` {col['Type']}" for col in columns]
+    sample_columns = [
+        Column(col["Name"], get_sa_type(col["Type"]), primary_key=(col["Name"] == "Sample ID")) for col in columns
+    ]
 
-    # Connect to database, create tables
-    with sqlite3.connect(config["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute(f"CREATE TABLE IF NOT EXISTS samples ({', '.join(column_definitions)})")
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS jobs ("
-            "`Job ID` VARCHAR(255) PRIMARY KEY, "
-            "`Sample ID` VARCHAR(255), "
-            "`Pipeline` VARCHAR(50), "
-            "`Status` VARCHAR(3), "
-            "`Jobname` VARCHAR(50), "
-            "`Server label` VARCHAR(255), "
-            "`Server hostname` VARCHAR(255), "
-            "`Job ID on server` VARCHAR(255), "
-            "`Submitted` DATETIME, "
-            "`Payload` TEXT, "
-            "`Unicycler protocol` TEXT, "
-            "`Capacity (mAh)` FLOAT, "
-            "`Comment` TEXT, "
-            "`Last checked` DATETIME, "
-            "`Snapshot status` VARCHAR(3), "
-            "`Last snapshot` DATETIME, "
-            "FOREIGN KEY(`Sample ID`) REFERENCES samples(`Sample ID`),"
-            "FOREIGN KEY(`Pipeline`) REFERENCES pipelines(`Pipeline`)"
-            ")",
-        )
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_job_on_server ON jobs (`Job ID on server`, `Server label`)")
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS pipelines ("
-            "`Pipeline` VARCHAR(50) PRIMARY KEY, "
-            "`Sample ID` VARCHAR(255),"
-            "`Job ID` VARCHAR(255), "
-            "`Ready` BOOLEAN, "
-            "`Flag` VARCHAR(10), "
-            "`Last checked` DATETIME, "
-            "`Server label` VARCHAR(255), "
-            "`Server type` VARCHAR(50), "
-            "`Server hostname` VARCHAR(255), "
-            "`Job ID on server` VARCHAR(255), "
-            "FOREIGN KEY(`Sample ID`) REFERENCES samples(`Sample ID`), "
-            "FOREIGN KEY(`Job ID`) REFERENCES jobs(`Job ID`)"
-            ")",
-        )
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pipelines_sample_id ON 'pipelines' (`Sample ID`)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pipelines_job_id ON pipelines (`Job ID`)")
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS results ("
-            "`Sample ID` VARCHAR(255) PRIMARY KEY,"
-            "`Pipeline` VARCHAR(50),"
-            "`Status` VARCHAR(3),"
-            "`Flag` VARCHAR(10),"
-            "`Number of cycles` INT,"
-            "`Capacity loss (%)` FLOAT,"
-            "`First formation efficiency (%)` FLOAT,"
-            "`Initial specific discharge capacity (mAh/g)` FLOAT,"
-            "`Initial efficiency (%)` FLOAT,"
-            "`Last specific discharge capacity (mAh/g)` FLOAT,"
-            "`Last efficiency (%)` FLOAT,"
-            "`Max voltage (V)` FLOAT,"
-            "`Formation C` FLOAT,"
-            "`Cycling C` FLOAT,"
-            "`Last snapshot` DATETIME,"
-            "`Last analysis` DATETIME,"
-            "`Snapshot status` VARCHAR(3),"
-            "`Snapshot pipeline` VARCHAR(50),"
-            "FOREIGN KEY(`Sample ID`) REFERENCES samples(`Sample ID`), "
-            "FOREIGN KEY(`Pipeline`) REFERENCES pipelines(`Pipeline`)"
-            ")",
-        )
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS dataframes ("
-            "`Sample ID` TEXT NOT NULL, "
-            "`File stem` TEXT NOT NULL, "
-            "`Job ID` TEXT, "
-            "`From known source` BOOLEAN, "
-            "`Data start` TIMESTAMP, "
-            "`Data end` TIMESTAMP, "
-            "`Modified` TIMESTAMP, "
-            "PRIMARY KEY (`Sample ID`, `File stem`), "
-            "FOREIGN KEY(`Sample ID`) REFERENCES samples(`Sample ID`), "
-            "FOREIGN KEY(`Job ID`) REFERENCES jobs(`Job ID`)"
-            ")",
-        )
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS harvester ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-            "`Server label` TEXT, "
-            "`Server hostname` TEXT, "
-            "`Folder` TEXT, "
-            "`Last snapshot` DATETIME, "
-            "UNIQUE(`Server label`, `Server hostname`, `Folder`)"
-            ")",
-        )
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS batches ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-            "label TEXT UNIQUE NOT NULL, "
-            "description TEXT"
-            ")",
-        )
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS batch_samples ("
-            "batch_id INT, "
-            "sample_id TEXT, "
-            "FOREIGN KEY(batch_id) REFERENCES batches(id), "
-            "FOREIGN KEY(sample_id) REFERENCES samples(`Sample ID`), "
-            "UNIQUE(batch_id, sample_id)"
-            ")",
-        )
-        conn.commit()
+    engine = get_engine(config)
+    meta = MetaData()
 
-        # Check if there are new columns to add in samples table
-        if db_existed:
-            cursor.execute("PRAGMA table_info(samples)")
-            existing_columns = cursor.fetchall()
-            existing_columns = [col[1] for col in existing_columns]
-            new_columns = [col["Name"] for col in config["Sample database"]]
-            added_columns = [col for col in new_columns if col not in existing_columns]
-            removed_columns = [col for col in existing_columns if col not in new_columns]
-            if removed_columns:
-                # Ask user to double confirm
+    samples_table = Table("samples", meta, *sample_columns)  # noqa: F841
+
+    jobs_table = Table(
+        "jobs",
+        meta,
+        Column("Job ID", String(255), primary_key=True),
+        Column("Sample ID", String(255)),
+        Column("Pipeline", String(50)),
+        Column("Status", String(3)),
+        Column("Jobname", String(50)),
+        Column("Server label", String(255)),
+        Column("Server hostname", String(255)),
+        Column("Job ID on server", String(255)),
+        Column("Submitted", DateTime),
+        Column("Payload", Text),
+        Column("Unicycler protocol", Text),
+        Column("Capacity (mAh)", Float),
+        Column("Comment", Text),
+        Column("Last checked", DateTime),
+        Column("Snapshot status", String(3)),
+        Column("Last snapshot", DateTime),
+    )
+
+    pipelines_table = Table(
+        "pipelines",
+        meta,
+        Column("Pipeline", String(50), primary_key=True),
+        Column("Sample ID", String(255)),
+        Column("Job ID", String(255)),
+        Column("Ready", Boolean),
+        Column("Flag", String(10)),
+        Column("Last checked", DateTime),
+        Column("Server label", String(255)),
+        Column("Server type", String(50)),
+        Column("Server hostname", String(255)),
+        Column("Job ID on server", String(255)),
+    )
+
+    results_table = Table(  # noqa: F841
+        "results",
+        meta,
+        Column("Sample ID", String(255), primary_key=True),
+        Column("Pipeline", String(50)),
+        Column("Status", String(3)),
+        Column("Flag", String(10)),
+        Column("Number of cycles", Integer),
+        Column("Capacity loss (%)", Float),
+        Column("First formation efficiency (%)", Float),
+        Column("Initial specific discharge capacity (mAh/g)", Float),
+        Column("Initial efficiency (%)", Float),
+        Column("Last specific discharge capacity (mAh/g)", Float),
+        Column("Last efficiency (%)", Float),
+        Column("Max voltage (V)", Float),
+        Column("Formation C", Float),
+        Column("Cycling C", Float),
+        Column("Last snapshot", DateTime),
+        Column("Last analysis", DateTime),
+        Column("Snapshot status", String(3)),
+        Column("Snapshot pipeline", String(50)),
+    )
+
+    dataframes_table = Table(  # noqa: F841
+        "dataframes",
+        meta,
+        Column("Sample ID", Text, nullable=False),
+        Column("File stem", Text, nullable=False),
+        Column("Job ID", Text),
+        Column("From known source", Boolean),
+        Column("Data start", DateTime),
+        Column("Data end", DateTime),
+        Column("Modified", DateTime),
+        PrimaryKeyConstraint("Sample ID", "File stem"),
+    )
+
+    harvester_table = Table(  # noqa: F841
+        "harvester",
+        meta,
+        Column("id", Integer, primary_key=True, autoincrement=True),
+        Column("Server label", Text),
+        Column("Server hostname", Text),
+        Column("Folder", Text),
+        Column("Last snapshot", DateTime),
+        UniqueConstraint("Server label", "Server hostname", "Folder"),
+    )
+
+    batches_table = Table(  # noqa: F841
+        "batches",
+        meta,
+        Column("id", Integer, primary_key=True, autoincrement=True),
+        Column("label", Text, unique=True, nullable=False),
+        Column("description", Text),
+    )
+
+    batch_samples_table = Table(  # noqa: F841
+        "batch_samples",
+        meta,
+        Column("batch_id", Integer),
+        Column("sample_id", Text),
+        UniqueConstraint("batch_id", "sample_id"),
+    )
+
+    # Indexes
+    Index("idx_jobs_job_on_server", jobs_table.c["Job ID on server"], jobs_table.c["Server label"])
+    Index("idx_pipelines_sample_id", pipelines_table.c["Sample ID"])
+    Index("idx_pipelines_job_id", pipelines_table.c["Job ID"])
+    if db_type == "sqlite":
+        logger.info("Updating sqlite database at %s...", str(config["Database path"]))
+    else:
+        logger.info("Update postgresql database '%s'...", config["Database name"])
+    meta.create_all(engine, checkfirst=True)
+    logger.info("Done. Tables: %s", ", ".join(meta.tables.keys()))
+
+    # Handle added/removed columns in samples
+    if db_existed:
+        inspector = inspect(engine)
+        existing_columns = [col["name"] for col in inspector.get_columns("samples")]
+        new_columns = [col["Name"] for col in columns]
+        added = [c for c in new_columns if c not in existing_columns]
+        removed = [c for c in existing_columns if c not in new_columns]
+
+        with engine.begin() as conn:
+            if removed:
                 if not force:
-                    msg = (
-                        "WARNING: Operation would remove columns.\n"
-                        "Use '--force' to proceed.\n"
-                        f"Would remove columns: {', '.join(removed_columns)}"
-                    )
+                    msg = f"Operation would remove columns: {', '.join(removed)}. Use '--force' to proceed."
                     raise ValueError(msg)
-                for col in removed_columns:
-                    cursor.execute(f'ALTER TABLE samples DROP COLUMN "{col}"')
-                conn.commit()
-                logger.warning("Columns %s removed", ", ".join(removed_columns))
-            if added_columns:
-                # Add new columns
-                for col in config["Sample database"]:
-                    if col["Name"] in added_columns:
-                        cursor.execute(f'ALTER TABLE samples ADD COLUMN "{col["Name"]}" {col["Type"]}')
-                conn.commit()
-                logger.info("Adding new columns to database: %s", ", ".join(added_columns))
-            if not added_columns and not removed_columns:
+                for col in removed:
+                    conn.execute(text(f'ALTER TABLE samples DROP COLUMN "{col}"'))
+                logger.warning("Columns %s removed", ", ".join(removed))
+
+            if added:
+                for col in columns:
+                    if col["Name"] in added:
+                        conn.execute(text(f'ALTER TABLE samples ADD COLUMN "{col["Name"]}" {col["Type"]}'))
+                logger.info("Adding new columns: %s", ", ".join(added))
+
+            if not added and not removed:
                 logger.info("No changes to database configuration")
 
 
@@ -417,7 +455,6 @@ def connect_to_config(shared_config_folder: str | Path) -> None:
     # Check that the shared config has the required keys
     required_keys = [
         "Database path",
-        "Database backup folder path",
         "Samples folder path",
         "Protocols folder path",
         "Data folder path",

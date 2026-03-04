@@ -38,6 +38,7 @@ dependencies = [
     "pyarrow>=21.0.0",
     "python-calamine>=0.4.0",
     "scp>=0.15.0",
+    "sqlalchemy>=2.0.46",
     "tables>=3.10.1",
     "tsdownsample>=0.1.4.1",
     "typing-extensions>=4.15.0",
@@ -49,6 +50,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+pg = [
+    "psycopg2-binary>=2.9.11",
+]
 dev = [
     "bumpver>=2025.1131",
     "pre-commit>=4.2.0",

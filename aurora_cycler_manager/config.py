@@ -6,7 +6,6 @@ Functions for getting the configuration settings.
 import json
 import logging
 import os
-import sqlite3
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -128,8 +127,17 @@ def _read_config_file() -> dict:
                     shared_config[key] = Path(shared_config[key])
         config.update(shared_config)
 
-    if not config.get("Database path"):
-        raise ValueError(err_msg)
+    if "Database type" not in config:
+        config["Database type"] = "sqlite"
+    if config["Database type"] not in ["sqlite", "postgresql"]:
+        msg = f"Unknown database type {config['Database type']}. Supported: 'sqlite' and 'postgresql'"
+        raise ValueError(msg)
+    if config["Database type"] == "sqlite" and "Database path" not in config:
+        msg = "sqlite requires a 'Database path' in the config"
+        raise ValueError(msg)
+    if config["Database type"] == "postgresql" and "Database host" not in config:
+        msg = "postgresql requires at least 'Database host', 'Database name', 'Database user' in the config"
+        raise ValueError(msg)
 
     # Servers should be transformed to key: dict with valid labels
     config["Servers"] = _convert_legacy_servers(config)
@@ -139,10 +147,6 @@ def _read_config_file() -> dict:
         config["tz"] = ZoneInfo(config["Time zone"])
     else:
         config["tz"] = ZoneInfo(get_localzone_name())
-
-    # Patch the database in case users are using an old version
-    if config.get("Database path").exists():
-        patch_database(config)
 
     config["User config path"] = user_config_path
 
@@ -185,34 +189,6 @@ def _convert_servers_to_dict(servers: list | dict) -> dict:
     for server_label, server_config in servers.items():
         server_config["label"] = server_label
     return servers
-
-
-def patch_database(config: dict) -> None:
-    """Add missing columns to database, in case users are coming from an older version."""
-    with sqlite3.connect(config["Database path"]) as conn:
-        cursor = conn.cursor()
-        # Make columns in the jobs table if it doesn't exist
-        cursor.execute("PRAGMA table_info(jobs)")
-        columns = [col[1] for col in cursor.fetchall()]
-        if "Capacity (mAh)" not in columns:
-            cursor.execute("ALTER TABLE jobs ADD COLUMN `Capacity (mAh)` FLOAT")
-        if "Unicycler protocol" not in columns:
-            cursor.execute("ALTER TABLE jobs ADD COLUMN `Unicycler protocol` TEXT")
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS dataframes ("
-            "`Sample ID` TEXT NOT NULL, "
-            "`File stem` TEXT NOT NULL, "
-            "`Job ID` TEXT, "
-            "`From known source` BOOLEAN, "
-            "`Data start` TIMESTAMP, "
-            "`Data end` TIMESTAMP, "
-            "`Modified` TIMESTAMP, "
-            "PRIMARY KEY (`Sample ID`, `File stem`), "
-            "FOREIGN KEY(`Sample ID`) REFERENCES samples(`Sample ID`), "
-            "FOREIGN KEY(`Job ID`) REFERENCES jobs(`Job ID`)"
-            ")",
-        )
-        conn.commit()
 
 
 def get_config(*, reload: bool = False) -> dict:

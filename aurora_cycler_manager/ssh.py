@@ -76,7 +76,6 @@ class SSHConnection:
 
     def get_files(self, local_files: list[Path], remote_files: list[str], *, missing_ok: bool = False) -> None:
         """Copy the files across with SFTP."""
-        assert isinstance(self.client, paramiko.SSHClient)  # noqa: S101
         with self.client.open_sftp() as sftp:
             for remote_file, local_file in zip(remote_files, local_files, strict=True):
                 local_file.parent.mkdir(parents=True, exist_ok=True)
@@ -92,7 +91,6 @@ class SSHConnection:
     def put_file(self, local_path: str | Path, remote_path: str | Path | PureWindowsPath) -> None:
         """Send file to Windows PC."""
         remote_path = PureWindowsPath(remote_path)
-        assert isinstance(self.client, paramiko.SSHClient)  # noqa: S101
         with self.client.open_sftp() as sftp:
             _sftp_mkdir_p(sftp, remote_path.parent.as_posix())
             sftp.put(str(local_path), str(remote_path.as_posix()))
@@ -112,7 +110,6 @@ class SSHConnection:
             f"| Where-Object {{ $_.LastWriteTime -gt '{cutoff_date_str}' -and ($_.Extension -in {extensions_str})}} "
             "| Select-Object -ExpandProperty FullName"
         )
-        assert isinstance(self.client, paramiko.SSHClient)  # noqa: S101
         _stdin, stdout, stderr = self.exec_command(command)
         exit_status = stdout.channel.recv_exit_status()
         if exit_status != 0:

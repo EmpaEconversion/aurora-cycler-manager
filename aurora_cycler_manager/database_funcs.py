@@ -4,46 +4,106 @@ Functions for interacting with the database.
 """
 
 import json
-import sqlite3
 import uuid
+from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Engine,
+    MetaData,
+    PrimaryKeyConstraint,
+    String,
+    Table,
+    Text,
+    bindparam,
+    delete,
+    exists,
+    func,
+    inspect,
+    select,
+    text,
+    update,
+)
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.database_engine import get_engine
 from aurora_cycler_manager.stdlib_utils import check_illegal_text, run_from_sample
+from aurora_cycler_manager.utils import parse_datetime
 
 CONFIG = get_config()
 
 
-def execute_sql(query: str, params: tuple | None = None) -> list[tuple]:
-    """Execute a query on the database.
+def patch_database(engine: Engine) -> None:
+    """Add missing columns to database, in case users are coming from an older version."""
+    inspector = inspect(engine)
 
-    Args:
-        query : str
-            The query to execute
-        params : tuple, optional
-            The parameters to pass to the query
+    # Add missing columns to jobs table
+    existing_columns = [col["name"] for col in inspector.get_columns("jobs")]
+    with engine.begin() as conn:
+        if "Capacity (mAh)" not in existing_columns:
+            conn.execute(text('ALTER TABLE jobs ADD COLUMN "Capacity (mAh)" FLOAT'))
+        if "Unicycler protocol" not in existing_columns:
+            conn.execute(text('ALTER TABLE jobs ADD COLUMN "Unicycler protocol" TEXT'))
 
-    Returns:
-        list[tuple] : the result of the query
+    # Create dataframes table if it doesn't exist
+    if "dataframes" not in inspector.get_table_names():
+        meta = MetaData()
+        Table(
+            "dataframes",
+            meta,
+            Column("Sample ID", Text, nullable=False),
+            Column("File stem", Text, nullable=False),
+            Column("Job ID", Text),
+            Column("From known source", Boolean),
+            Column("Data start", DateTime),
+            Column("Data end", DateTime),
+            Column("Modified", DateTime),
+            PrimaryKeyConstraint("Sample ID", "File stem"),
+        )
+        meta.create_all(engine)
 
-    """
-    commit_keywords = ["UPDATE", "INSERT", "DELETE", "REPLACE", "CREATE", "DROP", "ALTER"]
-    commit = any(keyword in query.upper() for keyword in commit_keywords)
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        if params is not None:
-            cursor.execute(query, params)
-        else:
-            cursor.execute(query)
-        if commit:
-            conn.commit()
-        return cursor.fetchall()
 
+engine = get_engine(CONFIG)
+insert = pg_insert if engine.dialect.name == "postgresql" else sqlite_insert
+
+patch_database(engine)
+
+metadata = MetaData()
+samples_table = Table("samples", metadata, autoload_with=engine)
+pipelines_table = Table("pipelines", metadata, autoload_with=engine)
+jobs_table = Table("jobs", metadata, autoload_with=engine)
+results_table = Table("results", metadata, autoload_with=engine)
+harvester_table = Table("harvester", metadata, autoload_with=engine)
+dataframes_table = Table("dataframes", metadata, autoload_with=engine)
+batches_table = Table("batches", metadata, autoload_with=engine)
+batch_samples_table = Table("batch_samples", metadata, autoload_with=engine)
+
+pipelines_table.c["Last checked"].type = String()
+jobs_table.c["Submitted"].type = String()
+jobs_table.c["Last checked"].type = String()
+jobs_table.c["Last snapshot"].type = String()
+results_table.c["Last snapshot"].type = String()
+results_table.c["Last analysis"].type = String()
+dataframes_table.c["Data start"].type = String()
+dataframes_table.c["Data end"].type = String()
+dataframes_table.c["Modified"].type = String()
+harvester_table.c["Last snapshot"].type = String()
 
 ### SAMPLES ###
+
+
+def is_sample(sample_id: str) -> bool:
+    """Check if it is a valid sample in db."""
+    with engine.connect() as conn:
+        return bool(conn.execute(select(exists().where(samples_table.c["Sample ID"] == sample_id))).scalar())
 
 
 def add_samples_from_object(samples: list[dict], overwrite: bool = False) -> None:
@@ -63,14 +123,14 @@ def add_samples_from_file(json_file: str | Path, overwrite: bool = False) -> Non
 def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
     """Upload the sample dataframe to the database."""
     sample_ids = df["Sample ID"].tolist()
+    if any(not isinstance(sample_id, str) for sample_id in sample_ids):
+        msg = "File contains non-string 'Sample ID' keys"
+        raise TypeError(msg)
     for sample_id in sample_ids:
         check_illegal_text(sample_id)
     if len(sample_ids) != len(set(sample_ids)):
         msg = "File contains duplicate 'Sample ID' keys"
         raise ValueError(msg)
-    if any(not isinstance(sample_id, str) for sample_id in sample_ids):
-        msg = "File contains non-string 'Sample ID' keys"
-        raise TypeError(msg)
 
     # Check if any sample already exists
     existing_sample_ids = get_all_sampleids()
@@ -82,27 +142,21 @@ def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
     df = _recalculate_sample_data(df)
 
     # Insert into database
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
+    with engine.begin() as conn:
         for _, raw_row in df.iterrows():
             # Remove empty columns from the row
             row = raw_row.dropna()
-            if row.empty:
-                continue
-            # Check if the row has sample ID
-            if "Sample ID" not in row:
-                continue
-            placeholders = ", ".join("?" * len(row))
-            columns = ", ".join(f"`{key}`" for key in row.index)
-            # SQL injection safe as column names are checked in _recalculate_sample_data
-            # Insert or ignore the row
-            sql = f"INSERT OR IGNORE INTO samples ({columns}) VALUES ({placeholders})"  # noqa: S608
-            cursor.execute(sql, tuple(row))
-            # Update the row
-            updates = ", ".join(f"`{column}` = ?" for column in row.index)
-            sql = f"UPDATE samples SET {updates} WHERE `Sample ID` = ?"  # noqa: S608
-            cursor.execute(sql, (*tuple(row), row["Sample ID"]))
-        conn.commit()
+
+            # Insert or update the row
+            row_dict = row.to_dict()
+            conn.execute(
+                insert(samples_table)
+                .values(**row_dict)
+                .on_conflict_do_update(
+                    index_elements=["Sample ID"],
+                    set_=row_dict,
+                )
+            )
 
 
 def _pre_check_sample_file(json_file: Path) -> None:
@@ -223,11 +277,9 @@ def update_sample_label(sample_ids: str | list[str], label: str | None) -> None:
     """Update the label of a sample in the database."""
     if isinstance(sample_ids, str):
         sample_ids = [sample_ids]
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
+    with engine.begin() as conn:
         for sample_id in sample_ids:
-            cursor.execute("UPDATE samples SET `Label` = ? WHERE `Sample ID` = ?", (label, sample_id))
-        conn.commit()
+            conn.execute(update(samples_table).where(samples_table.c["Sample ID"] == sample_id).values(Label=label))
 
 
 def delete_samples(sample_ids: str | list) -> None:
@@ -241,37 +293,39 @@ def delete_samples(sample_ids: str | list) -> None:
     """Delete samples from the database."""
     if not isinstance(sample_ids, list):
         sample_ids = [sample_ids]
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        for sample_id in sample_ids:
-            cursor.execute("DELETE FROM samples WHERE `Sample ID` = ?", (sample_id,))
-        conn.commit()
+    with engine.begin() as conn:
+        conn.execute(delete(samples_table).where(samples_table.c["Sample ID"].in_(sample_ids)))
 
 
 def get_all_sampleids() -> list[str]:
     """Get a list of all sample IDs in the database."""
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT `Sample ID` FROM samples")
-        return [row[0] for row in cursor.fetchall()]
+    with engine.connect() as conn:
+        result = conn.execute(select(samples_table.c["Sample ID"]))
+        return [row[0] for row in result.fetchall()]
 
 
 def get_sample_data(sample_id: str) -> dict:
     """Get all data about a sample from the database."""
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM samples WHERE `Sample ID`=?", (sample_id,))
-        result = cursor.fetchone()
+    with engine.connect() as conn:
+        result = (
+            conn.execute(select(samples_table).where(samples_table.c["Sample ID"] == sample_id)).mappings().fetchone()
+        )
         if not result:
             msg = f"Sample ID '{sample_id}' not found in the database"
             raise ValueError(msg)
         sample_data = dict(result)
         # Convert json strings to python objects
         history = sample_data.get("Assembly history")
-        if history:
+        if history and isinstance(history, str):
             sample_data["Assembly history"] = json.loads(history)
     return sample_data
+
+
+def get_all_run_ids() -> set[str]:
+    """Get all valid run IDs."""
+    with engine.connect() as conn:
+        result = conn.execute(select(samples_table.c["Run ID"]).distinct()).fetchall()
+    return {row[0] for row in result}
 
 
 ### BATCHES ###
@@ -279,120 +333,287 @@ def get_sample_data(sample_id: str) -> dict:
 
 def get_batch_details() -> dict[str, dict]:
     """Get all batch names, descriptions and samples from the database."""
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT b.label, b.description, bs.sample_id "
-            "FROM batch_samples bs JOIN batches b "
-            "ON bs.batch_id = b.id "
-            "ORDER BY b.label",
+    with engine.connect() as conn:
+        result = conn.execute(
+            select(batches_table.c.label, batches_table.c.description, batch_samples_table.c.sample_id)
+            .join(batches_table, batch_samples_table.c.batch_id == batches_table.c.id)
+            .order_by(batches_table.c.label)
         )
         batches: dict[str, dict] = {}
-        for batch, description, sample in cur.fetchall():
+        for batch, description, sample in result.fetchall():
             if batch not in batches:
                 batches[batch] = {"description": description, "samples": []}
             batches[batch]["samples"].append(sample)
-        # sort the keys alphabetically
         return dict(sorted(batches.items()))
 
 
 def save_or_overwrite_batch(batch_name: str, batch_description: str, sample_ids: list, overwrite: bool = False) -> None:
     """Save a batch to the database, overwriting it if the name already exists."""
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT id FROM batches WHERE label = ?", (batch_name,))
-        result = cur.fetchone()
+    with engine.begin() as conn:
+        result = conn.execute(select(batches_table.c.id).where(batches_table.c.label == batch_name)).fetchone()
+
         if result:
             if not overwrite:
                 msg = f"Batch {batch_name} already exists. Set overwrite=True to overwrite."
                 raise ValueError(msg)
             batch_id = result[0]
-            cur.execute(
-                "UPDATE batches SET description = ? WHERE id = ?",
-                (batch_description, batch_id),
+            conn.execute(
+                update(batches_table).where(batches_table.c.id == batch_id).values(description=batch_description)
             )
-            cur.execute(
-                "DELETE FROM batch_samples WHERE batch_id = ?",
-                (batch_id,),
-            )
+            conn.execute(delete(batch_samples_table).where(batch_samples_table.c.batch_id == batch_id))
         else:
-            cur.execute(
-                "INSERT INTO batches (label, description) VALUES (?,?)",
-                (batch_name, batch_description),
-            )
-            batch_id = cur.lastrowid
-        for sample_id in sample_ids:
-            cur.execute(
-                "INSERT INTO batch_samples (batch_id, sample_id) VALUES (?, ?)",
-                (batch_id, sample_id),
-            )
-        conn.commit()
+            batch_id = conn.execute(
+                insert(batches_table).values(label=batch_name, description=batch_description)
+            ).inserted_primary_key[0]
+
+        conn.execute(
+            insert(batch_samples_table),
+            [{"batch_id": batch_id, "sample_id": sample_id} for sample_id in sample_ids],
+        )
 
 
 def remove_batch(batch_name: str) -> None:
     """Remove a batch from the database."""
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT id FROM batches WHERE label = ?", (batch_name,))
-        batch_id = cur.fetchone()[0]
-        cur.execute("DELETE FROM batches WHERE label = ?", (batch_name,))
-        cur.execute("DELETE FROM batch_samples WHERE batch_id = ?", (batch_id,))
-        conn.commit()
+    with engine.begin() as conn:
+        batch_id = conn.execute(select(batches_table.c.id).where(batches_table.c.label == batch_name)).fetchone()[0]
+        conn.execute(delete(batches_table).where(batches_table.c.label == batch_name))
+        conn.execute(delete(batch_samples_table).where(batch_samples_table.c.batch_id == batch_id))
+
+
+### PIPELINES ###
+
+
+def get_pipeline(pipeline: str) -> dict | None:
+    """Get pipeline details."""
+    with engine.connect() as conn:
+        result = (
+            conn.execute(select(pipelines_table).where(pipelines_table.c["Pipeline"] == pipeline)).mappings().first()
+        )
+    return dict(result) if result else None
+
+
+def get_pipeline_from_sample(sample_id: str) -> dict | None:
+    """Get pipeline from a Sample ID."""
+    with engine.connect() as conn:
+        result = (
+            conn.execute(select(pipelines_table).where(pipelines_table.c["Sample ID"] == sample_id)).mappings().first()
+        )
+    return dict(result) if result else None
+
+
+def get_sample_from_pipeline(pipeline: str) -> str | None:
+    """Get Sample ID from a pipeline."""
+    with engine.connect() as conn:
+        return conn.execute(
+            select(pipelines_table.c["Sample ID"]).where(pipelines_table.c["Pipeline"] == pipeline)
+        ).scalar()
+
+
+def get_neware_pipelines() -> tuple[list[str], list[str]]:
+    """Get only running Neware pipelines."""
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(pipelines_table.c["Pipeline"], pipelines_table.c["Server label"])
+            .where(pipelines_table.c["Sample ID"].isnot(None))
+            .where(pipelines_table.c["Ready"].is_(False))
+            .where(pipelines_table.c["Server type"] == "neware")
+        ).all()
+    pipelines = [row[0] for row in rows]
+    server_labels = [row[1] for row in rows]
+    return pipelines, server_labels
+
+
+def add_or_update_pipeline(pipeline: str, row: dict[str, str | float | None]) -> None:
+    """Add or update pipeline in database. Remove job if ready == True."""
+    # If ready is one, job gets removed
+    if row.get("Ready") == 1:
+        row["Job ID"] = None
+        row["Job ID on server"] = None
+    # If there is no Job ID, but there is a Job ID on the server, try to match it and add
+    elif (
+        isinstance(job_id_on_server := row.get("Job ID on server"), str)
+        and isinstance(job_id := row.get("Server label"), str)
+        and not row.get("Job ID")
+    ):
+        with suppress(ValueError):
+            row["Job ID"] = get_job_id_from_server(job_id, job_id_on_server)
+    # Insert or update the row
+    with engine.begin() as conn:
+        conn.execute(
+            insert(pipelines_table)
+            .values(Pipeline=pipeline, **row)
+            .on_conflict_do_update(
+                index_elements=["Pipeline"],
+                set_=row,
+            )
+        )
+
+
+def bulk_add_or_update_pipeline(rows: list[dict[str, str | float | None]]) -> None:
+    """Add multiple rows to pipelines. Remove job if ready == True."""
+    processed_rows = [
+        {
+            **row,
+            **({"Job ID": None, "Job ID on server": None} if row.get("Ready") else {}),
+        }
+        for row in rows
+    ]
+    with engine.begin() as conn:
+        for row in processed_rows:
+            conn.execute(
+                insert(pipelines_table)
+                .values(row)
+                .on_conflict_do_update(
+                    index_elements=["Pipeline"],
+                    set_=row,
+                )
+            )
+
+
+def fill_pipelines_missing_job_ids() -> None:
+    """Try to fill missing Job ID in pipelines if only Job ID on server is present."""
+    job_id_subquery = (
+        select(jobs_table.c["Job ID"])
+        .where(jobs_table.c["Job ID on server"] == pipelines_table.c["Job ID on server"])
+        .where(jobs_table.c["Server label"] == pipelines_table.c["Server label"])
+        .scalar_subquery()
+    )
+    with engine.begin() as conn:
+        conn.execute(
+            update(pipelines_table)
+            .where(pipelines_table.c["Job ID"].is_(None))
+            .where(pipelines_table.c["Job ID on server"].isnot(None))
+            .values({"Job ID": job_id_subquery})
+        )
+
+
+def update_flags() -> None:
+    """Update the flags in the pipelines table from the results table."""
+    with engine.begin() as conn:
+        # Reset all flags
+        conn.execute(update(pipelines_table).values(Flag=None))
+
+        # Get Sample IDs that exist in pipelines
+        sample_ids = (
+            conn.execute(
+                select(pipelines_table.c["Sample ID"]).distinct().where(pipelines_table.c["Sample ID"].isnot(None))
+            )
+            .scalars()
+            .all()
+        )
+
+        if not sample_ids:
+            return
+
+        # Get all results
+        rows = (
+            conn.execute(
+                select(results_table.c["Sample ID"], results_table.c["Flag"]).where(
+                    results_table.c["Sample ID"].in_(sample_ids)
+                )
+            )
+            .mappings()
+            .all()
+        )
+        # Bulk update
+        if rows:
+            conn.execute(
+                update(pipelines_table).where(
+                    pipelines_table.c["Sample ID"] == bindparam("b_Sample ID")  # match on Sample ID
+                ),
+                [{"b_Sample ID": row["Sample ID"], "Flag": row["Flag"]} for row in rows],
+            )
 
 
 ### JOBS ###
 
 
+def get_job_data(job_id: str) -> dict:
+    """Get all data about a job from the database."""
+    with engine.connect() as conn:
+        result = conn.execute(select(jobs_table).where(jobs_table.c["Job ID"] == job_id)).mappings().fetchone()
+    if not result:
+        msg = f"Job ID '{job_id}' not found in the database"
+        raise ValueError(msg)
+    job_data = dict(result)
+    # Convert json strings to python objects
+    payload = job_data.get("Payload")
+    if payload and isinstance(payload, str) and payload.startswith(("[", "{")):
+        job_data["Payload"] = json.loads(payload)
+    unicycler = job_data.get("Unicycler protocol")
+    if unicycler and isinstance(unicycler, str) and unicycler.startswith("{"):
+        job_data["Unicycler protocol"] = json.loads(unicycler)
+
+    return job_data
+
+
+def add_or_update_job(job_id: str, row: dict[str, str | float | None]) -> None:
+    """Add or update job in database."""
+    with engine.begin() as conn:
+        conn.execute(
+            insert(jobs_table)
+            .values(**{"Job ID": job_id}, **row)
+            .on_conflict_do_update(
+                index_elements=["Job ID"],
+                set_=row,
+            )
+        )
+
+
 def get_jobs_from_sample(sample_id: str) -> list[str]:
     """List all Job IDs associated with a sample."""
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT `Job ID` FROM jobs WHERE `Sample ID`=?", (sample_id,))
-        result = cursor.fetchall()
+    with engine.connect() as conn:
+        result = conn.execute(select(jobs_table.c["Job ID"]).where(jobs_table.c["Sample ID"] == sample_id)).fetchall()
     return [r[0] for r in result]
 
 
-def get_job_data(job_id: str) -> dict:
-    """Get all data about a job from the database."""
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM jobs WHERE `Job ID`=?", (job_id,))
-        result = cursor.fetchone()
-        if not result:
-            msg = f"Job ID '{job_id}' not found in the database"
-            raise ValueError(msg)
-        job_data = dict(result)
-        # Convert json strings to python objects
-        payload = job_data.get("Payload")
-        if payload and payload.startswith(("[", "{")):
-            job_data["Payload"] = json.loads(payload)
-        unicycler = job_data.get("Unicycler protocol")
-        if unicycler and unicycler.startswith("{"):
-            job_data["Unicycler protocol"] = json.loads(unicycler)
-    return job_data
+def get_job_from_pipeline(pipeline: str) -> str | None:
+    """Get Job ID from a pipeline."""
+    with engine.connect() as conn:
+        return conn.execute(
+            select(pipelines_table.c["Job ID"]).where(pipelines_table.c["Pipeline"] == pipeline)
+        ).scalar()
 
 
 def check_job_running(job_id: str) -> bool:
     """Check if a job is currently on a pipeline."""
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT 1 FROM pipelines WHERE `Job ID` = ? LIMIT 1",
-            (job_id,),
+    with engine.connect() as conn:
+        result = conn.execute(
+            select(pipelines_table.c["Pipeline"]).where(pipelines_table.c["Job ID"] == job_id).limit(1)
         )
-        return cursor.fetchone() is not None
+        return result.fetchone() is not None
+
+
+def get_running_job(sample_id: str) -> dict[str, str | None]:
+    """Get pipeline, job ID, and status of a job if a sample is running."""
+    with engine.connect() as conn:
+        result = (
+            conn.execute(
+                select(
+                    pipelines_table.c["Pipeline"],
+                    pipelines_table.c["Job ID"],
+                    jobs_table.c["Status"],
+                )
+                .outerjoin(jobs_table, pipelines_table.c["Job ID"] == jobs_table.c["Job ID"])
+                .where(pipelines_table.c["Sample ID"] == sample_id)
+            )
+            .mappings()
+            .fetchone()
+        )
+
+    if result:
+        return dict(result)
+    return {"Pipeline": None, "Job ID": None, "Status": None}
 
 
 def get_job_id_from_server(server_label: str, job_id_on_server: str) -> str:
     """Get the job ID from server label and job ID on server."""
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT `Job ID` FROM jobs WHERE `Job ID on server`=? AND `Server label`=?",
-            (job_id_on_server, server_label),
-        )
-        result = cursor.fetchone()
+    with engine.connect() as conn:
+        result = conn.execute(
+            select(jobs_table.c["Job ID"])
+            .where(jobs_table.c["Job ID on server"] == job_id_on_server)
+            .where(jobs_table.c["Server label"] == server_label)
+        ).fetchone()
     if result:
         return result[0]
     msg = f"No Job ID found for server {server_label}: {job_id_on_server}"
@@ -405,34 +626,38 @@ def get_or_create_job_id_from_server(server_label: str, job_id_on_server: str) -
         job_id = get_job_id_from_server(server_label, job_id_on_server)
     except ValueError:
         job_id = str(uuid.uuid4())
-        with sqlite3.connect(CONFIG["Database path"]) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO Jobs (`Job ID`, `Job ID on server`, `Server label`) VALUES (?,?,?)",
-                (job_id, job_id_on_server, server_label),
+        with engine.begin() as conn:
+            conn.execute(
+                insert(jobs_table).values(
+                    **{
+                        "Job ID": job_id,
+                        "Job ID on server": job_id_on_server,
+                        "Server label": server_label,
+                    }
+                )
             )
     return job_id
 
 
 def get_unicycler_protocols(sample_id: str) -> list[dict]:
     """Return a list of unicycler protocols associated with the sample."""
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT j.`Job ID`, j.`Unicycler protocol`, j.`Capacity (mAh)`, "
-            "COALESCE("
-            "j.`Submitted`, "
-            "(SELECT MIN(d.`Data start`) FROM dataframes d WHERE d.`Job ID` = j.`Job ID`), "
-            "9999"  # fallback
-            ") AS sort_timestamp "
-            "FROM jobs j "
-            "WHERE j.`Sample ID` = ? AND j.`Unicycler protocol` IS NOT NULL "
-            "ORDER BY sort_timestamp ASC",
-            (sample_id,),
+    with engine.connect() as conn:
+        j = jobs_table.c
+        d = dataframes_table.c
+
+        sort_timestamp = func.coalesce(
+            j["Submitted"],
+            select(func.min(d["Data start"])).where(d["Job ID"] == j["Job ID"]).scalar_subquery(),
+            9999,
+        ).label("sort_timestamp")
+
+        result = conn.execute(
+            select(j["Job ID"], j["Unicycler protocol"], j["Capacity (mAh)"], sort_timestamp)
+            .where(j["Sample ID"] == sample_id)
+            .where(j["Unicycler protocol"].isnot(None))
+            .order_by(sort_timestamp)
         )
-        rows = cur.fetchall()
-    return [dict(row) for row in rows]
+    return [dict(row) for row in result.mappings().all()]
 
 
 def add_data_to_db_without_job(sample_id: str, file_stem: str, data_start: str, data_end: str) -> str:
@@ -451,33 +676,48 @@ def add_data_to_db_without_job(sample_id: str, file_stem: str, data_start: str, 
 
     """
     modified = datetime.now(timezone.utc).isoformat()
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
+    with engine.begin() as conn:
         # Check if there is already a job with this sample ID and data
-        cursor.execute(
-            "SELECT `Job ID` FROM dataframes WHERE`Sample ID` = ? AND `File stem` = ?",
-            (sample_id, file_stem),
-        )
-        result = cursor.fetchone()
+        result = conn.execute(
+            select(dataframes_table.c["Job ID"])
+            .where(dataframes_table.c["Sample ID"] == sample_id)
+            .where(dataframes_table.c["File stem"] == file_stem)
+        ).fetchone()
         # If there is no known job, create a new one with random uuid
         job_id = result[0] if result else str(uuid.uuid4())
         # Create data table entry if it doesn't exist
-        cursor.execute(
-            "INSERT OR IGNORE INTO dataframes (`Sample ID`, `File stem`, `Job ID`) VALUES (?, ?, ?)",
-            (sample_id, file_stem, job_id),
+        conn.execute(
+            insert(dataframes_table)
+            .values(**{"Sample ID": sample_id, "File stem": file_stem, "Job ID": job_id})
+            .on_conflict_do_nothing()
         )
         # Update the data table entry
-        cursor.execute(
-            "UPDATE dataframes SET `From known source` = ?, `Data start` = ?, `Data end` = ?, `Modified` = ? "
-            "WHERE `Sample ID` = ? AND `File stem` = ?",
-            (False, data_start, data_end, modified, sample_id, file_stem),
+        conn.execute(
+            update(dataframes_table)
+            .values(
+                **{
+                    "From known source": False,
+                    "Data start": data_start,
+                    "Data end": data_end,
+                    "Modified": modified,
+                }
+            )
+            .where(dataframes_table.c["Sample ID"] == sample_id)
+            .where(dataframes_table.c["File stem"] == file_stem)
         )
         # Create the Jobs table entry if it doesn't exist, otherwise leave as is (could have manually be altered)
-        cursor.execute(
-            "INSERT OR IGNORE INTO jobs (`Job ID`, `Sample ID`, `Comment`) VALUES (?, ?, ?)",
-            (job_id, sample_id, f"Source unknown, uploaded as: {file_stem}"),
+        conn.execute(
+            insert(jobs_table)
+            .values(
+                **{
+                    "Job ID": job_id,
+                    "Sample ID": sample_id,
+                    "Comment": f"Source unknown, uploaded as: {file_stem}",
+                }
+            )
+            .on_conflict_do_nothing()
         )
-        cursor.close()
+
     return job_id
 
 
@@ -498,50 +738,83 @@ def add_data_to_db_with_job(sample_id: str, file_stem: str, data_start: str, dat
 
     """
     modified = datetime.now(timezone.utc).isoformat()
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
+    with engine.begin() as conn:
         # Check if there is already a job with this sample ID and data
-        cursor.execute(
-            "SELECT `Job ID` FROM dataframes WHERE `Sample ID` = ? AND `File stem` = ?",
-            (sample_id, file_stem),
-        )
-        result = cursor.fetchone()
+        result = conn.execute(
+            select(dataframes_table.c["Job ID"])
+            .where(dataframes_table.c["Sample ID"] == sample_id)
+            .where(dataframes_table.c["File stem"] == file_stem)
+        ).fetchone()
         # If the job ID does not match the provided job ID, there is a conflict
         # e.g. user manually uploaded before data was found automatically
         # Overwrite the manual job ID
         conflicting_job_id = result[0] if result and result[0] != job_id else None
+
         if conflicting_job_id:
             # Overwrite with the known Job ID, and known source
-            cursor.execute(
-                "UPDATE dataframes SET `Job ID` = ?, `From known source` = ? WHERE `Sample ID` = ? AND `File stem` = ?",
-                (job_id, True, sample_id, file_stem),
+            conn.execute(
+                update(dataframes_table)
+                .values(
+                    **{
+                        "Job ID": job_id,
+                        "From known source": True,
+                    }
+                )
+                .where(dataframes_table.c["Sample ID"] == sample_id)
+                .where(dataframes_table.c["File stem"] == file_stem)
             )
             # If there is no data left for the conflicting Job ID, remove it from the jobs table
-            cursor.execute(
-                "SELECT COUNT(*) FROM dataframes WHERE `Job ID` = ? AND `Sample ID` = ?",
-                (conflicting_job_id, sample_id),
-            )
-            if cursor.fetchone()[0] == 0:
-                cursor.execute(
-                    "DELETE FROM jobs WHERE `Job ID` = ? AND `Sample ID` = ?",
-                    (conflicting_job_id, sample_id),
+            count = conn.execute(
+                select(func.count()).where(
+                    dataframes_table.c["Job ID"] == conflicting_job_id,
+                    dataframes_table.c["Sample ID"] == sample_id,
                 )
+            ).scalar()
+            if count == 0:
+                conn.execute(
+                    delete(jobs_table)
+                    .where(jobs_table.c["Job ID"] == conflicting_job_id)
+                    .where(jobs_table.c["Sample ID"] == sample_id)
+                )
+
         # Add the rows if they dont exist
-        cursor.execute(
-            "INSERT OR IGNORE INTO dataframes (`Sample ID`, `File stem`, `Job ID`) VALUES (?, ?, ?)",
-            (sample_id, file_stem, job_id),
+        conn.execute(
+            insert(dataframes_table)
+            .values(
+                **{
+                    "Sample ID": sample_id,
+                    "File stem": file_stem,
+                    "Job ID": job_id,
+                }
+            )
+            .on_conflict_do_nothing()
         )
-        cursor.execute(
-            "INSERT OR IGNORE INTO jobs (`Job ID`, `Sample ID`) VALUES (?, ?)",
-            (job_id, sample_id),
+        conn.execute(
+            insert(jobs_table)
+            .values(
+                **{
+                    "Job ID": job_id,
+                    "Sample ID": sample_id,
+                }
+            )
+            .on_conflict_do_nothing()
         )
+
         # Update the data table entry
-        cursor.execute(
-            "UPDATE dataframes SET `From known source` = ?, `Data start` = ?, `Data end` = ?, `Modified` = ? "
-            "WHERE `Sample ID` = ? AND `File stem` = ?",
-            (True, data_start, data_end, modified, sample_id, file_stem),
+        conn.execute(
+            update(dataframes_table)
+            .values(
+                **{
+                    "From known source": True,
+                    "Data start": data_start,
+                    "Data end": data_end,
+                    "Modified": modified,
+                }
+            )
+            .where(dataframes_table.c["Sample ID"] == sample_id)
+            .where(dataframes_table.c["File stem"] == file_stem)
         )
-        cursor.close()
+
     return job_id
 
 
@@ -570,14 +843,17 @@ def add_protocol_to_job(job_id: str, protocol: dict | str, capacity: float | Non
     """Attach a protocol to a job in the database."""
     if isinstance(protocol, dict):
         protocol = json.dumps(protocol)
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE jobs SET `Unicycler protocol` = ?, `Capacity (mAh)` = ? WHERE `Job ID` = ?",
-            (protocol, capacity, job_id),
+    with engine.begin() as conn:
+        conn.execute(
+            update(jobs_table)
+            .values(
+                **{
+                    "Unicycler protocol": protocol,
+                    "Capacity (mAh)": capacity,
+                }
+            )
+            .where(jobs_table.c["Job ID"] == job_id)
         )
-        conn.commit()
 
 
 ### HARVESTERS ###
@@ -586,16 +862,129 @@ def add_protocol_to_job(job_id: str, protocol: dict | str, capacity: float | Non
 # Update the database
 def update_harvester(server: dict, folder: str, copy_datetime: datetime) -> None:
     """Update last copy time in harvester table."""
-    with sqlite3.connect(CONFIG["Database path"]) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT OR IGNORE INTO harvester (`Server label`, `Server hostname`, `Folder`) VALUES (?, ?, ?)",
-            (server["label"], server["hostname"], folder),
+    with engine.begin() as conn:
+        conn.execute(
+            insert(harvester_table)
+            .values(
+                **{
+                    "Server label": server["label"],
+                    "Server hostname": server["hostname"],
+                    "Folder": folder,
+                }
+            )
+            .on_conflict_do_nothing()
         )
-        cursor.execute(
-            "UPDATE harvester "
-            "SET `Last snapshot` = ? "
-            "WHERE `Server label` = ? AND `Server hostname` = ? AND `Folder` = ?",
-            (copy_datetime.isoformat(timespec="seconds"), server["label"], server["hostname"], folder),
+        conn.execute(
+            update(harvester_table)
+            .values(
+                **{
+                    "Last snapshot": copy_datetime.isoformat(timespec="seconds"),
+                }
+            )
+            .where(harvester_table.c["Server label"] == server["label"])
+            .where(harvester_table.c["Server hostname"] == server["hostname"])
+            .where(harvester_table.c["Folder"] == folder)
         )
-        cursor.close()
+
+
+def get_last_harvest(server: dict, folder: str) -> float:
+    """Get unix time stamp of last harvest."""
+    with engine.connect() as conn:
+        result = conn.execute(
+            select(harvester_table.c["Last snapshot"])
+            .where(harvester_table.c["Server label"] == server["label"])
+            .where(harvester_table.c["Server hostname"] == server["hostname"])
+            .where(harvester_table.c["Folder"] == folder)
+        ).fetchone()
+    if result:
+        return parse_datetime(result[0]).timestamp()
+    return 0.0
+
+
+### RESULTS ###
+
+
+def get_results_from_sample(sample_id: str) -> dict | None:
+    """Get results summary from Sample ID."""
+    with engine.connect() as conn:
+        result = conn.execute(select(results_table).where(results_table.c["Sample ID"] == sample_id)).mappings().first()
+    return dict(result) if result else None
+
+
+def update_results(sample_id: str, row: dict[str, str | float | None]) -> None:
+    """Add or update results for a sample."""
+    with engine.begin() as conn:
+        conn.execute(
+            insert(results_table)
+            .values(**{"Sample ID": sample_id}, **row)
+            .on_conflict_do_update(
+                index_elements=["Sample ID"],
+                set_=row,
+            )
+        )
+
+
+def find_new_data(mode: str) -> list[str]:
+    """Find jobs that have new data."""
+    with engine.connect() as conn:
+        if mode == "new_data":
+            rows = conn.execute(
+                select(
+                    results_table.c["Sample ID"],
+                    results_table.c["Last snapshot"],
+                    results_table.c["Last analysis"],
+                )
+            ).fetchall()
+            return [
+                r[0] for r in rows if r[0] and (not r[1] or not r[2] or parse_datetime(r[1]) > parse_datetime(r[2]))
+            ]
+        if mode == "if_not_exists":
+            rows = conn.execute(
+                select(results_table.c["Sample ID"]).where(results_table.c["Last analysis"].is_(None))
+            ).fetchall()
+            return [r[0] for r in rows]
+    return []
+
+
+### Everything ###
+
+
+def get_database() -> dict[str, Any]:
+    """Get all data from the database.
+
+    Formatted for viewing in Dash AG Grid.
+    """
+    with engine.connect() as conn:
+        results = {
+            "samples": conn.execute(select(samples_table).order_by(samples_table.c["Sample ID"])),
+            "results": conn.execute(select(results_table).order_by(results_table.c["Sample ID"])),
+            "jobs": conn.execute(select(jobs_table).order_by(jobs_table.c["Sample ID"])),
+            "pipelines": conn.execute(select(pipelines_table)),  # Uses custom sort
+        }
+        db_columns = {
+            k: [{"field": col, "filter": True, "tooltipField": col} for col in v.keys()]  # noqa: SIM118 NOT a dict, needs keys()
+            for k, v in results.items()
+        }
+        db_data = {k: [dict(m) for m in v.mappings().all()] for k, v in results.items()}
+
+    # Ready is boolean
+    try:
+        ready_field = next(col for col in db_columns["pipelines"] if col["field"] == "Ready")
+        ready_field["cellDataType"] = "boolean"
+    except StopIteration:
+        pass
+
+    # Use custom comparator for pipeline column
+    with suppress(StopIteration):
+        pipeline_field: dict[str, Any] = next(col for col in db_columns["pipelines"] if col["field"] == "Pipeline")
+        pipeline_field["comparator"] = {"function": "pipelineComparatorCustom"}
+        pipeline_field["sort"] = "asc"
+
+    return {"data": db_data, "column_defs": db_columns}
+
+
+def get_db_last_update() -> datetime | None:
+    """Get the last update time of the database."""
+    with engine.connect() as conn:
+        result = conn.execute(select(func.max(pipelines_table.c["Last checked"]))).scalar()
+    return parse_datetime(result) if result else None

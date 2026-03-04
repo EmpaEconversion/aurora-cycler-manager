@@ -2,12 +2,13 @@
 
 import json
 import os
-import sqlite3
 from pathlib import Path
 
 import pytest
+from sqlalchemy import inspect
 
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.database_funcs import get_engine
 from aurora_cycler_manager.database_setup import connect_to_config, create_database, create_new_setup, get_status
 
 # Double check you're not going to delete the prod database!
@@ -122,8 +123,7 @@ class TestAnalysis:
         # With force this should remove all the columns
         get_config(reload=True)
         create_database(force=True)
-        with sqlite3.connect(test_project_path_1 / "database" / "database.db") as conn:
-            cursor = conn.cursor()
-            cursor.execute("PRAGMA table_info(samples)")
-            columns = cursor.fetchall()
-            assert len(columns) == 2, "Columns were not deleted successfully"
+        engine = get_engine(config)
+        inspector = inspect(engine)
+        columns = inspector.get_columns("samples")
+        assert len(columns) == 2, "Columns were not deleted successfully"

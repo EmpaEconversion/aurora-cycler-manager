@@ -1,12 +1,60 @@
 """Testing functions in the eclab_harvester.py."""
 
-import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import pytest
+from sqlalchemy import MetaData, Table, create_engine, select
 
+import aurora_cycler_manager.database_funcs as dbf
 from aurora_cycler_manager.analysis import analyse_sample
-from aurora_cycler_manager.eclab_harvester import convert_mpr, get_mpr_data
+from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.data_parse import get_cycling
+from aurora_cycler_manager.eclab_harvester import convert_mpr, get_mpr_data, main
+from aurora_cycler_manager.setup_logging import setup_logging
+
+
+def test_main(reset_all, mock_ssh, test_dir: Path, caplog) -> None:
+    """Test file harvesting."""
+    # Set up mock response and files
+    run_id = "250116_kigr_gen6"
+    sample_id = "250116_kigr_gen6_01"
+    filename = "250116_kigr_gen6_01_01_GCPL_CD8"
+    local_folder = test_dir / "local_snapshots" / "eclab_snapshots"
+    files = {
+        f"C:/aurora/data/{run_id}/{sample_id}/job1.mpl": local_folder / run_id / "1" / (filename + ".mpl"),
+        f"C:/aurora/data/{run_id}/{sample_id}/job1.mpr": local_folder / run_id / "1" / (filename + ".mpr"),
+    }
+    mock_ssh.add_command_response(
+        command="Get-ChildItem -Path 'C:/aurora/data/'",
+        stdout="\n".join([k for k in files if k.endswith(".mpr")]),
+    )
+    for remote_path, local_path in files.items():
+        content = local_path.read_bytes()
+        mock_ssh.add_sftp_file(remote_path, content)
+
+    # Make fake jobs for both files
+    dbf.add_or_update_job("job1", {"Sample ID": sample_id, "Job ID on server": "bio-job1", "Server label": "bio"})
+    setup_logging()
+    main()
+
+    # Should have copied the files as is
+    for local_file in [
+        local_folder / run_id / sample_id / "job1.mpr",
+        local_folder / run_id / sample_id / "job1.mpl",
+    ]:
+        assert local_file.exists()
+        local_file.unlink()
+
+    # Should not warn/fail
+    assert caplog.text == ""
+
+    # Analysed data exists
+    df = get_cycling(sample_id)
+    assert df is not None
+
+    last_update = dbf.get_last_harvest({"label": "bio", "hostname": "fakehostname"}, "C:/aurora/data/")
+    assert abs(last_update - datetime.now(tz=get_config()["tz"]).timestamp()) < 600
 
 
 def test_convert_data(reset_all, test_dir: Path) -> None:
@@ -55,6 +103,11 @@ def test_convert_data_update_database(reset_all, test_dir: Path) -> None:
     db_path = test_dir / "database" / "test_database.db"
     sample_id = "240701_svfe_gen6_01"
 
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    metadata = MetaData()
+    jobs_table = Table("jobs", metadata, autoload_with=engine)
+    dataframes_table = Table("dataframes", metadata, autoload_with=engine)
+
     convert_mpr(
         test_file_1,
         sample_id=sample_id,
@@ -62,22 +115,22 @@ def test_convert_data_update_database(reset_all, test_dir: Path) -> None:
         update_database=True,
     )
     # Should have made an entry in the dataframes table
-    with sqlite3.connect(db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT `Job ID` FROM dataframes WHERE `Sample ID` = ? AND `File stem` = ?",
-            (sample_id, test_file_1.stem),
+    with engine.connect() as conn:
+        result = (
+            conn.execute(
+                select(dataframes_table.c["Job ID"])
+                .where(dataframes_table.c["Sample ID"] == sample_id)
+                .where(dataframes_table.c["File stem"] == test_file_1.stem)
+            )
+            .mappings()
+            .first()
         )
-        result = cursor.fetchone()
         assert result is not None
-        job_id = result[0]
-        cursor.execute(
-            "SELECT `Job ID` FROM jobs WHERE `Job ID` = ?",
-            (job_id,),
-        )
-        result = cursor.fetchone()
+        job_id = result["Job ID"]
+
+        result = conn.execute(select(jobs_table.c["Job ID"]).where(jobs_table.c["Job ID"] == job_id)).fetchone()
+
         assert result is not None
-        cursor.close()
 
     # If same data is submitted from a 'known source', it overwrites
     convert_mpr(
@@ -88,31 +141,26 @@ def test_convert_data_update_database(reset_all, test_dir: Path) -> None:
     )
     # Should have made an entry in the dataframes table
     previous_job_id = job_id
-    with sqlite3.connect(db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT `Job ID` FROM dataframes WHERE `Sample ID` = ? AND `File stem` = ?",
-            (sample_id, test_file_1.stem),
+    with engine.connect() as conn:
+        result = (
+            conn.execute(
+                select(dataframes_table.c["Job ID"])
+                .where(dataframes_table.c["Sample ID"] == sample_id)
+                .where(dataframes_table.c["File stem"] == test_file_1.stem)
+            )
+            .mappings()
+            .first()
         )
-        result = cursor.fetchone()
         assert result is not None
-        job_id = result[0]
+        job_id = result["Job ID"]
         assert job_id == "known_source_123"
 
-        cursor.execute(
-            "SELECT `Job ID` FROM jobs WHERE `Job ID` = ?",
-            (previous_job_id,),
-        )
-        result = cursor.fetchone()
+        result = conn.execute(
+            select(jobs_table.c["Job ID"]).where(jobs_table.c["Job ID"] == previous_job_id)
+        ).fetchone()
         assert result is None
-        cursor.execute(
-            "SELECT `Job ID` FROM jobs WHERE `Job ID` = ?",
-            (job_id,),
-        )
-        result = cursor.fetchone()
+        result = conn.execute(select(jobs_table.c["Job ID"]).where(jobs_table.c["Job ID"] == job_id)).fetchone()
         assert result is not None
-        cursor.close()
-
     # If manually uploaded again, it will keep the known source job ID
     convert_mpr(
         test_file_1,
@@ -120,30 +168,26 @@ def test_convert_data_update_database(reset_all, test_dir: Path) -> None:
         job_id=None,  # e.g. manual upload or harvesting
         update_database=True,
     )
-    with sqlite3.connect(db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT `Job ID` FROM dataframes WHERE `Sample ID` = ? AND `File stem` = ?",
-            (sample_id, test_file_1.stem),
+    with engine.connect() as conn:
+        result = (
+            conn.execute(
+                select(dataframes_table.c["Job ID"])
+                .where(dataframes_table.c["Sample ID"] == sample_id)
+                .where(dataframes_table.c["File stem"] == test_file_1.stem)
+            )
+            .mappings()
+            .first()
         )
-        result = cursor.fetchone()
         assert result is not None
-        job_id = result[0]
+        job_id = result["Job ID"]
         assert job_id == "known_source_123"
 
-        cursor.execute(
-            "SELECT `Job ID` FROM jobs WHERE `Job ID` = ?",
-            (previous_job_id,),
-        )
-        result = cursor.fetchone()
+        result = conn.execute(
+            select(jobs_table.c["Job ID"]).where(jobs_table.c["Job ID"] == previous_job_id)
+        ).fetchone()
         assert result is None
-        cursor.execute(
-            "SELECT `Job ID` FROM jobs WHERE `Job ID` = ?",
-            (job_id,),
-        )
-        result = cursor.fetchone()
+        result = conn.execute(select(jobs_table.c["Job ID"]).where(jobs_table.c["Job ID"] == job_id)).fetchone()
         assert result is not None
-        cursor.close()
 
 
 def test_convert_eis(reset_all, test_dir: Path) -> None:
