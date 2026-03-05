@@ -176,7 +176,7 @@ class SampleDataBundle:
         """Shrunk time series cycling data."""
         if self._preloaded["eis"] is not None:
             return self._preloaded["eis"]
-        return get_cycling_shrunk(self.sample_id)
+        return get_eis(self.sample_id)
 
     @cached_property
     def cycles_summary(self) -> pl.DataFrame | None:
