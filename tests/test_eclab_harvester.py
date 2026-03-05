@@ -4,12 +4,13 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from polars.testing import assert_frame_equal
 from sqlalchemy import MetaData, Table, create_engine, select
 
 import aurora_cycler_manager.database_funcs as dbf
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_parse import get_cycling
+from aurora_cycler_manager.data_parse import SampleDataBundle, get_cycling
 from aurora_cycler_manager.eclab_harvester import convert_mpr, get_mpr_data, main
 from aurora_cycler_manager.setup_logging import setup_logging
 
@@ -214,6 +215,15 @@ def test_convert_eis_with_other_data(reset_all, test_dir: Path) -> None:
     assert data.cycling is not None
     assert len(data.cycling) == 18001
     assert data.eis is not None
-    assert len(data.eis) == 244
+    assert all(c in data.eis.columns for c in ("f (Hz)", "Cycle", "Re(Z) (ohm)", "Im(Z) (ohm)"))
     assert data.cycles_summary is not None
     assert data.eis["Cycle"][0] == max(data.cycling["Cycle"])
+
+    # Compare to bundle from sample ID
+    data2 = SampleDataBundle(sample_id)
+    assert data2.cycling is not None
+    assert data2.eis is not None
+    assert data2.cycles_summary is not None
+    assert_frame_equal(data.cycling, data2.cycling, check_dtypes=False)
+    assert_frame_equal(data.eis, data2.eis, check_dtypes=False)
+    assert_frame_equal(data.cycles_summary, data2.cycles_summary, check_dtypes=False)
