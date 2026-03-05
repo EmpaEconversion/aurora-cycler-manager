@@ -215,7 +215,7 @@ def test_convert_eis_with_other_data(reset_all, test_dir: Path) -> None:
     assert data.cycling is not None
     assert len(data.cycling) == 18001
     assert data.eis is not None
-    assert "f (Hz)" in data.eis.columns
+    assert all(c in data.eis.columns for c in ("f (Hz)", "Cycle", "Re(Z) (ohm)", "Im(Z) (ohm)"))
     assert data.cycles_summary is not None
     assert data.eis["Cycle"][0] == max(data.cycling["Cycle"])
 
