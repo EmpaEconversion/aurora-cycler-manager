@@ -7,7 +7,12 @@ graph_template = "seaborn"
 graph_margin = {"l": 75, "r": 20, "t": 50, "b": 75}
 
 
-def plot_lazyframe(fig: dict, sample_data: dict[str, pl.LazyFrame | None], xvar: str, yvar: str) -> go.Figure:
+def plot_lazyframe(
+    fig: dict,
+    sample_data: dict[str, pl.LazyFrame | None],
+    xvar: str,
+    yvar: str,
+) -> go.Figure:
     """Plot a lazy frame."""
     fig["data"] = []
     if not xvar or not yvar or xvar == yvar:
