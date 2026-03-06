@@ -819,6 +819,19 @@ def register_db_view_callbacks(app: Dash) -> None:
             *table_visibilities,
         )
 
+    # If sample list changes, update dropdowns everywhere
+    @app.callback(
+        Output("samples-dropdown", "data"),
+        Output("batch-samples-dropdown", "data"),
+        Output("batch-edit-samples", "data"),
+        Output("plotting-samples-select-dropdown", "data"),
+        Input("samples-store", "data"),
+        prevent_initial_call=True,
+    )
+    def update_samples_dropdown(samples: list) -> tuple[list, list, list, list]:
+        """Update available samples in the dropdown."""
+        return samples, samples, samples, samples
+
     # Update data store with the selected rows, and update the message below the table
     # Triggers when table or selection changes
     @app.callback(
@@ -1300,9 +1313,9 @@ def register_db_view_callbacks(app: Dash) -> None:
     # View data
     @app.callback(
         Output("tabs", "value"),
-        Output("samples-dropdown", "value"),
-        Output("batch-samples-dropdown", "value"),
-        Output("batch-yes-close", "n_clicks"),
+        Output("plotting-batch-select-dropdown", "value"),
+        Output("plotting-samples-select-dropdown", "value"),
+        Output("plotting-samples-select-yes-close", "n_clicks"),
         Input("view-button", "n_clicks"),
         State("selected-rows-store", "data"),
         prevent_initial_call=True,
@@ -1311,9 +1324,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         if not n_clicks or not selected_rows:
             raise PreventUpdate
         sample_id = [s["Sample ID"] for s in selected_rows if s.get("Sample ID")]
-        if len(sample_id) > 1:
-            return "tab-2", no_update, sample_id, 1
-        return "tab-1", sample_id, no_update, no_update
+        return "tab-plot", no_update, sample_id, 1
 
     # Snapshot button pop up
     @app.callback(
