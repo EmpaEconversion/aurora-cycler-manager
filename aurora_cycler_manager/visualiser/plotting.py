@@ -13,6 +13,8 @@ from dash.exceptions import PreventUpdate
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.data_parse import LazySampleDataBundle
+from aurora_cycler_manager.visualiser.plots.colors import get_trace_colors, register_color_callbacks
 from aurora_cycler_manager.visualiser.plots.cycles import make_cycles_graph, register_cycles_callbacks
 from aurora_cycler_manager.visualiser.plots.eis import make_eis_graph, register_eis_callbacks
 from aurora_cycler_manager.visualiser.plots.time_series import make_ts_graph, register_ts_callbacks
@@ -94,6 +96,7 @@ def make_graph_block(instance_id: str) -> html.Div:
                     "overflow": "hidden",
                 },
             ),
+            dcc.Store(id={"type": "refresh-graph", "index": instance_id}),
         ],
     )
 
@@ -168,6 +171,24 @@ panels_container = PanelGroup(
     ],
 )
 
+global_controls = dmc.Group(
+    style={"flex-shrink": "0"},
+    children=[
+        dmc.Button(
+            "Select samples",
+            id="select-samples-button",
+            leftSection=html.I(className="bi bi-plus-circle-fill"),
+            style={"flex-shrink": "0"},
+        ),
+        dmc.Select(
+            id="color-by",
+            data=["Sample ID", "Max voltage (V)"],
+            value="Sample ID",
+            label="Color by",
+        ),
+    ],
+)
+
 plotting_layout = html.Div(
     style={
         "height": "100%",
@@ -177,21 +198,13 @@ plotting_layout = html.Div(
         "overflow": "hidden",
     },
     children=[
-        dmc.Button(
-            "Select samples",
-            id="select-samples-button",
-            leftSection=html.I(className="bi bi-plus-circle-fill"),
-            style={"flex-shrink": "0"},
-        ),
-        dcc.Store(
-            id="panels-store",
-            data=DEFAULT_PLOTS,
-        ),
-        dcc.Store(
-            id="selected-samples",
-            data=[],
-        ),
+        global_controls,
         panels_container,
+        dcc.Store(id="panels-store", data=DEFAULT_PLOTS),
+        dcc.Store(id="selected-samples", data={}),
+        dcc.Store(id="sample:color", data={}),
+        dcc.Store(id="sample:style", data={}),
+        dcc.Store(id="redraw-trigger"),
         samples_modal,
     ],
 )
@@ -205,6 +218,7 @@ def register_plotting_callbacks(app: Dash) -> None:
     register_ts_callbacks(app)
     register_cycles_callbacks(app)
     register_eis_callbacks(app)
+    register_color_callbacks(app)
 
     # Batch list has updated, update dropdowns
     @app.callback(
@@ -231,10 +245,13 @@ def register_plotting_callbacks(app: Dash) -> None:
     # When the user hits yes close, change the selected samples
     @app.callback(
         Output("selected-samples", "data"),
+        Output("sample:color", "data", allow_duplicate=True),
         Input("plotting-samples-select-yes-close", "n_clicks"),
         State("plotting-samples-select-dropdown", "value"),
         State("plotting-batch-select-dropdown", "value"),
         State("batches-store", "data"),
+        State("selected-samples", "data"),
+        State("color-by", "value"),
         running=[(Output("loading-message-store", "data"), "Loading data...", "")],
         prevent_initial_call=True,
     )
@@ -243,21 +260,35 @@ def register_plotting_callbacks(app: Dash) -> None:
         samples: list,
         batches: list,
         batch_defs: dict[str, dict],
-    ) -> list[str]:
+        samples_dict: dict[str, dict],
+        color_by: str,
+    ) -> tuple[dict[str, dict], dict[str, str]]:
         """Load the selected samples into the data store."""
         if not ctx.triggered:
             raise PreventUpdate
         # Add the samples from batches to samples
-        sample_set = set(samples)
+        new_sample_set = set(samples)
         for batch in batches:
-            sample_set.update(batch_defs.get(batch, {}).get("samples", []))
-        return sorted(sample_set)
+            new_sample_set.update(batch_defs.get(batch, {}).get("samples", []))
+
+        added = new_sample_set - set(samples_dict)
+        removed = set(samples_dict) - new_sample_set
+        selected_samples = {
+            **{k: v for k, v in samples_dict.items() if k not in removed},
+            **{k: LazySampleDataBundle(k).overall_summary or {} for k in added},
+        }
+        # Remove removed samples
+        return (
+            selected_samples,
+            get_trace_colors(selected_samples, color_by, "Viridis", "Plotly"),
+        )
 
     # Update graphs
     @app.callback(
         Output({"type": "graph-container", "index": MATCH}, "children"),
+        Output({"type": "refresh-graph", "index": MATCH}, "data"),
         Input({"type": "graph-type-selector", "index": MATCH}, "value"),
     )
-    def update_graph(graph_type: str) -> html.Div:
-        instance_id = ctx.outputs_list["id"]["index"]
-        return graph_factory(graph_type, instance_id)
+    def update_graph(graph_type: str) -> tuple[html.Div, str]:
+        instance_id = ctx.outputs_list[0]["id"]["index"]
+        return graph_factory(graph_type, instance_id), ctx.triggered_id
