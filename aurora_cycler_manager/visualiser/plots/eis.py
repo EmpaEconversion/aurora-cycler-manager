@@ -90,8 +90,8 @@ def register_eis_callbacks(app: Dash) -> None:
         fig["data"] = []
         if not xvar or not yvar or xvar == yvar:
             return go.Figure(fig)
-        fig["layout"]["xaxis"]["title"] = xvar
-        fig["layout"]["yaxis"]["title"] = yvar
+        fig["layout"].setdefault("xaxis", {})["title"] = xvar
+        fig["layout"].setdefault("yaxis", {})["title"] = yvar
 
         sample_data = {s: LazySampleDataBundle(s).eis for s in samples}
         sample_data = {s: d.pipe(enrich_df) if d is not None else None for s, d in sample_data.items()}

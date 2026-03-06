@@ -107,8 +107,8 @@ def register_cycles_callbacks(app: Dash) -> None:
         fig["data"] = []
         if not xvar or not yvar or xvar == yvar:
             return go.Figure(fig)
-        fig["layout"]["xaxis"]["title"] = xvar
-        fig["layout"]["yaxis"]["title"] = yvar
+        fig["layout"].setdefault("xaxis", {})["title"] = xvar
+        fig["layout"].setdefault("yaxis", {})["title"] = yvar
 
         sample_data = {s: LazySampleDataBundle(s).cycles_summary for s in samples}
 
