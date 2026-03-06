@@ -821,16 +821,14 @@ def register_db_view_callbacks(app: Dash) -> None:
 
     # If sample list changes, update dropdowns everywhere
     @app.callback(
-        Output("samples-dropdown", "data"),
-        Output("batch-samples-dropdown", "data"),
         Output("batch-edit-samples", "data"),
         Output("plotting-samples-select-dropdown", "data"),
         Input("samples-store", "data"),
         prevent_initial_call=True,
     )
-    def update_samples_dropdown(samples: list) -> tuple[list, list, list, list]:
+    def update_samples_dropdown(samples: list) -> tuple[list, list]:
         """Update available samples in the dropdown."""
-        return samples, samples, samples, samples
+        return samples, samples
 
     # Update data store with the selected rows, and update the message below the table
     # Triggers when table or selection changes
