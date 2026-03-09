@@ -30,7 +30,7 @@ class MockSSHClient:
     def set_missing_host_key_policy(self, policy) -> None:
         """Mock set_missing_host_key_policy."""
 
-    def connect(self, hostname, username, key_filename=None) -> None:
+    def connect(self, hostname, username, key_filename=None, sock=None) -> None:
         """Mock connect."""
         self.connected = True
 
