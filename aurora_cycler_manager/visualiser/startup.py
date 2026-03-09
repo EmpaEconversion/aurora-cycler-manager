@@ -60,8 +60,11 @@ def main() -> None:
     parser.add_argument(
         "--user-config",
         type=str,
-        help="Override the default user configuration json file for testing.",
+        help="Override the default user configuration json file.",
     )
+    parser.add_argument("--port", type=int, default=None, help="Port to run the app on (default: auto)")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to run the app on")
+    parser.add_argument("--no-browser", action="store_true", help="Don't open a browser on startup")
     args = parser.parse_args()
     if args.user_config:
         os.environ["AURORA_USER_CONFIG"] = args.user_config
@@ -85,7 +88,7 @@ def main() -> None:
     logger.info("Starting Aurora app...")
     from aurora_cycler_manager.visualiser.app import main as app_main  # noqa: PLC0415
 
-    app_main()
+    app_main(port=args.port, host=args.host, open_browser=not args.no_browser)
 
 
 if __name__ == "__main__":
