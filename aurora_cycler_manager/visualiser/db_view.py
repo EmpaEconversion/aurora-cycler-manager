@@ -1115,11 +1115,9 @@ def register_db_view_callbacks(app: Dash) -> None:
                 mode: {s: _Sample.from_id(s).safe_get_sample_capacity(mode) for s in samples}
                 for mode in ["areal", "mass", "nominal"]
             }
-            folder = CONFIG.get("Protocols folder path")
-            if folder:
-                filenames = [p.name for p in folder.glob("*.json")] + [p.name for p in folder.glob("*.xml")]
-                return True, filenames, capacities
-            return True, [], no_update
+            base = CONFIG["Protocols folder path"]
+            filenames = [str(p.relative_to(base)) for p in [*base.rglob("*.json"), *base.rglob("*.xml")]]
+            return True, filenames, capacities
         if button_id == "submit-yes-close" and yes_clicks:
             return False, no_update, no_update
         return no_update, no_update, no_update
@@ -1138,17 +1136,17 @@ def register_db_view_callbacks(app: Dash) -> None:
             return no_update, no_update
         if not filename:
             return "No file selected", {}
-        folder = CONFIG.get("Protocols folder path")
+        base = CONFIG["Protocols folder path"]
 
         if filename.endswith(".json"):
             try:
-                with (folder / filename).open(encoding="utf-8") as f:
+                with (base / filename).open(encoding="utf-8") as f:
                     payload = json.load(f)
             except json.JSONDecodeError:
                 return f"ERROR: {filename} is invalid json file", {}
         elif filename.endswith(".xml"):
             try:
-                with (folder / filename).open("r", encoding="utf-8") as f:
+                with (base / filename).open("r", encoding="utf-8") as f:
                     payload = f.read()  # Store XML as string
             except Exception as e:
                 return f"❌ {filename} couldn't be read as xml file: {e}", {}

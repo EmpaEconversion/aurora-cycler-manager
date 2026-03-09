@@ -3,12 +3,9 @@
 Protocol editing sub-layout for the database tab.
 """
 
-import base64
-import json
 import logging
 import uuid
 from decimal import Decimal
-from pathlib import Path
 
 import dash_mantine_components as dmc
 from aurora_unicycler import (
@@ -21,7 +18,7 @@ from aurora_unicycler import (
     Step,
     Tag,
 )
-from dash import Dash, Input, Output, State, dcc, html, no_update
+from dash import Dash, Input, NoUpdate, Output, State, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 from dash_ag_grid import AgGrid
 from pydantic import ValidationError
@@ -84,6 +81,53 @@ column_defs = [
         "hide": True,
     },
 ]
+
+
+def get_existing_protocols() -> list[str]:
+    """Get list of existing protocol names."""
+    base = CONFIG["Protocols folder path"]
+    return [str(p.relative_to(base).with_suffix("")) for p in base.rglob("*.json")]
+
+
+def load_existing_protocol(filename: str | None) -> dict:
+    """Load a protocol from filename."""
+    if not filename:
+        return {"method": [], "record": {}, "safety": {}}
+    base = CONFIG["Protocols folder path"]
+    file = (base / filename).with_suffix(".json")
+    protocol = Protocol.from_json(file).model_dump()
+
+    # Add a UUID to each technique
+    for technique in protocol["method"]:
+        technique["id"] = uuid.uuid4()
+    return protocol
+
+
+def save_protocol(filename: str, protocol_dict: dict) -> str:
+    """Check and save protocol file."""
+    protocol_copy = protocol_dict.copy()
+
+    # Remove UUIDs - just needed for the table
+    for technique in protocol_copy.get("method", []):
+        if "id" in technique:
+            del technique["id"]
+
+    protocol = Protocol.from_dict(protocol_copy)
+    base = CONFIG["Protocols folder path"]
+    filepath = (base / filename).resolve().with_suffix(".json")
+
+    # Make sure no sneaky trickery has happened
+    if not filepath.is_relative_to(base.resolve()):
+        msg = f"Invalid filename: {filename!r} escapes the protocols folder"
+        raise ValueError(msg)
+
+    # Save the file
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+
+    with filepath.open("w") as f:
+        f.write(protocol.model_dump_json(exclude_none=True, indent=4))
+
+    return str(filepath.relative_to(base.resolve()).with_suffix(""))
 
 
 def seconds_to_time(seconds: float | Decimal | None) -> str:
@@ -219,12 +263,22 @@ protocol_edit_buttons = dmc.Group(
     ],
 )
 
-protocol_header = dmc.Flex(
-    [
-        dmc.TextInput(
-            label="Protocol name",
-            id="protocol-name",
-            style={"width": "100%"},
+# Load/save protocol buttons
+load_save_protocol_buttons = dmc.Group(
+    pt="md",
+    children=[
+        dmc.Select(
+            placeholder="Load protocol",
+            leftSection=html.I(className="bi bi-folder2-open"),
+            id="protocol-select",
+            searchable=True,
+            style={"flex": 1},
+            data=get_existing_protocols(),
+        ),
+        dmc.Button(
+            "Save as",
+            leftSection=html.I(className="bi bi-save"),
+            id="protocol-save-button",
         ),
         dmc.Popover(
             [
@@ -244,31 +298,6 @@ protocol_header = dmc.Flex(
                     ),
                 ),
             ],
-        ),
-    ],
-    align="flex-end",
-)
-
-# Load/save protocol buttons
-load_save_protocol_buttons = dmc.Group(
-    pt="md",
-    children=[
-        dcc.Upload(
-            dmc.Button(
-                "Load protocol",
-                leftSection=html.I(className="bi bi-folder2-open"),
-                id="load-protocol-button-element",
-            ),
-            id="load-protocol-button",
-            accept=".json",
-            max_size=2 * 1024 * 1024,
-            multiple=False,
-            style_disabled={"opacity": "1"},
-        ),
-        dmc.Button(
-            "Save protocol",
-            leftSection=html.I(className="bi bi-save"),
-            id="protocol-save-button",
         ),
     ],
 )
@@ -633,6 +662,31 @@ global_edit_menu = dmc.Stack(
     ],
 )
 
+save_modal = dmc.Modal(
+    children=dmc.Stack(
+        children=[
+            dmc.TextInput(
+                id="protocol-name",
+                label="Protocol name",
+                value="",
+            ),
+            dmc.Group(
+                justify="flex-end",
+                children=[
+                    dmc.Button(
+                        "Overwrite",
+                        id="protocol-save-confirm",
+                    )
+                ],
+            ),
+        ]
+    ),
+    id="protocol-save-modal",
+    title="Save protocol",
+    centered=True,
+    opened=False,
+    size="lg",
+)
 
 protocol_edit_layout = html.Div(
     id="protocol-container",
@@ -657,22 +711,13 @@ protocol_edit_layout = html.Div(
                 html.Div(
                     style={"width": "100%", "padding": "10px"},
                     children=[
-                        protocol_header,
-                        html.Div(style={"height": "20px"}),
                         protocol_edit_grid,
                         protocol_edit_buttons,
                     ],
                 ),
             ],
         ),
-        dcc.ConfirmDialog(
-            id="save-protocol-confirm",
-            message="Save as new protocol?",
-        ),
-        dcc.ConfirmDialog(
-            id="overwrite-protocol-confirm",
-            message="Warning: This will overwrite an existing protocol. Are you sure?",
-        ),
+        save_modal,
     ],
 )
 
@@ -700,7 +745,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
     def update_grid(protocol_dict: dict, selected_indices: list) -> tuple:
         """Update the grid with the new data."""
         if protocol_dict is None or not protocol_dict:  # return empty grid data
-            return [], []
+            return [], [], *[""] * 8
         row_data = protocol_dict_to_row_data(protocol_dict)
         new_selected_rows = [row_data[i] for i in selected_indices] if selected_indices else []
         # Update the record and safety parameters
@@ -729,31 +774,20 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
     @app.callback(
         Output("protocol-store", "data", allow_duplicate=True),
         Output("protocol-store-selected", "data", allow_duplicate=True),
-        Output("protocol-name", "value"),
         Output("notifications-container", "sendNotifications", allow_duplicate=True),
-        Input("load-protocol-button", "contents"),
-        State("load-protocol-button", "filename"),
+        Input("protocol-select", "value"),
         prevent_initial_call=True,
     )
-    def load_protocol(contents: str, filename: str) -> tuple:
-        if contents:
-            _content_type, content_string = contents.split(",")
-            decoded = base64.b64decode(content_string).decode("utf-8")
-            samples = json.loads(decoded)
-            try:
-                protocol = Protocol.from_dict(samples).model_dump()
-                # add an id to each technique
-                for technique in protocol["method"]:
-                    technique["id"] = uuid.uuid4()
-                return protocol, [], filename[:-5], no_update
-            except (ValidationError, AttributeError, ValueError, KeyError):
-                return (
-                    no_update,
-                    no_update,
-                    no_update,
-                    [error_notification("Oh no", "This is not a valid protocol file!")],
-                )
-        raise PreventUpdate
+    def load_protocol(filename: str) -> tuple:
+        try:
+            protocol = load_existing_protocol(filename)
+        except FileNotFoundError:
+            err = error_notification("Error", "Could not find file.")
+        except (ValidationError, AttributeError, ValueError, KeyError):
+            err = error_notification("Error", "This is not a valid protocol file.")
+        else:
+            return protocol, [], no_update
+        return (no_update, no_update, [err])
 
     # Remove rows button
     @app.callback(
@@ -1060,12 +1094,14 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         Output("protocol-warning-message", "children"),
         Output("protocol-warning", "style"),
         Input("protocol-edit-grid", "virtualRowData"),
-        Input("protocol-store", "data"),
+        State("protocol-store", "data"),
         prevent_initial_call=True,
     )
     def validate_protocol(grid_data: list[dict], protocol_dict: dict) -> tuple[str, dict]:
         """Validate the protocol and update the grid data."""
         # Reorder the techniques in case the user has dragged rows around
+        if not protocol_dict.get("method"):
+            return "No steps in protocol", {"visibility": "visible"}
         indices = [row["index"] for row in grid_data] if grid_data else []
         protocol_dict["method"][:] = [protocol_dict["method"][i] for i in indices]
         # Validate the protocol
@@ -1082,12 +1118,11 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
     @app.callback(
         Output("protocol-save-button", "disabled"),
         Input("protocol-warning", "style"),
-        Input("protocol-name", "value"),
         prevent_initial_call=True,
     )
-    def update_save_button(warning: dict, name: str) -> bool:
+    def update_save_button(warning: dict) -> bool:
         """Update the save button based on the protocol validity and name."""
-        return not name or name.strip() == "" or warning.get("visibility") == "visible"
+        return warning.get("visibility") == "visible"
 
     # If any safety or record parameters change, update the protocol store
     @app.callback(
@@ -1115,79 +1150,62 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         protocol_dict: dict,
     ) -> dict:
         """Update the global parameters in the protocol store."""
-        protocol_dict["record"]["time_s"] = record_interval_s
+        protocol_dict.setdefault("record", {})["time_s"] = record_interval_s
         protocol_dict["record"]["voltage_V"] = record_interval_v
         protocol_dict["record"]["current_mA"] = record_interval_mA
-        protocol_dict["safety"]["min_voltage_V"] = min_voltage_V
+        protocol_dict.setdefault("safety", {})["min_voltage_V"] = min_voltage_V
         protocol_dict["safety"]["max_voltage_V"] = max_voltage_V
         protocol_dict["safety"]["min_current_mA"] = min_current_mA
         protocol_dict["safety"]["max_current_mA"] = max_current_mA
         protocol_dict["safety"]["delay_s"] = delay_s
         return protocol_dict
 
-    # Pressing save opens a confirm dialog
+    # Pressing save opens a save modal with the current name
     @app.callback(
-        Output("notifications-container", "sendNotifications", allow_duplicate=True),
-        Output("save-protocol-confirm", "displayed"),
-        Output("overwrite-protocol-confirm", "displayed"),
+        Output("protocol-save-modal", "opened", allow_duplicate=True),
+        Output("protocol-name", "value"),
         Input("protocol-save-button", "n_clicks"),
-        State("protocol-name", "value"),
+        State("protocol-select", "value"),
         prevent_initial_call=True,
     )
-    def save_protocol_button(n_clicks: int, name: str) -> tuple:
-        """Open the confirm dialog for saving the protocol."""
-        # Check if the protocol name exists in protocols folder
-        folder = CONFIG.get("Protocols folder path")
-        if not folder:
-            return (
-                [error_notification("No protocols folder", "Please check config")],
-                no_update,
-                no_update,
-            )
-        if n_clicks:
-            file_path = Path(folder) / f"{name}.json"
-            if file_path.exists():
-                return no_update, no_update, True
-            return no_update, True, no_update
-        raise PreventUpdate
+    def open_save_modal(_n_clicks: int, name: str) -> tuple:
+        """Open the save modal, update name."""
+        return True, name
 
-    # If the user confirms saving, save the protocol to the protocols folder
+    # If the name exists, it says "overwrite", otherwise "save as new"
+    @app.callback(
+        Output("protocol-save-confirm", "children"),
+        Output("protocol-save-confirm", "leftSection"),
+        Output("protocol-save-confirm", "color"),
+        Input("protocol-name", "value"),
+        State("protocol-select", "data"),
+        prevent_initial_call=True,
+    )
+    def overwrite_or_save_new(name: str, all_names: list[str]) -> tuple[str, html.I, str]:
+        if name in all_names:
+            return "Overwrite", html.I(className="bi-save"), "orange"
+        return "Save as new", html.I(className="bi-file-earmark-plus"), "blue"
+
+    # On save confirm, save the file
     @app.callback(
         Output("notifications-container", "sendNotifications", allow_duplicate=True),
-        Input("save-protocol-confirm", "submit_n_clicks"),
-        Input("overwrite-protocol-confirm", "submit_n_clicks"),
-        State("protocol-store", "data"),
+        Output("protocol-save-modal", "opened", allow_duplicate=True),
+        Output("protocol-select", "data"),
+        Output("protocol-select", "value"),
+        Input("protocol-save-confirm", "n_clicks"),
         State("protocol-name", "value"),
+        State("protocol-store", "data"),
         prevent_initial_call=True,
     )
-    def save_protocol(
-        _save_clicks: int,
-        overwrite_clicks: int,
-        protocol_dict: dict,
-        name: str,
-    ) -> list:
-        """Save the protocol to the protocols folder."""
-        folder = CONFIG.get("Protocols folder path")
-        if not folder:
-            return [error_notification("Error", "No protocols folder path set in config!")]
-        file_path = Path(folder) / f"{name}.json"
-        if file_path.exists() and overwrite_clicks is None:
-            return [
-                error_notification(
-                    "Cannot save",
-                    "Protocol with this name already exists! Please choose another name.",
-                )
-            ]
+    def save_protocol_notify(
+        _n_clicks: int, name: str, protocol_dict: dict
+    ) -> tuple[list, bool, list | NoUpdate, str | NoUpdate]:
+        """Save the file."""
         try:
-            protocol_copy = protocol_dict.copy()
-            for technique in protocol_copy.get("method", []):
-                if "id" in technique:
-                    del technique["id"]
-            protocol = Protocol.from_dict(protocol_copy)
-            folder.mkdir(parents=True, exist_ok=True)
-            with file_path.open("w") as f:
-                f.write(protocol.model_dump_json(exclude_none=True, indent=4))
-            return [success_notification("Success", f"'{name}' saved to protocols folder")]
+            newname = save_protocol(name, protocol_dict)
+            existing_protocols = get_existing_protocols()
         except Exception as e:
-            logger.exception("Error saving protocol")
-            return [error_notification("Error", f"Could not save protocol: {e}")]
+            logger.exception("Error saving file")
+            return [error_notification("Error", str(e))], False, no_update, no_update
+        else:
+            return [success_notification("Protocol saved", "")], False, existing_protocols, newname

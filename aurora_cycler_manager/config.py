@@ -153,6 +153,12 @@ def _read_config_file() -> dict:
     # Also accept "Data folder path" - will be prefered in future as it contains more than just snapshots
     if not config.get("Data folder path"):
         config["Data folder path"] = config.get("Processed snapshots folder path")
+    if not config.get("Data folder path"):
+        msg = "Config missing 'Data folder path'"
+        raise ValueError(msg)
+    if not config.get("Protocols folder path"):
+        msg = "Config missing 'Protocols folder path"
+        raise ValueError(msg)
 
     # For SSH connections, paths must be str | None, does not accept Path
     if config.get("SSH private key path"):
