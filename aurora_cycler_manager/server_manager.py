@@ -467,7 +467,16 @@ class ServerManager:
                 logger.error("Error getting pipeline status from %s: %s", label, e)
                 continue
             dt = datetime.now(timezone.utc).isoformat(timespec="seconds")
-            rows = [{"Last checked": dt, **r} for r in rows]
+            rows = [
+                {
+                    "Last checked": dt,
+                    "Server label": label,
+                    "Server hostname": server.hostname,
+                    "Server type": server.server_type,
+                    **r,
+                }
+                for r in rows
+            ]
             dbf.bulk_add_or_update_pipeline(rows)
         dbf.fill_pipelines_missing_job_ids()
 
