@@ -47,6 +47,7 @@ class SSHConnection:
         """Store server info."""
         self.server = server
         self.client: paramiko.SSHClient
+        self._jump_client = None
 
     def get_sock(self) -> paramiko.Channel | None:
         """Return a tunnel channel if a proxy is needed, else None."""
@@ -88,6 +89,9 @@ class SSHConnection:
         """Close SSH connection."""
         if self.client:
             self.client.close()
+        if self._jump_client:
+            self._jump_client.close()
+            self._jump_client = None
 
     def __enter__(self) -> Self:
         """Context manager entry."""
