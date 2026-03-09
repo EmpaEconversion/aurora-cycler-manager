@@ -130,12 +130,14 @@ def find_free_port(start_port: int = 8050, end_port: int = 8100) -> int:
     raise RuntimeError(msg)
 
 
-def main() -> None:
+def main(port: int | None = None, host: str = "127.0.0.1", *, open_browser: bool = True) -> None:
     """Open a web browser and run the app."""
-    port = find_free_port()
-    logger.info("Running aurora-app on http://localhost:%s", port)
-    webbrowser.open_new(f"http://localhost:{port}")
-    serve(app.server, host="127.0.0.1", port=port)
+    if port is None:
+        port = find_free_port()
+    logger.info("Running aurora-app on http://%s:%s", host, port)
+    if open_browser:
+        webbrowser.open_new(f"http://{host}:{port}")
+    serve(app.server, host=host, port=port)
 
 
 if __name__ == "__main__":
