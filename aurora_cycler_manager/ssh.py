@@ -48,6 +48,28 @@ class SSHConnection:
         self.server = server
         self.client: paramiko.SSHClient
 
+    def get_sock(self) -> paramiko.Channel | None:
+        """Return a tunnel channel if a proxy is needed, else None."""
+        proxy = self.server.get("proxy_hostname")
+        if not proxy:
+            return None
+
+        jump = paramiko.SSHClient()
+        jump.load_system_host_keys()
+        jump.connect(
+            hostname=proxy,
+            username=self.server.get("proxy_username", self.server["username"]).lower(),
+            key_filename=CONFIG.get("SSH private key path"),
+        )
+        # Keep a reference to avoid garbage collection
+        self._jump_client = jump
+
+        return jump.get_transport().open_channel(
+            "direct-tcpip",
+            (self.server["hostname"].lower(), 22),
+            ("127.0.0.1", 0),
+        )
+
     def connect(self) -> Self:
         """Establish SSH connection."""
         self.client = paramiko.SSHClient()
@@ -58,6 +80,7 @@ class SSHConnection:
             hostname=self.server["hostname"].lower(),
             username=self.server["username"].lower(),
             key_filename=CONFIG.get("SSH private key path"),
+            sock=self.get_sock(),
         )
         return self
 
