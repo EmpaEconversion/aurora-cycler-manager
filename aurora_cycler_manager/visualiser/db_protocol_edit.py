@@ -24,6 +24,7 @@ from dash_ag_grid import AgGrid
 from pydantic import ValidationError
 
 from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.visualiser.file_io import get_existing_protocols, load_existing_protocol, save_protocol
 from aurora_cycler_manager.visualiser.notifications import error_notification, success_notification
 
 logger = logging.getLogger(__name__)
@@ -81,53 +82,6 @@ column_defs = [
         "hide": True,
     },
 ]
-
-
-def get_existing_protocols() -> list[str]:
-    """Get list of existing protocol names."""
-    base = CONFIG["Protocols folder path"]
-    return [str(p.relative_to(base).with_suffix("")) for p in base.rglob("*.json")]
-
-
-def load_existing_protocol(filename: str | None) -> dict:
-    """Load a protocol from filename."""
-    if not filename:
-        return {"method": [], "record": {}, "safety": {}}
-    base = CONFIG["Protocols folder path"]
-    file = (base / filename).with_suffix(".json")
-    protocol = Protocol.from_json(file).model_dump()
-
-    # Add a UUID to each technique
-    for technique in protocol["method"]:
-        technique["id"] = uuid.uuid4()
-    return protocol
-
-
-def save_protocol(filename: str, protocol_dict: dict) -> str:
-    """Check and save protocol file."""
-    protocol_copy = protocol_dict.copy()
-
-    # Remove UUIDs - just needed for the table
-    for technique in protocol_copy.get("method", []):
-        if "id" in technique:
-            del technique["id"]
-
-    protocol = Protocol.from_dict(protocol_copy)
-    base = CONFIG["Protocols folder path"]
-    filepath = (base / filename).resolve().with_suffix(".json")
-
-    # Make sure no sneaky trickery has happened
-    if not filepath.is_relative_to(base.resolve()):
-        msg = f"Invalid filename: {filename!r} escapes the protocols folder"
-        raise ValueError(msg)
-
-    # Save the file
-    filepath.parent.mkdir(parents=True, exist_ok=True)
-
-    with filepath.open("w") as f:
-        f.write(protocol.model_dump_json(exclude_none=True, indent=4))
-
-    return str(filepath.relative_to(base.resolve()).with_suffix(""))
 
 
 def seconds_to_time(seconds: float | Decimal | None) -> str:
@@ -273,7 +227,7 @@ load_save_protocol_buttons = dmc.Group(
             id="protocol-select",
             searchable=True,
             style={"flex": 1},
-            data=get_existing_protocols(),
+            data=[],
         ),
         dmc.Button(
             "Save as",
@@ -1209,3 +1163,12 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
             return [error_notification("Error", str(e))], False, no_update, no_update
         else:
             return [success_notification("Protocol saved", "")], False, existing_protocols, newname
+
+    @app.callback(
+        Output("protocol-select", "data", allow_duplicate=True),
+        Input("protocols-store", "data"),
+        prevent_initial_call=True,
+    )
+    def sync_protocol_options(data: list) -> list:
+        """Sync protocols store to options."""
+        return data

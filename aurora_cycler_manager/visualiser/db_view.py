@@ -850,6 +850,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("last-updated", "label"),
         Output("samples-store", "data"),
         Output("batches-store", "data"),
+        Output("protocols-store", "data"),
         Input("refresh-database", "n_clicks"),
         Input("db-update-interval", "n_intervals"),
         running=[(Output("loading-message-store", "data"), "Reading database...", "")],
@@ -861,12 +862,14 @@ def register_db_view_callbacks(app: Dash) -> None:
         last_checked = last_checked.astimezone(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z") if last_checked else None
         samples = [s["Sample ID"] for s in db_data["data"]["samples"]]
         batches = get_batch_details()
+        protocols = file_io.get_existing_protocols()
         return (
             db_data,
             f"Refresh database, last refreshed: {dt_string}",
             f"Update database, last updated: {last_checked}" if last_checked else "Update from cycling servers",
             samples,
             batches,
+            protocols,
         )
 
     # Update the database i.e. connect to servers and grab new info, then refresh the local data
