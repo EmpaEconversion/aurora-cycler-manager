@@ -911,7 +911,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             enabled |= {"upload-button"}
         if selected_rows:
             enabled |= {"copy-button"}
-            if len(selected_rows) <= 200:  # To avoid enormous zip files being stored
+            if len(selected_rows) <= 200 and all(s.get("Sample ID") is not None for s in selected_rows):
                 enabled |= {"download-button"}
             if sm is not None:
                 if table == "samples":
