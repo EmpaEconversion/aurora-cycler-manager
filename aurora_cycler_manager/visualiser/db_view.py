@@ -225,7 +225,7 @@ button_layout = dmc.Flex(
             children=[
                 dmc.Button(
                     "Copy",
-                    leftSection=html.I(className="bi bi-clipboard"),
+                    leftSection=html.I(className="bi bi-copy"),
                     id="copy-button",
                     disabled=True,
                 ),
@@ -241,7 +241,7 @@ button_layout = dmc.Flex(
                 ),
                 dmc.Button(
                     "Submit",
-                    leftSection=html.I(className="bi bi-upload"),
+                    leftSection=html.I(className="bi bi-play-circle"),
                     id="submit-button",
                 ),
                 dmc.Button(
