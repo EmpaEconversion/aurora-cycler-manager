@@ -8,6 +8,7 @@ from zipfile import ZipFile
 
 import polars as pl
 import pytest
+from aurora_unicycler import CyclingProtocol
 from polars.testing import assert_frame_equal
 
 from aurora_cycler_manager.analysis import (
@@ -28,6 +29,11 @@ def set_progress(x: tuple[float, str, str]) -> None:
     if i < 0 or i > 100:
         msg = "Progress cannot be outside range 0-100"
         raise ValueError(msg)
+
+
+def norm_protocol(protocol: dict) -> dict:
+    """Unicycler round-trip to normalize."""
+    return CyclingProtocol.from_dict(protocol).model_dump()
 
 
 def test_analyse_download_eclab_sample(
@@ -149,29 +155,49 @@ def test_analyse_download_eclab_sample(
     unicycler_file = tmp_path / "unicycler.json"
     with unicycler_file.open("w") as f:
         f.write(json.dumps(unicycler_dict))
-    # 'Upload' the dict without job selected
-    res = file_io.determine_file(unicycler_file, [])
-    assert "you must select jobs" in res[0]
-    assert res[3]["file"] is None
-    assert res[3]["data"] is None
+    unicycler_file_new = tmp_path / "unicycler-new.json"
+    with unicycler_file_new.open("w") as f:
+        f.write(json.dumps(unicycler_dict))
 
-    # 'Upload' the dict
+    # 'Upload' the dict without job selected - adds to protocols store
+    res = file_io.determine_file(unicycler_file_new, [])
+    assert "add unicycler protocol to available protocols" in res[0]
+    assert res[3]["file"] == "unicycler-json"
+    assert norm_protocol(res[3]["data"]) == norm_protocol(unicycler_dict)
+    assert res[3]["jobs"] is None
+
+    file_io.process_file(res[3], unicycler_file_new, [])
+    file_path = test_dir / "protocols" / "unicycler-new.json"
+    assert file_path.exists()
+    file_path.unlink()
+
+    # 'Upload' the dict without job selected - adds to protocols store
+    res = file_io.determine_file(unicycler_file, [])
+    assert "Will OVERWRITE unicycler protocol" in res[0]
+    assert res[3]["file"] == "unicycler-json"
+    assert norm_protocol(res[3]["data"]) == norm_protocol(unicycler_dict)
+    assert res[3]["jobs"] is None
+
+    file_io.process_file(res[3], unicycler_file, [])
+
+    # 'Upload' the dict with jobs selected
     res = file_io.determine_file(unicycler_file, [{"Sample ID": sample_id, "Job ID": jobs[0]}])
     assert "unicycler" in res[0]
     assert res[3]["file"] == "unicycler-json"
-    assert res[3]["data"] == unicycler_dict
+    assert norm_protocol(res[3]["data"]) == norm_protocol(unicycler_dict)
+    assert res[3]["jobs"] == [jobs[0]]
 
     # Should add a unicycler protocol to the database
     file_io.process_file(res[3], unicycler_file, [{"Sample ID": sample_id, "Job ID": jobs[0]}])
     job_data = get_job_data(jobs[0])
-    assert job_data["Unicycler protocol"] == unicycler_dict
+    assert norm_protocol(job_data["Unicycler protocol"]) == norm_protocol(unicycler_dict)
 
     # 'Upload' the dict again, should warn
     res = file_io.determine_file(unicycler_file, [job_data])
     assert "unicycler" in res[0]
-    assert "this will overwrite data" in res[0]
+    assert "OVERWRITE unicycler protocol attached to 1 existing" in res[0]
     assert res[3]["file"] == "unicycler-json"
-    assert res[3]["data"] == unicycler_dict
+    assert norm_protocol(res[3]["data"]) == norm_protocol(unicycler_dict)
 
     # Upload a battinfo xlsx
     zenodoinfo_xlsx = test_dir / "misc" / "aurora_zenodo_info.xlsx"

@@ -141,25 +141,36 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
         if is_unicycler_protocol(data):
             jobs = [s.get("Job ID") for s in selected_rows if s.get("Job ID")]
             if not jobs:
+                if filepath.name in (p.name for p in CONFIG["Protocols folder path"].iterdir()):
+                    return (
+                        "Will OVERWRITE unicycler protocol in available protocols.\n"
+                        "To attach a protocol to existing jobs instead, select jobs first then upload protocol.",
+                        "orange",
+                        False,
+                        {"file": "unicycler-json", "data": data, "jobs": None},
+                    )
                 return (
-                    "Got a unicycler protocol, but you must select jobs.",
-                    "red",
-                    True,
-                    {"file": None, "data": None},
+                    "Will add unicycler protocol to available protocols.\n"
+                    "To attach a protocol to existing jobs instead, select jobs first then upload protocol.",
+                    "green",
+                    False,
+                    {"file": "unicycler-json", "data": data, "jobs": None},
                 )
             protocols = [s.get("Unicycler protocol") for s in selected_rows if s.get("Unicycler protocol")]
             if protocols:
                 return (
-                    "Got a unicycler protocol.\nWARNING - this will overwrite data",
+                    f"Will OVERWRITE unicycler protocol attached to {len(selected_rows)} existing jobs.\n"
+                    "To add to available protocols instead, upload without selecting jobs.",
                     "orange",
                     False,
-                    {"file": "unicycler-json", "data": data},
+                    {"file": "unicycler-json", "data": data, "jobs": jobs},
                 )
             return (
-                "Got a unicycler protocol.",
+                f"Will attached unicycler protocol to {len(selected_rows)} existing jobs.\n"
+                "To add to available protocols instead, upload without selecting jobs.",
                 "green",
                 False,
-                {"file": "unicycler-json", "data": data},
+                {"file": "unicycler-json", "data": data, "jobs": jobs},
             )
 
     elif filepath.suffix == ".xlsx":
@@ -373,15 +384,24 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
         case "unicycler-json":
             try:
                 protocol = data["data"]
-                Protocol.from_dict(protocol)
-                jobs = [s.get("Job ID") for s in selected_rows if s.get("Job ID")]
-                for job in jobs:
-                    add_protocol_to_job(job, protocol)
-                success_notification(
-                    "Protocols added",
-                    f"Protocols added to {len(jobs)} jobs",
-                    queue=True,
-                )
+                jobs = data["jobs"]
+                unicycler_obj = Protocol.from_dict(protocol)  # Check it is parseable
+                protocol = unicycler_obj.model_dump(exclude_none=True)
+                if not jobs:  # Add to protocol store
+                    save_protocol(filepath.name, protocol)
+                    success_notification(
+                        "Protocol added",
+                        "Added to protocols store",
+                        queue=True,
+                    )
+                else:
+                    for job in jobs:
+                        add_protocol_to_job(job, protocol)
+                    success_notification(
+                        "Protocols added",
+                        f"Protocols added to {len(jobs)} jobs",
+                        queue=True,
+                    )
             except (ValueError, AttributeError, TypeError) as e:
                 logger.exception("Error processing and uploading unicycler protocol")
                 error_notification(
@@ -783,3 +803,50 @@ def create_rocrate(
                 set_progress((100 * i / n_files, messages, "red"))
             msg = "Zip has no content"
             raise ValueError(msg)
+
+
+def get_existing_protocols() -> list[str]:
+    """Get list of existing protocol names."""
+    base = CONFIG["Protocols folder path"]
+    return [str(p.relative_to(base).with_suffix("")) for p in base.rglob("*.json")]
+
+
+def load_existing_protocol(filename: str | None) -> dict:
+    """Load a protocol from filename."""
+    if not filename:
+        return {"method": [], "record": {}, "safety": {}}
+    base = CONFIG["Protocols folder path"]
+    file = (base / filename).with_suffix(".json")
+    protocol = Protocol.from_json(file).model_dump()
+
+    # Add a UUID to each technique
+    for technique in protocol["method"]:
+        technique["id"] = uuid.uuid4()
+    return protocol
+
+
+def save_protocol(filename: str, protocol_dict: dict) -> str:
+    """Check and save protocol file."""
+    protocol_copy = protocol_dict.copy()
+
+    # Remove UUIDs - just needed for the table
+    for technique in protocol_copy.get("method", []):
+        if "id" in technique:
+            del technique["id"]
+
+    protocol = Protocol.from_dict(protocol_copy)
+    base = CONFIG["Protocols folder path"]
+    filepath = (base / filename).resolve().with_suffix(".json")
+
+    # Make sure no sneaky trickery has happened
+    if not filepath.is_relative_to(base.resolve()):
+        msg = f"Invalid filename: {filename!r} escapes the protocols folder"
+        raise ValueError(msg)
+
+    # Save the file
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+
+    with filepath.open("w") as f:
+        f.write(protocol.model_dump_json(exclude_none=True, indent=4))
+
+    return str(filepath.relative_to(base.resolve()).with_suffix(""))

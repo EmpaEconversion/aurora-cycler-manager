@@ -850,6 +850,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("last-updated", "label"),
         Output("samples-store", "data"),
         Output("batches-store", "data"),
+        Output("protocols-store", "data"),
         Input("refresh-database", "n_clicks"),
         Input("db-update-interval", "n_intervals"),
         running=[(Output("loading-message-store", "data"), "Reading database...", "")],
@@ -861,12 +862,14 @@ def register_db_view_callbacks(app: Dash) -> None:
         last_checked = last_checked.astimezone(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z") if last_checked else None
         samples = [s["Sample ID"] for s in db_data["data"]["samples"]]
         batches = get_batch_details()
+        protocols = file_io.get_existing_protocols()
         return (
             db_data,
             f"Refresh database, last refreshed: {dt_string}",
             f"Update database, last updated: {last_checked}" if last_checked else "Update from cycling servers",
             samples,
             batches,
+            protocols,
         )
 
     # Update the database i.e. connect to servers and grab new info, then refresh the local data
@@ -1115,11 +1118,9 @@ def register_db_view_callbacks(app: Dash) -> None:
                 mode: {s: _Sample.from_id(s).safe_get_sample_capacity(mode) for s in samples}
                 for mode in ["areal", "mass", "nominal"]
             }
-            folder = CONFIG.get("Protocols folder path")
-            if folder:
-                filenames = [p.name for p in folder.glob("*.json")] + [p.name for p in folder.glob("*.xml")]
-                return True, filenames, capacities
-            return True, [], no_update
+            base = CONFIG["Protocols folder path"]
+            filenames = [str(p.relative_to(base)) for p in [*base.rglob("*.json"), *base.rglob("*.xml")]]
+            return True, filenames, capacities
         if button_id == "submit-yes-close" and yes_clicks:
             return False, no_update, no_update
         return no_update, no_update, no_update
@@ -1138,17 +1139,17 @@ def register_db_view_callbacks(app: Dash) -> None:
             return no_update, no_update
         if not filename:
             return "No file selected", {}
-        folder = CONFIG.get("Protocols folder path")
+        base = CONFIG["Protocols folder path"]
 
         if filename.endswith(".json"):
             try:
-                with (folder / filename).open(encoding="utf-8") as f:
+                with (base / filename).open(encoding="utf-8") as f:
                     payload = json.load(f)
             except json.JSONDecodeError:
                 return f"ERROR: {filename} is invalid json file", {}
         elif filename.endswith(".xml"):
             try:
-                with (folder / filename).open("r", encoding="utf-8") as f:
+                with (base / filename).open("r", encoding="utf-8") as f:
                     payload = f.read()  # Store XML as string
             except Exception as e:
                 return f"❌ {filename} couldn't be read as xml file: {e}", {}
