@@ -520,8 +520,10 @@ def register_batches_callbacks(app: Dash) -> None:
 
         # Add the samples from batches to samples
         sample_set = set(samples)
-        for batch in batches:
-            sample_set.update(batch_defs.get(batch, {}).get("samples", []))
+        sample_to_batch = {
+            sample: batch for batch in batches for sample in batch_defs.get(batch, {}).get("samples", [])
+        }
+        sample_set = set(samples) | sample_to_batch.keys()
 
         # Go through the keys in the data store, if they're not in the samples, remove them
         del_keys = [key for key in data if key not in sample_set]
@@ -533,7 +535,11 @@ def register_batches_callbacks(app: Dash) -> None:
             if s in data:
                 continue
             if (df := get_cycles_summary(s)) is not None and (overall_dict := get_overall_summary(s)) is not None:
-                data[s] = {**df.to_dict(as_series=False), **overall_dict}
+                data[s] = {
+                    **df.to_dict(as_series=False),
+                    **overall_dict,
+                    "Batch": sample_to_batch.get(s),
+                }
 
         # y-axis options are lists in data
         # color options are non-lists
