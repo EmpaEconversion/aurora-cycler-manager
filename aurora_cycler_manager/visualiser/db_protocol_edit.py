@@ -178,11 +178,16 @@ protocol_edit_grid = AgGrid(
     },
     dashGridOptions={
         "rowDragManaged": True,
-        "rowSelection": "multiple",
+        "rowSelection": {
+            "mode": "multiRow",
+            "checkboxes": False,
+            "headerCheckbox": False,
+            "enableClickSelection": True,
+        },
         "animateRows": True,
         "rowDragMultiRow": True,
     },
-    style={"height": "calc(100vh - 255px)", "width": "100%", "minHeight": "300px"},
+    style={"flex": "1"},
     className="ag-theme-quartz",
 )
 
@@ -662,7 +667,7 @@ protocol_edit_layout = html.Div(
                         style={"height": "100%", "overflowY": "scroll"},
                     ),
                 ),
-                html.Div(
+                dmc.Stack(
                     style={"width": "100%", "padding": "10px"},
                     children=[
                         protocol_edit_grid,

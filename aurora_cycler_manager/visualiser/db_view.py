@@ -95,7 +95,12 @@ DEFAULT_TABLE_OPTIONS: dict[str, str | dict] = {
     "dashGridOptions": {
         "enableCellTextSelection": False,
         "ensureDomOrder": True,
-        "rowSelection": "multiple",
+        "rowSelection": {
+            "mode": "multiRow",
+            "checkboxes": False,
+            "headerCheckbox": False,
+            "enableClickSelection": True,
+        },
     },
     "defaultColDef": {
         "filter": True,
@@ -225,7 +230,7 @@ button_layout = dmc.Flex(
             children=[
                 dmc.Button(
                     "Copy",
-                    leftSection=html.I(className="bi bi-clipboard"),
+                    leftSection=html.I(className="bi bi-copy"),
                     id="copy-button",
                     disabled=True,
                 ),
@@ -241,7 +246,7 @@ button_layout = dmc.Flex(
                 ),
                 dmc.Button(
                     "Submit",
-                    leftSection=html.I(className="bi bi-upload"),
+                    leftSection=html.I(className="bi bi-play-circle"),
                     id="submit-button",
                 ),
                 dmc.Button(
@@ -906,7 +911,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             enabled |= {"upload-button"}
         if selected_rows:
             enabled |= {"copy-button"}
-            if len(selected_rows) <= 200:  # To avoid enormous zip files being stored
+            if len(selected_rows) <= 200 and all(s.get("Sample ID") is not None for s in selected_rows):
                 enabled |= {"download-button"}
             if sm is not None:
                 if table == "samples":
@@ -919,9 +924,9 @@ def register_db_view_callbacks(app: Dash) -> None:
                     if all_samples:
                         enabled |= {"label-button", "create-batch-button"}
                         if all_servers:
-                            enabled |= {"submit-button", "snapshot-button"}
+                            enabled |= {"snapshot-button"}
                             if all(s["Job ID"] is None for s in selected_rows):
-                                enabled |= {"eject-button"}
+                                enabled |= {"submit-button", "eject-button"}
                             elif all(s.get("Job ID") is not None for s in selected_rows):
                                 enabled |= {"cancel-button"}
                     elif all_servers and no_samples:
