@@ -95,7 +95,7 @@ DEFAULT_TABLE_OPTIONS: dict[str, str | dict] = {
     "dashGridOptions": {
         "enableCellTextSelection": False,
         "ensureDomOrder": True,
-        "rowSelection": "multiple",
+        "rowSelection": {"mode": "multiRow", "checkboxes": False, "headerCheckbox": False},
     },
     "defaultColDef": {
         "filter": True,

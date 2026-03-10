@@ -178,7 +178,7 @@ protocol_edit_grid = AgGrid(
     },
     dashGridOptions={
         "rowDragManaged": True,
-        "rowSelection": "multiple",
+        "rowSelection": {"mode": "multiRow", "checkboxes": False, "headerCheckbox": False},
         "animateRows": True,
         "rowDragMultiRow": True,
     },
