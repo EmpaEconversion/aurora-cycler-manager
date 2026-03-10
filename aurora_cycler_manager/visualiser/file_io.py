@@ -166,7 +166,7 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
                     {"file": "unicycler-json", "data": data, "jobs": jobs},
                 )
             return (
-                f"Will attached unicycler protocol to {len(selected_rows)} existing jobs.\n"
+                f"Will attach unicycler protocol to {len(selected_rows)} existing jobs.\n"
                 "To add to available protocols instead, upload without selecting jobs.",
                 "green",
                 False,
