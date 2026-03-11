@@ -808,6 +808,7 @@ def register_batches_callbacks(app: Dash) -> None:
                         fill="toself",
                         fillcolor=color,
                         line={"width": 0},
+                        mode="lines",
                         showlegend=False,
                         hoverinfo="none",
                     )
