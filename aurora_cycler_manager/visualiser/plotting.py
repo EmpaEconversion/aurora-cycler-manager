@@ -182,7 +182,7 @@ global_controls = dmc.Group(
         ),
         dmc.Select(
             id="color-by",
-            data=["Sample ID", "Max voltage (V)"],
+            data=["Sample ID"],
             value="Sample ID",
             label="Color by",
         ),
@@ -246,6 +246,7 @@ def register_plotting_callbacks(app: Dash) -> None:
     @app.callback(
         Output("selected-samples", "data"),
         Output("sample:color", "data", allow_duplicate=True),
+        Output("color-by", "data"),
         Input("plotting-samples-select-yes-close", "n_clicks"),
         State("plotting-samples-select-dropdown", "value"),
         State("plotting-batch-select-dropdown", "value"),
@@ -262,25 +263,34 @@ def register_plotting_callbacks(app: Dash) -> None:
         batch_defs: dict[str, dict],
         samples_dict: dict[str, dict],
         color_by: str,
-    ) -> tuple[dict[str, dict], dict[str, str]]:
+    ) -> tuple[dict[str, dict], dict[str, str], list[str]]:
         """Load the selected samples into the data store."""
         if not ctx.triggered:
             raise PreventUpdate
         # Add the samples from batches to samples
         new_sample_set = set(samples)
-        for batch in batches:
-            new_sample_set.update(batch_defs.get(batch, {}).get("samples", []))
-
+        sample_to_batch = {
+            sample: batch for batch in batches for sample in batch_defs.get(batch, {}).get("samples", [])
+        }
+        new_sample_set = set(samples) | sample_to_batch.keys()
         added = new_sample_set - set(samples_dict)
         removed = set(samples_dict) - new_sample_set
         selected_samples = {
             **{k: v for k, v in samples_dict.items() if k not in removed},
             **{k: LazySampleDataBundle(k).overall_summary or {} for k in added},
         }
+        for k, v in sample_to_batch.items():
+            selected_samples[k]["Batch"] = v
+
+        # Get color options
+        options = {k for v in selected_samples.values() for k in v}
+        options.update(("Sample ID",))
+
         # Remove removed samples
         return (
             selected_samples,
             get_trace_colors(selected_samples, color_by, "Viridis", "Plotly"),
+            sorted(options),
         )
 
     # Update graphs
