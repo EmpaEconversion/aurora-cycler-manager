@@ -103,6 +103,9 @@ app.layout = dmc.MantineProvider(
                     dcc.Interval(id="db-update-interval", interval=1000 * 60 * 60),  # Auto-refresh database every hour
                     dcc.Store(id="table-data-store", data={"data": {}, "column_defs": {}}),
                     dcc.Store(id="samples-store", data=[]),
+                    dcc.Store(id="pipelines-store", data=[]),
+                    dcc.Store(id="jobs-store", data=[]),
+                    dcc.Store(id="results-store", data=[]),
                     dcc.Store(id="batches-store", data={}),
                     dcc.Store(id="protocols-store", data=[]),
                 ],
