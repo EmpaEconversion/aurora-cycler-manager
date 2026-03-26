@@ -120,10 +120,10 @@ class TestAnalysis:
         with pytest.raises(ValueError):
             create_database()
 
-        # With force this should remove all the columns
+        # With force this should remove all the columns, sync_modified and sync_op must stay
         get_config(reload=True)
         create_database(force=True)
         engine = get_engine(config)
         inspector = inspect(engine)
         columns = inspector.get_columns("samples")
-        assert len(columns) == 2, "Columns were not deleted successfully"
+        assert len(columns) == 4, "Columns were not deleted successfully"
