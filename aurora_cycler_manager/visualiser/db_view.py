@@ -10,6 +10,7 @@ import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
+from time import time
 from typing import Literal
 
 import dash_ag_grid as dag
@@ -742,6 +743,7 @@ db_view_layout = html.Div(
         dcc.Clipboard(id="clipboard", style={"display": "none"}),
         dcc.Store(id="selected-rows-store", data={}),
         dcc.Store(id="len-store", data={}),
+        dcc.Store(id="last-sync-store", data=0),
         eject_modal,
         load_modal,
         submit_modal,
@@ -763,39 +765,6 @@ def register_db_view_callbacks(app: Dash) -> None:
     register_batch_edit_callbacks(app)
     register_protocol_edit_callbacks(app)
     du.configure_upload(app, UPLOAD_DIR)
-
-    # Update data in tables when it changes
-    @app.callback(
-        Output("samples-table", "rowData"),
-        Output("samples-table", "columnDefs"),
-        Output("pipelines-table", "rowData"),
-        Output("pipelines-table", "columnDefs"),
-        Output("jobs-table", "rowData"),
-        Output("jobs-table", "columnDefs"),
-        Output("results-table", "rowData"),
-        Output("results-table", "columnDefs"),
-        Output("len-store", "data"),
-        Input("table-data-store", "data"),
-        running=[(Output("loading-message-store", "data"), "Updating tables...", "")],
-        prevent_initial_call=True,
-    )
-    def update_data(data: dict[str, dict]) -> tuple:
-        return (
-            data["data"].get("samples", no_update),
-            data["column_defs"].get("samples", no_update),
-            data["data"].get("pipelines", no_update),
-            data["column_defs"].get("pipelines", no_update),
-            data["data"].get("jobs", no_update),
-            data["column_defs"].get("jobs", no_update),
-            data["data"].get("results", no_update),
-            data["column_defs"].get("results", no_update),
-            {
-                "samples": len(data["data"].get("samples", [])),
-                "pipelines": len(data["data"].get("pipelines", [])),
-                "jobs": len(data["data"].get("jobs", [])),
-                "results": len(data["data"].get("results", [])),
-            },
-        )
 
     # Update the buttons displayed depending on the table selected
     @app.callback(
@@ -850,31 +819,149 @@ def register_db_view_callbacks(app: Dash) -> None:
 
     # Refresh the local data from the database
     @app.callback(
-        Output("table-data-store", "data"),
+        Output("last-sync-store", "data"),  # new store, just a float
         Output("last-refreshed", "label"),
         Output("last-updated", "label"),
         Output("samples-store", "data"),
+        Output("pipelines-store", "data"),
+        Output("jobs-store", "data"),
+        Output("results-store", "data"),
         Output("batches-store", "data"),
         Output("protocols-store", "data"),
+        Output("samples-table", "columnDefs"),
+        Output("pipelines-table", "columnDefs"),
+        Output("jobs-table", "columnDefs"),
+        Output("results-table", "columnDefs"),
+        Output("samples-table", "rowTransaction"),
+        Output("pipelines-table", "rowTransaction"),
+        Output("jobs-table", "rowTransaction"),
+        Output("results-table", "rowTransaction"),
+        Output("len-store", "data"),
         Input("refresh-database", "n_clicks"),
         Input("db-update-interval", "n_intervals"),
+        State("last-sync-store", "data"),
+        State("samples-store", "data"),
+        State("pipelines-store", "data"),
+        State("jobs-store", "data"),
+        State("results-store", "data"),
         running=[(Output("loading-message-store", "data"), "Reading database...", "")],
     )
-    def refresh_database(_n_clicks: int, _n_intervals: int) -> tuple:
-        db_data = dbf.get_database()
-        dt_string = datetime.now(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z")
-        last_checked = dbf.get_db_last_update()
-        last_checked = last_checked.astimezone(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z") if last_checked else None
-        samples = [s["Sample ID"] for s in db_data["data"]["samples"]]
+    def refresh_database(
+        _n_clicks: int,
+        _n_intervals: int,
+        last_sync: float,
+        samples_list: list[str],
+        pipelines_list: list[str],
+        jobs_list: list[str],
+        results_list: list[str],
+    ) -> tuple:
+        """Get the current state of the database, refresh everything in app.
+
+        If no previous sync, grab everything. Otherwise just get the updated rows.
+        """
+        # Record the current time to update last sync and display to user
+        now = time()
+        dt_string = datetime.fromtimestamp(now, tz=CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z")
+
+        # Get the last cycler update timestamp to display to user
+        last_cycler_check_uts = dbf.get_db_last_update()
+        last_cycler_check = (
+            datetime.fromtimestamp(last_cycler_check_uts, tz=CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z")
+            if last_cycler_check_uts
+            else None
+        )
+
+        # Either grab the entire database, or just a partial update
+        db_data = dbf.get_database_updates(last_sync) if last_sync else dbf.get_database()
+
+        # Compare the database update the known IDs
+        table_known_ids = {
+            "samples": samples_list,
+            "pipelines": pipelines_list,
+            "jobs": jobs_list,
+            "results": results_list,
+        }
+        table_key = {
+            "samples": "Sample ID",
+            "pipelines": "Pipeline",
+            "jobs": "Job ID",
+            "results": "Sample ID",
+        }
+
+        # For each table, the db_data could have 'add' OR 'upsert' + 'remove'
+        for table, known_ids in table_known_ids.items():
+            key = table_key[table]
+            added = set()
+            updated = set()
+            removed = set()
+            known_ids_set = set(known_ids)
+
+            # For pure adding, known_ids should be empty, db_data already in correct format
+            if db_data["data"][table].get("add"):
+                added = {r[key] for r in db_data["data"][table]["add"]}
+                known_ids_set = known_ids_set | added
+
+            # For upserting, we must split the rows into 'add' and 'update' ourselves
+            # Dash AG grid has no built-in way to do this, inserting exist rows causes strange bugs
+            # and updating non-existent rows does nothing
+            # Hence we also track the known IDs in a client-side Store
+            # If a row ID is in a the known IDs, put it in "update"
+            # If not, put it in "add"
+            # Dash AG grid ignores "upsert", just leave it
+            if db_data["data"][table].get("upsert"):
+                upsert = {r[key] for r in db_data["data"][table]["upsert"]}
+                updated = upsert & known_ids_set
+                added = upsert - updated
+                db_data["data"][table]["add"] = [r for r in db_data["data"][table]["upsert"] if r[key] in added]
+                db_data["data"][table]["update"] = [r for r in db_data["data"][table]["upsert"] if r[key] in updated]
+                known_ids_set = known_ids_set | added
+
+            # Removing a non-existent row in Dash AG grid does nothing, no need to double check against known IDs
+            if db_data["data"][table].get("remove"):
+                removed = {r[key] for r in db_data["data"][table]["remove"]}
+                known_ids_set = known_ids_set - removed
+
+            # Update the known IDs for the table
+            table_known_ids[table] = sorted(known_ids_set)
+
+            logger.info(
+                "%s added %s updated %s removed %s",
+                table.ljust(10),
+                str(len(added)).ljust(5),
+                str(len(updated)).ljust(5),
+                str(len(removed)).ljust(5),
+            )
+
+        table_lengths = {k: len(v) for k, v in table_known_ids.items()}
+
+        # Update known batches
         batches = get_batch_details()
+
+        # Update known protocols
         protocols = file_io.get_existing_protocols()
+        logger.info("Refreshed database view in %s s", round(time() - now, 3))
+
         return (
-            db_data,
+            now,
             f"Refresh database, last refreshed: {dt_string}",
-            f"Update database, last updated: {last_checked}" if last_checked else "Update from cycling servers",
-            samples,
+            f"Update from cyclers, last updated: {last_cycler_check}"
+            if last_cycler_check
+            else "Update from cycling servers",
+            table_known_ids["samples"],
+            table_known_ids["pipelines"],
+            table_known_ids["jobs"],
+            table_known_ids["results"],
             batches,
             protocols,
+            no_update if last_sync else db_data["column_defs"]["samples"],
+            no_update if last_sync else db_data["column_defs"]["pipelines"],
+            no_update if last_sync else db_data["column_defs"]["jobs"],
+            no_update if last_sync else db_data["column_defs"]["results"],
+            db_data["data"]["samples"],
+            db_data["data"]["pipelines"],
+            db_data["data"]["jobs"],
+            db_data["data"]["results"],
+            table_lengths,
         )
 
     # Update the database i.e. connect to servers and grab new info, then refresh the local data
