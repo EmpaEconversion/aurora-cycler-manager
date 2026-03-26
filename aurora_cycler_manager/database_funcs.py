@@ -4,11 +4,13 @@ Functions for interacting with the database.
 """
 
 import json
+import logging
 import uuid
 from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from time import time
+from typing import Any, Literal
 
 import pandas as pd
 from sqlalchemy import (
@@ -39,6 +41,7 @@ from aurora_cycler_manager.stdlib_utils import check_illegal_text, run_from_samp
 from aurora_cycler_manager.utils import parse_datetime
 
 CONFIG = get_config()
+logger = logging.getLogger(__name__)
 
 
 def patch_database(engine: Engine) -> None:
@@ -46,13 +49,20 @@ def patch_database(engine: Engine) -> None:
     inspector = inspect(engine)
 
     # Add missing columns to jobs table
-    existing_columns = [col["name"] for col in inspector.get_columns("jobs")]
     with engine.begin() as conn:
+        existing_columns = [col["name"] for col in inspector.get_columns("jobs")]
         if "Capacity (mAh)" not in existing_columns:
             conn.execute(text('ALTER TABLE jobs ADD COLUMN "Capacity (mAh)" FLOAT'))
         if "Unicycler protocol" not in existing_columns:
             conn.execute(text('ALTER TABLE jobs ADD COLUMN "Unicycler protocol" TEXT'))
 
+        for table in ["jobs", "pipelines", "samples", "results"]:
+            existing_columns = [col["name"] for col in inspector.get_columns(table)]
+            if "sync_modified" not in existing_columns:
+                conn.execute(text(f'ALTER TABLE {table} ADD COLUMN "sync_modified" FLOAT DEFAULT 0.0'))
+            if "sync_op" not in existing_columns:
+                conn.execute(text(f'ALTER TABLE {table} ADD COLUMN "sync_op" TEXT DEFAULT "add"'))
+            conn.execute(text(f'CREATE INDEX IF NOT EXISTS "idx_{table}_sync_modified" ON "{table}" ("sync_modified")'))
     # Create dataframes table if it doesn't exist
     if "dataframes" not in inspector.get_table_names():
         meta = MetaData()
@@ -69,6 +79,17 @@ def patch_database(engine: Engine) -> None:
             PrimaryKeyConstraint("Sample ID", "File stem"),
         )
         meta.create_all(engine)
+
+
+def stamp_sync(
+    row: dict,
+    uts: float | None = None,
+    op: Literal["insert", "update", "delete"] = "update",
+) -> dict:
+    """Update modified time and mode."""
+    if uts is None:
+        uts = time()
+    return {**row, "sync_modified": uts, "sync_op": op}
 
 
 engine = get_engine(CONFIG)
@@ -151,10 +172,10 @@ def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
             row_dict = row.to_dict()
             conn.execute(
                 insert(samples_table)
-                .values(**row_dict)
+                .values(stamp_sync(row_dict, op="insert"))
                 .on_conflict_do_update(
                     index_elements=["Sample ID"],
-                    set_=row_dict,
+                    set_=stamp_sync(row_dict),
                 )
             )
 
@@ -279,7 +300,11 @@ def update_sample_label(sample_ids: str | list[str], label: str | None) -> None:
         sample_ids = [sample_ids]
     with engine.begin() as conn:
         for sample_id in sample_ids:
-            conn.execute(update(samples_table).where(samples_table.c["Sample ID"] == sample_id).values(Label=label))
+            conn.execute(
+                update(samples_table)
+                .where(samples_table.c["Sample ID"] == sample_id)
+                .values(stamp_sync({"Label": label}))
+            )
 
 
 def delete_samples(sample_ids: str | list) -> None:
@@ -294,21 +319,33 @@ def delete_samples(sample_ids: str | list) -> None:
     if not isinstance(sample_ids, list):
         sample_ids = [sample_ids]
     with engine.begin() as conn:
-        conn.execute(delete(samples_table).where(samples_table.c["Sample ID"].in_(sample_ids)))
+        conn.execute(
+            update(samples_table)
+            .where(samples_table.c["Sample ID"].in_(sample_ids))
+            .values(stamp_sync({}, op="delete"))
+        )
 
 
 def get_all_sampleids() -> list[str]:
     """Get a list of all sample IDs in the database."""
     with engine.connect() as conn:
-        result = conn.execute(select(samples_table.c["Sample ID"]))
+        result = conn.execute(select(samples_table.c["Sample ID"]).where(samples_table.c["sync_op"] != "delete"))
         return [row[0] for row in result.fetchall()]
 
 
 def get_sample_data(sample_id: str) -> dict:
     """Get all data about a sample from the database."""
     with engine.connect() as conn:
+        sync_cols = {"sync_op", "sync_modified"}
+        cols = [c for c in samples_table.c if c.key not in sync_cols]
         result = (
-            conn.execute(select(samples_table).where(samples_table.c["Sample ID"] == sample_id)).mappings().fetchone()
+            conn.execute(
+                select(*cols)
+                .where(samples_table.c["Sample ID"] == sample_id)
+                .where(samples_table.c["sync_op"] != "delete")
+            )
+            .mappings()
+            .fetchone()
         )
         if not result:
             msg = f"Sample ID '{sample_id}' not found in the database"
@@ -438,13 +475,14 @@ def add_or_update_pipeline(pipeline: str, row: dict[str, str | float | None]) ->
         with suppress(ValueError):
             row["Job ID"] = get_job_id_from_server(job_id, job_id_on_server)
     # Insert or update the row
+    uts = time()
     with engine.begin() as conn:
         conn.execute(
             insert(pipelines_table)
-            .values(Pipeline=pipeline, **row)
+            .values(Pipeline=pipeline, **stamp_sync(row, uts=uts, op="insert"))
             .on_conflict_do_update(
                 index_elements=["Pipeline"],
-                set_=row,
+                set_=stamp_sync(row, uts=uts, op="update"),
             )
         )
 
@@ -458,14 +496,15 @@ def bulk_add_or_update_pipeline(rows: list[dict[str, str | float | None]]) -> No
         }
         for row in rows
     ]
+    uts = time()
     with engine.begin() as conn:
         for row in processed_rows:
             conn.execute(
                 insert(pipelines_table)
-                .values(row)
+                .values(stamp_sync(row, uts=uts, op="insert"))
                 .on_conflict_do_update(
                     index_elements=["Pipeline"],
-                    set_=row,
+                    set_=stamp_sync(row, uts=uts),
                 )
             )
 
@@ -483,7 +522,7 @@ def fill_pipelines_missing_job_ids() -> None:
             update(pipelines_table)
             .where(pipelines_table.c["Job ID"].is_(None))
             .where(pipelines_table.c["Job ID on server"].isnot(None))
-            .values({"Job ID": job_id_subquery})
+            .values(stamp_sync({"Job ID": job_id_subquery}, op="update"))
         )
 
 
@@ -517,11 +556,12 @@ def update_flags() -> None:
         )
         # Bulk update
         if rows:
+            uts = time()
             conn.execute(
                 update(pipelines_table).where(
                     pipelines_table.c["Sample ID"] == bindparam("b_Sample ID")  # match on Sample ID
                 ),
-                [{"b_Sample ID": row["Sample ID"], "Flag": row["Flag"]} for row in rows],
+                [stamp_sync({"b_Sample ID": row["Sample ID"], "Flag": row["Flag"]}, uts=uts) for row in rows],
             )
 
 
@@ -552,10 +592,10 @@ def add_or_update_job(job_id: str, row: dict[str, str | float | None]) -> None:
     with engine.begin() as conn:
         conn.execute(
             insert(jobs_table)
-            .values(**{"Job ID": job_id}, **row)
+            .values(stamp_sync({"Job ID": job_id, **row}, op="insert"))
             .on_conflict_do_update(
                 index_elements=["Job ID"],
-                set_=row,
+                set_=stamp_sync(row, op="update"),
             )
         )
 
@@ -629,11 +669,14 @@ def get_or_create_job_id_from_server(server_label: str, job_id_on_server: str) -
         with engine.begin() as conn:
             conn.execute(
                 insert(jobs_table).values(
-                    **{
-                        "Job ID": job_id,
-                        "Job ID on server": job_id_on_server,
-                        "Server label": server_label,
-                    }
+                    stamp_sync(
+                        {
+                            "Job ID": job_id,
+                            "Job ID on server": job_id_on_server,
+                            "Server label": server_label,
+                        },
+                        op="insert",
+                    )
                 )
             )
     return job_id
@@ -709,11 +752,14 @@ def add_data_to_db_without_job(sample_id: str, file_stem: str, data_start: str, 
         conn.execute(
             insert(jobs_table)
             .values(
-                **{
-                    "Job ID": job_id,
-                    "Sample ID": sample_id,
-                    "Comment": f"Source unknown, uploaded as: {file_stem}",
-                }
+                stamp_sync(
+                    {
+                        "Job ID": job_id,
+                        "Sample ID": sample_id,
+                        "Comment": f"Source unknown, uploaded as: {file_stem}",
+                    },
+                    op="insert",
+                )
             )
             .on_conflict_do_nothing()
         )
@@ -792,10 +838,13 @@ def add_data_to_db_with_job(sample_id: str, file_stem: str, data_start: str, dat
         conn.execute(
             insert(jobs_table)
             .values(
-                **{
-                    "Job ID": job_id,
-                    "Sample ID": sample_id,
-                }
+                stamp_sync(
+                    {
+                        "Job ID": job_id,
+                        "Sample ID": sample_id,
+                    },
+                    op="insert",
+                )
             )
             .on_conflict_do_nothing()
         )
@@ -847,10 +896,12 @@ def add_protocol_to_job(job_id: str, protocol: dict | str, capacity: float | Non
         conn.execute(
             update(jobs_table)
             .values(
-                **{
-                    "Unicycler protocol": protocol,
-                    "Capacity (mAh)": capacity,
-                }
+                stamp_sync(
+                    {
+                        "Unicycler protocol": protocol,
+                        "Capacity (mAh)": capacity,
+                    }
+                )
             )
             .where(jobs_table.c["Job ID"] == job_id)
         )
@@ -916,10 +967,10 @@ def update_results(sample_id: str, row: dict[str, str | float | None]) -> None:
     with engine.begin() as conn:
         conn.execute(
             insert(results_table)
-            .values(**{"Sample ID": sample_id}, **row)
+            .values(stamp_sync({"Sample ID": sample_id, **row}, op="insert"))
             .on_conflict_do_update(
                 index_elements=["Sample ID"],
-                set_=row,
+                set_=stamp_sync(row, op="update"),
             )
         )
 
@@ -952,20 +1003,32 @@ def find_new_data(mode: str) -> list[str]:
 def get_database() -> dict[str, Any]:
     """Get all data from the database.
 
-    Formatted for viewing in Dash AG Grid.
+    Formatted for passing to Dash AG Grid rowData.
     """
     with engine.connect() as conn:
         results = {
-            "samples": conn.execute(select(samples_table).order_by(samples_table.c["Sample ID"])),
-            "results": conn.execute(select(results_table).order_by(results_table.c["Sample ID"])),
-            "jobs": conn.execute(select(jobs_table).order_by(jobs_table.c["Sample ID"])),
-            "pipelines": conn.execute(select(pipelines_table)),  # Uses custom sort
+            "samples": conn.execute(
+                select(samples_table)
+                .where(samples_table.c["sync_op"] != "delete")
+                .order_by(samples_table.c["Sample ID"])
+            ),
+            "results": conn.execute(
+                select(results_table)
+                .where(results_table.c["sync_op"] != "delete")
+                .order_by(results_table.c["Sample ID"])
+            ),
+            "jobs": conn.execute(
+                select(jobs_table).where(jobs_table.c["sync_op"] != "delete").order_by(jobs_table.c["Sample ID"])
+            ),
+            "pipelines": conn.execute(  # Uses custom sort
+                select(pipelines_table).where(pipelines_table.c["sync_op"] != "delete")
+            ),
         }
         db_columns = {
             k: [{"field": col, "filter": True, "tooltipField": col} for col in v.keys()]  # noqa: SIM118 NOT a dict, needs keys()
             for k, v in results.items()
         }
-        db_data = {k: [dict(m) for m in v.mappings().all()] for k, v in results.items()}
+        db_data = {k: {"add": [dict(m) for m in v.mappings().all()]} for k, v in results.items()}
 
     # Ready is boolean
     try:
@@ -983,8 +1046,45 @@ def get_database() -> dict[str, Any]:
     return {"data": db_data, "column_defs": db_columns}
 
 
-def get_db_last_update() -> datetime | None:
-    """Get the last update time of the database."""
+def get_database_updates(last_sync: float = 0) -> dict[str, Any]:
+    """Get all new data from the database.
+
+    Formatted for viewing in Dash AG Grid.
+    """
     with engine.connect() as conn:
-        result = conn.execute(select(func.max(pipelines_table.c["Last checked"]))).scalar()
-    return parse_datetime(result) if result else None
+        results = {
+            "samples": conn.execute(
+                select(samples_table)
+                .where(samples_table.c["sync_modified"] > last_sync)
+                .order_by(samples_table.c["Sample ID"])
+            ),
+            "results": conn.execute(
+                select(results_table)
+                .where(results_table.c["sync_modified"] > last_sync)
+                .order_by(results_table.c["Sample ID"])
+            ),
+            "jobs": conn.execute(
+                select(jobs_table).where(jobs_table.c["sync_modified"] > last_sync).order_by(jobs_table.c["Sample ID"])
+            ),
+            "pipelines": conn.execute(  # Uses custom sort
+                select(pipelines_table).where(pipelines_table.c["sync_modified"] > last_sync)
+            ),
+        }
+        db_update = {"data": {}, "column_defs": None}
+        for k, v in results.items():
+            rows = [dict(m) for m in v.mappings().all()]
+            db_update["data"][k] = {
+                "upsert": [r for r in rows if r.get("sync_op") in {"update", "insert"}],
+                "remove": [r for r in rows if r.get("sync_op") == "delete"],
+            }
+
+    return db_update
+
+
+def get_db_last_update() -> float:
+    """Get the last update time of the database.
+
+    Returns 0.0 if never updated.
+    """
+    with engine.connect() as conn:
+        return conn.execute(select(func.max(pipelines_table.c["sync_modified"]))).scalar() or 0.0
