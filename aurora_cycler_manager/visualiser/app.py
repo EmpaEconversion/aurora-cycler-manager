@@ -20,7 +20,6 @@ from dash import ClientsideFunction, Dash, DiskcacheManager, Input, Output, _das
 from waitress import serve
 
 from aurora_cycler_manager.setup_logging import setup_logging
-from aurora_cycler_manager.visualiser.batches import batches_layout, register_batches_callbacks
 from aurora_cycler_manager.visualiser.db_view import db_view_layout, register_db_view_callbacks
 from aurora_cycler_manager.visualiser.notifications import (
     custom_spinner,
@@ -28,7 +27,7 @@ from aurora_cycler_manager.visualiser.notifications import (
     notifications_layout,
     register_notifications_callbacks,
 )
-from aurora_cycler_manager.visualiser.samples import register_samples_callbacks, samples_layout
+from aurora_cycler_manager.visualiser.plotting import plotting_layout, register_plotting_callbacks
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -70,34 +69,27 @@ app.layout = dmc.MantineProvider(
                         [
                             dmc.TabsList(
                                 [
-                                    dmc.TabsTab("Sample Plotting", value="tab-1", fz="md", pt="md"),
-                                    dmc.TabsTab("Batch Plotting", value="tab-2", fz="md", pt="md"),
-                                    dmc.TabsTab("Database", value="tab-3", fz="md", pt="md"),
+                                    dmc.TabsTab("Database", value="tab-db", fz="md", pt="md"),
+                                    dmc.TabsTab("Plotting", value="tab-plot", fz="md", pt="md"),
                                 ],
                                 grow=True,
                                 style={"flexShrink": 0},
                             ),
                             dmc.TabsPanel(
-                                samples_layout,
-                                value="tab-1",
-                                p="xs",
-                                style={"flex": 1, "display": "flex", "flexDirection": "column", "minHeight": 0},
-                            ),
-                            dmc.TabsPanel(
-                                batches_layout,
-                                value="tab-2",
-                                p="xs",
-                                style={"flex": 1, "display": "flex", "flexDirection": "column", "minHeight": 0},
-                            ),
-                            dmc.TabsPanel(
                                 db_view_layout,
-                                value="tab-3",
+                                value="tab-db",
+                                p="xs",
+                                style={"flex": 1, "display": "flex", "flexDirection": "column", "minHeight": 0},
+                            ),
+                            dmc.TabsPanel(
+                                plotting_layout,
+                                value="tab-plot",
                                 p="xs",
                                 style={"flex": 1, "display": "flex", "flexDirection": "column", "minHeight": 0},
                             ),
                         ],
                         id="tabs",
-                        value="tab-1",
+                        value="tab-db",
                         style={"display": "flex", "flexDirection": "column", "height": "100vh"},
                     ),
                     dcc.Interval(id="db-update-interval", interval=1000 * 60 * 60),  # Auto-refresh database every hour
@@ -115,9 +107,8 @@ app.layout = dmc.MantineProvider(
 )
 
 # Register all callback functions
-register_samples_callbacks(app)
-register_batches_callbacks(app)
 register_db_view_callbacks(app)
+register_plotting_callbacks(app)
 register_notifications_callbacks(app)
 
 
