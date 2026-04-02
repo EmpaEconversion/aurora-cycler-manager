@@ -26,15 +26,18 @@ samples_menu = html.Div(
     children=dmc.Stack(
         p="xs",
         children=[
-            dmc.MultiSelect(
-                id="samples-dropdown",
+            dmc.InputWrapper(
+                dcc.Dropdown(
+                    id="samples-dropdown",
+                    options=[],
+                    value=[],
+                    multi=True,
+                    labels={"select_all": None, "deselect_all": None},
+                    className="dmc",
+                    debounce=True,
+                    maxHeight=500,
+                ),
                 label="Select samples",
-                searchable=True,
-                clearable=True,
-                checkIconPosition="right",
-                comboboxProps={"offset": 0},
-                value=[],
-                data=[],
             ),
             dmc.Tooltip(
                 dmc.Checkbox(
@@ -258,9 +261,9 @@ def register_samples_callbacks(app: Dash) -> None:
 
     # Sample list has updated, update dropdowns
     @app.callback(
-        Output("samples-dropdown", "data"),
-        Output("batch-samples-dropdown", "data"),
-        Output("batch-edit-samples", "data"),
+        Output("samples-dropdown", "options"),
+        Output("batch-samples-dropdown", "options"),
+        Output("batch-edit-samples", "options"),
         Input("samples-store", "data"),
         prevent_initial_call=True,
     )

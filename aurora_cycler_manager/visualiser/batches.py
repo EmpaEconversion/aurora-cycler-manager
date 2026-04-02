@@ -61,11 +61,33 @@ batches_menu = html.Div(
     children=dmc.Stack(
         p="xs",
         children=[
-            dmc.Button(
-                "Select samples",
-                id="batch-samples-button",
-                leftSection=html.I(className="bi bi-plus-circle-fill"),
-                style={"width": "100%", "margin-top": "50 px"},
+            dmc.InputWrapper(
+                dcc.Dropdown(
+                    id="batch-batch-dropdown",
+                    options=[],
+                    value=[],
+                    multi=True,
+                    labels={"select_all": None, "deselect_all": None},
+                    className="dmc",
+                    maxHeight=250,
+                    debounce=True,
+                ),
+                label="Select batches",
+                className="dmc",
+            ),
+            dmc.InputWrapper(
+                dcc.Dropdown(
+                    id="batch-samples-dropdown",
+                    options=[],
+                    value=[],
+                    multi=True,
+                    labels={"select_all": None, "deselect_all": None},
+                    className="dmc",
+                    maxHeight=500,
+                    debounce=True,
+                ),
+                label="Select individual samples",
+                className="dmc",
             ),
             dmc.Fieldset(
                 legend="Cycle graph",
@@ -191,43 +213,6 @@ batches_menu = html.Div(
     ),
 )
 
-samples_modal = dmc.Modal(
-    children=[
-        dmc.Stack(
-            children=[
-                dmc.MultiSelect(
-                    id="batch-batch-dropdown",
-                    label="Select batches",
-                    data=[],  # Updated by callback
-                    value=[],
-                    clearable=True,
-                    searchable=True,
-                    checkIconPosition="right",
-                ),
-                dmc.MultiSelect(
-                    id="batch-samples-dropdown",
-                    label="Select individual samples",
-                    data=[],  # Updated by callback
-                    value=[],
-                    clearable=True,
-                    searchable=True,
-                    checkIconPosition="right",
-                ),
-                dmc.Button(
-                    "Load",
-                    id="batch-yes-close",
-                    n_clicks=0,
-                ),
-            ],
-        ),
-    ],
-    id="batch-modal",
-    title="Select samples to plot",
-    centered=True,
-    opened=False,
-    size="xl",
-)
-
 batch_cycle_graph = dcc.Graph(
     id="batch-cycle-graph",
     figure={
@@ -292,7 +277,6 @@ batches_layout = html.Div(
     children=[
         dcc.Store(id="batches-data-store", data={}),
         dcc.Store(id="trace-style-store", data={}),
-        samples_modal,
         PanelGroup(
             id="batches-panel-group",
             direction="horizontal",
@@ -467,7 +451,7 @@ def register_batches_callbacks(app: Dash) -> None:
 
     # Batch list has updated, update dropdowns
     @app.callback(
-        Output("batch-batch-dropdown", "data"),
+        Output("batch-batch-dropdown", "options"),
         Output("batch-edit-batch", "data"),
         Input("batches-store", "data"),
         prevent_initial_call=True,
@@ -476,30 +460,15 @@ def register_batches_callbacks(app: Dash) -> None:
         data = [{"label": b, "value": b} for b in batches]
         return data, data
 
-    # When the user clicks the "Select samples to plot" button, open the modal
-    @app.callback(
-        Output("batch-modal", "opened", allow_duplicate=True),
-        Input("batch-samples-button", "n_clicks"),
-        Input("batch-yes-close", "n_clicks"),
-        prevent_initial_call=True,
-    )
-    def open_samples_modal(_select_clicks: int, _yes: int) -> bool:
-        if not ctx.triggered:
-            return False
-        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-        return button_id == "batch-samples-button"
-
-    # When the user hits yes close, load the selected samples
+    # When selected samples change, load data
     @app.callback(
         Output("batches-data-store", "data"),
         Output("batch-cycle-y", "data"),
         Output("batch-cycle-y", "value"),
         Output("batch-cycle-color", "data"),
         Output("batch-cycle-style", "data"),
-        Output("batch-modal", "opened", allow_duplicate=True),
-        Input("batch-yes-close", "n_clicks"),
-        State("batch-samples-dropdown", "value"),
-        State("batch-batch-dropdown", "value"),
+        Input("batch-samples-dropdown", "value"),
+        Input("batch-batch-dropdown", "value"),
         State("batches-data-store", "data"),
         State("batches-store", "data"),
         State("batch-cycle-y", "value"),
@@ -507,7 +476,6 @@ def register_batches_callbacks(app: Dash) -> None:
         prevent_initial_call=True,
     )
     def load_selected_samples(
-        _n_clicks: int,
         samples: list,
         batches: list,
         data: dict,
@@ -560,7 +528,7 @@ def register_batches_callbacks(app: Dash) -> None:
             else:
                 y_val = y_vars[0]
         # return the new data
-        return data, y_vars, y_val, color_vars, color_vars, False
+        return data, y_vars, y_val, color_vars, color_vars
 
     # Create a list of styles and colors corresponding to the traces
     @app.callback(
