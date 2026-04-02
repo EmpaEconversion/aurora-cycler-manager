@@ -1,3 +1,5 @@
+/* ===== For changing sizes on different screens ===== */
+
 /* Default style for narrow screens */
 .responsive-container {
     width: 100%;
@@ -23,6 +25,36 @@
         margin: 0px auto;
         box-shadow: #c0c0c0 20px 10px 80px;
     }
+}
+
+/* ===== For styling dcc4 components like dmc ===== */
+body {
+    font-size: var(--mantine-font-size-sm);
+}
+
+.responsive-container {
+    --Dash-Stroke-Strong: var(--mantine-color-default-border);
+    --Dash-Stroke-Weak: var(--mantine-color-disabled);
+    --Dash-Fill-Interactive-Strong: var(--mantine-primary-color-filled);
+    --Dash-Fill-Inverse-Strong: var(--mantine-color-body);
+    --Dash-Text-Primary: var(--mantine-color-text);
+    --Dash-Text-Strong: var(--mantine-color-text);
+    --Dash-Text-Disabled: var(--mantine-color-dimmed);
+    --Dash-Text-Weak: var(--mantine-color-dimmed);
+}
+
+:root[data-mantine-color-scheme="dark"] .dmc {
+    --Dash-Fill-Inverse-Strong: var(--mantine-color-dark-6);
+    --Dash-Fill-Weak: rgba(255, 255, 255, 0.06);
+    --Dash-Fill-Primary-Hover: rgba(255, 255, 255, 0.08);
+    --Dash-Fill-Primary-Active: rgba(255, 255, 255, 0.12);
+    --Dash-Fill-Disabled: rgba(255, 255, 255, 0.15);
+}
+
+.Select-control,
+.Select-menu-outer {
+    font-family: var(--mantine-font-family);
+    font-size: var(--mantine-font-size-sm); /* matches dmc.Text default */
 }
 
 /* ===== RESIZE HANDLES ===== */
