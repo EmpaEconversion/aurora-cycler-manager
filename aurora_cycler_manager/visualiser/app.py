@@ -56,62 +56,56 @@ app.clientside_callback(
 app.title = "Aurora Visualiser"
 app.layout = dmc.MantineProvider(
     id="mantine-provider",
-    children=html.Div(
-        className="responsive-container",
-        children=[
-            dcc.Loading(
-                custom_spinner=custom_spinner,
-                # make it blurry
-                overlay_style={"visibility": "visible", "filter": "blur(2px)"},
-                delay_show=300,
-                delay_hide=100,
-                children=[
-                    dmc.Tabs(
-                        [
-                            dmc.TabsList(
-                                [
-                                    dmc.TabsTab("Sample Plotting", value="tab-1", fz="md", pt="md"),
-                                    dmc.TabsTab("Batch Plotting", value="tab-2", fz="md", pt="md"),
-                                    dmc.TabsTab("Database", value="tab-3", fz="md", pt="md"),
-                                ],
-                                grow=True,
-                                style={"flexShrink": 0},
-                            ),
-                            dmc.TabsPanel(
-                                samples_layout,
-                                value="tab-1",
-                                p="xs",
-                                style={"flex": 1, "display": "flex", "flexDirection": "column", "minHeight": 0},
-                            ),
-                            dmc.TabsPanel(
-                                batches_layout,
-                                value="tab-2",
-                                p="xs",
-                                style={"flex": 1, "display": "flex", "flexDirection": "column", "minHeight": 0},
-                            ),
-                            dmc.TabsPanel(
-                                db_view_layout,
-                                value="tab-3",
-                                p="xs",
-                                style={"flex": 1, "display": "flex", "flexDirection": "column", "minHeight": 0},
-                            ),
-                        ],
-                        id="tabs",
-                        value="tab-1",
-                        style={"display": "flex", "flexDirection": "column", "height": "100vh"},
-                    ),
-                    dcc.Interval(id="db-update-interval", interval=1000 * 60 * 60),  # Auto-refresh database every hour
-                    dcc.Store(id="table-data-store", data={"data": {}, "column_defs": {}}),
-                    dcc.Store(id="samples-store", data=[]),
-                    dcc.Store(id="batches-store", data={}),
-                    dcc.Store(id="protocols-store", data=[]),
-                ],
-            ),
-            notifications_layout,
-            dcc.Store(id="loading-message-store"),
-            loading_message,
-        ],
-    ),
+    children=[
+        html.Div(
+            className="responsive-container",
+            children=[
+                dmc.Tabs(
+                    [
+                        dmc.TabsList(
+                            [
+                                dmc.TabsTab("Sample Plotting", value="tab-1", fz="md", pt="md"),
+                                dmc.TabsTab("Batch Plotting", value="tab-2", fz="md", pt="md"),
+                                dmc.TabsTab("Database", value="tab-3", fz="md", pt="md"),
+                            ],
+                            grow=True,
+                            style={"flexShrink": 0},
+                        ),
+                        dmc.TabsPanel(
+                            samples_layout,
+                            value="tab-1",
+                            p="xs",
+                            style={"flex": 1, "display": "flex", "flexDirection": "column", "minHeight": 0},
+                        ),
+                        dmc.TabsPanel(
+                            batches_layout,
+                            value="tab-2",
+                            p="xs",
+                            style={"flex": 1, "display": "flex", "flexDirection": "column", "minHeight": 0},
+                        ),
+                        dmc.TabsPanel(
+                            db_view_layout,
+                            value="tab-3",
+                            p="xs",
+                            style={"flex": 1, "display": "flex", "flexDirection": "column", "minHeight": 0},
+                        ),
+                    ],
+                    id="tabs",
+                    value="tab-1",
+                    style={"display": "flex", "flexDirection": "column", "height": "100vh"},
+                ),
+                dcc.Interval(id="db-update-interval", interval=1000 * 60 * 60),  # Auto-refresh database every hour
+                dcc.Store(id="table-data-store", data={"data": {}, "column_defs": {}}),
+                dcc.Store(id="samples-store", data=[]),
+                dcc.Store(id="batches-store", data={}),
+                dcc.Store(id="protocols-store", data=[]),
+            ],
+        ),
+        notifications_layout,
+        dcc.Store(id="loading-message-store"),
+        loading_message,
+        custom_spinner,
+    ],
 )
 
 # Register all callback functions

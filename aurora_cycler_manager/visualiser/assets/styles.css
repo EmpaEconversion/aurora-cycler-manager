@@ -94,7 +94,7 @@ body {
     background-color: rgba(125, 125, 125, 0.3);
 }
 
-/* ===== SPINNER ===== */
+/* ===== LOADING AND SPINNER ===== */
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
@@ -103,21 +103,34 @@ body {
     animation: spin 2s linear infinite;
 }
 
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
-}
-
-.fade-in {
-    animation: fadeIn 0.3s ease-in-out;
-    animation-delay: 0.3s;
-    animation-fill-mode: both;
+#loading-message {
+    opacity: 0;
     text-shadow:
         0 0 5px white,
         0 0 10px white,
         0 0 20px white;
-  }
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    transition-delay: 0.3s;
+}
+
+#loading-message.is-loading {
+    opacity: 1;
+    pointer-events: all;
+    transition: opacity 0.3s ease;
+    transition-delay: 0.1s;
+}
+
+#spinner-overlay {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    transition-delay: 0.3s;
+}
+
+#spinner-overlay.is-loading {
+    opacity: 1;
+    pointer-events: all;
+    transition: opacity 0.3s ease;
+    transition-delay: 0.1s;
+}

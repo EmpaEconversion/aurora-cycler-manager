@@ -142,13 +142,15 @@ def register_notifications_callbacks(app: Dash) -> None:
 
 # Loading spinner
 custom_spinner = html.Div(
+    id="spinner-overlay",
     style={
-        "position": "absolute",
+        "position": "fixed",  # fixed so it's always centered on screen
         "top": "50%",
         "left": "50%",
         "transform": "translate(-50%, -50%)",
         "width": "100px",
         "height": "100px",
+        "zIndex": 9999,
     },
     children=[
         html.Img(
@@ -164,7 +166,6 @@ custom_spinner = html.Div(
                 "left": "0",
                 "width": "100px",
                 "height": "100px",
-                "color": "white",
             },
         ),
     ],
@@ -182,8 +183,5 @@ loading_message = html.Div(
         "fontSize": "20px",
         "color": "#000000",
         "textAlign": "center",
-        "textGlow": "0 0 20px blue",
-        "opacity": 1,
-        "transition": "opacity 0.5s ease-in-out",
     },
 )
