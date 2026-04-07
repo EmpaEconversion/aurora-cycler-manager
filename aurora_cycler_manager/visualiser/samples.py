@@ -314,7 +314,7 @@ def register_samples_callbacks(app: Dash) -> None:
                     logger.info("Getting full for %s", sample)
                     df = get_cycling(sample)
                     data["data_sample_time"][sample] = df.to_dict(as_series=False)
-                except ValueError:
+                except (ValueError, FileNotFoundError):
                     logger.info("No cycling found for %s", sample)
                     continue
 
