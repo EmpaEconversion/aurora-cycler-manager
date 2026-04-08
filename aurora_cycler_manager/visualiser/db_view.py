@@ -142,6 +142,50 @@ results_table = dag.AgGrid(
     **DEFAULT_TABLE_OPTIONS,
 )
 
+SAMPLE_COL_OPTIONS = set(dbf.samples_table.columns.keys()) - {"Sample ID", "sync_modified", "sync_op"}
+PIPELINE_COL_OPTIONS = set(dbf.pipelines_table.columns.keys()) - {"Pipeline", "sync_modified", "sync_op"}
+JOBS_COL_OPTIONS = set(dbf.jobs_table.columns.keys()) - {"Job ID", "sync_modified", "sync_op"}
+RESULTS_COL_OPTIONS = set(dbf.results_table.columns.keys()) - {"Sample ID", "sync_modified", "sync_op"}
+DEFAULT_COLUMNS = {
+    "samples": [
+        "Barcode",
+        "Anode type",
+        "Anode description",
+        "Anode balancing capacity (mAh)",
+        "Anode active material mass (mg)",
+        "Cathode type",
+        "Cathode description",
+        "Cathode balancing capacity (mAh)",
+        "Cathode active material mass (mg)",
+        "N:P ratio",
+        "Separator type",
+        "Electrolyte name",
+        "Electrolyte description",
+        "Electrolyte amount (uL)",
+    ],
+    "pipelines": [
+        "Sample ID",
+        "Job ID",
+        "Ready",
+        "Flag",
+        "Server label",
+        "Job ID on server",
+    ],
+    "jobs": [
+        "Sample ID",
+        "Pipeline",
+        "Server label",
+        "Submitted",
+        "Job ID on server",
+    ],
+    "results": [
+        "Number of cycles",
+        "First formation efficiency (%)",
+        "Initial specific discharge capacity (mAh/g)",
+        "Capacity loss (%)",
+    ],
+}
+
 # ----------------------------- Layout - buttons ----------------------------- #
 
 # Define visibility settings for buttons and divs when switching between tabs
@@ -328,6 +372,15 @@ button_layout = dmc.Flex(
                     label="Update database by querying cyclers",
                     id="last-updated",
                     multiline=True,
+                    openDelay=500,
+                ),
+                dmc.Tooltip(
+                    dmc.ActionIcon(
+                        html.I(className="bi bi-gear"),
+                        id="db-settings",
+                        size="lg",
+                    ),
+                    label="Table settings",
                     openDelay=500,
                 ),
             ],
@@ -707,6 +760,77 @@ upload_modal = dmc.Modal(
     size="lg",
 )
 
+settings_modal = dmc.Drawer(
+    title="Select columns to view",
+    id="settings-modal",
+    position="right",
+    size="lg",
+    children=dmc.Stack(
+        [
+            dmc.InputWrapper(
+                dcc.Dropdown(
+                    id="samples-columns",
+                    options=list(SAMPLE_COL_OPTIONS),
+                    value=DEFAULT_COLUMNS["samples"],
+                    multi=True,
+                    labels={"select_all": None, "deselect_all": None},
+                    className="dmc",
+                    debounce=True,
+                    maxHeight=500,
+                    clearable=False,
+                ),
+                label="Samples table",
+                className="dmc",
+            ),
+            dmc.InputWrapper(
+                dcc.Dropdown(
+                    id="pipelines-columns",
+                    options=list(PIPELINE_COL_OPTIONS),
+                    value=DEFAULT_COLUMNS["pipelines"],
+                    multi=True,
+                    labels={"select_all": None, "deselect_all": None},
+                    className="dmc",
+                    debounce=True,
+                    maxHeight=500,
+                    clearable=False,
+                ),
+                label="Pipelines table",
+                className="dmc",
+            ),
+            dmc.InputWrapper(
+                dcc.Dropdown(
+                    id="jobs-columns",
+                    options=list(JOBS_COL_OPTIONS),
+                    value=DEFAULT_COLUMNS["jobs"],
+                    multi=True,
+                    labels={"select_all": None, "deselect_all": None},
+                    className="dmc",
+                    debounce=True,
+                    maxHeight=500,
+                    clearable=False,
+                ),
+                label="Jobs table",
+                className="dmc",
+            ),
+            dmc.InputWrapper(
+                dcc.Dropdown(
+                    id="results-columns",
+                    options=list(RESULTS_COL_OPTIONS),
+                    value=DEFAULT_COLUMNS["results"],
+                    multi=True,
+                    labels={"select_all": None, "deselect_all": None},
+                    className="dmc",
+                    debounce=True,
+                    maxHeight=500,
+                    clearable=False,
+                ),
+                label="Results table",
+                className="dmc",
+            ),
+        ]
+    ),
+)
+
 # ------------------------------- Main layout -------------------------------- #
 
 db_view_layout = html.Div(
@@ -741,6 +865,7 @@ db_view_layout = html.Div(
         ),
         # Invisible stuff
         dcc.Clipboard(id="clipboard", style={"display": "none"}),
+        dcc.Store(id="selected-columns", data={}),
         dcc.Store(id="selected-rows-store", data={}),
         dcc.Store(id="len-store", data={}),
         dcc.Store(id="last-sync-store", data=0),
@@ -754,6 +879,7 @@ db_view_layout = html.Div(
         label_modal,
         download_modal,
         upload_modal,
+        settings_modal,
     ],
 )
 
@@ -817,9 +943,51 @@ def register_db_view_callbacks(app: Dash) -> None:
         }
         return message_dict.get(table, ([], "..."))
 
+    # When different columns selected, update db, must have intial call
+    @app.callback(
+        Output("selected-columns", "data"),
+        Input("samples-columns", "value"),
+        Input("pipelines-columns", "value"),
+        Input("jobs-columns", "value"),
+        Input("results-columns", "value"),
+    )
+    def update_selected_col_store(
+        samples_cols: list[str],
+        pipelines_cols: list[str],
+        jobs_cols: list[str],
+        results_cols: list[str],
+    ) -> dict:
+        return {
+            "samples": ["Sample ID", *samples_cols],
+            "pipelines": ["Pipeline", *pipelines_cols],
+            "jobs": ["Job ID", *jobs_cols],
+            "results": ["Sample ID", *results_cols],
+        }
+
+    # Define the visible columns
+    @app.callback(
+        Output("samples-table", "columnDefs"),
+        Output("pipelines-table", "columnDefs"),
+        Output("jobs-table", "columnDefs"),
+        Output("results-table", "columnDefs"),
+        Output("last-sync-store", "data", allow_duplicate=True),
+        Output("refresh-database", "n_clicks", allow_duplicate=True),
+        Input("selected-columns", "data"),
+        prevent_initial_call=True,
+    )
+    def get_col_defs(cols: dict) -> tuple:
+        return (
+            dbf.get_column_def(dbf.samples_table, cols["samples"]),
+            dbf.get_column_def(dbf.pipelines_table, cols["pipelines"]),
+            dbf.get_column_def(dbf.jobs_table, cols["jobs"]),
+            dbf.get_column_def(dbf.results_table, cols["results"]),
+            -1,
+            1,
+        )
+
     # Refresh the local data from the database
     @app.callback(
-        Output("last-sync-store", "data"),  # new store, just a float
+        Output("last-sync-store", "data", allow_duplicate=True),  # new store, just a float
         Output("last-refreshed", "label"),
         Output("last-updated", "label"),
         Output("samples-store", "data"),
@@ -828,10 +996,6 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("results-store", "data"),
         Output("batches-store", "data"),
         Output("protocols-store", "data"),
-        Output("samples-table", "columnDefs"),
-        Output("pipelines-table", "columnDefs"),
-        Output("jobs-table", "columnDefs"),
-        Output("results-table", "columnDefs"),
         Output("samples-table", "rowTransaction"),
         Output("pipelines-table", "rowTransaction"),
         Output("jobs-table", "rowTransaction"),
@@ -844,7 +1008,9 @@ def register_db_view_callbacks(app: Dash) -> None:
         State("pipelines-store", "data"),
         State("jobs-store", "data"),
         State("results-store", "data"),
+        State("selected-columns", "data"),
         running=[(Output("loading-message-store", "data"), "Reading database...", "")],
+        prevent_initial_call=True,
     )
     def refresh_database(
         _n_clicks: int,
@@ -854,6 +1020,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         pipelines_list: list[str],
         jobs_list: list[str],
         results_list: list[str],
+        columns: dict[str, list],
     ) -> tuple:
         """Get the current state of the database, refresh everything in app.
 
@@ -872,7 +1039,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         )
 
         # Either grab the entire database, or just a partial update
-        db_data = dbf.get_database_updates(last_sync) if last_sync else dbf.get_database()
+        db_data = dbf.get_database_updates(last_sync, columns) if last_sync else dbf.get_database(columns)
 
         # Compare the database update the known IDs
         table_known_ids = {
@@ -953,10 +1120,6 @@ def register_db_view_callbacks(app: Dash) -> None:
             table_known_ids["results"],
             batches,
             protocols,
-            no_update if last_sync else db_data["column_defs"]["samples"],
-            no_update if last_sync else db_data["column_defs"]["pipelines"],
-            no_update if last_sync else db_data["column_defs"]["jobs"],
-            no_update if last_sync else db_data["column_defs"]["results"],
             db_data["data"]["samples"],
             db_data["data"]["pipelines"],
             db_data["data"]["jobs"],
@@ -983,6 +1146,15 @@ def register_db_view_callbacks(app: Dash) -> None:
             return 0, [error_notification("Error", str(e))]
         else:
             return 1, NoUpdate
+
+    # Open database settings when the cog icon is clicked
+    @app.callback(
+        Output("settings-modal", "opened"),
+        Input("db-settings", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def open_settings_modal(_n_clicks: int) -> bool:
+        return True
 
     # Enable or disable buttons (load, eject, etc.) depending on what is selected in the table
     @app.callback(
