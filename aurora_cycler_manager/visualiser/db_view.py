@@ -1302,18 +1302,17 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("tabs", "value"),
         Output("samples-dropdown", "value"),
         Output("batch-samples-dropdown", "value"),
-        Output("batch-yes-close", "n_clicks"),
         Input("view-button", "n_clicks"),
         State("selected-rows-store", "data"),
         prevent_initial_call=True,
     )
-    def view_data(n_clicks: int, selected_rows: list) -> tuple[str, list | NoUpdate, list | NoUpdate, int | NoUpdate]:
+    def view_data(n_clicks: int, selected_rows: list) -> tuple[str, list | NoUpdate, list | NoUpdate]:
         if not n_clicks or not selected_rows:
             raise PreventUpdate
         sample_id = [s["Sample ID"] for s in selected_rows if s.get("Sample ID")]
         if len(sample_id) > 1:
-            return "tab-2", no_update, sample_id, 1
-        return "tab-1", sample_id, no_update, no_update
+            return "tab-2", no_update, sample_id
+        return "tab-1", sample_id, no_update
 
     # Snapshot button pop up
     @app.callback(

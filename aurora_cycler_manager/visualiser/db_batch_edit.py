@@ -40,13 +40,18 @@ batch_edit_layout = dmc.Stack(
             placeholder="Write something about this batch",
             value="",
         ),
-        dmc.MultiSelect(
-            id="batch-edit-samples",
+        dmc.InputWrapper(
+            dcc.Dropdown(
+                id="batch-edit-samples",
+                options=[],
+                value=[],
+                multi=True,
+                labels={"select_all": None, "deselect_all": None},
+                className="dmc",
+                maxHeight=500,
+                placeholder="Select samples",
+            ),
             label="Samples",
-            data=[],  # Filled in by callback
-            searchable=True,
-            clearable=True,
-            placeholder="Select samples",
         ),
         ### Buttons ###
         dmc.Group(

@@ -26,15 +26,18 @@ samples_menu = html.Div(
     children=dmc.Stack(
         p="xs",
         children=[
-            dmc.MultiSelect(
-                id="samples-dropdown",
+            dmc.InputWrapper(
+                dcc.Dropdown(
+                    id="samples-dropdown",
+                    options=[],
+                    value=[],
+                    multi=True,
+                    labels={"select_all": None, "deselect_all": None},
+                    className="dmc",
+                    debounce=True,
+                    maxHeight=500,
+                ),
                 label="Select samples",
-                searchable=True,
-                clearable=True,
-                checkIconPosition="right",
-                comboboxProps={"offset": 0},
-                value=[],
-                data=[],
             ),
             dmc.Tooltip(
                 dmc.Checkbox(
@@ -136,7 +139,7 @@ samples_menu = html.Div(
 time_graph = dcc.Graph(
     id="time-graph",
     style={"height": "100%", "width": "100%"},
-    config={"scrollZoom": True, "displaylogo": False},
+    config={"scrollZoom": True, "displaylogo": False, "toImageButtonOptions": {"format": "svg"}},
     figure={
         "data": [],
         "layout": go.Layout(
@@ -153,7 +156,7 @@ time_graph = dcc.Graph(
 cycles_graph = dcc.Graph(
     id="cycles-graph",
     style={"height": "100%", "width": "100%"},
-    config={"scrollZoom": True, "displaylogo": False},
+    config={"scrollZoom": True, "displaylogo": False, "toImageButtonOptions": {"format": "svg"}},
     figure={
         "data": [],
         "layout": go.Layout(
@@ -169,7 +172,7 @@ cycles_graph = dcc.Graph(
 
 one_cycle_graph = dcc.Graph(
     id="cycle-graph",
-    config={"scrollZoom": True, "displaylogo": False},
+    config={"scrollZoom": True, "displaylogo": False, "toImageButtonOptions": {"format": "svg"}},
     style={"height": "100%", "width": "100%"},
     figure={
         "data": [],
@@ -258,9 +261,9 @@ def register_samples_callbacks(app: Dash) -> None:
 
     # Sample list has updated, update dropdowns
     @app.callback(
-        Output("samples-dropdown", "data"),
-        Output("batch-samples-dropdown", "data"),
-        Output("batch-edit-samples", "data"),
+        Output("samples-dropdown", "options"),
+        Output("batch-samples-dropdown", "options"),
+        Output("batch-edit-samples", "options"),
         Input("samples-store", "data"),
         prevent_initial_call=True,
     )
@@ -311,7 +314,7 @@ def register_samples_callbacks(app: Dash) -> None:
                     logger.info("Getting full for %s", sample)
                     df = get_cycling(sample)
                     data["data_sample_time"][sample] = df.to_dict(as_series=False)
-                except ValueError:
+                except (ValueError, FileNotFoundError):
                     logger.info("No cycling found for %s", sample)
                     continue
 
@@ -386,7 +389,7 @@ def register_samples_callbacks(app: Dash) -> None:
             else:
                 offset = 0
 
-            trace = go.Scatter(
+            trace = go.Scattergl(
                 x=(np.array(data_dict["uts"]) - offset) / multiplier,
                 y=data_dict.get(yvar) if yvar in data_dict else [np.nan] * len(data_dict["uts"]),
                 mode="lines",
