@@ -18,7 +18,10 @@ from sqlalchemy import (
     Column,
     DateTime,
     Engine,
+    Float,
+    Integer,
     MetaData,
+    Numeric,
     PrimaryKeyConstraint,
     String,
     Table,
@@ -1000,28 +1003,65 @@ def find_new_data(mode: str) -> list[str]:
 ### Everything ###
 
 
-def get_database() -> dict[str, Any]:
+def get_column_def(table: Table, column_names: list[str]) -> list[dict]:
+    """Get AG grid definitions from a table and columns."""
+
+    def map_type(col_type: Any) -> tuple[str, str]:  # noqa: ANN401
+        """Get AG grid type and filter from sqlalchemy column type."""
+        if isinstance(col_type, (Integer, Float, Numeric)):
+            return "number", "agNumberColumnFilter"
+        if isinstance(col_type, Boolean):
+            return "boolean", "agTextColumnFilter"
+        if isinstance(col_type, DateTime):
+            return "date", "agDateColumnFilter"
+        return "text", "agTextColumnFilter"
+
+    columns = [table.columns[c] for c in column_names]
+    col_types = [map_type(c.type) for c in columns]
+    return [
+        {
+            "field": col.name,
+            "cellDataType": col_type[0],
+            "tooltipField": col.name,
+            "filter": col_type[1],
+        }
+        for col, col_type in zip(columns, col_types, strict=True)
+    ]
+
+
+def get_database(columns: dict[str, list] | None = None) -> dict[str, Any]:
     """Get all data from the database.
 
     Formatted for passing to Dash AG Grid rowData.
     """
+    if columns is None:
+        columns = {
+            "samples": list(samples_table.columns.keys()),
+            "pipelines": list(pipelines_table.columns.keys()),
+            "jobs": list(jobs_table.columns.keys()),
+            "results": list(results_table.columns.keys()),
+        }
     with engine.connect() as conn:
         results = {
             "samples": conn.execute(
-                select(samples_table)
+                select(*[samples_table.c[col] for col in columns["samples"]])
                 .where(samples_table.c["sync_op"] != "delete")
                 .order_by(samples_table.c["Sample ID"])
             ),
-            "results": conn.execute(
-                select(results_table)
-                .where(results_table.c["sync_op"] != "delete")
-                .order_by(results_table.c["Sample ID"])
+            "pipelines": conn.execute(  # Uses custom sort
+                select(*[pipelines_table.c[col] for col in columns["pipelines"]]).where(
+                    pipelines_table.c["sync_op"] != "delete"
+                )
             ),
             "jobs": conn.execute(
-                select(jobs_table).where(jobs_table.c["sync_op"] != "delete").order_by(jobs_table.c["Sample ID"])
+                select(*[jobs_table.c[col] for col in columns["jobs"]])
+                .where(jobs_table.c["sync_op"] != "delete")
+                .order_by(jobs_table.c["Sample ID"])
             ),
-            "pipelines": conn.execute(  # Uses custom sort
-                select(pipelines_table).where(pipelines_table.c["sync_op"] != "delete")
+            "results": conn.execute(
+                select(*[results_table.c[col] for col in columns["results"]])
+                .where(results_table.c["sync_op"] != "delete")
+                .order_by(results_table.c["Sample ID"])
             ),
         }
         db_columns = {
@@ -1046,39 +1086,74 @@ def get_database() -> dict[str, Any]:
     return {"data": db_data, "column_defs": db_columns}
 
 
-def get_database_updates(last_sync: float = 0) -> dict[str, Any]:
+def get_database_updates(last_sync: float = 0, columns: dict[str, list] | None = None) -> dict[str, Any]:
     """Get all new data from the database.
 
     Formatted for viewing in Dash AG Grid.
     """
+    if columns is None:
+        columns = {
+            "samples": list(samples_table.columns.keys()),
+            "pipelines": list(pipelines_table.columns.keys()),
+            "jobs": list(jobs_table.columns.keys()),
+            "results": list(results_table.columns.keys()),
+        }
     with engine.connect() as conn:
         results = {
             "samples": conn.execute(
-                select(samples_table)
+                select(*[samples_table.c[col] for col in columns["samples"]])
                 .where(samples_table.c["sync_modified"] > last_sync)
+                .where(samples_table.c["sync_op"] != "delete")
                 .order_by(samples_table.c["Sample ID"])
             ),
-            "results": conn.execute(
-                select(results_table)
-                .where(results_table.c["sync_modified"] > last_sync)
-                .order_by(results_table.c["Sample ID"])
+            "pipelines": conn.execute(
+                select(*[pipelines_table.c[col] for col in columns["pipelines"]])
+                .where(pipelines_table.c["sync_modified"] > last_sync)
+                .where(pipelines_table.c["sync_op"] != "delete")
             ),
             "jobs": conn.execute(
-                select(jobs_table).where(jobs_table.c["sync_modified"] > last_sync).order_by(jobs_table.c["Sample ID"])
+                select(*[jobs_table.c[col] for col in columns["jobs"]])
+                .where(jobs_table.c["sync_modified"] > last_sync)
+                .where(jobs_table.c["sync_op"] != "delete")
+                .order_by(jobs_table.c["Sample ID"])
             ),
-            "pipelines": conn.execute(  # Uses custom sort
-                select(pipelines_table).where(pipelines_table.c["sync_modified"] > last_sync)
+            "results": conn.execute(
+                select(*[results_table.c[col] for col in columns["results"]])
+                .where(results_table.c["sync_modified"] > last_sync)
+                .where(results_table.c["sync_op"] != "delete")
+                .order_by(results_table.c["Sample ID"])
+            ),
+            "del_samples": conn.execute(
+                select(samples_table.c["Sample ID"])
+                .where(samples_table.c["sync_modified"] > last_sync)
+                .where(samples_table.c["sync_op"] == "delete")
+            ),
+            "del_pipelines": conn.execute(
+                select(pipelines_table.c["Pipeline"])
+                .where(pipelines_table.c["sync_modified"] > last_sync)
+                .where(pipelines_table.c["sync_op"] == "delete")
+            ),
+            "del_jobs": conn.execute(
+                select(jobs_table.c["Job ID"])
+                .where(jobs_table.c["sync_modified"] > last_sync)
+                .where(jobs_table.c["sync_op"] == "delete")
+            ),
+            "del_results": conn.execute(
+                select(results_table.c["Sample ID"])
+                .where(results_table.c["sync_modified"] > last_sync)
+                .where(results_table.c["sync_op"] == "delete")
             ),
         }
-        db_update = {"data": {}, "column_defs": None}
-        for k, v in results.items():
-            rows = [dict(m) for m in v.mappings().all()]
-            db_update["data"][k] = {
-                "upsert": [r for r in rows if r.get("sync_op") in {"update", "insert"}],
-                "remove": [r for r in rows if r.get("sync_op") == "delete"],
+    return {
+        "data": {
+            table: {
+                "upsert": [dict(m) for m in results[table].mappings().all()],
+                "remove": [dict(m) for m in results[f"del_{table}"].mappings().all()],
             }
-
-    return db_update
+            for table in ["samples", "pipelines", "jobs", "results"]
+        },
+        "column_defs": None,
+    }
 
 
 def get_db_last_update() -> float:
