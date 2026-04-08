@@ -139,7 +139,7 @@ samples_menu = html.Div(
 time_graph = dcc.Graph(
     id="time-graph",
     style={"height": "100%", "width": "100%"},
-    config={"scrollZoom": True, "displaylogo": False},
+    config={"scrollZoom": True, "displaylogo": False, "toImageButtonOptions": {"format": "svg"}},
     figure={
         "data": [],
         "layout": go.Layout(
@@ -156,7 +156,7 @@ time_graph = dcc.Graph(
 cycles_graph = dcc.Graph(
     id="cycles-graph",
     style={"height": "100%", "width": "100%"},
-    config={"scrollZoom": True, "displaylogo": False},
+    config={"scrollZoom": True, "displaylogo": False, "toImageButtonOptions": {"format": "svg"}},
     figure={
         "data": [],
         "layout": go.Layout(
@@ -172,7 +172,7 @@ cycles_graph = dcc.Graph(
 
 one_cycle_graph = dcc.Graph(
     id="cycle-graph",
-    config={"scrollZoom": True, "displaylogo": False},
+    config={"scrollZoom": True, "displaylogo": False, "toImageButtonOptions": {"format": "svg"}},
     style={"height": "100%", "width": "100%"},
     figure={
         "data": [],
