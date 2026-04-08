@@ -389,7 +389,7 @@ def register_samples_callbacks(app: Dash) -> None:
             else:
                 offset = 0
 
-            trace = go.Scatter(
+            trace = go.Scattergl(
                 x=(np.array(data_dict["uts"]) - offset) / multiplier,
                 y=data_dict.get(yvar) if yvar in data_dict else [np.nan] * len(data_dict["uts"]),
                 mode="lines",
