@@ -589,8 +589,8 @@ download_modal = dmc.Modal(
                 legend="Select files to download",
                 children=dmc.Stack(
                     [
-                        dmc.Checkbox(label="BDF CSV time-series", id="download-bdf-csv"),
-                        dmc.Checkbox(label="BDF parquet time-series", id="download-bdf-parquet"),
+                        dmc.Checkbox(label="BDF CSV time-series (+EIS)", id="download-bdf-csv"),
+                        dmc.Checkbox(label="BDF parquet time-series (+EIS)", id="download-bdf-parquet"),
                         dmc.Checkbox(label="CSV cycling summary", id="download-cycles-csv"),
                         dmc.Checkbox(label="Parquet cycling summary", id="download-cycles-parquet"),
                         dmc.Checkbox(label="JSON-LD ontologised metadata", id="download-jsonld"),
