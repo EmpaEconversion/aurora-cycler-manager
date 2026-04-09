@@ -26,6 +26,7 @@ from aurora_cycler_manager.data_parse import (
     bdf_to_aurora,
     get_cycles_summary,
     get_cycling,
+    get_eis,
     get_metadata,
     get_sample_folder,
 )
@@ -535,6 +536,7 @@ def create_rocrate(
         for sample in samples:
             sample_id: str = sample.get("Sample ID")
             ccid: str = sample.get("Barcode")
+            identifier = ccid or sample_id  # fallback on normal sample ID
             run_id = run_from_sample(sample_id)
             data_folder = CONFIG["Data folder path"]
             sample_folder = str(data_folder / run_id / sample_id)
@@ -543,12 +545,25 @@ def create_rocrate(
             warnings = []
             errors = []
             df = None
+            eis_df = None
             metadata = None
+
+            rocrate["@graph"].append(
+                {
+                    "@id": identifier,
+                    "@type": "https://w3id.org/emmo/domain/battery#coincell",
+                    "identifier": identifier,
+                    "name": sample_id,
+                }
+            )
 
             # If bdf is requested, convert the file
             if {"bdf-csv", "bdf-parquet"} & filetypes:
                 with contextlib.suppress(FileNotFoundError):
                     df = aurora_to_bdf(get_cycling(sample_id))
+                    eis_df = get_eis(sample_id)
+                    if eis_df is not None:
+                        eis_df = aurora_to_bdf(eis_df)
                     metadata = get_metadata(sample_id)
             # Loop through requested files
             for filetype in filetypes:
@@ -574,12 +589,13 @@ def create_rocrate(
                             {
                                 "@id": rel_file_path,
                                 "@type": "File",
+                                "name": f"{sample_id} per-cycle summary data (csv)",
+                                "about": {"@id": identifier},
                                 "encodingFormat": "text/csv",
-                                "about": {"@id": ccid or sample_id},
                                 "description": (
-                                    f"Summary data from battery cycling for sample: '{sample_id}'"
-                                    + (f" with CCID: '{ccid}'. " if ccid else ". ")
-                                    + "File is in CSV format, and per-cycle summary stastics, e.g. discharge capacity."
+                                    f"Summary data from battery cycling for sample '{sample_id}'"
+                                    f" with identifier '{identifier}'. "
+                                    "File is in CSV format, and per-cycle summary stastics, e.g. discharge capacity."
                                 ),
                             }
                         )
@@ -605,12 +621,13 @@ def create_rocrate(
                             {
                                 "@id": rel_file_path,
                                 "@type": "File",
-                                "encodingFormat": "text/csv",
-                                "about": {"@id": ccid or sample_id},
+                                "name": f"{sample_id} per-cycle summary data (parquet)",
+                                "about": {"@id": identifier},
+                                "encodingFormat": "application/vnd.apache.parquet",
                                 "description": (
-                                    f"Summary data from battery cycling for sample: '{sample_id}'"
-                                    + (f" with CCID: '{ccid}'. " if ccid else ". ")
-                                    + "File is in CSV format, and per-cycle summary stastics, e.g. discharge capacity."
+                                    f"Summary data from battery cycling for sample '{sample_id}'"
+                                    f" with identifier '{identifier}'. "
+                                    "File is in CSV format, and per-cycle summary stastics, e.g. discharge capacity."
                                 ),
                             }
                         )
@@ -635,16 +652,41 @@ def create_rocrate(
                             {
                                 "@id": rel_file_path,
                                 "@type": "File",
+                                "name": f"{sample_id} time-series data (csv)",
+                                "about": {"@id": identifier},
                                 "encodingFormat": "text/csv",
-                                "about": {"@id": ccid or sample_id},
                                 "description": (
-                                    f"Time-series battery cycling data for sample: '{sample_id}'"
-                                    + (f" with barcode: '{ccid}'. " if ccid else ". ")
-                                    + "Data is csv format, columns are 'battery data format' (BDF) compliant."
+                                    f"Time-series battery cycling data for sample '{sample_id}'"
+                                    f" with identifier '{identifier}'. "
+                                    "Data is csv format, columns are 'battery data format' (BDF) compliant."
                                 ),
                             }
                         )
                         battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
+
+                        if eis_df is not None:
+                            buffer = io.BytesIO()
+                            eis_df.write_csv(buffer)
+                            buffer.seek(0)
+                            rel_file_path = sample_id + f"/eis.{sample_id}.bdf.csv"
+                            zf.writestr(rel_file_path, buffer.read())
+                            messages += "✅"
+                            rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                            rocrate["@graph"].append(
+                                {
+                                    "@id": rel_file_path,
+                                    "@type": "File",
+                                    "name": f"{sample_id} EIS data (csv)",
+                                    "about": {"@id": identifier},
+                                    "encodingFormat": "text/csv",
+                                    "description": (
+                                        f"Frequency-domain electrochemical impedance spectroscopy data "
+                                        f"for sample '{sample_id}' with identifier '{identifier}'. "
+                                        "Data is csv format, columns are 'battery data format' (BDF) compliant."
+                                    ),
+                                }
+                            )
+                            battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
 
                     if filetype == "bdf-parquet":
                         if df is None:
@@ -669,16 +711,44 @@ def create_rocrate(
                             {
                                 "@id": rel_file_path,
                                 "@type": "File",
+                                "name": f"{sample_id} time-series data (parquet)",
+                                "about": {"@id": identifier},
                                 "encodingFormat": "application/vnd.apache.parquet",
-                                "about": {"@id": ccid or sample_id},
                                 "description": (
-                                    f"Time-series battery cycling data for sample: '{sample_id}'"
-                                    + (f" with barcode: '{ccid}'. " if ccid else ". ")
-                                    + "Data is parquet format, columns are 'battery data format' (BDF) compliant."
+                                    f"Time-series battery cycling data for sample '{sample_id}'"
+                                    f" with identifier '{identifier}'. "
+                                    "Data is parquet format, columns are 'battery data format' (BDF) compliant."
                                 ),
                             }
                         )
                         battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
+
+                        if eis_df is not None:
+                            buffer = io.BytesIO()
+                            eis_df.write_parquet(
+                                buffer,
+                                metadata={"AURORA:metadata": json.dumps(metadata)} if metadata else None,
+                            )
+                            buffer.seek(0)
+                            rel_file_path = sample_id + f"/eis.{sample_id}.bdf.parquet"
+                            zf.writestr(rel_file_path, buffer.read())
+                            messages += "✅"
+                            rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                            rocrate["@graph"].append(
+                                {
+                                    "@id": rel_file_path,
+                                    "@type": "File",
+                                    "name": f"{sample_id} EIS data (parquet)",
+                                    "about": {"@id": identifier},
+                                    "encodingFormat": "application/vnd.apache.parquet",
+                                    "description": (
+                                        f"Frequency-domain electrochemical impedance spectroscopy data "
+                                        f"for sample '{sample_id}' with identifier '{identifier}'. "
+                                        "Data is parquet format, columns are 'battery data format' (BDF) compliant."
+                                    ),
+                                }
+                            )
+                            battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
 
                     if filetype == "metadata-jsonld":
                         # Get the BattINFO file
@@ -740,11 +810,7 @@ def create_rocrate(
                             battinfo_json = bu.merge_jsonld_on_type([battinfo_json, authors])
 
                         # Add publication info
-                        if (
-                            pub_info.get("publication_doi_url")
-                            and pub_info.get("sample_to_fig")
-                            and (ccid or sample_id)
-                        ):
+                        if pub_info.get("publication_doi_url") and pub_info.get("sample_to_fig") and (identifier):
                             publication_extras = bu.add_associated_media(
                                 pub_info["publication_doi_url"],
                                 pub_info["sample_to_fig"],
@@ -763,12 +829,13 @@ def create_rocrate(
                             {
                                 "@id": rel_file_path,
                                 "@type": "File",
-                                "encodingFormat": "text/json",
-                                "about": {"@id": ccid or sample_id},
+                                "name": f"{sample_id} metadata",
+                                "about": {"@id": identifier},
+                                "encodingFormat": "application/ld+json",
                                 "description": (
-                                    f"Metadata for sample: '{sample_id}'"
-                                    + (f" with CCID: '{ccid}'. " if ccid else ". ")
-                                    + "File is a BattINFO JSON-LD, describing the sample and experiment."
+                                    f"Metadata for sample '{sample_id}'"
+                                    f" with identifier '{identifier}'. "
+                                    "File is a BattINFO JSON-LD, describing the sample and experiment."
                                 ),
                             }
                         )
