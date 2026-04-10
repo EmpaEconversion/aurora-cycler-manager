@@ -782,7 +782,10 @@ def create_rocrate(
                             for db_job in db_jobs:
                                 protocol = Protocol.from_dict(json.loads(db_job["Unicycler protocol"]))
                                 ontologized_protocols.append(
-                                    protocol.to_battinfo_jsonld(capacity_mAh=db_job["Capacity (mAh)"])
+                                    protocol.to_battinfo_jsonld(
+                                        capacity_mAh=db_job["Capacity (mAh)"],
+                                        include_context=False,
+                                    )
                                 )
                             test_jsonld = bu.generate_battery_test(ontologized_protocols)
                             battinfo_json = bu.merge_jsonld_on_type([battinfo_json, test_jsonld])
