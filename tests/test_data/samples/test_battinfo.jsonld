@@ -602,7 +602,7 @@
                     "@id": "https://orcid.org/0009-0004-4673-7806",
                     "rdfs:label": "Enea Svaluto-Ferro"
                 },
-                "hasLab": {
+                "hasLaboratory": {
                     "@type": "Laboratory",
                     "@id": "https://www.wikidata.org/wiki/Q683116",
                     "rdfs:label": "Empa"
