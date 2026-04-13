@@ -61,7 +61,7 @@ def test_analyse_download_eclab_sample(
         assert f"{sample_id}/full.{sample_id}.bdf.csv" not in files
         assert f"{sample_id}/cycles.{sample_id}.parquet" not in files
         assert f"{sample_id}/cycles.{sample_id}.csv" not in files
-        assert f"{sample_id}/metadata.{sample_id}.jsonld" in files
+        assert f"{sample_id}/metadata.{sample_id}.json" in files
         assert "ro-crate-metadata.json" in files
 
     # Zip the raw data
@@ -261,7 +261,7 @@ def test_analyse_download_eclab_sample(
         assert f"{sample_id}/full.{sample_id}.bdf.csv" in files
         assert f"{sample_id}/cycles.{sample_id}.parquet" in files
         assert f"{sample_id}/cycles.{sample_id}.csv" in files
-        assert f"{sample_id}/metadata.{sample_id}.jsonld" in files
+        assert f"{sample_id}/metadata.{sample_id}.json" in files
         assert "ro-crate-metadata.json" in files
 
     # Test reuploading the files
