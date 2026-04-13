@@ -387,6 +387,37 @@ def get_batch_details() -> dict[str, dict]:
         return dict(sorted(batches.items()))
 
 
+def get_one_batch(batch_name: str) -> dict:
+    """Get details of a batch from the batch name."""
+    with engine.connect() as conn:
+        result = conn.execute(
+            select(batches_table.c.id, batches_table.c.description).where(batches_table.c.label == batch_name)
+        )
+        res = result.fetchone()
+        if not res:
+            msg = "Batch not in database"
+            raise ValueError(msg)
+        batch_id, description = res
+        result = conn.execute(
+            select(batch_samples_table.c.sample_id)
+            .where(batch_samples_table.c.batch_id == batch_id)
+            .order_by(batch_samples_table.c.sample_id)
+        )
+        samples = [s[0] for s in result.fetchall()]
+    return {"name": batch_name, "description": description, "samples": samples}
+
+
+def get_batches_from_sample(sample_id: str) -> list[str]:
+    """Get the batch names that a sample belongs to."""
+    with engine.connect() as conn:
+        result = conn.execute(
+            select(batches_table.c.label)
+            .where(batch_samples_table.c.sample_id == sample_id)
+            .join(batches_table, batch_samples_table.c.batch_id == batches_table.c.id)
+        )
+        return [r[0] for r in result.fetchall()]
+
+
 def save_or_overwrite_batch(batch_name: str, batch_description: str, sample_ids: list, overwrite: bool = False) -> None:
     """Save a batch to the database, overwriting it if the name already exists."""
     with engine.begin() as conn:

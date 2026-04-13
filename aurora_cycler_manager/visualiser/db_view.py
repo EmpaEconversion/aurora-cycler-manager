@@ -38,6 +38,7 @@ from aurora_cycler_manager.visualiser.db_batch_edit import (
     batch_edit_layout,
     register_batch_edit_callbacks,
 )
+from aurora_cycler_manager.visualiser.db_info import info_modal, register_db_info_callbacks
 from aurora_cycler_manager.visualiser.db_protocol_edit import (
     protocol_edit_layout,
     register_protocol_edit_callbacks,
@@ -207,6 +208,7 @@ BUTTONS = [
     "label-button",
     "download-button",
     "upload-button",
+    "info-button",
 ]
 SHOW_CONTAINER_STYLE = {
     "flex": "1",
@@ -234,6 +236,7 @@ visibility_settings = {
         "create-batch-button",
         "download-button",
         "upload-button",
+        "info-button",
     },
     "jobs": {
         "table-container",
@@ -241,6 +244,7 @@ visibility_settings = {
         "cancel-button",
         "snapshot-button",
         "upload-button",
+        "info-button",
     },
     "results": {
         "table-container",
@@ -250,6 +254,7 @@ visibility_settings = {
         "create-batch-button",
         "download-button",
         "upload-button",
+        "info-button",
     },
     "samples": {
         "table-container",
@@ -261,6 +266,7 @@ visibility_settings = {
         "create-batch-button",
         "download-button",
         "upload-button",
+        "info-button",
     },
 }
 
@@ -337,6 +343,12 @@ button_layout = dmc.Flex(
                     "Download",
                     leftSection=html.I(className="bi bi-download"),
                     id="download-button",
+                    className="me-1",
+                ),
+                dmc.Button(
+                    "Info",
+                    leftSection=html.I(className="bi bi-info-circle"),
+                    id="info-button",
                     className="me-1",
                 ),
             ],
@@ -869,6 +881,7 @@ db_view_layout = html.Div(
         dcc.Store(id="selected-rows-store", data={}),
         dcc.Store(id="len-store", data={}),
         dcc.Store(id="last-sync-store", data=0),
+        dcc.Store(id="info-store", data={}),
         eject_modal,
         load_modal,
         submit_modal,
@@ -880,6 +893,7 @@ db_view_layout = html.Div(
         download_modal,
         upload_modal,
         settings_modal,
+        info_modal,
     ],
 )
 
@@ -890,6 +904,7 @@ def register_db_view_callbacks(app: Dash) -> None:
     """Register callbacks for the database view layout."""
     register_batch_edit_callbacks(app)
     register_protocol_edit_callbacks(app)
+    register_db_info_callbacks(app)
     du.configure_upload(app, UPLOAD_DIR)
 
     # Update the buttons displayed depending on the table selected
@@ -1170,6 +1185,8 @@ def register_db_view_callbacks(app: Dash) -> None:
             enabled |= {"upload-button"}
         if selected_rows:
             enabled |= {"copy-button"}
+            if len(selected_rows) == 1:
+                enabled |= {"info-button"}
             if len(selected_rows) <= 200 and all(s.get("Sample ID") is not None for s in selected_rows):
                 enabled |= {"download-button"}
             if sm is not None:
