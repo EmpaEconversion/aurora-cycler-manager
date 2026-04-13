@@ -513,7 +513,7 @@ def generate_battery_test(ontologized_protocols: dict | list[dict]) -> dict:
             },
         ],
         "@type": "BatteryTest",
-        "hasLab": {
+        "hasLaboratory": {
             "@type": "Laboratory",
             "@id": "https://www.wikidata.org/wiki/Q683116",
             "rdfs:label": "Empa",

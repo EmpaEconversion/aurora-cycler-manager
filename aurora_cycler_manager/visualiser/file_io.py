@@ -782,7 +782,10 @@ def create_rocrate(
                             for db_job in db_jobs:
                                 protocol = Protocol.from_dict(json.loads(db_job["Unicycler protocol"]))
                                 ontologized_protocols.append(
-                                    protocol.to_battinfo_jsonld(capacity_mAh=db_job["Capacity (mAh)"])
+                                    protocol.to_battinfo_jsonld(
+                                        capacity_mAh=db_job["Capacity (mAh)"],
+                                        include_context=False,
+                                    )
                                 )
                             test_jsonld = bu.generate_battery_test(ontologized_protocols)
                             battinfo_json = bu.merge_jsonld_on_type([battinfo_json, test_jsonld])
@@ -820,7 +823,7 @@ def create_rocrate(
                             battinfo_json = bu.merge_jsonld_on_type([battinfo_json, publication_extras])
 
                         # Save the JSON-LD
-                        jsonld_name = f"metadata.{sample_id}.jsonld"
+                        jsonld_name = f"metadata.{sample_id}.json"
                         rel_file_path = sample_id + "/" + jsonld_name
                         zf.writestr(rel_file_path, json.dumps(battinfo_json, indent=4))
                         messages += "✅"

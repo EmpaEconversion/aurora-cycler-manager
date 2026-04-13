@@ -205,7 +205,7 @@ class SampleDataBundle:
 
 def aurora_to_bdf(df: pl.DataFrame) -> pl.DataFrame:
     """Convert an Aurora dataframe to BDF compliant dataframe."""
-    df.select([k for k in aurora_to_bdf_map if k in df.columns])
+    df = df.select([k for k in aurora_to_bdf_map if k in df.columns])
     df = df.rename(aurora_to_bdf_map, strict=False)
     if df.is_empty():
         return df.with_columns(pl.lit(None).alias("test_time_second"))
