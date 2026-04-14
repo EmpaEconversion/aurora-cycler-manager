@@ -988,15 +988,16 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("last-sync-store", "data", allow_duplicate=True),
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("selected-columns", "data"),
+        State("last-sync-store", "data"),
         prevent_initial_call=True,
     )
-    def get_col_defs(cols: dict) -> tuple:
+    def get_col_defs(cols: dict, last_sync: float) -> tuple:
         return (
             dbf.get_column_def(dbf.samples_table, cols["samples"]),
             dbf.get_column_def(dbf.pipelines_table, cols["pipelines"]),
             dbf.get_column_def(dbf.jobs_table, cols["jobs"]),
             dbf.get_column_def(dbf.results_table, cols["results"]),
-            -1,
+            -1 if last_sync else 0,  # Keep as 0 for first load
             1,
         )
 
