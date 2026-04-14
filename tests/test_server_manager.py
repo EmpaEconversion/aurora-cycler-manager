@@ -328,9 +328,9 @@ def test_update_db(reset_all, mock_ssh) -> None:
     assert abs(uts_now - last_update) < 10
 
     res = dbf.get_database()
-    assert isinstance(res["data"]["pipelines"], dict)
-    assert isinstance(res["data"]["pipelines"]["add"], list)
-    pips = {p["Pipeline"]: p for p in res["data"]["pipelines"]["add"]}
+    assert isinstance(res["pipelines"], dict)
+    assert isinstance(res["pipelines"]["add"], list)
+    pips = {p["Pipeline"]: p for p in res["pipelines"]["add"]}
     assert pips["MPG2-1-1"]["Ready"]
     assert not pips["MPG2-1-2"]["Ready"]
     assert not pips["10-1-1"]["Ready"]
@@ -345,23 +345,23 @@ def test_partial_update_db(reset_all, mock_ssh) -> None:
     assert not last_update
 
     res = dbf.get_database()
-    assert isinstance(res["data"]["pipelines"], dict)
-    assert isinstance(res["data"]["pipelines"].get("add"), list)
-    assert not res["data"]["pipelines"].get("remove")
-    assert not res["data"]["pipelines"].get("upsert")
-    assert len(res["data"]["pipelines"]["add"]) >= 8  # All pipelines
+    assert isinstance(res["pipelines"], dict)
+    assert isinstance(res["pipelines"].get("add"), list)
+    assert not res["pipelines"].get("remove")
+    assert not res["pipelines"].get("upsert")
+    assert len(res["pipelines"]["add"]) >= 8  # All pipelines
 
     sample1 = "240701_svfe_gen6_01"
     pip1 = "10-1-1"
     sm.load(pip1, sample1)
 
     res = dbf.get_database_updates()
-    assert isinstance(res["data"]["pipelines"], dict)
-    assert not res["data"]["pipelines"].get("add")
-    assert not res["data"]["pipelines"].get("remove")
-    assert res["data"]["pipelines"].get("upsert")
-    assert isinstance(res["data"]["pipelines"]["upsert"], list)
-    assert res["data"]["pipelines"]["upsert"][0]["Pipeline"] == pip1
+    assert isinstance(res["pipelines"], dict)
+    assert not res["pipelines"].get("add")
+    assert not res["pipelines"].get("remove")
+    assert res["pipelines"].get("upsert")
+    assert isinstance(res["pipelines"]["upsert"], list)
+    assert res["pipelines"]["upsert"][0]["Pipeline"] == pip1
 
     last_update = dbf.get_db_last_update()
     assert last_update

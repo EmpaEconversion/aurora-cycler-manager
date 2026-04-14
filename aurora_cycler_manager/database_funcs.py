@@ -1103,26 +1103,7 @@ def get_database(columns: dict[str, list] | None = None) -> dict[str, Any]:
                 .order_by(results_table.c["Sample ID"])
             ),
         }
-        db_columns = {
-            k: [{"field": col, "filter": True, "tooltipField": col} for col in v.keys()]  # noqa: SIM118 NOT a dict, needs keys()
-            for k, v in results.items()
-        }
-        db_data = {k: {"add": [dict(m) for m in v.mappings().all()]} for k, v in results.items()}
-
-    # Ready is boolean
-    try:
-        ready_field = next(col for col in db_columns["pipelines"] if col["field"] == "Ready")
-        ready_field["cellDataType"] = "boolean"
-    except StopIteration:
-        pass
-
-    # Use custom comparator for pipeline column
-    with suppress(StopIteration):
-        pipeline_field: dict[str, Any] = next(col for col in db_columns["pipelines"] if col["field"] == "Pipeline")
-        pipeline_field["comparator"] = {"function": "pipelineComparatorCustom"}
-        pipeline_field["sort"] = "asc"
-
-    return {"data": db_data, "column_defs": db_columns}
+        return {k: {"add": [dict(m) for m in v.mappings().all()]} for k, v in results.items()}
 
 
 def get_database_updates(last_sync: float = 0, columns: dict[str, list] | None = None) -> dict[str, Any]:
@@ -1184,14 +1165,11 @@ def get_database_updates(last_sync: float = 0, columns: dict[str, list] | None =
             ),
         }
     return {
-        "data": {
-            table: {
-                "upsert": [dict(m) for m in results[table].mappings().all()],
-                "remove": [dict(m) for m in results[f"del_{table}"].mappings().all()],
-            }
-            for table in ["samples", "pipelines", "jobs", "results"]
-        },
-        "column_defs": None,
+        table: {
+            "upsert": [dict(m) for m in results[table].mappings().all()],
+            "remove": [dict(m) for m in results[f"del_{table}"].mappings().all()],
+        }
+        for table in ["samples", "pipelines", "jobs", "results"]
     }
 
 

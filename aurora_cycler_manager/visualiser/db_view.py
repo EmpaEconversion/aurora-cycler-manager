@@ -1079,8 +1079,8 @@ def register_db_view_callbacks(app: Dash) -> None:
             known_ids_set = set(known_ids)
 
             # For pure adding, known_ids should be empty, db_data already in correct format
-            if db_data["data"][table].get("add"):
-                added = {r[key] for r in db_data["data"][table]["add"]}
+            if db_data[table].get("add"):
+                added = {r[key] for r in db_data[table]["add"]}
                 known_ids_set = known_ids_set | added
 
             # For upserting, we must split the rows into 'add' and 'update' ourselves
@@ -1090,17 +1090,17 @@ def register_db_view_callbacks(app: Dash) -> None:
             # If a row ID is in a the known IDs, put it in "update"
             # If not, put it in "add"
             # Dash AG grid ignores "upsert", just leave it
-            if db_data["data"][table].get("upsert"):
-                upsert = {r[key] for r in db_data["data"][table]["upsert"]}
+            if db_data[table].get("upsert"):
+                upsert = {r[key] for r in db_data[table]["upsert"]}
                 updated = upsert & known_ids_set
                 added = upsert - updated
-                db_data["data"][table]["add"] = [r for r in db_data["data"][table]["upsert"] if r[key] in added]
-                db_data["data"][table]["update"] = [r for r in db_data["data"][table]["upsert"] if r[key] in updated]
+                db_data[table]["add"] = [r for r in db_data[table]["upsert"] if r[key] in added]
+                db_data[table]["update"] = [r for r in db_data[table]["upsert"] if r[key] in updated]
                 known_ids_set = known_ids_set | added
 
             # Removing a non-existent row in Dash AG grid does nothing, no need to double check against known IDs
-            if db_data["data"][table].get("remove"):
-                removed = {r[key] for r in db_data["data"][table]["remove"]}
+            if db_data[table].get("remove"):
+                removed = {r[key] for r in db_data[table]["remove"]}
                 known_ids_set = known_ids_set - removed
 
             # Update the known IDs for the table
@@ -1135,10 +1135,10 @@ def register_db_view_callbacks(app: Dash) -> None:
             table_known_ids["results"],
             batches,
             protocols,
-            db_data["data"]["samples"],
-            db_data["data"]["pipelines"],
-            db_data["data"]["jobs"],
-            db_data["data"]["results"],
+            db_data["samples"],
+            db_data["pipelines"],
+            db_data["jobs"],
+            db_data["results"],
             table_lengths,
         )
 
