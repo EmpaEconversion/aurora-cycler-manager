@@ -1063,6 +1063,12 @@ def get_column_def(table: Table, column_names: list[str]) -> list[dict]:
             "cellDataType": col_type[0],
             "tooltipField": col.name,
             "filter": col_type[1],
+            # Custom sorting for pipelines
+            **(
+                {"comparator": {"function": "pipelineComparatorCustom"}, "sort": "asc"}
+                if col.name == "Pipeline"
+                else {}
+            ),
         }
         for col, col_type in zip(columns, col_types, strict=True)
     ]
