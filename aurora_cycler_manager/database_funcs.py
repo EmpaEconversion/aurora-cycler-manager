@@ -66,6 +66,10 @@ def patch_database(engine: Engine) -> None:
             if "sync_op" not in existing_columns:
                 conn.execute(text(f'ALTER TABLE {table} ADD COLUMN "sync_op" TEXT DEFAULT "add"'))
             conn.execute(text(f'CREATE INDEX IF NOT EXISTS "idx_{table}_sync_modified" ON "{table}" ("sync_modified")'))
+            conn.execute(text(f'CREATE INDEX IF NOT EXISTS "idx_{table}_sync_op" ON "{table}" ("sync_op")'))
+
+        conn.execute(text('CREATE INDEX IF NOT EXISTS "idx_jobs_sample" ON "jobs" ("Sample ID")'))
+
     # Create dataframes table if it doesn't exist
     if "dataframes" not in inspector.get_table_names():
         meta = MetaData()
