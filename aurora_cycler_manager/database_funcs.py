@@ -110,6 +110,12 @@ dataframes_table = Table("dataframes", metadata, autoload_with=engine)
 batches_table = Table("batches", metadata, autoload_with=engine)
 batch_samples_table = Table("batch_samples", metadata, autoload_with=engine)
 
+SYNC_COLS = {"sync_op", "sync_modified"}
+sample_cols = [c for c in samples_table.c if c.key not in SYNC_COLS]
+pipeline_cols = [c for c in pipelines_table.c if c.key not in SYNC_COLS]
+job_cols = [c for c in jobs_table.c if c.key not in SYNC_COLS]
+result_cols = [c for c in results_table.c if c.key not in SYNC_COLS]
+
 pipelines_table.c["Last checked"].type = String()
 jobs_table.c["Submitted"].type = String()
 jobs_table.c["Last checked"].type = String()
@@ -339,11 +345,9 @@ def get_all_sampleids() -> list[str]:
 def get_sample_data(sample_id: str) -> dict:
     """Get all data about a sample from the database."""
     with engine.connect() as conn:
-        sync_cols = {"sync_op", "sync_modified"}
-        cols = [c for c in samples_table.c if c.key not in sync_cols]
         result = (
             conn.execute(
-                select(*cols)
+                select(*sample_cols)
                 .where(samples_table.c["Sample ID"] == sample_id)
                 .where(samples_table.c["sync_op"] != "delete")
             )
@@ -458,7 +462,7 @@ def get_pipeline(pipeline: str) -> dict | None:
     """Get pipeline details."""
     with engine.connect() as conn:
         result = (
-            conn.execute(select(pipelines_table).where(pipelines_table.c["Pipeline"] == pipeline)).mappings().first()
+            conn.execute(select(*pipeline_cols).where(pipelines_table.c["Pipeline"] == pipeline)).mappings().first()
         )
     return dict(result) if result else None
 
@@ -467,7 +471,7 @@ def get_pipeline_from_sample(sample_id: str) -> dict | None:
     """Get pipeline from a Sample ID."""
     with engine.connect() as conn:
         result = (
-            conn.execute(select(pipelines_table).where(pipelines_table.c["Sample ID"] == sample_id)).mappings().first()
+            conn.execute(select(*pipeline_cols).where(pipelines_table.c["Sample ID"] == sample_id)).mappings().first()
         )
     return dict(result) if result else None
 
@@ -605,7 +609,7 @@ def update_flags() -> None:
 def get_job_data(job_id: str) -> dict:
     """Get all data about a job from the database."""
     with engine.connect() as conn:
-        result = conn.execute(select(jobs_table).where(jobs_table.c["Job ID"] == job_id)).mappings().fetchone()
+        result = conn.execute(select(*job_cols).where(jobs_table.c["Job ID"] == job_id)).mappings().fetchone()
     if not result:
         msg = f"Job ID '{job_id}' not found in the database"
         raise ValueError(msg)
@@ -992,7 +996,7 @@ def get_last_harvest(server: dict, folder: str) -> float:
 def get_results_from_sample(sample_id: str) -> dict | None:
     """Get results summary from Sample ID."""
     with engine.connect() as conn:
-        result = conn.execute(select(results_table).where(results_table.c["Sample ID"] == sample_id)).mappings().first()
+        result = conn.execute(select(*result_cols).where(results_table.c["Sample ID"] == sample_id)).mappings().first()
     return dict(result) if result else None
 
 
