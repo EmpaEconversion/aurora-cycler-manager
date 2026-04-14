@@ -7,7 +7,7 @@ import json
 import logging
 
 import dash_mantine_components as dmc
-from dash import ALL, Dash, Input, Output, State, callback, html
+from dash import ALL, Dash, Input, Output, State, callback, dcc, html
 from dash import callback_context as ctx
 from dash.exceptions import PreventUpdate
 
@@ -18,6 +18,12 @@ logger = logging.getLogger(__name__)
 info_modal = dmc.Modal(
     title="Info",
     id="info-modal",
+    children=dcc.Loading(
+        children=html.Div(id="info-modal-content"),
+        type="circle",
+        color="var(--mantine-color-blue-6)",
+        delay_show=200,
+    ),
     centered=True,
     size="xl",
 )
@@ -245,24 +251,38 @@ def register_db_info_callbacks(app: Dash) -> None:
 
     # When the targeted info page changes, query db and update the actual modal children
     @app.callback(
-        Output("info-modal", "title"),
-        Output("info-modal", "children"),
+        Output("info-modal-content", "children"),
         Input("info-store", "data"),
     )
-    def render_info(data: dict[str, str]) -> tuple:
+    def render_info(data: dict[str, str]) -> dmc.Accordion | dmc.Stack | str:
         try:
             if sample_id := data.get("Sample ID"):
-                return f"Sample: {sample_id}", generate_sample_info(sample_id)
+                return generate_sample_info(sample_id)
             if pipeline_id := data.get("Pipeline"):
-                return f"Pipeline: {pipeline_id}", generate_pipeline_info(pipeline_id)
+                return generate_pipeline_info(pipeline_id)
             if job_id := data.get("Job ID"):
-                return f"Job: {job_id}", generate_job_info(job_id)
+                return generate_job_info(job_id)
             if batch_id := data.get("Batch name"):
-                return f"Batch: {batch_id}", generate_batch_info(batch_id)
+                return generate_batch_info(batch_id)
         except Exception as e:
-            return "An error occurred", str(e)
+            return "An error occurred: " + str(e)
         else:
-            return "An error occured", "Row missing ID or not understood"
+            return "No information."
+
+    @app.callback(
+        Output("info-modal", "title"),
+        Input("info-store", "data"),
+    )
+    def render_title(data: dict[str, str]) -> str:
+        if sample_id := data.get("Sample ID"):
+            return f"Sample: {sample_id}"
+        if pipeline_id := data.get("Pipeline"):
+            return f"Pipeline: {pipeline_id}"
+        if job_id := data.get("Job ID"):
+            return f"Job: {job_id}"
+        if batch_id := data.get("Batch name"):
+            return f"Batch: {batch_id}"
+        return ""
 
     # When hitting edit batch from info, switch to batch tab
     @callback(
