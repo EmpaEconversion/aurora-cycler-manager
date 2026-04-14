@@ -243,7 +243,13 @@ def create_database(force: bool = False) -> None:
     engine = get_engine(config)
     meta = MetaData()
 
-    samples_table = Table("samples", meta, *sample_columns)  # noqa: F841
+    samples_table = Table(  # noqa: F841
+        "samples",
+        meta,
+        *sample_columns,
+        Column("sync_modified", Float),
+        Column("sync_op", Text),
+    )
 
     jobs_table = Table(
         "jobs",
@@ -264,6 +270,8 @@ def create_database(force: bool = False) -> None:
         Column("Last checked", DateTime),
         Column("Snapshot status", String(3)),
         Column("Last snapshot", DateTime),
+        Column("sync_modified", Float),
+        Column("sync_op", Text),
     )
 
     pipelines_table = Table(
@@ -279,6 +287,8 @@ def create_database(force: bool = False) -> None:
         Column("Server type", String(50)),
         Column("Server hostname", String(255)),
         Column("Job ID on server", String(255)),
+        Column("sync_modified", Float),
+        Column("sync_op", Text),
     )
 
     results_table = Table(  # noqa: F841
@@ -302,6 +312,8 @@ def create_database(force: bool = False) -> None:
         Column("Last analysis", DateTime),
         Column("Snapshot status", String(3)),
         Column("Snapshot pipeline", String(50)),
+        Column("sync_modified", Float),
+        Column("sync_op", Text),
     )
 
     dataframes_table = Table(  # noqa: F841
@@ -346,6 +358,7 @@ def create_database(force: bool = False) -> None:
 
     # Indexes
     Index("idx_jobs_job_on_server", jobs_table.c["Job ID on server"], jobs_table.c["Server label"])
+    Index("idx_jobs_sample", jobs_table.c["Sample ID"])
     Index("idx_pipelines_sample_id", pipelines_table.c["Sample ID"])
     Index("idx_pipelines_job_id", pipelines_table.c["Job ID"])
     if db_type == "sqlite":
@@ -359,7 +372,7 @@ def create_database(force: bool = False) -> None:
     if db_existed:
         inspector = inspect(engine)
         existing_columns = [col["name"] for col in inspector.get_columns("samples")]
-        new_columns = [col["Name"] for col in columns]
+        new_columns = [col["Name"] for col in columns] + ["sync_modified", "sync_op"]
         added = [c for c in new_columns if c not in existing_columns]
         removed = [c for c in existing_columns if c not in new_columns]
 

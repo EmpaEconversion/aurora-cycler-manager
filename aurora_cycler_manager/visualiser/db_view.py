@@ -10,6 +10,7 @@ import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
+from time import time
 from typing import Literal
 
 import dash_ag_grid as dag
@@ -37,6 +38,7 @@ from aurora_cycler_manager.visualiser.db_batch_edit import (
     batch_edit_layout,
     register_batch_edit_callbacks,
 )
+from aurora_cycler_manager.visualiser.db_info import info_modal, register_db_info_callbacks
 from aurora_cycler_manager.visualiser.db_protocol_edit import (
     protocol_edit_layout,
     register_protocol_edit_callbacks,
@@ -141,6 +143,50 @@ results_table = dag.AgGrid(
     **DEFAULT_TABLE_OPTIONS,
 )
 
+SAMPLE_COL_OPTIONS = set(dbf.samples_table.columns.keys()) - {"Sample ID", "sync_modified", "sync_op"}
+PIPELINE_COL_OPTIONS = set(dbf.pipelines_table.columns.keys()) - {"Pipeline", "sync_modified", "sync_op"}
+JOBS_COL_OPTIONS = set(dbf.jobs_table.columns.keys()) - {"Job ID", "sync_modified", "sync_op"}
+RESULTS_COL_OPTIONS = set(dbf.results_table.columns.keys()) - {"Sample ID", "sync_modified", "sync_op"}
+DEFAULT_COLUMNS = {
+    "samples": [
+        "Barcode",
+        "Anode type",
+        "Anode description",
+        "Anode balancing capacity (mAh)",
+        "Anode active material mass (mg)",
+        "Cathode type",
+        "Cathode description",
+        "Cathode balancing capacity (mAh)",
+        "Cathode active material mass (mg)",
+        "N:P ratio",
+        "Separator type",
+        "Electrolyte name",
+        "Electrolyte description",
+        "Electrolyte amount (uL)",
+    ],
+    "pipelines": [
+        "Sample ID",
+        "Job ID",
+        "Ready",
+        "Flag",
+        "Server label",
+        "Job ID on server",
+    ],
+    "jobs": [
+        "Sample ID",
+        "Pipeline",
+        "Server label",
+        "Submitted",
+        "Job ID on server",
+    ],
+    "results": [
+        "Number of cycles",
+        "First formation efficiency (%)",
+        "Initial specific discharge capacity (mAh/g)",
+        "Capacity loss (%)",
+    ],
+}
+
 # ----------------------------- Layout - buttons ----------------------------- #
 
 # Define visibility settings for buttons and divs when switching between tabs
@@ -162,6 +208,7 @@ BUTTONS = [
     "label-button",
     "download-button",
     "upload-button",
+    "info-button",
 ]
 SHOW_CONTAINER_STYLE = {
     "flex": "1",
@@ -189,6 +236,7 @@ visibility_settings = {
         "create-batch-button",
         "download-button",
         "upload-button",
+        "info-button",
     },
     "jobs": {
         "table-container",
@@ -196,6 +244,7 @@ visibility_settings = {
         "cancel-button",
         "snapshot-button",
         "upload-button",
+        "info-button",
     },
     "results": {
         "table-container",
@@ -205,6 +254,7 @@ visibility_settings = {
         "create-batch-button",
         "download-button",
         "upload-button",
+        "info-button",
     },
     "samples": {
         "table-container",
@@ -216,6 +266,7 @@ visibility_settings = {
         "create-batch-button",
         "download-button",
         "upload-button",
+        "info-button",
     },
 }
 
@@ -294,6 +345,12 @@ button_layout = dmc.Flex(
                     id="download-button",
                     className="me-1",
                 ),
+                dmc.Button(
+                    "Info",
+                    leftSection=html.I(className="bi bi-info-circle"),
+                    id="info-button",
+                    className="me-1",
+                ),
             ],
         ),
         # Right aligned buttons
@@ -327,6 +384,15 @@ button_layout = dmc.Flex(
                     label="Update database by querying cyclers",
                     id="last-updated",
                     multiline=True,
+                    openDelay=500,
+                ),
+                dmc.Tooltip(
+                    dmc.ActionIcon(
+                        html.I(className="bi bi-gear"),
+                        id="db-settings",
+                        size="lg",
+                    ),
+                    label="Table settings",
                     openDelay=500,
                 ),
             ],
@@ -706,6 +772,77 @@ upload_modal = dmc.Modal(
     size="lg",
 )
 
+settings_modal = dmc.Drawer(
+    title="Select columns to view",
+    id="settings-modal",
+    position="right",
+    size="lg",
+    children=dmc.Stack(
+        [
+            dmc.InputWrapper(
+                dcc.Dropdown(
+                    id="samples-columns",
+                    options=list(SAMPLE_COL_OPTIONS),
+                    value=DEFAULT_COLUMNS["samples"],
+                    multi=True,
+                    labels={"select_all": None, "deselect_all": None},
+                    className="dmc",
+                    debounce=True,
+                    maxHeight=500,
+                    clearable=False,
+                ),
+                label="Samples table",
+                className="dmc",
+            ),
+            dmc.InputWrapper(
+                dcc.Dropdown(
+                    id="pipelines-columns",
+                    options=list(PIPELINE_COL_OPTIONS),
+                    value=DEFAULT_COLUMNS["pipelines"],
+                    multi=True,
+                    labels={"select_all": None, "deselect_all": None},
+                    className="dmc",
+                    debounce=True,
+                    maxHeight=500,
+                    clearable=False,
+                ),
+                label="Pipelines table",
+                className="dmc",
+            ),
+            dmc.InputWrapper(
+                dcc.Dropdown(
+                    id="jobs-columns",
+                    options=list(JOBS_COL_OPTIONS),
+                    value=DEFAULT_COLUMNS["jobs"],
+                    multi=True,
+                    labels={"select_all": None, "deselect_all": None},
+                    className="dmc",
+                    debounce=True,
+                    maxHeight=500,
+                    clearable=False,
+                ),
+                label="Jobs table",
+                className="dmc",
+            ),
+            dmc.InputWrapper(
+                dcc.Dropdown(
+                    id="results-columns",
+                    options=list(RESULTS_COL_OPTIONS),
+                    value=DEFAULT_COLUMNS["results"],
+                    multi=True,
+                    labels={"select_all": None, "deselect_all": None},
+                    className="dmc",
+                    debounce=True,
+                    maxHeight=500,
+                    clearable=False,
+                ),
+                label="Results table",
+                className="dmc",
+            ),
+        ]
+    ),
+)
+
 # ------------------------------- Main layout -------------------------------- #
 
 db_view_layout = html.Div(
@@ -740,8 +877,11 @@ db_view_layout = html.Div(
         ),
         # Invisible stuff
         dcc.Clipboard(id="clipboard", style={"display": "none"}),
+        dcc.Store(id="selected-columns", data={}),
         dcc.Store(id="selected-rows-store", data={}),
         dcc.Store(id="len-store", data={}),
+        dcc.Store(id="last-sync-store", data=0),
+        dcc.Store(id="info-store", data={}),
         eject_modal,
         load_modal,
         submit_modal,
@@ -752,6 +892,8 @@ db_view_layout = html.Div(
         label_modal,
         download_modal,
         upload_modal,
+        settings_modal,
+        info_modal,
     ],
 )
 
@@ -762,40 +904,8 @@ def register_db_view_callbacks(app: Dash) -> None:
     """Register callbacks for the database view layout."""
     register_batch_edit_callbacks(app)
     register_protocol_edit_callbacks(app)
+    register_db_info_callbacks(app)
     du.configure_upload(app, UPLOAD_DIR)
-
-    # Update data in tables when it changes
-    @app.callback(
-        Output("samples-table", "rowData"),
-        Output("samples-table", "columnDefs"),
-        Output("pipelines-table", "rowData"),
-        Output("pipelines-table", "columnDefs"),
-        Output("jobs-table", "rowData"),
-        Output("jobs-table", "columnDefs"),
-        Output("results-table", "rowData"),
-        Output("results-table", "columnDefs"),
-        Output("len-store", "data"),
-        Input("table-data-store", "data"),
-        running=[(Output("loading-message-store", "data"), "Updating tables...", "")],
-        prevent_initial_call=True,
-    )
-    def update_data(data: dict[str, dict]) -> tuple:
-        return (
-            data["data"].get("samples", no_update),
-            data["column_defs"].get("samples", no_update),
-            data["data"].get("pipelines", no_update),
-            data["column_defs"].get("pipelines", no_update),
-            data["data"].get("jobs", no_update),
-            data["column_defs"].get("jobs", no_update),
-            data["data"].get("results", no_update),
-            data["column_defs"].get("results", no_update),
-            {
-                "samples": len(data["data"].get("samples", [])),
-                "pipelines": len(data["data"].get("pipelines", [])),
-                "jobs": len(data["data"].get("jobs", [])),
-                "results": len(data["data"].get("results", [])),
-            },
-        )
 
     # Update the buttons displayed depending on the table selected
     @app.callback(
@@ -848,33 +958,189 @@ def register_db_view_callbacks(app: Dash) -> None:
         }
         return message_dict.get(table, ([], "..."))
 
+    # When different columns selected, update db, must have intial call
+    @app.callback(
+        Output("selected-columns", "data"),
+        Input("samples-columns", "value"),
+        Input("pipelines-columns", "value"),
+        Input("jobs-columns", "value"),
+        Input("results-columns", "value"),
+    )
+    def update_selected_col_store(
+        samples_cols: list[str],
+        pipelines_cols: list[str],
+        jobs_cols: list[str],
+        results_cols: list[str],
+    ) -> dict:
+        return {
+            "samples": ["Sample ID", *samples_cols],
+            "pipelines": ["Pipeline", *pipelines_cols],
+            "jobs": ["Job ID", *jobs_cols],
+            "results": ["Sample ID", *results_cols],
+        }
+
+    # Define the visible columns
+    @app.callback(
+        Output("samples-table", "columnDefs"),
+        Output("pipelines-table", "columnDefs"),
+        Output("jobs-table", "columnDefs"),
+        Output("results-table", "columnDefs"),
+        Output("last-sync-store", "data", allow_duplicate=True),
+        Output("refresh-database", "n_clicks", allow_duplicate=True),
+        Input("selected-columns", "data"),
+        State("last-sync-store", "data"),
+        prevent_initial_call=True,
+    )
+    def get_col_defs(cols: dict, last_sync: float) -> tuple:
+        return (
+            dbf.get_column_def(dbf.samples_table, cols["samples"]),
+            dbf.get_column_def(dbf.pipelines_table, cols["pipelines"]),
+            dbf.get_column_def(dbf.jobs_table, cols["jobs"]),
+            dbf.get_column_def(dbf.results_table, cols["results"]),
+            -1 if last_sync else 0,  # Keep as 0 for first load
+            1,
+        )
+
     # Refresh the local data from the database
     @app.callback(
-        Output("table-data-store", "data"),
+        Output("last-sync-store", "data", allow_duplicate=True),  # new store, just a float
         Output("last-refreshed", "label"),
         Output("last-updated", "label"),
         Output("samples-store", "data"),
+        Output("pipelines-store", "data"),
+        Output("jobs-store", "data"),
+        Output("results-store", "data"),
         Output("batches-store", "data"),
         Output("protocols-store", "data"),
+        Output("samples-table", "rowTransaction"),
+        Output("pipelines-table", "rowTransaction"),
+        Output("jobs-table", "rowTransaction"),
+        Output("results-table", "rowTransaction"),
+        Output("len-store", "data"),
         Input("refresh-database", "n_clicks"),
         Input("db-update-interval", "n_intervals"),
+        State("last-sync-store", "data"),
+        State("samples-store", "data"),
+        State("pipelines-store", "data"),
+        State("jobs-store", "data"),
+        State("results-store", "data"),
+        State("selected-columns", "data"),
         running=[(Output("loading-message-store", "data"), "Reading database...", "")],
+        prevent_initial_call=True,
     )
-    def refresh_database(_n_clicks: int, _n_intervals: int) -> tuple:
-        db_data = dbf.get_database()
-        dt_string = datetime.now(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z")
-        last_checked = dbf.get_db_last_update()
-        last_checked = last_checked.astimezone(CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z") if last_checked else None
-        samples = [s["Sample ID"] for s in db_data["data"]["samples"]]
+    def refresh_database(
+        _n_clicks: int,
+        _n_intervals: int,
+        last_sync: float,
+        samples_list: list[str],
+        pipelines_list: list[str],
+        jobs_list: list[str],
+        results_list: list[str],
+        columns: dict[str, list],
+    ) -> tuple:
+        """Get the current state of the database, refresh everything in app.
+
+        If no previous sync, grab everything. Otherwise just get the updated rows.
+        """
+        # Record the current time to update last sync and display to user
+        now = time()
+        dt_string = datetime.fromtimestamp(now, tz=CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z")
+
+        # Get the last cycler update timestamp to display to user
+        last_cycler_check_uts = dbf.get_db_last_update()
+        last_cycler_check = (
+            datetime.fromtimestamp(last_cycler_check_uts, tz=CONFIG["tz"]).strftime("%Y-%m-%d %H:%M:%S %z")
+            if last_cycler_check_uts
+            else None
+        )
+
+        # Either grab the entire database, or just a partial update
+        db_data = dbf.get_database_updates(last_sync, columns) if last_sync else dbf.get_database(columns)
+
+        # Compare the database update the known IDs
+        table_known_ids = {
+            "samples": samples_list,
+            "pipelines": pipelines_list,
+            "jobs": jobs_list,
+            "results": results_list,
+        }
+        table_key = {
+            "samples": "Sample ID",
+            "pipelines": "Pipeline",
+            "jobs": "Job ID",
+            "results": "Sample ID",
+        }
+
+        # For each table, the db_data could have 'add' OR 'upsert' + 'remove'
+        for table, known_ids in table_known_ids.items():
+            key = table_key[table]
+            added = set()
+            updated = set()
+            removed = set()
+            known_ids_set = set(known_ids)
+
+            # For pure adding, known_ids should be empty, db_data already in correct format
+            if db_data[table].get("add"):
+                added = {r[key] for r in db_data[table]["add"]}
+                known_ids_set = known_ids_set | added
+
+            # For upserting, we must split the rows into 'add' and 'update' ourselves
+            # Dash AG grid has no built-in way to do this, inserting exist rows causes strange bugs
+            # and updating non-existent rows does nothing
+            # Hence we also track the known IDs in a client-side Store
+            # If a row ID is in a the known IDs, put it in "update"
+            # If not, put it in "add"
+            # Dash AG grid ignores "upsert", just leave it
+            if db_data[table].get("upsert"):
+                upsert = {r[key] for r in db_data[table]["upsert"]}
+                updated = upsert & known_ids_set
+                added = upsert - updated
+                db_data[table]["add"] = [r for r in db_data[table]["upsert"] if r[key] in added]
+                db_data[table]["update"] = [r for r in db_data[table]["upsert"] if r[key] in updated]
+                known_ids_set = known_ids_set | added
+
+            # Removing a non-existent row in Dash AG grid does nothing, no need to double check against known IDs
+            if db_data[table].get("remove"):
+                removed = {r[key] for r in db_data[table]["remove"]}
+                known_ids_set = known_ids_set - removed
+
+            # Update the known IDs for the table
+            table_known_ids[table] = sorted(known_ids_set)
+
+            logger.info(
+                "%s added %s updated %s removed %s",
+                table.ljust(10),
+                str(len(added)).ljust(5),
+                str(len(updated)).ljust(5),
+                str(len(removed)).ljust(5),
+            )
+
+        table_lengths = {k: len(v) for k, v in table_known_ids.items()}
+
+        # Update known batches
         batches = get_batch_details()
+
+        # Update known protocols
         protocols = file_io.get_existing_protocols()
+        logger.info("Refreshed database view in %s s", round(time() - now, 3))
+
         return (
-            db_data,
+            now,
             f"Refresh database, last refreshed: {dt_string}",
-            f"Update database, last updated: {last_checked}" if last_checked else "Update from cycling servers",
-            samples,
+            f"Update from cyclers, last updated: {last_cycler_check}"
+            if last_cycler_check
+            else "Update from cycling servers",
+            table_known_ids["samples"],
+            table_known_ids["pipelines"],
+            table_known_ids["jobs"],
+            table_known_ids["results"],
             batches,
             protocols,
+            db_data["samples"],
+            db_data["pipelines"],
+            db_data["jobs"],
+            db_data["results"],
+            table_lengths,
         )
 
     # Update the database i.e. connect to servers and grab new info, then refresh the local data
@@ -897,6 +1163,15 @@ def register_db_view_callbacks(app: Dash) -> None:
         else:
             return 1, NoUpdate
 
+    # Open database settings when the cog icon is clicked
+    @app.callback(
+        Output("settings-modal", "opened"),
+        Input("db-settings", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def open_settings_modal(_n_clicks: int) -> bool:
+        return True
+
     # Enable or disable buttons (load, eject, etc.) depending on what is selected in the table
     @app.callback(
         [Output(b, "disabled") for b in BUTTONS],
@@ -911,6 +1186,8 @@ def register_db_view_callbacks(app: Dash) -> None:
             enabled |= {"upload-button"}
         if selected_rows:
             enabled |= {"copy-button"}
+            if len(selected_rows) == 1:
+                enabled |= {"info-button"}
             if len(selected_rows) <= 200 and all(s.get("Sample ID") is not None for s in selected_rows):
                 enabled |= {"download-button"}
             if sm is not None:

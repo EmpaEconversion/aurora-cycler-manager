@@ -1,15 +1,14 @@
 """Test server_manager.py module."""
 
 import json
-from datetime import datetime, timedelta
 from pathlib import Path
+from time import time
 
 import polars as pl
 import pytest
 from aurora_unicycler import Protocol
 
 import aurora_cycler_manager.database_funcs as dbf
-from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.cycler_servers import CyclerServer
 from aurora_cycler_manager.data_parse import get_cycling
 from aurora_cycler_manager.server_manager import ServerManager, _CyclingJob, _Sample
@@ -269,7 +268,7 @@ def test_update_db(reset_all, mock_ssh) -> None:
     sm = ServerManager()
 
     last_update = dbf.get_db_last_update()
-    assert last_update is None
+    assert not last_update
 
     biologic_response: dict[str, dict] = {
         "MPG2-1-1": {"Status": "Stop", "Ox/Red": "Reduction", "OCV": "OCV", "EIS": "No EIS", "Connection": "Ok"},
@@ -321,17 +320,48 @@ def test_update_db(reset_all, mock_ssh) -> None:
         command="neware status",
         stdout=json.dumps(neware_response),
     )
-    datetime_now = datetime.now(tz=get_config()["tz"])
+    uts_now = time()
     sm.update_db()
 
     last_update = dbf.get_db_last_update()
-    assert isinstance(last_update, datetime)
-    assert abs(datetime_now - last_update) < timedelta(seconds=10)
+    assert isinstance(last_update, float)
+    assert abs(uts_now - last_update) < 10
 
     res = dbf.get_database()
-    assert isinstance(res["data"]["pipelines"], list)
-    pips = {p["Pipeline"]: p for p in res["data"]["pipelines"]}
+    assert isinstance(res["pipelines"], dict)
+    assert isinstance(res["pipelines"]["add"], list)
+    pips = {p["Pipeline"]: p for p in res["pipelines"]["add"]}
     assert pips["MPG2-1-1"]["Ready"]
     assert not pips["MPG2-1-2"]["Ready"]
     assert not pips["10-1-1"]["Ready"]
     assert pips["10-1-2"]["Ready"]
+
+
+def test_partial_update_db(reset_all, mock_ssh) -> None:
+    """Test querying cyclers and refreshing database."""
+    sm = ServerManager()
+
+    last_update = dbf.get_db_last_update()
+    assert not last_update
+
+    res = dbf.get_database()
+    assert isinstance(res["pipelines"], dict)
+    assert isinstance(res["pipelines"].get("add"), list)
+    assert not res["pipelines"].get("remove")
+    assert not res["pipelines"].get("upsert")
+    assert len(res["pipelines"]["add"]) >= 8  # All pipelines
+
+    sample1 = "240701_svfe_gen6_01"
+    pip1 = "10-1-1"
+    sm.load(pip1, sample1)
+
+    res = dbf.get_database_updates()
+    assert isinstance(res["pipelines"], dict)
+    assert not res["pipelines"].get("add")
+    assert not res["pipelines"].get("remove")
+    assert res["pipelines"].get("upsert")
+    assert isinstance(res["pipelines"]["upsert"], list)
+    assert res["pipelines"]["upsert"][0]["Pipeline"] == pip1
+
+    last_update = dbf.get_db_last_update()
+    assert last_update
