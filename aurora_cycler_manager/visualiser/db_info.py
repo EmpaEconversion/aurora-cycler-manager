@@ -5,6 +5,7 @@ Functions and callbacks for the 'info' functionality in Database tab.
 
 import json
 import logging
+from datetime import datetime
 
 import dash_mantine_components as dmc
 from dash import ALL, Dash, Input, Output, State, callback, dcc, html
@@ -42,6 +43,11 @@ def _nav_link(label: str, entity_type: str, entity_id: str) -> html.Span:
         id={"type": "info-nav-link", "entity_type": entity_type, "id": entity_id},
         n_clicks=0,
     )
+
+
+def _strip_datetimes(data: dict) -> dict:
+    """Datetime -> ISO8601 string so dict can be JSON dumped."""
+    return {k: v.isoformat() if isinstance(v, datetime) else v for k, v in data.items()}
 
 
 def generate_sample_info(sample_id: str) -> dmc.Accordion:
@@ -96,7 +102,9 @@ def generate_sample_info(sample_id: str) -> dmc.Accordion:
                 value="sample_data",
                 children=[
                     dmc.AccordionControl("Sample data"),
-                    dmc.AccordionPanel(dmc.CodeHighlight(json.dumps(sample_data, indent=4), language="json")),
+                    dmc.AccordionPanel(
+                        dmc.CodeHighlight(json.dumps(_strip_datetimes(sample_data), indent=4), language="json")
+                    ),
                 ],
             ),
             dmc.AccordionItem(
@@ -104,7 +112,7 @@ def generate_sample_info(sample_id: str) -> dmc.Accordion:
                 children=[
                     dmc.AccordionControl("Results summary"),
                     dmc.AccordionPanel(
-                        dmc.CodeHighlight(json.dumps(results, indent=4), language="json")
+                        dmc.CodeHighlight(json.dumps(_strip_datetimes(results), indent=4), language="json")
                         if results
                         else dmc.Text("No results.")
                     ),
@@ -143,7 +151,9 @@ def generate_pipeline_info(pipeline_id: str) -> dmc.Accordion:
                 value="pipeline_data",
                 children=[
                     dmc.AccordionControl("Pipeline data"),
-                    dmc.AccordionPanel(dmc.CodeHighlight(json.dumps(pipeline_data, indent=4), language="json")),
+                    dmc.AccordionPanel(
+                        dmc.CodeHighlight(json.dumps(_strip_datetimes(pipeline_data), indent=4), language="json")
+                    ),
                 ],
             ),
         ],
@@ -190,7 +200,9 @@ def generate_job_info(job_id: str) -> dmc.Accordion:
                 value="job_data",
                 children=[
                     dmc.AccordionControl("Job metadata"),
-                    dmc.AccordionPanel(dmc.CodeHighlight(json.dumps(job_data, indent=4), language="json")),
+                    dmc.AccordionPanel(
+                        dmc.CodeHighlight(json.dumps(_strip_datetimes(job_data), indent=4), language="json")
+                    ),
                 ],
             ),
         ],

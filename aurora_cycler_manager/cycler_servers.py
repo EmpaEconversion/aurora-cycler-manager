@@ -168,7 +168,7 @@ class NewareServer(CyclerServer):
         with TemporaryDirectory() as temp_dir, SSHConnection(self.server_config) as ssh:
             with (Path(temp_dir) / "temp.xml").open("w", encoding="utf-8") as f:
                 f.write(xml_string)
-            remote_xml_dir = PureWindowsPath(self.server_config.get("protocol_path","C:/aurora/protocols/"))
+            remote_xml_dir = PureWindowsPath(self.server_config.get("protocol_path", "C:/aurora/protocols/"))
             remote_data_dir = PureWindowsPath(self.server_config.get("data_path", "C:/aurora/data/"))
             remote_xml_path = remote_xml_dir / f"{sample}__{current_datetime}.xml"
             ssh.put_file((Path(temp_dir) / "temp.xml"), remote_xml_path.as_posix())

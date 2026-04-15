@@ -12,9 +12,11 @@ commands to the appropriate server, and handles the database updates.
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from functools import cached_property
 from pathlib import Path
+from time import time
 from typing import Any, Literal
 
 import paramiko
@@ -40,22 +42,39 @@ def get_servers(*, reload: bool = False) -> dict[str, cycler_servers.CyclerServe
     global SERVER_OBJECTS
     if not SERVER_OBJECTS or reload:
         SERVER_OBJECTS = {}
-        logger.info("Attempting to connect to to servers")
+        logger.info("Attempting to connect to servers")
         if not config.get_config(reload=reload).get("Servers"):
             logger.warning("No servers in the configuration.")
-        else:
-            for server_label, server_dict in config.get_config()["Servers"].items():
-                server_type = server_dict.get("server_type")
-                if server_type.endswith("_harvester"):
-                    continue  # Skip silently
-                if server_type not in SERVER_CORRESPONDENCE:
-                    logger.error("Server type %s not recognized, skipping", server_type)
-                    continue
-                try:
-                    server_class = SERVER_CORRESPONDENCE[server_type]
-                    SERVER_OBJECTS[server_label] = server_class(server_dict, label=server_label)
-                except (OSError, ValueError, TimeoutError, paramiko.SSHException):
-                    logger.exception("Server %s could not be created, skipping", server_label)
+            return SERVER_OBJECTS
+
+        def connect(server_label: str, server_dict: dict) -> tuple[str, cycler_servers.CyclerServer | None]:
+            t0 = time()
+            server_type = server_dict.get("server_type")
+            if server_type is None:
+                logger.critical("Server %s has no 'server_type', skipping", server_label)
+                return server_label, None
+            if server_type.endswith("_harvester"):
+                return server_label, None
+            if server_type not in SERVER_CORRESPONDENCE:
+                logger.error("Server type %s not recognized, skipping", server_type)
+                return server_label, None
+            try:
+                server_class = SERVER_CORRESPONDENCE[server_type]
+                server = server_class(server_dict, label=server_label)
+            except (OSError, ValueError, TimeoutError, paramiko.SSHException):
+                logger.exception("Server %s could not be created, skipping", server_label)
+                return server_label, None
+            logger.info("Verified connection with '%s' in %s s", server_label, time() - t0)
+            return server_label, server
+
+        servers = config.get_config()["Servers"].items()
+        with ThreadPoolExecutor() as executor:
+            futures = {executor.submit(connect, label, d): label for label, d in servers}
+            for future in as_completed(futures):
+                label, server = future.result()
+                if server is not None:
+                    SERVER_OBJECTS[label] = server
+
     return SERVER_OBJECTS
 
 
@@ -459,15 +478,28 @@ class ServerManager:
 
     def update_pipelines(self) -> None:
         """Update the pipelines table in the database with the current status."""
-        for label, server in self.servers.items():
+        logger.info("Querying all cycler servers...")
+
+        def fetch(label: str, server: CyclerServer) -> tuple[str, list | None]:
+            t0 = time()
             try:
-                logger.info("Querying server '%s'", label)
-                rows = server.get_pipelines()
-            except Exception as e:
-                logger.error("Error getting pipeline status from %s: %s", label, e)
+                pipelines = server.get_pipelines()
+            except Exception:
+                logger.exception("Error getting pipeline status from %s", label)
+                return label, None
+            logger.info("Queried server '%s' in %s s", label, time() - t0)
+            return label, pipelines
+
+        with ThreadPoolExecutor() as executor:
+            futures = {executor.submit(fetch, label, server): label for label, server in self.servers.items()}
+            results = {label: result for future in as_completed(futures) for label, result in [future.result()]}
+
+        dt = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        for label, rows in results.items():
+            if rows is None:
                 continue
-            dt = datetime.now(timezone.utc).isoformat(timespec="seconds")
-            rows = [
+            server = self.servers[label]
+            updated_rows = [
                 {
                     "Last checked": dt,
                     "Server label": label,
@@ -477,7 +509,7 @@ class ServerManager:
                 }
                 for r in rows
             ]
-            dbf.bulk_add_or_update_pipeline(rows)
+            dbf.bulk_add_or_update_pipeline(updated_rows)
         dbf.fill_pipelines_missing_job_ids()
 
     def load(self, pipeline_id: str, sample_id: str) -> None:
