@@ -28,13 +28,12 @@ class TestAnalysis:
             raise RuntimeError(msg)
 
         test_project_path_1 = tmp_path / "temp_project1"
-        shared_config_1 = test_project_path_1 / "database" / "shared_config.json"
+        shared_config_1 = test_project_path_1 / "shared_config.json"
         generated_files = [
-            "database/shared_config.json",
-            "database/database.db",
-            "database",
+            "shared_config.json",
+            "aurora.db",
             "protocols",
-            "snapshots",
+            "data",
         ]
 
         # Check that all the files are made
@@ -68,8 +67,8 @@ class TestAnalysis:
 
         test_project_path_1 = tmp_path / "temp_project1"
         test_project_path_2 = tmp_path / "temp_project2"
-        shared_config_1 = test_project_path_1 / "database" / "shared_config.json"
-        shared_config_2 = test_project_path_2 / "database" / "shared_config.json"
+        shared_config_1 = test_project_path_1 / "shared_config.json"
+        shared_config_2 = test_project_path_2 / "shared_config.json"
 
         # Make a setup in one directory
         create_new_setup(test_project_path_1)
@@ -96,14 +95,14 @@ class TestAnalysis:
             msg = "This test should not run outside of pytest environment!"
             raise RuntimeError(msg)
         test_project_path_1 = tmp_path / "temp_project1"
-        shared_config_1 = test_project_path_1 / "database" / "shared_config.json"
+        shared_config_1 = test_project_path_1 / "shared_config.json"
 
         # Initialise the setup
         create_new_setup(test_project_path_1)
 
         # First check we're pointing to the test database
         config = get_config(reload=True)
-        assert config["Database path"] == test_project_path_1 / "database" / "database.db"
+        assert config["Database path"] == test_project_path_1 / "aurora.db"
 
         # Update the config to remove all the columns
         with shared_config_1.open("r", encoding="utf-8") as f:

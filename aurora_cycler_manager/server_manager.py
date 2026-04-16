@@ -37,7 +37,7 @@ SERVER_OBJECTS: dict[str, cycler_servers.CyclerServer] = {}
 logger = logging.getLogger(__name__)
 
 
-def get_servers(*, reload: bool = False) -> dict[str, cycler_servers.CyclerServer]:
+def _get_servers(*, reload: bool = False) -> dict[str, cycler_servers.CyclerServer]:
     """Create the cycler server objects from the config file."""
     global SERVER_OBJECTS
     if not SERVER_OBJECTS or reload:
@@ -80,7 +80,7 @@ def get_servers(*, reload: bool = False) -> dict[str, cycler_servers.CyclerServe
 
 def find_server(label: str) -> cycler_servers.CyclerServer:
     """Get the server object from the label."""
-    server = get_servers().get(label, None)
+    server = _get_servers().get(label, None)
     if not server:
         msg = (
             f"Server with label {label} not found. "
@@ -113,7 +113,7 @@ class _Pipeline:
         """Create a _Pipeline object from a pipeline ID.
 
         Args:
-            pipeline_name : str
+            pipeline_name: str
                 The pipeline name to create the object for.
 
         Returns:
@@ -210,7 +210,7 @@ class _Sample:
         """Get a property of the sample from the database.
 
         Args:
-            key : str
+            key: str
                 The property name to get.
 
         Returns:
@@ -227,14 +227,14 @@ class _Sample:
         """Get the capacity of a sample in Ah based on the mode.
 
         Args:
-            mode : str
+            mode: str
                 The mode to calculate the capacity. Must be 'areal', 'mass', or 'nominal'
                 areal: calculate from anode/cathode C-rate definition areal capacity (mAh/cm2) and
                     anode/cathode Diameter (mm)
                 mass: calculate from anode/cathode C-rate definition specific capacity (mAh/g) and
                     anode/cathode active material mass (mg)
                 nominal: use C-rate definition capacity (mAh)
-            ignore_anode : bool, optional
+            ignore_anode: bool, optional
                 If True, only use the cathode capacity. Default is True.
 
         Returns:
@@ -281,7 +281,7 @@ class _Sample:
         """Create a _Sample object from the database.
 
         Args:
-            sample_id : str
+            sample_id: str
                 The sample ID to create the object for.
 
         Returns:
@@ -375,7 +375,7 @@ class _CyclingJob:
         """Add a payload to the job.
 
         Args:
-            payload : str or Path or dict
+            payload: str or Path or dict
                 Preferably an aurora-unicycler dictionary - this is auto-converted to the right format for each cycler
                 In addition, different cyclers can accept different payload formats
                 (Neware) A .xml path or xml string with a Neware protocol
@@ -428,7 +428,7 @@ class _CyclingJob:
         """Create a _CyclingJob object from the database.
 
         Args:
-            job_id : str
+            job_id: str
                 The job ID to create the object for.
 
         Returns:
@@ -469,15 +469,10 @@ class ServerManager:
     @cached_property
     def servers(self) -> dict[str, CyclerServer]:
         """Get a dictionary of Cycler Servers."""
-        return get_servers()
+        return _get_servers()
 
     def update_db(self) -> None:
-        """Update all tables in the database."""
-        self.update_pipelines()
-        dbf.update_flags()
-
-    def update_pipelines(self) -> None:
-        """Update the pipelines table in the database with the current status."""
+        """Query all cycler servers and update the pipelines table in the database with their current status."""
         logger.info("Querying all cycler servers...")
 
         def fetch(label: str, server: CyclerServer) -> tuple[str, list | None]:
@@ -511,6 +506,7 @@ class ServerManager:
             ]
             dbf.bulk_add_or_update_pipeline(updated_rows)
         dbf.fill_pipelines_missing_job_ids()
+        dbf.update_flags()
 
     def load(self, pipeline_id: str, sample_id: str) -> None:
         """Load a sample on a pipeline.
@@ -550,17 +546,17 @@ class ServerManager:
         """Submit a job to a server.
 
         Args:
-            sample_id : str
+            sample_id: str
                 The sample ID to submit the job for, must exist in samples table of database
-            payload : str or Path or dict
+            payload: str or Path or dict
                 Preferably an aurora-unicycler dictionary - this is auto-converted to the right format for each cycler
                 In addition, different cyclers can accept different payload formats
                 (Neware) A .xml path or xml string with a Neware protocol
                 (Biologic) A .mps path or mps string with a Biologic protocol
-            capacity_Ah : float or str
+            capacity_Ah: float or str
                 The capacity of the sample in Ah, if 'areal', 'mass', or 'nominal', the capacity is
                 calculated from the sample information
-            comment : str, optional
+            comment: str, optional
                 A comment to add to the job in the database
 
         """
@@ -582,7 +578,7 @@ class ServerManager:
         """Cancel a job on a server.
 
         Args:
-            jobid : str
+            jobid: str
                 The job ID to cancel, must exist in jobs table of database
 
         Returns:
@@ -599,9 +595,9 @@ class ServerManager:
         """Snapshot sample or job, download data, process, and save.
 
         Args:
-            samp_or_jobid : str
+            samp_or_jobid: str
                 The sample ID or (aurora) job ID to snapshot.
-            mode : str, optional
+            mode: str, optional
                 When to make a new snapshot. Can be one of the following:
                     - 'always': Force a snapshot even if job is already done and data is downloaded.
                     - 'new_data': Snapshot if there is new data.
@@ -689,8 +685,7 @@ class ServerManager:
         """Update all Job IDs on Neware servers.
 
         Temporary measure until we have a faster way to get Job IDs from Newares
-        that can run in update_pipelines. This implementation takes ~1 second
-        per channel.
+        that can run in update_db. This implementation takes ~1 second per channel.
 
         """
         pipelines, server_labels = dbf.get_neware_pipelines()

@@ -1,6 +1,16 @@
 """Copyright © 2025-2026, Empa.
 
-Functions to read and write data files. Provides SampleDataBundle interface.
+Functions for reading data from the aurora file structure.
+
+Functions like `get_cycling(sample_id)`, `get_eis(sample_id)` take a sample ID and return a polars dataframe with data.
+
+To get all of the data for a sample, `my_data = SampleDataBundle(sample_id)`, this bundles all of the time-series,
+per-cycle, overall summary, and metadata in one place. You can then use e.g. `my_data.cycling` to access the time-series
+data, or `my_data.cycles_summary` to get the per-cycle results.
+
+`SampleDataBundle` is lazy - it only grabs the dataframes you request, so there is little overhead even if you are just
+grabbing tiny metadata about a sample.
+
 """
 
 import json
@@ -173,7 +183,7 @@ class SampleDataBundle:
 
     @cached_property
     def eis(self) -> pl.DataFrame | None:
-        """Shrunk time series cycling data."""
+        """Frequency-domain electrochemical impedance spectroscopy data."""
         if self._preloaded["eis"] is not None:
             return self._preloaded["eis"]
         return get_eis(self.sample_id)
