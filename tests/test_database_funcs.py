@@ -11,6 +11,7 @@ from sqlalchemy import text
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_engine import get_engine
 from aurora_cycler_manager.database_funcs import (
+    _patch_database,
     _pre_check_sample_file,
     _recalculate_sample_data,
     add_or_update_job,
@@ -24,7 +25,6 @@ from aurora_cycler_manager.database_funcs import (
     get_or_create_job_id_from_server,
     get_sample_data,
     is_sample,
-    patch_database,
     remove_batch,
     sample_df_to_db,
     save_or_overwrite_batch,
@@ -312,7 +312,7 @@ class TestPatchDatabase:
             table_names = [row[0] for row in tables]
             assert "dataframes" not in table_names
 
-        patch_database(engine)
+        _patch_database(engine)
 
         # After patching they are added
         with engine.begin() as conn:

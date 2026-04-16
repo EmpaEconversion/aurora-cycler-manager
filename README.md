@@ -4,12 +4,14 @@
 
 <br>
 
+[![Docs](https://img.shields.io/badge/docs-gh--pages-blue.svg)](https://empaeconversion.github.io/aurora-cycler-manager/)
 [![PyPI version](https://img.shields.io/pypi/v/aurora-cycler-manager.svg)](https://pypi.org/project/aurora-cycler-manager/)
 [![License](https://img.shields.io/github/license/empaeconversion/aurora-cycler-manager?color=blue)](https://github.com/empaeconversion/aurora-cycler-manager/blob/main/LICENSE)
 [![Python Versions](https://img.shields.io/pypi/pyversions/aurora-cycler-manager.svg)](https://pypi.org/project/aurora-cycler-manager/)
 [![Checks](https://img.shields.io/github/actions/workflow/status/empaeconversion/aurora-cycler-manager/CI.yml)](https://github.com/EmpaEconversion/aurora-cycler-manager/actions/workflows/CI.yml)
 [![Coverage](https://img.shields.io/codecov/c/github/empaeconversion/aurora-cycler-manager)](https://app.codecov.io/gh/EmpaEconversion/aurora-cycler-manager)
 
+[Documentation](https://empaeconversion.github.io/aurora-cycler-manager/)
 
 Cycler control, data pipeline, and data visualisation from Empa's robotic battery lab.
 
@@ -38,73 +40,45 @@ Time-series data is automatically analysed to extract per-cycle and summary data
 
 A web-app based on `Plotly Dash` allows rapid, interactive viewing of time-series and per-cycle data, as well as the ability to control experiments on cyclers through the graphical interface.
 
-## Installation
+## Quickstart
 
-In a Python environment:
+
+Install with Python>=3.10:
 
 ```shell
 pip install aurora-cycler-manager
 ```
 
-To _view data from an existing set up_:
+Update an existing installation:
+```shell
+pip install aurora-cycler-manager --upgrade
+```
+
+Connect to an existing project:
 ```shell
 aurora-setup connect --project-dir="path\to\your\setup"
 ```
 
-To _interact with servers on an existing set up_:
-- Interacting with servers (submitting jobs, harvesting data etc.) works with OpenSSH, servers must have OpenSSH installed and running.
-- Generate a public/private key pair on the user system with `ssh-keygen`.
-- Copy your public key (usually in `%USERPROFILE%\.ssh\id_rsa.pub`) to the cycler server.
-- Add it to the server's `authorized_keys` file (usually in `C:\Users\username\.ssh\authorized_keys`).
-- Check the connection using `ssh user@host` from the user's terminal, confirm the connection to add the host to the user's `known_hosts` file, the Aurora app can now use the connection .
-- (optional) You can make changes to your user config, this is stored in your user folder e.g. /users/yourname/appdata/local/aurora_cycler_manager/
-  - "SSH private key path" can be changed, if your key is not in a standard location.
-  - "Snapshots folder path" is where raw data downloaded from cyclers is stored, this can become very large.
-
-To _create a new set up_:
+Create a new project:
 ```shell
 aurora-setup init --project-dir="path\to\your\setup"
 ```
-- This generates subfolders within the directory, a database, and a configuration file.
-- Fill in the configuration file with details about e.g. Neware and EC-Lab servers, examples are left in the default config.
-- In `Servers`, the `server_type` must be `neware` or `biologic` (or `neware_harvester`/`biologic_harvester` if you just want to grab data without control).
-- The `server_label` should be a short, unique key to represent a cycler server.
-- The `shell_type` is the default shell when SSH-ing into the machine, it must be `cmd` or `powershell`.
-- To set up a `neware` server, follow the instructions from [`aurora-neware`](https://github.com/empaeconversion/aurora-neware).
-- To set up a `biologic` server, follow the instructions from [`aurora-biologic`](https://github.com/empaeconversion/aurora-biologic).
-- If you change database columns in the shared configuration file, you can update the database with `aurora-setup update`, use the option `--force` if you want to permanently delete columns and their data.
-- By default, a set up uses an sqlite3 database, a postgresql database can also be used by setting `Database type` = `postgresql`, supplying `Database host`, `Database name`, `Database user`, `Database password`, and running `aurora-setup update`. You must install and set up an empty postgresql database yourself.
+You must then fill out the configuration file.
 
-## Updating
-
-Upgrade with pip, you do not have to redo any setup steps:
-```shell
-pip install aurora-cycler-manager --upgrade
+Start the app:
 ```
-If upgrading from earlier than 0.5.0, first `pip uninstall aurora-cycler-manager` then follow the installation steps.
-
-## Usage
-
-A web app allows users to view analysed data and see the status of samples, jobs, and cyclers, and submit jobs to cyclers if they have access. Run with:
-```shell
 aurora-app
 ```
 
-- There are three tabs, samples plotting, batch plotting, and database.
-- To upload sample information to the database, use the 'Upload' button in the database tab, and select a .json file defining the cells.
-- Hand-made cells can also be added, a .json must be created with the keys defined in the configuration file - the only required key is a unique "Sample ID".
-- Protocols can be created in database -> protocols.
-- In database -> pipelines, load samples onto the pipelines, then submit a protocol.
-- Loading samples, submitting jobs, analysing data etc. can also be run in Python scripts directly through the `ServerManager` class.
-
-With SSH access, automatic data harvesting and analysis is run using:
-```shell
+Start the daemon:
+```
 aurora-daemon
 ```
 
-## Contributors
+You interact with cyclers, you need password-less SSH access to the cycler PCs.
+To control cyclers, [`aurora-biologic`](https://github.com/empaeconversion/aurora-biologic) or [`aurora-neware`](https://github.com/empaeconversion/aurora-neware) needs to be installed on the cycler PC.
 
-- [Graham Kimbell](https://github.com/g-kimbell)
+Read the [documentation](https://empaeconversion.github.io/aurora-cycler-manager/) for more detail.
 
 ## Acknowledgements
 

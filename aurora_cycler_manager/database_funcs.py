@@ -1,6 +1,9 @@
 """Copyright © 2025-2026, Empa.
 
-Functions for interacting with the database.
+Functions for getting and setting data in the database.
+
+Note that the database does not contain the time-series data and analysed results.
+These data are stored in the file system, use the `data_parse` module to access.
 """
 
 import json
@@ -47,7 +50,7 @@ CONFIG = get_config()
 logger = logging.getLogger(__name__)
 
 
-def patch_database(engine: Engine) -> None:
+def _patch_database(engine: Engine) -> None:
     """Add missing columns to database, in case users are coming from an older version."""
     inspector = inspect(engine)
 
@@ -102,7 +105,7 @@ def stamp_sync(
 engine = get_engine(CONFIG)
 insert = pg_insert if engine.dialect.name == "postgresql" else sqlite_insert
 
-patch_database(engine)
+_patch_database(engine)
 
 metadata = MetaData()
 samples_table = Table("samples", metadata, autoload_with=engine)
@@ -135,7 +138,7 @@ harvester_table.c["Last snapshot"].type = String()
 
 
 def is_sample(sample_id: str) -> bool:
-    """Check if it is a valid sample in db."""
+    """Check if `sample_id` exists in the database."""
     with engine.connect() as conn:
         return bool(conn.execute(select(exists().where(samples_table.c["Sample ID"] == sample_id))).scalar())
 
@@ -147,7 +150,7 @@ def add_samples_from_object(samples: list[dict], overwrite: bool = False) -> Non
 
 
 def add_samples_from_file(json_file: str | Path, overwrite: bool = False) -> None:
-    """Add a samples to database from a JSON file."""
+    """Add samples to database from a JSON file."""
     json_file = Path(json_file)
     _pre_check_sample_file(json_file)
     df = pd.read_json(json_file, orient="records")
@@ -155,7 +158,7 @@ def add_samples_from_file(json_file: str | Path, overwrite: bool = False) -> Non
 
 
 def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
-    """Upload the sample dataframe to the database."""
+    """Add samples to database from a pandas dataframe."""
     sample_ids = df["Sample ID"].tolist()
     if any(not isinstance(sample_id, str) for sample_id in sample_ids):
         msg = "File contains non-string 'Sample ID' keys"
@@ -308,7 +311,15 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def update_sample_label(sample_ids: str | list[str], label: str | None) -> None:
-    """Update the label of a sample in the database."""
+    """Update the label of sample(s) in the database.
+
+    Args:
+        sample_ids: str or list
+            The sample ID or list of sample IDs to remove from the database
+        label: str or None
+            The label to attach to the sample. Overwrites any existing label.
+
+    """
     if isinstance(sample_ids, str):
         sample_ids = [sample_ids]
     with engine.begin() as conn:
@@ -321,14 +332,13 @@ def update_sample_label(sample_ids: str | list[str], label: str | None) -> None:
 
 
 def delete_samples(sample_ids: str | list) -> None:
-    """Remove a sample(s) from the database.
+    """Remove sample(s) from the database.
 
     Args:
-        sample_ids : str or list
+        sample_ids: str or list
             The sample ID or list of sample IDs to remove from the database
 
     """
-    """Delete samples from the database."""
     if not isinstance(sample_ids, list):
         sample_ids = [sample_ids]
     with engine.begin() as conn:
@@ -745,7 +755,7 @@ def get_unicycler_protocols(sample_id: str) -> list[dict]:
     return [dict(row) for row in result.mappings().all()]
 
 
-def add_data_to_db_without_job(sample_id: str, file_stem: str, data_start: str, data_end: str) -> str:
+def _add_data_to_db_without_job(sample_id: str, file_stem: str, data_start: str, data_end: str) -> str:
     """Add data with unknown or non-existent Job ID.
 
     Checks if data is already associated with a job, if not add a new job to the database.
@@ -809,7 +819,7 @@ def add_data_to_db_without_job(sample_id: str, file_stem: str, data_start: str, 
     return job_id
 
 
-def add_data_to_db_with_job(sample_id: str, file_stem: str, data_start: str, data_end: str, job_id: str) -> str:
+def _add_data_to_db_with_job(sample_id: str, file_stem: str, data_start: str, data_end: str, job_id: str) -> str:
     """Add data to the database with a known Job ID.
 
     If there is already data associated with the job with a different Job ID, overwrite the info.
@@ -910,7 +920,9 @@ def add_data_to_db_with_job(sample_id: str, file_stem: str, data_start: str, dat
 
 
 def add_data_to_db(sample_id: str, file_stem: str, start_uts: float, end_uts: float, job_id: str | None = None) -> str:
-    """Add data to the database.
+    """Register a time-series data file in the database.
+
+    Warning: does not actually move a file. This function just updates the jobs and dataframes tables.
 
     Args:
         sample_id: Sample ID that the data is associated with
@@ -926,8 +938,8 @@ def add_data_to_db(sample_id: str, file_stem: str, start_uts: float, end_uts: fl
     data_start = datetime.fromtimestamp(start_uts, tz=timezone.utc).isoformat()
     data_end = datetime.fromtimestamp(end_uts, tz=timezone.utc).isoformat()
     if job_id:
-        return add_data_to_db_with_job(sample_id, file_stem, data_start, data_end, job_id)
-    return add_data_to_db_without_job(sample_id, file_stem, data_start, data_end)
+        return _add_data_to_db_with_job(sample_id, file_stem, data_start, data_end, job_id)
+    return _add_data_to_db_without_job(sample_id, file_stem, data_start, data_end)
 
 
 def add_protocol_to_job(job_id: str, protocol: dict | str, capacity: float | None = None) -> None:

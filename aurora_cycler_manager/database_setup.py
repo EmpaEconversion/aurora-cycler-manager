@@ -79,8 +79,7 @@ def default_config(base_dir: Path) -> dict:
     """Create default shared config file."""
     return {
         "Database type": "sqlite",
-        "Database path": str(base_dir / "database" / "database.db"),
-        "Samples folder path": str(base_dir / "samples"),
+        "Database path": str(base_dir / "aurora.db"),
         "Protocols folder path": str(base_dir / "protocols"),
         "Data folder path": str(base_dir / "data"),
         "Servers": {
@@ -398,16 +397,15 @@ def create_database(force: bool = False) -> None:
 def create_new_setup(base_dir: str | Path, overwrite: bool = False) -> None:
     """Create a new aurora setup with a shared config file and database."""
     base_dir = Path(base_dir).resolve()
-    shared_config_path = base_dir / "database" / "shared_config.json"
+    shared_config_path = base_dir / "shared_config.json"
     if shared_config_path.exists():
         if overwrite:
-            logger.warning("Overwriting existing shared config file at %s", shared_config_path)
+            logger.warning("Overwriting existing project config file at %s", shared_config_path)
         else:
-            msg = "Shared config file already exists. Use --overwrite to overwrite it."
+            msg = "A project shared config file already exists at this location. Use --overwrite to overwrite it."
             raise FileExistsError(msg)
     base_dir.mkdir(parents=True, exist_ok=True)
-    (base_dir / "database").mkdir(exist_ok=True)
-    (base_dir / "snapshots").mkdir(exist_ok=True)
+    (base_dir / "data").mkdir(exist_ok=True)
     (base_dir / "protocols").mkdir(exist_ok=True)
 
     logger.info("Created folder structure at %s", base_dir)
@@ -468,7 +466,6 @@ def connect_to_config(shared_config_folder: str | Path) -> None:
     # Check that the shared config has the required keys
     required_keys = [
         "Database path",
-        "Samples folder path",
         "Protocols folder path",
         "Data folder path",
     ]
