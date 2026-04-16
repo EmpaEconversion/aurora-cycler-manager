@@ -104,7 +104,7 @@ exclude = [
 plugins = ["pydantic.mypy"]
 
 [tool.bumpver]
-current_version = "v0.10.3"
+current_version = "v0.11.0"
 version_pattern = "vMAJOR.MINOR.PATCH[PYTAGNUM]"
 commit_message = "Bump version {old_version} -> {new_version}."
 tag_message = "Release {new_version}."
