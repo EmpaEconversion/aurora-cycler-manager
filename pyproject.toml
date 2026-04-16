@@ -55,9 +55,11 @@ pg = [
 ]
 dev = [
     "bumpver>=2025.1131",
+    "mkdocstrings[python]>=1.0.4",
     "pre-commit>=4.2.0",
     "pytest>=8.4.1",
     "ruff==0.15.0",
+    "zensical>=0.0.33",
 ]
 
 [project.scripts]
