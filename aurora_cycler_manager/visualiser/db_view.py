@@ -882,6 +882,7 @@ db_view_layout = html.Div(
         dcc.Store(id="len-store", data={}),
         dcc.Store(id="last-sync-store", data=0),
         dcc.Store(id="info-store", data={}),
+        dcc.Store(id="info-history-store", data={"history": [], "index": -1}),
         eject_modal,
         load_modal,
         submit_modal,
