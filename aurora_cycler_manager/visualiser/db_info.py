@@ -17,7 +17,25 @@ import aurora_cycler_manager.database_funcs as dbf
 logger = logging.getLogger(__name__)
 
 info_modal = dmc.Modal(
-    title="Info",
+    title=dmc.Group(
+        [
+            dmc.ActionIcon(
+                html.I(className="bi bi-arrow-left"),
+                id="info-back-button",
+                variant="subtle",
+                disabled=True,
+            ),
+            dmc.ActionIcon(
+                html.I(className="bi bi-arrow-right"),
+                id="info-forward-button",
+                variant="subtle",
+                disabled=True,
+            ),
+            html.Span(id="info-modal-title-text"),
+        ],
+        gap="xs",
+        align="center",
+    ),
     id="info-modal",
     children=dcc.Loading(
         children=html.Div(id="info-modal-content"),
@@ -25,7 +43,6 @@ info_modal = dmc.Modal(
         color="var(--mantine-color-blue-6)",
         delay_show=200,
     ),
-    centered=True,
     size="xl",
 )
 
@@ -235,6 +252,7 @@ def register_db_info_callbacks(app: Dash) -> None:
     @app.callback(
         Output("info-modal", "opened", allow_duplicate=True),
         Output("info-store", "data", allow_duplicate=True),
+        Output("info-history-store", "data", allow_duplicate=True),
         Input("info-button", "n_clicks"),
         State("table-select", "value"),
         State("selected-rows-store", "data"),
@@ -242,24 +260,65 @@ def register_db_info_callbacks(app: Dash) -> None:
     )
     def open_info_modal(_n_clicks: int, table: str, selected_rows: list) -> tuple:
         if table in {"samples", "results"}:
-            return True, {"Sample ID": selected_rows[0]["Sample ID"]}
-        if table == "jobs":
-            return True, {"Job ID": selected_rows[0]["Job ID"]}
-        if table == "pipelines":
-            return True, {"Pipeline": selected_rows[0]["Pipeline"]}
-        logger.warning("Table %s not understood", table)
-        raise PreventUpdate
+            new_data = {"Sample ID": selected_rows[0]["Sample ID"]}
+        elif table == "jobs":
+            new_data = {"Job ID": selected_rows[0]["Job ID"]}
+        elif table == "pipelines":
+            new_data = {"Pipeline": selected_rows[0]["Pipeline"]}
+        else:
+            logger.warning("Table %s not understood", table)
+            raise PreventUpdate
+        return True, new_data, {"history": [new_data], "index": 0}
 
     # When a link is clicked, go to that info page
     @app.callback(
         Output("info-store", "data", allow_duplicate=True),
+        Output("info-history-store", "data", allow_duplicate=True),
         Input({"type": "info-nav-link", "entity_type": ALL, "id": ALL}, "n_clicks"),
+        State("info-history-store", "data"),
         prevent_initial_call=True,
     )
-    def handle_nav_link(n_clicks_list: list[int]) -> dict[str, str]:
+    def handle_nav_link(n_clicks_list: list[int], history_data: dict) -> tuple:
         if not ctx.triggered_id or not any(n for n in n_clicks_list if n):
             raise PreventUpdate
-        return {ctx.triggered_id["entity_type"]: ctx.triggered_id["id"]}
+        new_data = {ctx.triggered_id["entity_type"]: ctx.triggered_id["id"]}
+        history = history_data.get("history", [])
+        index = history_data.get("index", -1)
+        # Remove forward history, and append new
+        history = [*history[: index + 1], new_data]
+        return new_data, {"history": history, "index": len(history) - 1}
+
+    # Back / forward navigation through history
+    @app.callback(
+        Output("info-store", "data", allow_duplicate=True),
+        Output("info-history-store", "data", allow_duplicate=True),
+        Input("info-back-button", "n_clicks"),
+        Input("info-forward-button", "n_clicks"),
+        State("info-history-store", "data"),
+        prevent_initial_call=True,
+    )
+    def navigate_history(_back: int, _forward: int, history_data: dict) -> tuple:
+        if not ctx.triggered_id:
+            raise PreventUpdate
+        history = history_data.get("history", [])
+        index = history_data.get("index", 0)
+        new_index = index - 1 if ctx.triggered_id == "info-back-button" else index + 1
+        if new_index < 0 or new_index >= len(history):
+            raise PreventUpdate
+        return history[new_index], {"history": history, "index": new_index}
+
+    # Enable/disable back/forward buttons
+    @app.callback(
+        Output("info-back-button", "disabled"),
+        Output("info-forward-button", "disabled"),
+        Input("info-history-store", "data"),
+    )
+    def update_nav_buttons(history_data: dict) -> tuple:
+        if not history_data:
+            return True, True
+        index = history_data.get("index", 0)
+        length = len(history_data.get("history", []))
+        return index <= 0, index >= length - 1
 
     # When the targeted info page changes, query db and update the actual modal children
     @app.callback(
@@ -282,7 +341,7 @@ def register_db_info_callbacks(app: Dash) -> None:
             return "No information."
 
     @app.callback(
-        Output("info-modal", "title"),
+        Output("info-modal-title-text", "children"),
         Input("info-store", "data"),
     )
     def render_title(data: dict[str, str]) -> str:
