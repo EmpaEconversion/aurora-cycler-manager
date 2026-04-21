@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import inspect, types
@@ -14,7 +15,8 @@ from aurora_cycler_manager.database_setup import (
     create_database,
     create_new_setup,
     get_sa_type,
-    get_status,
+    main,
+    print_config,
 )
 
 # Double check you're not going to delete the prod database!
@@ -114,7 +116,7 @@ class TestDatabaseSetup:
         assert config["Shared config path"] == shared_config_1
 
         # Check the status
-        status = get_status()
+        status = print_config()
         assert Path(status["Shared config path"]) == shared_config_1
 
     def test_database_funcs(self, reset_all, tmp_path: Path) -> None:
@@ -156,3 +158,25 @@ class TestDatabaseSetup:
         columns = inspector.get_columns("samples")
         # Should be left with 5 required cols + "delete everything else"
         assert len(columns) == 6, "Columns were not deleted successfully"
+
+    def test_print_status(self, capsys: pytest.CaptureFixture, reset_all) -> None:
+        """Check print status CLI works."""
+        with patch("sys.argv", ["aurora-setup", "status"]):
+            main()
+        captured = capsys.readouterr()
+        assert "User config path:" in captured.out
+        assert "Shared config path:" in captured.out
+
+    def test_print_status_verbose(self, capsys: pytest.CaptureFixture, reset_all) -> None:
+        """Check print status CLI works."""
+        with patch("sys.argv", ["aurora-setup", "status", "-v"]):
+            main()
+        captured = capsys.readouterr()
+        res = json.loads(captured.out.strip())
+        assert isinstance(res, dict)
+        assert "User config path" in res
+
+        with patch("sys.argv", ["aurora-setup", "status", "--verbose"]):
+            main()
+        captured2 = capsys.readouterr()
+        assert captured == captured2

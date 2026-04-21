@@ -22,6 +22,7 @@ import logging
 import os
 import re
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import platformdirs
 from sqlalchemy import (
@@ -533,31 +534,15 @@ def connect_to_config(shared_config_folder: str | Path) -> None:
     logger.info("You can now start the app with aurora-app")
 
 
-def get_status(verbose: bool = False) -> dict:
+def print_config(verbose: bool = False) -> dict:
     """Print the status of the aurora cycler manager setup."""
-    if not USER_CONFIG_PATH.exists():
-        logger.error("User config file does not exist at %s", USER_CONFIG_PATH)
-        raise FileNotFoundError
-
-    with USER_CONFIG_PATH.open("r") as f:
-        user_config = json.load(f)
-
-    shared_config_path = user_config.get("Shared config path")
-    if not shared_config_path or not Path(shared_config_path).exists():
-        logger.error(
-            "Shared config path is not set or does not exist. "
-            "Use 'aurora-setup connect' to connect to a config, "
-            "or 'aurora-setup init' to create a new one.",
-        )
-        raise FileNotFoundError
-    logger.info("User config file: %s", USER_CONFIG_PATH)
-    logger.info("Shared config file: %s", shared_config_path)
-
     config = get_config()
     if verbose:
-        logger.info("Current configuration:")
-        config = {k: str(v) if isinstance(v, Path) else v for k, v in config.items()}
-        logger.info(json.dumps(config, indent=4))
+        serialised = {k: str(v) if isinstance(v, (Path, ZoneInfo)) else v for k, v in config.items()}
+        print(json.dumps(serialised, indent=4))  # noqa: T201
+    else:
+        print(f"User config path: {config.get('User config path')!s}")  # noqa: T201
+        print(f"Shared config path: {config.get('Shared config path')!s}")  # noqa: T201
     return config
 
 
@@ -591,7 +576,7 @@ def main() -> None:
     )
 
     status_parser = subparsers.add_parser("status", help="Get the status of the setup")
-    status_parser.add_argument("--verbose", action="store_true", help="Print verbose output")
+    status_parser.add_argument("--verbose", "-v", action="store_true", help="Print verbose output")
 
     args = parser.parse_args()
 
@@ -602,7 +587,7 @@ def main() -> None:
     elif args.command == "update":
         create_database(force=args.force)
     elif args.command == "status":
-        get_status(verbose=args.verbose)
+        print_config(verbose=args.verbose)
     else:
         parser.print_help()
 
