@@ -179,6 +179,17 @@ def sample_df_to_db(df: pd.DataFrame, overwrite: bool = False) -> None:
     df = _recalculate_sample_data(df)
 
     # Insert into database
+    valid_columns = {c.name for c in samples_table.columns}
+    df_columns = set(df.columns)
+    missing_in_db = df_columns - valid_columns
+    if missing_in_db:
+        logger.warning(
+            "Adding samples to database: after automatic calculations, "
+            "column(s) %s do not exist in the database, skipping",
+            ", ".join("'" + col + "'" for col in missing_in_db),
+        )
+        df = df.drop(columns=missing_in_db)
+
     with engine.begin() as conn:
         for _, raw_row in df.iterrows():
             # Remove empty columns from the row
@@ -228,15 +239,19 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(msg)
 
     # Load the config file
+    fixed_columns = ["Sample ID", "Run ID", "Label"]
     column_config = CONFIG["Sample database"]
 
     # Create a dictionary for lookup of alternative and case insensitive names
     col_names = [col["Name"] for col in column_config]
-    alt_name_dict = {
-        alt_name.lower(): item["Name"] for item in column_config for alt_name in item.get("Alternative names", [])
-    }
-    # Add on the main names in lower case
-    alt_name_dict.update({col.lower(): col for col in col_names})
+    # Normal column names
+    alt_name_dict = {col.lower(): col for col in col_names}
+    # Required column names
+    alt_name_dict.update({col.lower(): col for col in fixed_columns})
+    # Alternative names
+    alt_name_dict.update(
+        {alt_name.lower(): item["Name"] for item in column_config for alt_name in item.get("Alternative names", [])}
+    )
 
     # Rename columns to match the database
     rename = {}
@@ -249,6 +264,10 @@ def _recalculate_sample_data(df: pd.DataFrame) -> pd.DataFrame:
             drop.append(column)
     df = df.rename(columns=rename)
     if drop:
+        logger.warning(
+            "Adding samples to database: column(s) %s do not exist in the database, skipping",
+            ", ".join("'" + col + "'" for col in drop),
+        )
         df = df.drop(columns=drop)
 
     # Change sample history to a JSON string

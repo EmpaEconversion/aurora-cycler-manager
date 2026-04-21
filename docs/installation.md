@@ -92,9 +92,14 @@ An example configuration looks like:
 		},
     },
     "Sample database" : [
-        {"Name" : "Sample ID", "Alternative names" : ["sampleid"], "Type" : "VARCHAR(255) PRIMARY KEY"},
-        # lots more fields for the samples table in the database, you can add more if you want
+        {"Name": "Cell number", "Alternative names": ["Battery_Number"], "Type": "INT"},
+        {"Name": "Rack position", "Alternative names": ["Rack_Position"], "Type": "INT"},
+        {"Name": "N:P ratio", "Alternative names": ["Actual N:P Ratio"], "Type": "FLOAT"},
+        # ... lots more fields for the samples table in the database, you can add more if you want.
         # 'Alternative names' are normalised to the Name on sample import
+        # Several columns are required and automatically added, like Sample ID, Run ID, Label.
+        # You can also remove columns, but some provide special functionality, 
+        # e.g. 'N:P ratio' is calculated for you if all required columns exist.
     ]
 }
 ```

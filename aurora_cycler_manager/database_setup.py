@@ -20,21 +20,17 @@ import contextlib
 import json
 import logging
 import os
+import re
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import platformdirs
 from sqlalchemy import (
-    Boolean,
     Column,
-    DateTime,
-    Float,
     Index,
-    Integer,
     MetaData,
     PrimaryKeyConstraint,
-    String,
     Table,
-    Text,
     UniqueConstraint,
     inspect,
     text,
@@ -60,19 +56,55 @@ else:
     USER_CONFIG_PATH = user_config_dir / "config.json"
 
 TYPE_MAP = {
-    "TEXT": Text,
-    "VARCHAR(255)": String(255),
-    "INTEGER": Integer,
-    "FLOAT": Float,
-    "BOOLEAN": Boolean,
-    "DATETIME": DateTime,
-    "TIMESTAMP": DateTime,
+    # Strings
+    "TEXT": types.Text,
+    "VARCHAR": types.String,
+    "CHAR": types.String,
+    # Integers
+    "INTEGER": types.Integer,
+    "INT": types.Integer,
+    "BIGINT": types.BigInteger,
+    "SMALLINT": types.SmallInteger,
+    # Floats / Decimals
+    "FLOAT": types.Float,
+    "REAL": types.Float,
+    "DOUBLE PRECISION": types.Float,
+    "NUMERIC": types.Numeric,
+    "DECIMAL": types.Numeric,
+    # Boolean
+    "BOOLEAN": types.Boolean,
+    "BOOL": types.Boolean,
+    # Date / Time
+    "DATE": types.Date,
+    "TIME": types.Time,
+    "DATETIME": types.DateTime,
+    "TIMESTAMP": types.DateTime,
+    # Other
+    "JSON": types.JSON,
 }
 
 
 def get_sa_type(type_str: str) -> types.TypeEngine:
-    """Convert SQLITE to sqalchemy types."""
-    return TYPE_MAP.get(type_str.upper(), Text)
+    """Convert types in config to sqlalchemy types."""
+    type_upper = type_str.strip().upper()
+
+    if type_upper in TYPE_MAP:
+        t = TYPE_MAP[type_upper]
+        # Return instance if it's a class, not already instantiated
+        return t() if isinstance(t, type) else t
+
+    # Parameterised types
+    if m := re.match(r"VARCHAR\((\d+)\)", type_upper):
+        return types.String(int(m.group(1)))
+    if m := re.match(r"(NUMERIC|DECIMAL)\((\d+),\s*(\d+)\)", type_upper):
+        return types.Numeric(int(m.group(2)), int(m.group(3)))
+
+    valid = list(TYPE_MAP.keys())
+    msg = (
+        f"SQL type '{type_upper}' not known. Valid types: {valid}, "
+        "or VARCHAR(x), NUMERIC(y,z), DECIMAL(y,z), where x=length, y=precision, and z=scale."
+    )
+    raise ValueError(msg)
 
 
 def default_config(base_dir: Path) -> dict:
@@ -99,14 +131,12 @@ def default_config(base_dir: Path) -> dict:
             "short_name": "full_name",
         },
         "Sample database": [
-            {"Name": "Sample ID", "Alternative names": ["sampleid"], "Type": "VARCHAR(255) PRIMARY KEY"},
-            {"Name": "Run ID", "Type": "VARCHAR(255)"},
             {"Name": "Cell number", "Alternative names": ["Battery_Number"], "Type": "INT"},
             {"Name": "Rack position", "Alternative names": ["Rack_Position"], "Type": "INT"},
             {"Name": "N:P ratio", "Alternative names": ["Actual N:P Ratio"], "Type": "FLOAT"},
             {"Name": "N:P ratio overlap factor", "Type": "FLOAT"},
             {"Name": "Anode rack position", "Alternative names": ["Anode Position"], "Type": "INT"},
-            {"Name": "Anode type", "Type": "VARCHAR(255)"},
+            {"Name": "Anode type", "Type": "TEXT"},
             {"Name": "Anode description", "Type": "TEXT"},
             {"Name": "Anode diameter (mm)", "Alternative names": ["Anode_Diameter", "Anode Diameter"], "Type": "FLOAT"},
             {"Name": "Anode mass (mg)", "Alternative names": ["Anode Weight (mg)", "Anode Weight"], "Type": "FLOAT"},
@@ -134,7 +164,7 @@ def default_config(base_dir: Path) -> dict:
             },
             {"Name": "Anode balancing capacity (mAh)", "Alternative names": ["Anode Capacity (mAh)"], "Type": "FLOAT"},
             {"Name": "Cathode rack position", "Alternative names": ["Cathode Position"], "Type": "INT"},
-            {"Name": "Cathode type", "Type": "VARCHAR(255)"},
+            {"Name": "Cathode type", "Type": "TEXT"},
             {"Name": "Cathode description", "Type": "TEXT"},
             {
                 "Name": "Cathode diameter (mm)",
@@ -172,14 +202,14 @@ def default_config(base_dir: Path) -> dict:
                 "Alternative names": ["Cathode Capacity (mAh)"],
                 "Type": "FLOAT",
             },
-            {"Name": "Separator type", "Alternative names": ["Separator"], "Type": "VARCHAR(255)"},
+            {"Name": "Separator type", "Alternative names": ["Separator"], "Type": "TEXT"},
             {"Name": "Separator diameter (mm)", "Type": "FLOAT"},
             {"Name": "Separator thickness (mm)", "Type": "FLOAT"},
-            {"Name": "Electrolyte name", "Alternative names": ["Electrolyte"], "Type": "VARCHAR(255)"},
+            {"Name": "Electrolyte name", "Alternative names": ["Electrolyte"], "Type": "TEXT"},
             {"Name": "Electrolyte description", "Type": "TEXT"},
             {"Name": "Electrolyte position", "Type": "INT"},
             {"Name": "Electrolyte amount (uL)", "Alternative names": ["Electrolyte Amount"], "Type": "FLOAT"},
-            {"Name": "Electrolyte dispense order", "Type": "VARCHAR(255)"},
+            {"Name": "Electrolyte dispense order", "Type": "TEXT"},
             {
                 "Name": "Electrolyte amount before separator (uL)",
                 "Alternative names": ["Electrolyte Amount Before Seperator (uL)"],
@@ -195,19 +225,18 @@ def default_config(base_dir: Path) -> dict:
                 "Alternative names": ["Capacity (mAh)", "C-rate Capacity (mAh)"],
                 "Type": "FLOAT",
             },
-            {"Name": "Casing type", "Type": "VARCHAR(255)"},
-            {"Name": "Casing material", "Type": "VARCHAR(255)"},
-            {"Name": "Top spacer type", "Type": "VARCHAR(255)"},
+            {"Name": "Casing type", "Type": "TEXT"},
+            {"Name": "Casing material", "Type": "TEXT"},
+            {"Name": "Top spacer type", "Type": "TEXT"},
             {"Name": "Top spacer thickness (mm)", "Alternative names": ["Spacer (mm)"], "Type": "FLOAT"},
             {"Name": "Top spacer diameter (mm)", "Alternative names": [], "Type": "FLOAT"},
-            {"Name": "Top spacer material", "Alternative names": [], "Type": "VARCHAR(255)"},
-            {"Name": "Bottom spacer type", "Type": "VARCHAR(255)"},
+            {"Name": "Top spacer material", "Alternative names": [], "Type": "TEXT"},
+            {"Name": "Bottom spacer type", "Type": "TEXT"},
             {"Name": "Bottom spacer thickness (mm)", "Alternative names": [], "Type": "FLOAT"},
             {"Name": "Bottom spacer diameter (mm)", "Alternative names": [], "Type": "FLOAT"},
-            {"Name": "Bottom spacer material", "Alternative names": [], "Type": "VARCHAR(255)"},
-            {"Name": "Label", "Type": "VARCHAR(255)"},
+            {"Name": "Bottom spacer material", "Alternative names": [], "Type": "TEXT"},
             {"Name": "Comment", "Alternative names": ["Comments"], "Type": "TEXT"},
-            {"Name": "Barcode", "Type": "VARCHAR(255)"},
+            {"Name": "Barcode", "Type": "TEXT"},
             {"Name": "Assembly history", "Type": "TEXT"},
         ],
     }
@@ -234,124 +263,132 @@ def create_database(force: bool = False) -> None:
     else:
         db_existed = True  # assume postgres db already exists, we just create tables
 
-    columns = config["Sample database"]
-    sample_columns = [
-        Column(col["Name"], get_sa_type(col["Type"]), primary_key=(col["Name"] == "Sample ID")) for col in columns
-    ]
-
     engine = get_engine(config)
     meta = MetaData()
+
+    samples_required_cols = [
+        Column("Sample ID", types.Text, primary_key=True),
+        Column("Run ID", types.Text),
+        Column("Label", types.Text),
+    ]
+    columns = config["Sample database"]
+    sample_columns = [
+        Column(col["Name"], get_sa_type(col["Type"]))
+        for col in columns
+        if col["Name"] not in {c.name for c in samples_required_cols} | {"sync_modified", "sync_op"}
+    ]
 
     samples_table = Table(  # noqa: F841
         "samples",
         meta,
+        *samples_required_cols,
         *sample_columns,
-        Column("sync_modified", Float),
-        Column("sync_op", Text),
+        Column("sync_modified", types.Float),
+        Column("sync_op", types.Text),
     )
 
     jobs_table = Table(
         "jobs",
         meta,
-        Column("Job ID", String(255), primary_key=True),
-        Column("Sample ID", String(255)),
-        Column("Pipeline", String(50)),
-        Column("Status", String(3)),
-        Column("Jobname", String(50)),
-        Column("Server label", String(255)),
-        Column("Server hostname", String(255)),
-        Column("Job ID on server", String(255)),
-        Column("Submitted", DateTime),
-        Column("Payload", Text),
-        Column("Unicycler protocol", Text),
-        Column("Capacity (mAh)", Float),
-        Column("Comment", Text),
-        Column("Last checked", DateTime),
-        Column("Snapshot status", String(3)),
-        Column("Last snapshot", DateTime),
-        Column("sync_modified", Float),
-        Column("sync_op", Text),
+        Column("Job ID", types.Text, primary_key=True),
+        Column("Sample ID", types.Text),
+        Column("Pipeline", types.Text),
+        Column("Status", types.Text),
+        Column("Jobname", types.Text),
+        Column("Server label", types.Text),
+        Column("Server hostname", types.Text),
+        Column("Job ID on server", types.Text),
+        Column("Submitted", types.DateTime),
+        Column("Payload", types.Text),
+        Column("Unicycler protocol", types.Text),
+        Column("Capacity (mAh)", types.Float),
+        Column("Comment", types.Text),
+        Column("Last checked", types.DateTime),
+        Column("Snapshot status", types.Text),
+        Column("Last snapshot", types.DateTime),
+        Column("sync_modified", types.Float),
+        Column("sync_op", types.Text),
     )
 
     pipelines_table = Table(
         "pipelines",
         meta,
-        Column("Pipeline", String(50), primary_key=True),
-        Column("Sample ID", String(255)),
-        Column("Job ID", String(255)),
-        Column("Ready", Boolean),
-        Column("Flag", String(10)),
-        Column("Last checked", DateTime),
-        Column("Server label", String(255)),
-        Column("Server type", String(50)),
-        Column("Server hostname", String(255)),
-        Column("Job ID on server", String(255)),
-        Column("sync_modified", Float),
-        Column("sync_op", Text),
+        Column("Pipeline", types.Text, primary_key=True),
+        Column("Sample ID", types.Text),
+        Column("Job ID", types.Text),
+        Column("Ready", types.Boolean),
+        Column("Flag", types.Text),
+        Column("Last checked", types.DateTime),
+        Column("Server label", types.Text),
+        Column("Server type", types.Text),
+        Column("Server hostname", types.Text),
+        Column("Job ID on server", types.Text),
+        Column("sync_modified", types.Float),
+        Column("sync_op", types.Text),
     )
 
     results_table = Table(  # noqa: F841
         "results",
         meta,
-        Column("Sample ID", String(255), primary_key=True),
-        Column("Pipeline", String(50)),
-        Column("Status", String(3)),
-        Column("Flag", String(10)),
-        Column("Number of cycles", Integer),
-        Column("Capacity loss (%)", Float),
-        Column("First formation efficiency (%)", Float),
-        Column("Initial specific discharge capacity (mAh/g)", Float),
-        Column("Initial efficiency (%)", Float),
-        Column("Last specific discharge capacity (mAh/g)", Float),
-        Column("Last efficiency (%)", Float),
-        Column("Max voltage (V)", Float),
-        Column("Formation C", Float),
-        Column("Cycling C", Float),
-        Column("Last snapshot", DateTime),
-        Column("Last analysis", DateTime),
-        Column("Snapshot status", String(3)),
-        Column("Snapshot pipeline", String(50)),
-        Column("sync_modified", Float),
-        Column("sync_op", Text),
+        Column("Sample ID", types.Text, primary_key=True),
+        Column("Pipeline", types.Text),
+        Column("Status", types.Text),
+        Column("Flag", types.Text),
+        Column("Number of cycles", types.Integer),
+        Column("Capacity loss (%)", types.Float),
+        Column("First formation efficiency (%)", types.Float),
+        Column("Initial specific discharge capacity (mAh/g)", types.Float),
+        Column("Initial efficiency (%)", types.Float),
+        Column("Last specific discharge capacity (mAh/g)", types.Float),
+        Column("Last efficiency (%)", types.Float),
+        Column("Max voltage (V)", types.Float),
+        Column("Formation C", types.Float),
+        Column("Cycling C", types.Float),
+        Column("Last snapshot", types.DateTime),
+        Column("Last analysis", types.DateTime),
+        Column("Snapshot status", types.String(3)),
+        Column("Snapshot pipeline", types.String(50)),
+        Column("sync_modified", types.Float),
+        Column("sync_op", types.Text),
     )
 
     dataframes_table = Table(  # noqa: F841
         "dataframes",
         meta,
-        Column("Sample ID", Text, nullable=False),
-        Column("File stem", Text, nullable=False),
-        Column("Job ID", Text),
-        Column("From known source", Boolean),
-        Column("Data start", DateTime),
-        Column("Data end", DateTime),
-        Column("Modified", DateTime),
+        Column("Sample ID", types.Text, nullable=False),
+        Column("File stem", types.Text, nullable=False),
+        Column("Job ID", types.Text),
+        Column("From known source", types.Boolean),
+        Column("Data start", types.DateTime),
+        Column("Data end", types.DateTime),
+        Column("Modified", types.DateTime),
         PrimaryKeyConstraint("Sample ID", "File stem"),
     )
 
     harvester_table = Table(  # noqa: F841
         "harvester",
         meta,
-        Column("id", Integer, primary_key=True, autoincrement=True),
-        Column("Server label", Text),
-        Column("Server hostname", Text),
-        Column("Folder", Text),
-        Column("Last snapshot", DateTime),
+        Column("id", types.Integer, primary_key=True, autoincrement=True),
+        Column("Server label", types.Text),
+        Column("Server hostname", types.Text),
+        Column("Folder", types.Text),
+        Column("Last snapshot", types.DateTime),
         UniqueConstraint("Server label", "Server hostname", "Folder"),
     )
 
     batches_table = Table(  # noqa: F841
         "batches",
         meta,
-        Column("id", Integer, primary_key=True, autoincrement=True),
-        Column("label", Text, unique=True, nullable=False),
-        Column("description", Text),
+        Column("id", types.Integer, primary_key=True, autoincrement=True),
+        Column("label", types.Text, unique=True, nullable=False),
+        Column("description", types.Text),
     )
 
     batch_samples_table = Table(  # noqa: F841
         "batch_samples",
         meta,
-        Column("batch_id", Integer),
-        Column("sample_id", Text),
+        Column("batch_id", types.Integer),
+        Column("sample_id", types.Text),
         UniqueConstraint("batch_id", "sample_id"),
     )
 
@@ -370,10 +407,14 @@ def create_database(force: bool = False) -> None:
     # Handle added/removed columns in samples
     if db_existed:
         inspector = inspect(engine)
-        existing_columns = [col["name"] for col in inspector.get_columns("samples")]
-        new_columns = [col["Name"] for col in columns] + ["sync_modified", "sync_op"]
-        added = [c for c in new_columns if c not in existing_columns]
-        removed = [c for c in existing_columns if c not in new_columns]
+        existing_columns = (
+            {col["name"] for col in inspector.get_columns("samples")}
+            - {c.name for c in samples_required_cols}
+            - {"sync_modified", "sync_op"}
+        )
+        new_columns = {col.name for col in sample_columns}
+        added = new_columns - existing_columns
+        removed = existing_columns - new_columns
 
         with engine.begin() as conn:
             if removed:
@@ -385,9 +426,10 @@ def create_database(force: bool = False) -> None:
                 logger.warning("Columns %s removed", ", ".join(removed))
 
             if added:
-                for col in columns:
-                    if col["Name"] in added:
-                        conn.execute(text(f'ALTER TABLE samples ADD COLUMN "{col["Name"]}" {col["Type"]}'))
+                for col in sample_columns:
+                    if col.name in added:
+                        type_str = col.type.compile(dialect=engine.dialect)
+                        conn.execute(text(f'ALTER TABLE samples ADD COLUMN "{col.name}" {type_str}'))
                 logger.info("Adding new columns: %s", ", ".join(added))
 
             if not added and not removed:
@@ -492,31 +534,15 @@ def connect_to_config(shared_config_folder: str | Path) -> None:
     logger.info("You can now start the app with aurora-app")
 
 
-def get_status(verbose: bool = False) -> dict:
+def print_config(verbose: bool = False) -> dict:
     """Print the status of the aurora cycler manager setup."""
-    if not USER_CONFIG_PATH.exists():
-        logger.error("User config file does not exist at %s", USER_CONFIG_PATH)
-        raise FileNotFoundError
-
-    with USER_CONFIG_PATH.open("r") as f:
-        user_config = json.load(f)
-
-    shared_config_path = user_config.get("Shared config path")
-    if not shared_config_path or not Path(shared_config_path).exists():
-        logger.error(
-            "Shared config path is not set or does not exist. "
-            "Use 'aurora-setup connect' to connect to a config, "
-            "or 'aurora-setup init' to create a new one.",
-        )
-        raise FileNotFoundError
-    logger.info("User config file: %s", USER_CONFIG_PATH)
-    logger.info("Shared config file: %s", shared_config_path)
-
     config = get_config()
     if verbose:
-        logger.info("Current configuration:")
-        config = {k: str(v) if isinstance(v, Path) else v for k, v in config.items()}
-        logger.info(json.dumps(config, indent=4))
+        serialised = {k: str(v) if isinstance(v, (Path, ZoneInfo)) else v for k, v in config.items()}
+        print(json.dumps(serialised, indent=4))  # noqa: T201
+    else:
+        print(f"User config path: {config.get('User config path')!s}")  # noqa: T201
+        print(f"Shared config path: {config.get('Shared config path')!s}")  # noqa: T201
     return config
 
 
@@ -550,7 +576,7 @@ def main() -> None:
     )
 
     status_parser = subparsers.add_parser("status", help="Get the status of the setup")
-    status_parser.add_argument("--verbose", action="store_true", help="Print verbose output")
+    status_parser.add_argument("--verbose", "-v", action="store_true", help="Print verbose output")
 
     args = parser.parse_args()
 
@@ -561,7 +587,7 @@ def main() -> None:
     elif args.command == "update":
         create_database(force=args.force)
     elif args.command == "status":
-        get_status(verbose=args.verbose)
+        print_config(verbose=args.verbose)
     else:
         parser.print_help()
 
