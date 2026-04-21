@@ -5,11 +5,17 @@ import os
 from pathlib import Path
 
 import pytest
-from sqlalchemy import inspect
+from sqlalchemy import inspect, types
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_funcs import get_engine
-from aurora_cycler_manager.database_setup import connect_to_config, create_database, create_new_setup, get_status
+from aurora_cycler_manager.database_setup import (
+    connect_to_config,
+    create_database,
+    create_new_setup,
+    get_sa_type,
+    get_status,
+)
 
 # Double check you're not going to delete the prod database!
 if os.getenv("PYTEST_RUNNING") != "1":
@@ -17,8 +23,31 @@ if os.getenv("PYTEST_RUNNING") != "1":
     raise RuntimeError(msg)
 
 
-class TestAnalysis:
+class TestDatabaseSetup:
     """Test the database_setup.py aurora-setup command line tool."""
+
+    @staticmethod
+    def assert_sa_type(result, expected) -> None:
+        """Compare sqlalchemy types."""
+        assert isinstance(result, type(expected))
+        if hasattr(expected, "length"):
+            assert result.length == expected.length
+        if hasattr(expected, "precision"):
+            assert result.precision == expected.precision
+        if hasattr(expected, "scale"):
+            assert result.scale == expected.scale
+
+    def test_sa_types(self) -> None:
+        """Check type mapping works."""
+        self.assert_sa_type(get_sa_type("VARCHAR(123)"), types.String(123))
+        self.assert_sa_type(get_sa_type("DECIMAL(5,1)"), types.Numeric(5, 1))
+        self.assert_sa_type(get_sa_type("NUMERIC(3,2)"), types.Numeric(3, 2))
+        self.assert_sa_type(get_sa_type("INT"), types.Integer())
+        self.assert_sa_type(get_sa_type("FLOAT"), types.Float())
+        with pytest.raises(ValueError, match="Valid types:"):
+            get_sa_type("FOO")
+        with pytest.raises(ValueError, match="Valid types:"):
+            get_sa_type("NUMERIC(5)")
 
     def test_project_init(self, reset_all, tmp_path: Path) -> None:
         """Test connect command."""

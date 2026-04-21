@@ -20,21 +20,16 @@ import contextlib
 import json
 import logging
 import os
+import re
 from pathlib import Path
 
 import platformdirs
 from sqlalchemy import (
-    Boolean,
     Column,
-    DateTime,
-    Float,
     Index,
-    Integer,
     MetaData,
     PrimaryKeyConstraint,
-    String,
     Table,
-    Text,
     UniqueConstraint,
     inspect,
     text,
@@ -60,19 +55,55 @@ else:
     USER_CONFIG_PATH = user_config_dir / "config.json"
 
 TYPE_MAP = {
-    "TEXT": Text,
-    "VARCHAR(255)": String(255),
-    "INTEGER": Integer,
-    "FLOAT": Float,
-    "BOOLEAN": Boolean,
-    "DATETIME": DateTime,
-    "TIMESTAMP": DateTime,
+    # Strings
+    "TEXT": types.Text,
+    "VARCHAR": types.String,
+    "CHAR": types.String,
+    # Integers
+    "INTEGER": types.Integer,
+    "INT": types.Integer,
+    "BIGINT": types.BigInteger,
+    "SMALLINT": types.SmallInteger,
+    # Floats / Decimals
+    "FLOAT": types.Float,
+    "REAL": types.Float,
+    "DOUBLE PRECISION": types.Float,
+    "NUMERIC": types.Numeric,
+    "DECIMAL": types.Numeric,
+    # Boolean
+    "BOOLEAN": types.Boolean,
+    "BOOL": types.Boolean,
+    # Date / Time
+    "DATE": types.Date,
+    "TIME": types.Time,
+    "DATETIME": types.DateTime,
+    "TIMESTAMP": types.DateTime,
+    # Other
+    "JSON": types.JSON,
 }
 
 
 def get_sa_type(type_str: str) -> types.TypeEngine:
-    """Convert SQLITE to sqalchemy types."""
-    return TYPE_MAP.get(type_str.upper(), Text)
+    """Convert types in config to sqlalchemy types."""
+    type_upper = type_str.strip().upper()
+
+    if type_upper in TYPE_MAP:
+        t = TYPE_MAP[type_upper]
+        # Return instance if it's a class, not already instantiated
+        return t() if isinstance(t, type) else t
+
+    # Parameterised types
+    if m := re.match(r"VARCHAR\((\d+)\)", type_upper):
+        return types.String(int(m.group(1)))
+    if m := re.match(r"(NUMERIC|DECIMAL)\((\d+),\s*(\d+)\)", type_upper):
+        return types.Numeric(int(m.group(2)), int(m.group(3)))
+
+    valid = list(TYPE_MAP.keys())
+    msg = (
+        f"SQL type '{type_upper}' not known. Valid types: {valid}, "
+        "or VARCHAR(x), NUMERIC(y,z), DECIMAL(y,z), where x=length, y=precision, and z=scale."
+    )
+    raise ValueError(msg)
 
 
 def default_config(base_dir: Path) -> dict:
@@ -246,112 +277,112 @@ def create_database(force: bool = False) -> None:
         "samples",
         meta,
         *sample_columns,
-        Column("sync_modified", Float),
-        Column("sync_op", Text),
+        Column("sync_modified", types.Float),
+        Column("sync_op", types.Text),
     )
 
     jobs_table = Table(
         "jobs",
         meta,
-        Column("Job ID", String(255), primary_key=True),
-        Column("Sample ID", String(255)),
-        Column("Pipeline", String(50)),
-        Column("Status", String(3)),
-        Column("Jobname", String(50)),
-        Column("Server label", String(255)),
-        Column("Server hostname", String(255)),
-        Column("Job ID on server", String(255)),
-        Column("Submitted", DateTime),
-        Column("Payload", Text),
-        Column("Unicycler protocol", Text),
-        Column("Capacity (mAh)", Float),
-        Column("Comment", Text),
-        Column("Last checked", DateTime),
-        Column("Snapshot status", String(3)),
-        Column("Last snapshot", DateTime),
-        Column("sync_modified", Float),
-        Column("sync_op", Text),
+        Column("Job ID", types.String(255), primary_key=True),
+        Column("Sample ID", types.String(255)),
+        Column("Pipeline", types.String(50)),
+        Column("Status", types.String(3)),
+        Column("Jobname", types.String(50)),
+        Column("Server label", types.String(255)),
+        Column("Server hostname", types.String(255)),
+        Column("Job ID on server", types.String(255)),
+        Column("Submitted", types.DateTime),
+        Column("Payload", types.Text),
+        Column("Unicycler protocol", types.Text),
+        Column("Capacity (mAh)", types.Float),
+        Column("Comment", types.Text),
+        Column("Last checked", types.DateTime),
+        Column("Snapshot status", types.String(3)),
+        Column("Last snapshot", types.DateTime),
+        Column("sync_modified", types.Float),
+        Column("sync_op", types.Text),
     )
 
     pipelines_table = Table(
         "pipelines",
         meta,
-        Column("Pipeline", String(50), primary_key=True),
-        Column("Sample ID", String(255)),
-        Column("Job ID", String(255)),
-        Column("Ready", Boolean),
-        Column("Flag", String(10)),
-        Column("Last checked", DateTime),
-        Column("Server label", String(255)),
-        Column("Server type", String(50)),
-        Column("Server hostname", String(255)),
-        Column("Job ID on server", String(255)),
-        Column("sync_modified", Float),
-        Column("sync_op", Text),
+        Column("Pipeline", types.String(50), primary_key=True),
+        Column("Sample ID", types.String(255)),
+        Column("Job ID", types.String(255)),
+        Column("Ready", types.Boolean),
+        Column("Flag", types.String(10)),
+        Column("Last checked", types.DateTime),
+        Column("Server label", types.String(255)),
+        Column("Server type", types.String(50)),
+        Column("Server hostname", types.String(255)),
+        Column("Job ID on server", types.String(255)),
+        Column("sync_modified", types.Float),
+        Column("sync_op", types.Text),
     )
 
     results_table = Table(  # noqa: F841
         "results",
         meta,
-        Column("Sample ID", String(255), primary_key=True),
-        Column("Pipeline", String(50)),
-        Column("Status", String(3)),
-        Column("Flag", String(10)),
-        Column("Number of cycles", Integer),
-        Column("Capacity loss (%)", Float),
-        Column("First formation efficiency (%)", Float),
-        Column("Initial specific discharge capacity (mAh/g)", Float),
-        Column("Initial efficiency (%)", Float),
-        Column("Last specific discharge capacity (mAh/g)", Float),
-        Column("Last efficiency (%)", Float),
-        Column("Max voltage (V)", Float),
-        Column("Formation C", Float),
-        Column("Cycling C", Float),
-        Column("Last snapshot", DateTime),
-        Column("Last analysis", DateTime),
-        Column("Snapshot status", String(3)),
-        Column("Snapshot pipeline", String(50)),
-        Column("sync_modified", Float),
-        Column("sync_op", Text),
+        Column("Sample ID", types.String(255), primary_key=True),
+        Column("Pipeline", types.String(50)),
+        Column("Status", types.String(3)),
+        Column("Flag", types.String(10)),
+        Column("Number of cycles", types.Integer),
+        Column("Capacity loss (%)", types.Float),
+        Column("First formation efficiency (%)", types.Float),
+        Column("Initial specific discharge capacity (mAh/g)", types.Float),
+        Column("Initial efficiency (%)", types.Float),
+        Column("Last specific discharge capacity (mAh/g)", types.Float),
+        Column("Last efficiency (%)", types.Float),
+        Column("Max voltage (V)", types.Float),
+        Column("Formation C", types.Float),
+        Column("Cycling C", types.Float),
+        Column("Last snapshot", types.DateTime),
+        Column("Last analysis", types.DateTime),
+        Column("Snapshot status", types.String(3)),
+        Column("Snapshot pipeline", types.String(50)),
+        Column("sync_modified", types.Float),
+        Column("sync_op", types.Text),
     )
 
     dataframes_table = Table(  # noqa: F841
         "dataframes",
         meta,
-        Column("Sample ID", Text, nullable=False),
-        Column("File stem", Text, nullable=False),
-        Column("Job ID", Text),
-        Column("From known source", Boolean),
-        Column("Data start", DateTime),
-        Column("Data end", DateTime),
-        Column("Modified", DateTime),
+        Column("Sample ID", types.Text, nullable=False),
+        Column("File stem", types.Text, nullable=False),
+        Column("Job ID", types.Text),
+        Column("From known source", types.Boolean),
+        Column("Data start", types.DateTime),
+        Column("Data end", types.DateTime),
+        Column("Modified", types.DateTime),
         PrimaryKeyConstraint("Sample ID", "File stem"),
     )
 
     harvester_table = Table(  # noqa: F841
         "harvester",
         meta,
-        Column("id", Integer, primary_key=True, autoincrement=True),
-        Column("Server label", Text),
-        Column("Server hostname", Text),
-        Column("Folder", Text),
-        Column("Last snapshot", DateTime),
+        Column("id", types.Integer, primary_key=True, autoincrement=True),
+        Column("Server label", types.Text),
+        Column("Server hostname", types.Text),
+        Column("Folder", types.Text),
+        Column("Last snapshot", types.DateTime),
         UniqueConstraint("Server label", "Server hostname", "Folder"),
     )
 
     batches_table = Table(  # noqa: F841
         "batches",
         meta,
-        Column("id", Integer, primary_key=True, autoincrement=True),
-        Column("label", Text, unique=True, nullable=False),
-        Column("description", Text),
+        Column("id", types.Integer, primary_key=True, autoincrement=True),
+        Column("label", types.Text, unique=True, nullable=False),
+        Column("description", types.Text),
     )
 
     batch_samples_table = Table(  # noqa: F841
         "batch_samples",
         meta,
-        Column("batch_id", Integer),
-        Column("sample_id", Text),
+        Column("batch_id", types.Integer),
+        Column("sample_id", types.Text),
         UniqueConstraint("batch_id", "sample_id"),
     )
 
