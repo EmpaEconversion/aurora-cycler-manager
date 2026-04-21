@@ -154,4 +154,5 @@ class TestDatabaseSetup:
         engine = get_engine(config)
         inspector = inspect(engine)
         columns = inspector.get_columns("samples")
-        assert len(columns) == 4, "Columns were not deleted successfully"
+        # Should be left with 5 required cols + "delete everything else"
+        assert len(columns) == 6, "Columns were not deleted successfully"

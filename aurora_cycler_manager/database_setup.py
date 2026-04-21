@@ -130,8 +130,6 @@ def default_config(base_dir: Path) -> dict:
             "short_name": "full_name",
         },
         "Sample database": [
-            {"Name": "Sample ID", "Alternative names": ["sampleid"], "Type": "VARCHAR(255) PRIMARY KEY"},
-            {"Name": "Run ID", "Type": "VARCHAR(255)"},
             {"Name": "Cell number", "Alternative names": ["Battery_Number"], "Type": "INT"},
             {"Name": "Rack position", "Alternative names": ["Rack_Position"], "Type": "INT"},
             {"Name": "N:P ratio", "Alternative names": ["Actual N:P Ratio"], "Type": "FLOAT"},
@@ -236,7 +234,6 @@ def default_config(base_dir: Path) -> dict:
             {"Name": "Bottom spacer thickness (mm)", "Alternative names": [], "Type": "FLOAT"},
             {"Name": "Bottom spacer diameter (mm)", "Alternative names": [], "Type": "FLOAT"},
             {"Name": "Bottom spacer material", "Alternative names": [], "Type": "TEXT"},
-            {"Name": "Label", "Type": "TEXT"},
             {"Name": "Comment", "Alternative names": ["Comments"], "Type": "TEXT"},
             {"Name": "Barcode", "Type": "TEXT"},
             {"Name": "Assembly history", "Type": "TEXT"},
@@ -265,17 +262,25 @@ def create_database(force: bool = False) -> None:
     else:
         db_existed = True  # assume postgres db already exists, we just create tables
 
-    columns = config["Sample database"]
-    sample_columns = [
-        Column(col["Name"], get_sa_type(col["Type"]), primary_key=(col["Name"] == "Sample ID")) for col in columns
-    ]
-
     engine = get_engine(config)
     meta = MetaData()
+
+    samples_required_cols = [
+        Column("Sample ID", types.Text, primary_key=True),
+        Column("Run ID", types.Text),
+        Column("Label", types.Text),
+    ]
+    columns = config["Sample database"]
+    sample_columns = [
+        Column(col["Name"], get_sa_type(col["Type"]))
+        for col in columns
+        if col["Name"] not in {c.name for c in samples_required_cols} | {"sync_modified", "sync_op"}
+    ]
 
     samples_table = Table(  # noqa: F841
         "samples",
         meta,
+        *samples_required_cols,
         *sample_columns,
         Column("sync_modified", types.Float),
         Column("sync_op", types.Text),
@@ -401,10 +406,14 @@ def create_database(force: bool = False) -> None:
     # Handle added/removed columns in samples
     if db_existed:
         inspector = inspect(engine)
-        existing_columns = [col["name"] for col in inspector.get_columns("samples")]
-        new_columns = [col["Name"] for col in columns] + ["sync_modified", "sync_op"]
-        added = [c for c in new_columns if c not in existing_columns]
-        removed = [c for c in existing_columns if c not in new_columns]
+        existing_columns = (
+            {col["name"] for col in inspector.get_columns("samples")}
+            - {c.name for c in samples_required_cols}
+            - {"sync_modified", "sync_op"}
+        )
+        new_columns = {col.name for col in sample_columns}
+        added = new_columns - existing_columns
+        removed = existing_columns - new_columns
 
         with engine.begin() as conn:
             if removed:
@@ -416,9 +425,10 @@ def create_database(force: bool = False) -> None:
                 logger.warning("Columns %s removed", ", ".join(removed))
 
             if added:
-                for col in columns:
-                    if col["Name"] in added:
-                        conn.execute(text(f'ALTER TABLE samples ADD COLUMN "{col["Name"]}" {col["Type"]}'))
+                for col in sample_columns:
+                    if col.name in added:
+                        type_str = col.type.compile(dialect=engine.dialect)
+                        conn.execute(text(f'ALTER TABLE samples ADD COLUMN "{col.name}" {type_str}'))
                 logger.info("Adding new columns: %s", ", ".join(added))
 
             if not added and not removed:

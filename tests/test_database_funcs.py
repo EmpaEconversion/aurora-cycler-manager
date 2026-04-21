@@ -3,6 +3,7 @@
 import json
 import shutil
 from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -27,6 +28,7 @@ from aurora_cycler_manager.database_funcs import (
     is_sample,
     remove_batch,
     sample_df_to_db,
+    samples_table,
     save_or_overwrite_batch,
     update_sample_label,
 )
@@ -200,6 +202,33 @@ class TestSampleFunctions:
         with pytest.raises(ValueError, match="already exist"):
             sample_df_to_db(samples)
         sample_df_to_db(samples, overwrite=True)
+
+    def test_add_samples_conflicting_cols(self, reset_all, caplog: pytest.LogCaptureFixture) -> None:
+        """Test adding columns that aren't in db warns."""
+        samples = pd.DataFrame([{"Sample ID": "samp1", "foo": "bar"}, {"Sample ID": "samp2", "foo": "bar"}])
+        sample_df_to_db(samples)
+        assert "Adding samples to database: column(s)" in caplog.text
+        assert "do not exist in the database, skipping" in caplog.text
+
+    def test_add_samples_conflicting_cols_after_calc(self, reset_all, caplog: pytest.LogCaptureFixture) -> None:
+        """Test adding columns that aren't in db warns."""
+        samples = pd.DataFrame(
+            [
+                {
+                    "Sample ID": "samp1",
+                    "Anode balancing capacity (mAh)": 1.2,
+                    "Anode diameter (mm)": 7.5,
+                    "Cathode balancing capacity (mAh)": 1.0,
+                    "Cathode diameter (mm)": 7.0,
+                },
+            ],
+        )
+        # Mock the column N:P ratio not existing.
+        mocked_columns = [c for c in samples_table.columns if c.name != "N:P ratio"]
+        with patch.object(samples_table, "columns", mocked_columns):
+            sample_df_to_db(samples)
+        assert "Adding samples to database: after automatic calculations" in caplog.text
+        assert "do not exist in the database, skipping" in caplog.text
 
 
 class TestBatchFunctions:
