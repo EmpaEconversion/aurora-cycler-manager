@@ -137,8 +137,8 @@ class TestDatabaseSetup:
         with shared_config_1.open("r", encoding="utf-8") as f:
             data = json.load(f)
         data["Sample database"] = [
-            {"Name": "Sample ID", "Alternative names": ["sampleid"], "Type": "VARCHAR(255) PRIMARY KEY"},
-            {"Name": "Delete everything else", "Alternative names": [":)"], "Type": "VARCHAR(255)"},
+            {"Name": "Sample ID", "Alternative names": ["sampleid"], "Type": "TEXT PRIMARY KEY"},
+            {"Name": "Delete everything else", "Alternative names": [":)"], "Type": "TEXT"},
         ]
         with shared_config_1.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
