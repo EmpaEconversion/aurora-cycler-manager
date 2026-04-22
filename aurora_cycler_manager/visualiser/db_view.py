@@ -17,6 +17,7 @@ import dash_ag_grid as dag
 import dash_mantine_components as dmc
 import dash_uploader as du
 import paramiko
+from aurora_unicycler import CyclingProtocol
 from dash import ALL, Dash, Input, NoUpdate, Output, State, callback, clientside_callback, dcc, html, no_update
 from dash import callback_context as ctx
 from dash.exceptions import PreventUpdate
@@ -1402,7 +1403,9 @@ def register_db_view_callbacks(app: Dash) -> None:
                 for mode in ["areal", "mass", "nominal"]
             }
             base = CONFIG["Protocols folder path"]
-            filenames = [str(p.relative_to(base)) for p in [*base.rglob("*.json"), *base.rglob("*.xml")]]
+            filenames = [
+                str(p.relative_to(base)) for p in [*base.rglob("*.json"), *base.rglob("*.xml"), *base.rglob("*.mps")]
+            ]
             return True, filenames, capacities
         if button_id == "submit-yes-close" and yes_clicks:
             return False, no_update, no_update
@@ -1417,46 +1420,42 @@ def register_db_view_callbacks(app: Dash) -> None:
         State("selected-rows-store", "data"),
         prevent_initial_call=True,
     )
-    def check_payload(opened: bool, filename: str, selected_rows: list) -> tuple[str, dict]:
+    def check_payload(opened: bool, filename: str, selected_rows: list) -> tuple[str, dict | str]:
         if not opened:
             return no_update, no_update
         if not filename:
             return "No file selected", {}
         base = CONFIG["Protocols folder path"]
-
+        if filename.endswith((".xml", ".mps")):
+            pipelines = [dbf.get_pipeline(row["Pipeline"]) for row in selected_rows]
+            server_types = {p.get("Server type") if p is not None else None for p in pipelines}
+            if filename.endswith(".mps"):
+                if server_types != {"biologic"}:
+                    return "❌ mps file selected, but not all pipelines are on 'biologic' servers", {}
+                return (
+                    f"⚠️ {filename} loaded, only $NAME and $CAPACITY placeholders in the file will be replaced",
+                    filename,
+                )
+            if filename.endswith(".xml"):
+                if server_types != {"neware"}:
+                    return "❌ xml file selected, but not all pipelines are on 'neware' servers", {}
+                return (
+                    f"⚠️ {filename} loaded, only $NAME and $CAPACITY placeholders in the file will be replaced",
+                    filename,
+                )
         if filename.endswith(".json"):
             try:
                 with (base / filename).open(encoding="utf-8") as f:
                     payload = json.load(f)
             except json.JSONDecodeError:
-                return f"ERROR: {filename} is invalid json file", {}
-        elif filename.endswith(".xml"):
+                return f"❌ {filename} is invalid json file", {}
             try:
-                with (base / filename).open("r", encoding="utf-8") as f:
-                    payload = f.read()  # Store XML as string
-            except Exception as e:
-                return f"❌ {filename} couldn't be read as xml file: {e}", {}
-        else:
-            return f"❌ {filename} is not a valid file type", {}
-
-        if any(s["Server type"] == "neware" for s in selected_rows):
-            # Should be an XML file or universal JSON file
-            if isinstance(payload, str):
-                if (
-                    payload.startswith('<?xml version="1.0"')
-                    and "BTS Client" in payload
-                    and 'config type="Step File"' in payload
-                ):
-                    return f"{filename} loaded", payload
-                return f"❌ {filename} is not a Neware xml file", {}
-
-            # It's a json dict
-            if "unicycler" not in payload:
-                msg = f"❌ {filename} is not a unicycler json file"
-                return msg, {}
-
-        # Passed all the checks, should be a valid payload
-        return f"✅ {filename} loaded", payload
+                CyclingProtocol.from_dict(payload)
+            except ValueError:
+                return f"❌ {filename} is not a unicycler json file", {}
+            # Passed all the checks, should be a valid payload
+            return f"✅ {filename} loaded", payload
+        return f"❌ {filename} not understood", {}
 
     # Submit pop up - show custom capacity input if custom capacity is selected
     @app.callback(
@@ -1745,10 +1744,9 @@ def register_db_view_callbacks(app: Dash) -> None:
     )
     def generate_zenodo_info_template(_n_clicks: int, selected_rows: list) -> dict:
         """Generate a zenodo info xlsx template and return as data uri."""
-        template_bytes = bu.generate_zenodo_info_xlsx_template(
-            sample_ids=[s.get("Sample ID") for s in selected_rows],
-            ccids=[s.get("Barcode") for s in selected_rows],
-        )
+        sample_ids = [s.get("Sample ID") for s in selected_rows]
+        ccids = [_Sample.from_id(s).get("Barcode") for s in sample_ids]
+        template_bytes = bu.generate_zenodo_info_xlsx_template(sample_ids=sample_ids, ccids=ccids)
         return dcc.send_bytes(template_bytes.getvalue(), "aurora_zenodo_template.xlsx")
 
     # If the file type is changed, allow reprocessing
@@ -1906,14 +1904,17 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("upload-data-confirm-button", "disabled"),
         Output("upload-store", "data"),
         Input("upload-filepath", "data"),
+        Input("upload-modal", "opened"),
         State("selected-rows-store", "data"),
         running=[
             (Output("upload-data-button-element", "loading"), True, False),
         ],
         prevent_initial_call=True,
     )
-    def figure_out_files(filepath: str, selected_rows: list) -> tuple[str, str, bool, dict]:
-        return file_io.determine_file(filepath, selected_rows)
+    def figure_out_files(filepath: str, opened: bool, selected_rows: list) -> tuple[str, str, bool, dict]:
+        if opened:
+            return file_io.determine_file(filepath, selected_rows)
+        raise PreventUpdate
 
     # When hitting confirm, process the file
     @app.callback(
