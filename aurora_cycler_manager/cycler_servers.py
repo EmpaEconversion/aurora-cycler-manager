@@ -321,6 +321,8 @@ class BiologicServer(CyclerServer):
 
         # If it still exists, change $NAME to appropriate values
         mps_string = mps_string.replace("$NAME", sample)
+        mps_string = mps_string.replace("$CAPACITY mA.h", f"{1000 * capacity_Ah} mA.h")
+        mps_string = mps_string.replace("$CAPACITY A.h", f"{capacity_Ah} A.h")
 
         # Write the mps string to a temporary file
         # EC-lab has no concept of job IDs - we use the folder as the job ID
