@@ -1155,6 +1155,12 @@ def get_database_updates(last_sync: float = 0, columns: dict[str, list] | None =
             "jobs": list(jobs_table.columns.keys()),
             "results": list(results_table.columns.keys()),
         }
+    else:
+        # Must collect these columns for basic functionality, even if they are not displayed
+        pipelines_required = {"Pipeline", "Sample ID", "Job ID", "Server label"}
+        columns["pipelines"] = list(set(columns["pipelines"]) | pipelines_required)
+        if "Server label" not in columns["jobs"]:
+            columns["jobs"].append("Server label")
     with engine.connect() as conn:
         results = {
             "samples": conn.execute(

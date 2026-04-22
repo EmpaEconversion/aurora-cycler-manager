@@ -1744,10 +1744,9 @@ def register_db_view_callbacks(app: Dash) -> None:
     )
     def generate_zenodo_info_template(_n_clicks: int, selected_rows: list) -> dict:
         """Generate a zenodo info xlsx template and return as data uri."""
-        template_bytes = bu.generate_zenodo_info_xlsx_template(
-            sample_ids=[s.get("Sample ID") for s in selected_rows],
-            ccids=[s.get("Barcode") for s in selected_rows],
-        )
+        sample_ids = [s.get("Sample ID") for s in selected_rows]
+        ccids = [_Sample.from_id(s).get("Barcode") for s in sample_ids]
+        template_bytes = bu.generate_zenodo_info_xlsx_template(sample_ids=sample_ids, ccids=ccids)
         return dcc.send_bytes(template_bytes.getvalue(), "aurora_zenodo_template.xlsx")
 
     # If the file type is changed, allow reprocessing
