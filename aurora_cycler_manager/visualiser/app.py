@@ -30,98 +30,104 @@ from aurora_cycler_manager.visualiser.notifications import (
 )
 from aurora_cycler_manager.visualiser.samples import register_samples_callbacks, samples_layout
 
-setup_logging()
 logger = logging.getLogger(__name__)
 
-# Need to set this for Mantine notifications to work
-_dash_renderer._set_react_version("18.2.0")  # noqa: SLF001
 
-# Setup cache for long callbacks
-cache = diskcache.Cache("./cache")
-background_callback_manager = DiskcacheManager(cache)
+def create_app() -> Dash:
+    """Create the Dash app."""
+    # Need to set this for Mantine notifications to work
+    _dash_renderer._set_react_version("18.2.0")  # noqa: SLF001
 
-# Define app and layout
-external_stylesheets = [dbc.icons.BOOTSTRAP, dmc.styles.NOTIFICATIONS, "/assets/style.css"]
-dmc.add_figure_templates()
-app = Dash(
-    __name__,
-    external_stylesheets=external_stylesheets,
-    background_callback_manager=background_callback_manager,
-)
-app.clientside_callback(
-    ClientsideFunction(namespace="clients", function_name="animateMessage"),
-    Output("loading-message", "children"),
-    Input("loading-message-store", "data"),
-)
-app.title = "Aurora Visualiser"
-app.layout = dmc.MantineProvider(
-    id="mantine-provider",
-    children=html.Div(
-        className="responsive-container",
-        children=[
-            dcc.Loading(
-                custom_spinner=custom_spinner,
-                # make it blurry
-                overlay_style={"visibility": "visible", "filter": "blur(2px)"},
-                delay_show=300,
-                delay_hide=100,
-                children=[
-                    dmc.Tabs(
-                        [
-                            dmc.TabsList(
-                                [
-                                    dmc.TabsTab("Sample Plotting", value="tab-1", fz="md", pt="md"),
-                                    dmc.TabsTab("Batch Plotting", value="tab-2", fz="md", pt="md"),
-                                    dmc.TabsTab("Database", value="tab-3", fz="md", pt="md"),
-                                ],
-                                grow=True,
-                                style={"flexShrink": 0},
-                            ),
-                            dmc.TabsPanel(
-                                samples_layout,
-                                value="tab-1",
-                                p="xs",
-                                style={"flex": 1, "display": "flex", "flexDirection": "column", "minHeight": 0},
-                            ),
-                            dmc.TabsPanel(
-                                batches_layout,
-                                value="tab-2",
-                                p="xs",
-                                style={"flex": 1, "display": "flex", "flexDirection": "column", "minHeight": 0},
-                            ),
-                            dmc.TabsPanel(
-                                db_view_layout,
-                                value="tab-3",
-                                p="xs",
-                                style={"flex": 1, "display": "flex", "flexDirection": "column", "minHeight": 0},
-                            ),
-                        ],
-                        id="tabs",
-                        value="tab-1",
-                        style={"display": "flex", "flexDirection": "column", "height": "100vh"},
-                    ),
-                    dcc.Interval(id="db-update-interval", interval=1000 * 60 * 60),  # Auto-refresh database every hour
-                    dcc.Store(id="table-data-store", data={"data": {}, "column_defs": {}}),
-                    dcc.Store(id="samples-store", data=[]),
-                    dcc.Store(id="pipelines-store", data=[]),
-                    dcc.Store(id="jobs-store", data=[]),
-                    dcc.Store(id="results-store", data=[]),
-                    dcc.Store(id="batches-store", data={}),
-                    dcc.Store(id="protocols-store", data=[]),
-                ],
-            ),
-            notifications_layout,
-            dcc.Store(id="loading-message-store"),
-            loading_message,
-        ],
-    ),
-)
+    # Setup cache for long callbacks
+    cache = diskcache.Cache("./cache")
+    background_callback_manager = DiskcacheManager(cache)
 
-# Register all callback functions
-register_samples_callbacks(app)
-register_batches_callbacks(app)
-register_db_view_callbacks(app)
-register_notifications_callbacks(app)
+    # Define app and layout
+    external_stylesheets = [dbc.icons.BOOTSTRAP, dmc.styles.NOTIFICATIONS, "/assets/style.css"]
+    dmc.add_figure_templates()
+    app = Dash(
+        __name__,
+        external_stylesheets=external_stylesheets,
+        background_callback_manager=background_callback_manager,
+    )
+    app.clientside_callback(
+        ClientsideFunction(namespace="clients", function_name="animateMessage"),
+        Output("loading-message", "children"),
+        Input("loading-message-store", "data"),
+    )
+    app.title = "Aurora Visualiser"
+    app.layout = dmc.MantineProvider(
+        id="mantine-provider",
+        children=html.Div(
+            className="responsive-container",
+            children=[
+                dcc.Loading(
+                    custom_spinner=custom_spinner,
+                    # make it blurry
+                    overlay_style={"visibility": "visible", "filter": "blur(2px)"},
+                    delay_show=300,
+                    delay_hide=100,
+                    children=[
+                        dmc.Tabs(
+                            [
+                                dmc.TabsList(
+                                    [
+                                        dmc.TabsTab("Sample Plotting", value="tab-1", fz="md", pt="md"),
+                                        dmc.TabsTab("Batch Plotting", value="tab-2", fz="md", pt="md"),
+                                        dmc.TabsTab("Database", value="tab-3", fz="md", pt="md"),
+                                    ],
+                                    grow=True,
+                                    style={"flexShrink": 0},
+                                ),
+                                dmc.TabsPanel(
+                                    samples_layout,
+                                    value="tab-1",
+                                    p="xs",
+                                    style={"flex": 1, "display": "flex", "flexDirection": "column", "minHeight": 0},
+                                ),
+                                dmc.TabsPanel(
+                                    batches_layout,
+                                    value="tab-2",
+                                    p="xs",
+                                    style={"flex": 1, "display": "flex", "flexDirection": "column", "minHeight": 0},
+                                ),
+                                dmc.TabsPanel(
+                                    db_view_layout,
+                                    value="tab-3",
+                                    p="xs",
+                                    style={"flex": 1, "display": "flex", "flexDirection": "column", "minHeight": 0},
+                                ),
+                            ],
+                            id="tabs",
+                            value="tab-1",
+                            style={"display": "flex", "flexDirection": "column", "height": "100vh"},
+                        ),
+                        dcc.Interval(
+                            id="db-update-interval", interval=1000 * 60 * 60
+                        ),  # Auto-refresh database every hour
+                        dcc.Store(id="table-data-store", data={"data": {}, "column_defs": {}}),
+                        dcc.Store(id="samples-store", data=[]),
+                        dcc.Store(id="pipelines-store", data=[]),
+                        dcc.Store(id="jobs-store", data=[]),
+                        dcc.Store(id="results-store", data=[]),
+                        dcc.Store(id="batches-store", data={}),
+                        dcc.Store(id="protocols-store", data=[]),
+                    ],
+                ),
+                notifications_layout,
+                dcc.Store(id="loading-message-store"),
+                loading_message,
+            ],
+        ),
+    )
+
+    # Register all callback functions
+    register_samples_callbacks(app)
+    register_batches_callbacks(app)
+    register_db_view_callbacks(app)
+    register_notifications_callbacks(app)
+
+    return app
 
 
 def find_free_port(start_port: int = 8050, end_port: int = 8100) -> int:
@@ -136,13 +142,16 @@ def find_free_port(start_port: int = 8050, end_port: int = 8100) -> int:
 
 def main(port: int | None = None, host: str = "127.0.0.1", *, open_browser: bool = True) -> None:
     """Open a web browser and run the app."""
+    logger.info("Setting up aurora-app")
+    app = create_app()
     if port is None:
         port = find_free_port()
-    logger.info("Running aurora-app on http://%s:%s", host, port)
+    logger.info("Serving aurora-app on http://%s:%s", host, port)
     if open_browser:
         webbrowser.open_new(f"http://{host}:{port}")
     serve(app.server, host=host, port=port)
 
 
 if __name__ == "__main__":
+    setup_logging()
     main()
