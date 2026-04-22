@@ -1905,14 +1905,17 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("upload-data-confirm-button", "disabled"),
         Output("upload-store", "data"),
         Input("upload-filepath", "data"),
+        Input("upload-modal", "opened"),
         State("selected-rows-store", "data"),
         running=[
             (Output("upload-data-button-element", "loading"), True, False),
         ],
         prevent_initial_call=True,
     )
-    def figure_out_files(filepath: str, selected_rows: list) -> tuple[str, str, bool, dict]:
-        return file_io.determine_file(filepath, selected_rows)
+    def figure_out_files(filepath: str, opened: bool, selected_rows: list) -> tuple[str, str, bool, dict]:
+        if opened:
+            return file_io.determine_file(filepath, selected_rows)
+        raise PreventUpdate
 
     # When hitting confirm, process the file
     @app.callback(

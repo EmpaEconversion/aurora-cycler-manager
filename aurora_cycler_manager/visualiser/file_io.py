@@ -35,6 +35,7 @@ from aurora_cycler_manager.database_funcs import (
     add_protocol_to_job,
     add_samples_from_object,
     get_all_sampleids,
+    get_job_data,
     get_sample_data,
     get_unicycler_protocols,
 )
@@ -79,7 +80,7 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
     """Determine what the uploaded file should do."""
     logger.info("Determining upload")
     filepath = Path(filepath)
-    if not filepath or not filepath.exists():
+    if not filepath.name or not filepath.exists():
         return "Nothing uploaded", "grey", True, {"file": None, "data": None}
 
     if filepath.suffix in {".jsonld", ".json"}:
@@ -157,10 +158,12 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
                     False,
                     {"file": "unicycler-json", "data": data, "jobs": None},
                 )
-            protocols = [s.get("Unicycler protocol") for s in selected_rows if s.get("Unicycler protocol")]
+            protocols = [get_job_data(j).get("Unicycler protocol") for j in jobs]
+            protocols = [p for p in protocols if p is not None]
             if protocols:
                 return (
-                    f"Will OVERWRITE unicycler protocol attached to {len(selected_rows)} existing jobs.\n"
+                    f"Will OVERWRITE {len(protocols)} unicycler protocol(s) "
+                    f"attached to {len(selected_rows)} existing job(s).\n"
                     "To add to available protocols instead, upload without selecting jobs.",
                     "orange",
                     False,
