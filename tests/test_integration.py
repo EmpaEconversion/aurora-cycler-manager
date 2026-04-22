@@ -173,7 +173,7 @@ def test_analyse_download_eclab_sample(
 
     # 'Upload' the dict without job selected - adds to protocols store
     res = file_io.determine_file(unicycler_file, [])
-    assert "Will OVERWRITE unicycler protocol" in res[0]
+    assert "Will OVERWRITE unicycler protocol in available protocols" in res[0]
     assert res[3]["file"] == "unicycler-json"
     assert norm_protocol(res[3]["data"]) == norm_protocol(unicycler_dict)
     assert res[3]["jobs"] is None
@@ -195,7 +195,7 @@ def test_analyse_download_eclab_sample(
     # 'Upload' the dict again, should warn
     res = file_io.determine_file(unicycler_file, [job_data])
     assert "unicycler" in res[0]
-    assert "OVERWRITE unicycler protocol attached to 1 existing" in res[0]
+    assert "Will OVERWRITE 1 unicycler protocol(s) attached to 1 existing job(s)" in res[0]
     assert res[3]["file"] == "unicycler-json"
     assert norm_protocol(res[3]["data"]) == norm_protocol(unicycler_dict)
 
