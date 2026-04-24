@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from dash import Dash
 
 from aurora_cycler_manager import config
 
@@ -92,3 +93,11 @@ def mock_ssh() -> Generator[MockSSHClient, None, None]:
     mock_client = MockSSHClient()
     with patch("aurora_cycler_manager.ssh.paramiko.SSHClient", return_value=mock_client):
         yield mock_client
+
+
+@pytest.fixture(scope="session")
+def app() -> Dash:
+    """Create the Dash app once per session."""
+    from aurora_cycler_manager.visualiser.app import create_app  # noqa: PLC0415, need to setup env first
+
+    return create_app()

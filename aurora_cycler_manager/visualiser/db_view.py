@@ -59,12 +59,20 @@ from aurora_cycler_manager.visualiser.notifications import (
 # If user cannot ssh connect then disable features that require it
 logger = logging.getLogger(__name__)
 CONFIG = get_config()
-sm: ServerManager | None = None
-try:
-    sm = ServerManager()
-except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
-    logger.warning(e)
-    logger.warning("You cannot access any servers. Running in view-only mode.")
+
+_SERVER_MANAGER = None
+
+
+def get_sm() -> ServerManager | None:
+    """Server manager singleton."""
+    global _SERVER_MANAGER
+    try:
+        _SERVER_MANAGER = _SERVER_MANAGER or ServerManager()
+    except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
+        logger.warning(e)
+        logger.warning("You cannot access any servers. Running in view-only mode.")
+    return _SERVER_MANAGER
+
 
 # ---------------------------- Utility functions ----------------------------- #
 
@@ -899,6 +907,52 @@ db_view_layout = html.Div(
     ],
 )
 
+
+# ---------------------------------- Logic ----------------------------------- #
+
+
+def enable_buttons(selected_rows: list, table: str) -> set:
+    """Decide which buttons should be enabled based on table and selected rows."""
+    enabled = set()
+    # Add buttons to enabled set with union operator |=
+    if get_sm() is not None:
+        enabled |= {"upload-button"}
+    if selected_rows:
+        enabled |= {"copy-button"}
+        if len(selected_rows) == 1:
+            enabled |= {"info-button"}
+        if len(selected_rows) <= 200 and all(s.get("Sample ID") is not None for s in selected_rows):
+            enabled |= {"download-button"}
+        if get_sm() is not None:
+            if table == "samples":
+                if all(s.get("Sample ID") is not None for s in selected_rows):
+                    enabled |= {"delete-button", "label-button", "create-batch-button"}
+            elif table == "pipelines":
+                all_samples = all(s.get("Sample ID") is not None for s in selected_rows)
+                all_servers = all(s.get("Server label") in get_sm().servers for s in selected_rows)
+                no_samples = all(s.get("Sample ID") is None for s in selected_rows)
+                if all_samples:
+                    enabled |= {"label-button", "create-batch-button"}
+                    if all_servers:
+                        enabled |= {"snapshot-button"}
+                        if all(s["Job ID"] is None for s in selected_rows):
+                            enabled |= {"submit-button", "eject-button"}
+                        elif all(s.get("Job ID") is not None for s in selected_rows):
+                            enabled |= {"cancel-button"}
+                elif all_servers and no_samples:
+                    enabled |= {"load-button"}
+            elif table == "jobs":
+                if all(s.get("Server label") in get_sm().servers for s in selected_rows):
+                    enabled |= {"snapshot-button"}
+                    if all(s.get("Job ID") for s in selected_rows):
+                        enabled |= {"cancel-button"}
+            elif table == "results" and all(s.get("Sample ID") is not None for s in selected_rows):
+                enabled |= {"label-button", "create-batch-button"}
+        if any(s["Sample ID"] is not None for s in selected_rows):
+            enabled |= {"view-button"}
+    return enabled
+
+
 # -------------------------------- Callbacks --------------------------------- #
 
 
@@ -1156,10 +1210,10 @@ def register_db_view_callbacks(app: Dash) -> None:
     def update_database(n_clicks: int) -> tuple:
         if n_clicks is None:
             raise PreventUpdate
-        if not sm or not sm.servers:
+        if not get_sm() or not get_sm().servers:
             return 0, [error_notification("Error", "You do not have access to any cycling servers.")]
         try:
-            sm.update_db()
+            get_sm().update_db()
         except Exception as e:
             return 0, [error_notification("Error", str(e))]
         else:
@@ -1181,46 +1235,9 @@ def register_db_view_callbacks(app: Dash) -> None:
         State("table-select", "value"),
         prevent_initial_call=True,
     )
-    def enable_buttons(selected_rows: list, table: str) -> tuple[bool, ...]:
-        enabled = set()
-        # Add buttons to enabled set with union operator |=
-        if sm is not None:
-            enabled |= {"upload-button"}
-        if selected_rows:
-            enabled |= {"copy-button"}
-            if len(selected_rows) == 1:
-                enabled |= {"info-button"}
-            if len(selected_rows) <= 200 and all(s.get("Sample ID") is not None for s in selected_rows):
-                enabled |= {"download-button"}
-            if sm is not None:
-                if table == "samples":
-                    if all(s.get("Sample ID") is not None for s in selected_rows):
-                        enabled |= {"delete-button", "label-button", "create-batch-button"}
-                elif table == "pipelines":
-                    all_samples = all(s.get("Sample ID") is not None for s in selected_rows)
-                    all_servers = all(s.get("Server label") in sm.servers for s in selected_rows)
-                    no_samples = all(s.get("Sample ID") is None for s in selected_rows)
-                    if all_samples:
-                        enabled |= {"label-button", "create-batch-button"}
-                        if all_servers:
-                            enabled |= {"snapshot-button"}
-                            if all(s["Job ID"] is None for s in selected_rows):
-                                enabled |= {"submit-button", "eject-button"}
-                            elif all(s.get("Job ID") is not None for s in selected_rows):
-                                enabled |= {"cancel-button"}
-                    elif all_servers and no_samples:
-                        enabled |= {"load-button"}
-                elif table == "jobs":
-                    if all(s.get("Server label") in sm.servers for s in selected_rows):
-                        enabled |= {"snapshot-button"}
-                        if all(s.get("Job ID") for s in selected_rows):
-                            enabled |= {"cancel-button"}
-                elif table == "results" and all(s.get("Sample ID") is not None for s in selected_rows):
-                    enabled |= {"label-button", "create-batch-button"}
-            if any(s["Sample ID"] is not None for s in selected_rows):
-                enabled |= {"view-button"}
+    def enable_buttons_callback(selected_rows: list, table: str) -> tuple[bool, ...]:
         # False = enabled (not my choice), so this returns True if button is NOT in enabled set
-        return tuple(b not in enabled for b in BUTTONS)
+        return tuple(b not in enable_buttons(selected_rows, table) for b in BUTTONS)
 
     # Copy button copies current selected rows to clipboard
     @app.callback(
@@ -1270,7 +1287,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             return 0
         for row in selected_rows:
             logger.info("Ejecting Sample %s from the Pipeline %s", row["Sample ID"], row["Pipeline"])
-            sm.eject(row["Pipeline"], row["Sample ID"])
+            get_sm().eject(row["Pipeline"], row["Sample ID"])
         return 1
 
     # Load button pop up, includes dynamic dropdowns for selecting samples to load
@@ -1373,7 +1390,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             if not sample:
                 continue
             logger.info("Loading %s to %s", sample, pipeline)
-            sm.load(pipeline, sample)
+            get_sm().load(pipeline, sample)
         return 1
 
     # Submit button pop up
@@ -1523,7 +1540,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             return 0
         for row in selected_rows:
             try:
-                sm.submit(row["Sample ID"], payload, capacity_Ah)
+                get_sm().submit(row["Sample ID"], payload, capacity_Ah)
                 success_notification("", f"Sample {row['Sample ID']} submitted", queue=True)
             except Exception as e:
                 error_notification("", f"Error submitting sample {row['Sample ID']}: {e}", queue=True)
@@ -1571,7 +1588,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             return 0
         for row in selected_rows:
             logger.info("Cancelling job %s", row["Job ID"])
-            sm.cancel(row["Job ID"])
+            get_sm().cancel(row["Job ID"])
         return 1
 
     # View data
@@ -1623,10 +1640,10 @@ def register_db_view_callbacks(app: Dash) -> None:
                 if row:
                     if row.get("Job ID"):
                         logger.info("Snapshotting %s", row["Job ID"])
-                        sm.snapshot(row["Job ID"])
+                        get_sm().snapshot(row["Job ID"])
                     else:
                         logger.info("Snapshotting %s", row["Sample ID"])
-                        sm.snapshot(row["Sample ID"])
+                        get_sm().snapshot(row["Sample ID"])
         return no_update  # Needs any output to trigger loading spinner
 
     # Delete button pop up
