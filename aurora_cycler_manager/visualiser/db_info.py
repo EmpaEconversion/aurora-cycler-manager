@@ -234,7 +234,9 @@ def generate_batch_info(batch_id: str) -> dmc.Stack:
             dmc.Button(
                 "Edit on batch tab",
                 leftSection=html.I(className="bi bi-pencil"),
-                id="batch-info-edit-button",
+                # Dynamic button, use indexed ID and ALL so Dash doesn't get
+                # upset about the ID not existing when callbacks are registered
+                id={"type": "batch-info-edit-button", "index": 0},
             ),
             dmc.Text("Description:"),
             dmc.Text(batch["description"]),
@@ -360,12 +362,12 @@ def register_db_info_callbacks(app: Dash) -> None:
         Output("table-select", "value"),
         Output("batch-edit-batch", "value", allow_duplicate=True),
         Output("info-modal", "opened", allow_duplicate=True),
-        Input("batch-info-edit-button", "n_clicks"),
+        Input({"type": "batch-info-edit-button", "index": ALL}, "n_clicks"),
         State("info-store", "data"),
         prevent_initial_call=True,
     )
-    def switch_to_batch(_n_clicks: int, data: dict) -> tuple:
+    def switch_to_batch(n_clicks_list: list[int], data: dict) -> tuple:
         """Switch to batch tab, select batch."""
-        if _n_clicks:
+        if any(n_clicks_list):
             return "batches", data.get("Batch name"), False
         raise PreventUpdate
