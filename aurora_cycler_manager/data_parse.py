@@ -14,17 +14,22 @@ grabbing tiny metadata about a sample.
 """
 
 import json
+import logging
 from functools import cached_property
 from pathlib import Path
 
 import h5py
 import pandas as pd
 import polars as pl
+from aurora_unicycler import CyclingProtocol
 
+import aurora_cycler_manager.battinfo_utils as bu
+import aurora_cycler_manager.database_funcs as dbf
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.dicts import aurora_dtypes, aurora_to_bdf_map, bdf_to_aurora_map
 from aurora_cycler_manager.stdlib_utils import run_from_sample
 
+logger = logging.getLogger(__name__)
 CONFIG = get_config()
 
 
@@ -131,6 +136,49 @@ def get_metadata(sample_id: str) -> dict | None:
     return None
 
 
+def get_battinfo(sample_id: str) -> dict:
+    """Get the BattINFO dict, merge aux and jobs."""
+    folder = get_sample_folder(sample_id)
+    # Check for battinfo file
+    if (data_path := folder / f"battinfo.{sample_id}.jsonld").exists():
+        with data_path.open("r") as f:
+            battinfo_json = json.load(f)
+    else:
+        sample_data = dbf.get_sample_data(sample_id)
+        battinfo_json = bu.merge_battinfo_with_db_data({}, sample_data, allow_empty_battinfo=True)
+
+    # Make Battery Test the root
+    battinfo_json = bu.make_test_object(battinfo_json)
+
+    # Check and add aux file
+    if (data_path := folder / f"aux.{sample_id}.jsonld").exists():
+        with data_path.open("r") as f:
+            aux_json = json.load(f)
+        try:
+            bu.merge_jsonld_on_type([battinfo_json, aux_json])
+        except ValueError:
+            bu.merge_jsonld_on_type(
+                [battinfo_json["hasTestObject"], aux_json],
+                target_type="CoinCell",
+            )
+
+    # If battinfo exists, check and add jobs
+    db_jobs = dbf.get_unicycler_protocols(sample_id)
+    if db_jobs:
+        ontologized_protocols = []
+        for db_job in db_jobs:
+            protocol = CyclingProtocol.from_dict(json.loads(db_job["Unicycler protocol"]))
+            ontologized_protocols.append(
+                protocol.to_battinfo_jsonld(
+                    capacity_mAh=db_job["Capacity (mAh)"],
+                    include_context=False,
+                )
+            )
+        test_jsonld = bu.generate_battery_test(ontologized_protocols)
+        battinfo_json = bu.merge_jsonld_on_type([battinfo_json, test_jsonld])
+    return battinfo_json
+
+
 class SampleDataBundle:
     """Lazy-loading wrapper for sample data with support for pre-loaded data."""
 
@@ -144,6 +192,7 @@ class SampleDataBundle:
         cycles_summary: pl.DataFrame | None = None,
         overall_summary: dict | None = None,
         metadata: dict | None = None,
+        battinfo: dict | None = None,
     ) -> None:
         """Initialize with sample_id and optionally pre-loaded data.
 
@@ -155,59 +204,64 @@ class SampleDataBundle:
             cycles_summary: Pre-loaded cycles summary (optional)
             overall_summary: Pre-loaded overall summary (optional)
             metadata: Pre-loaded metadata (optional)
+            battinfo: Pre-loaded BattINFO ontologized metadata (optional)
 
         """
         self.sample_id = sample_id
-        self._preloaded = {
-            "cycling": cycling,
-            "cycling_shrunk": cycling_shrunk,
-            "eis": eis,
-            "cycles_summary": cycles_summary,
-            "overall_summary": overall_summary,
-            "metadata": metadata,
-        }
+        # Pre-loaded data
+        if cycling is not None:
+            self.cycling = cycling
+        if cycling_shrunk is not None:
+            self.cycling_shrunk = cycling_shrunk
+        if eis is not None:
+            self.eis = eis
+        if cycles_summary is not None:
+            self.cycles_summary = cycles_summary
+        if overall_summary is not None:
+            self.overall_summary = overall_summary
+        if metadata is not None:
+            self.metadata = metadata
+        if battinfo is not None:
+            self.battinfo = battinfo
 
     @cached_property
     def cycling(self) -> pl.DataFrame | None:
         """Time series cycling data."""
-        if self._preloaded["cycling"] is not None:
-            return self._preloaded["cycling"]
-        return get_cycling(self.sample_id)
+        try:
+            return get_cycling(self.sample_id)
+        except (ValueError, FileNotFoundError):
+            logger.exception("No time-series data for sample '%s'.", self.sample_id)
+        return None
 
     @cached_property
     def cycling_shrunk(self) -> pl.DataFrame | None:
         """Shrunk time series cycling data."""
-        if self._preloaded["cycling_shrunk"] is not None:
-            return self._preloaded["cycling_shrunk"]
         return get_cycling_shrunk(self.sample_id)
 
     @cached_property
     def eis(self) -> pl.DataFrame | None:
         """Frequency-domain electrochemical impedance spectroscopy data."""
-        if self._preloaded["eis"] is not None:
-            return self._preloaded["eis"]
         return get_eis(self.sample_id)
 
     @cached_property
     def cycles_summary(self) -> pl.DataFrame | None:
         """Per-cycle summary data."""
-        if self._preloaded["cycles_summary"] is not None:
-            return self._preloaded["cycles_summary"]
         return get_cycles_summary(self.sample_id)
 
     @cached_property
     def overall_summary(self) -> dict | None:
         """Overall summary stats."""
-        if self._preloaded["overall_summary"] is not None:
-            return self._preloaded["overall_summary"]
         return get_overall_summary(self.sample_id)
 
     @cached_property
     def metadata(self) -> dict | None:
-        """Metadata."""
-        if self._preloaded["metadata"] is not None:
-            return self._preloaded["metadata"]
+        """Standard metadata."""
         return get_metadata(self.sample_id)
+
+    @cached_property
+    def battinfo(self) -> dict:
+        """BattINFO ontologized metadata."""
+        return get_battinfo(self.sample_id)
 
 
 ##### BDF convertsion #####
