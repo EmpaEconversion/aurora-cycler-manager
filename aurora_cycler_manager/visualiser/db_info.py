@@ -68,6 +68,28 @@ def _strip_datetimes(data: dict) -> dict:
     return {k: v.isoformat() if isinstance(v, datetime) else v for k, v in data.items()}
 
 
+def _json_block(json_str: str) -> html.Div:
+    """Scrollable JSON code block with a copy button pinned to the top-right corner."""
+    return html.Div(
+        [
+            dmc.CopyButton(
+                value=json_str,
+                children=html.I(className="bi bi-copy"),
+                copiedChildren=html.I(className="bi bi-clipboard-check"),
+                variant="subtle",
+                style={"position": "absolute", "top": 8, "right": 8, "zIndex": 10},
+            ),
+            dmc.CodeHighlight(
+                json_str,
+                language="json",
+                withCopyButton=False,
+                styles={"pre": {"maxHeight": "calc(90vh - 360px)", "overflow": "auto"}},
+            ),
+        ],
+        style={"position": "relative", "width": "100%"},
+    )
+
+
 def generate_sample_info(sample_id: str) -> dmc.Accordion:
     """Create info modal content from a Sample ID."""
     # Sample data
@@ -132,23 +154,21 @@ def generate_sample_info(sample_id: str) -> dmc.Accordion:
                 value="sample_data",
                 children=[
                     dmc.AccordionControl("Sample data"),
-                    dmc.AccordionPanel(dmc.CodeHighlight(sample_data_str, language="json")),
+                    dmc.AccordionPanel(_json_block(sample_data_str)),
                 ],
             ),
             dmc.AccordionItem(
                 value="battinfo_data",
                 children=[
                     dmc.AccordionControl("BattINFO metadata"),
-                    dmc.AccordionPanel(dmc.CodeHighlight(battinfo_str, language="json")),
+                    dmc.AccordionPanel(_json_block(battinfo_str)),
                 ],
             ),
             dmc.AccordionItem(
                 value="results",
                 children=[
                     dmc.AccordionControl("Results summary"),
-                    dmc.AccordionPanel(
-                        dmc.CodeHighlight(results_str, language="json") if results else dmc.Text("No results.")
-                    ),
+                    dmc.AccordionPanel(_json_block(results_str) if results else dmc.Text("No results.")),
                 ],
             ),
         ],
@@ -185,7 +205,7 @@ def generate_pipeline_info(pipeline_id: str) -> dmc.Accordion:
                 value="pipeline_data",
                 children=[
                     dmc.AccordionControl("Pipeline data"),
-                    dmc.AccordionPanel(dmc.CodeHighlight(pipeline_data_str, language="json")),
+                    dmc.AccordionPanel(_json_block(pipeline_data_str)),
                 ],
             ),
         ],
@@ -233,7 +253,7 @@ def generate_job_info(job_id: str) -> dmc.Accordion:
                 value="job_data",
                 children=[
                     dmc.AccordionControl("Job metadata"),
-                    dmc.AccordionPanel(dmc.CodeHighlight(job_data_str, language="json")),
+                    dmc.AccordionPanel(_json_block(job_data_str)),
                 ],
             ),
         ],
