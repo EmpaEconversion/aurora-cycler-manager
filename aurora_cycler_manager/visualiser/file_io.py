@@ -175,10 +175,11 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
         # It is probably a battinfo xlsx file
         excel_file = pd.ExcelFile(filepath)
         sheet_names = [str(s) for s in excel_file.sheet_names]
-        expected_sheets = ["@Schema", "@Context", "@Predicates", "@Classes", "@Units"]
-        if not all(sheet in expected_sheets for sheet in sheet_names):
+        expected_sheets = {"@Schema", "@Context", "@Predicates", "@Classes", "@Units"}
+        old_expected_sheets = {"Schema", "@context-TopLevel", "@context-Connector", "Ontology - Unit", "Unique ID"}
+        if not all(sheet in expected_sheets | old_expected_sheets for sheet in sheet_names):
             return (
-                "Excel file does not have the expected sheets"
+                "Excel file does not have the expected sheets. "
                 "Found: " + ", ".join(sheet_names) + "\n"
                 "Expected: " + ", ".join(expected_sheets),
                 "red",

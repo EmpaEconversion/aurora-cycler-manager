@@ -162,7 +162,7 @@ def get_battinfo(sample_id: str) -> dict:
                 target_type="CoinCell",
             )
 
-    # If battinfo exists, check and add jobs
+    # Check and add unicycler protocols, replace on conflict
     db_jobs = dbf.get_unicycler_protocols(sample_id)
     if db_jobs:
         ontologized_protocols = []
@@ -175,6 +175,10 @@ def get_battinfo(sample_id: str) -> dict:
                 )
             )
         test_jsonld = bu.generate_battery_test(ontologized_protocols)
+        if battinfo_json.get("hasMeasurementParameter", {}).get("hasTask"):
+            if battinfo_json["hasMeasurementParameter"]["hasTask"] != test_jsonld["hasMeasurementParameter"]["hasTask"]:
+                logger.warning("Conflicting experiments in %s, using unicycler protocol from db", sample_id)
+            battinfo_json["hasMeasurementParameter"].pop("hasTask")
         battinfo_json = bu.merge_jsonld_on_type([battinfo_json, test_jsonld])
     return battinfo_json
 

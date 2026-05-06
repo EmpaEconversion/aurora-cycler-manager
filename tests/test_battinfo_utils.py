@@ -165,27 +165,34 @@ def test_merge_battinfo_with_db(test_dir: Path) -> None:
     result = merge_battinfo_with_db_data(battinfo_jsonld, sample_data)
 
     # Should now contains everything it had before plus extras
-    assert "240709_svfe_gen8_01" in result["schema:productID"]
-    assert "empa__ccid000605" in result["schema:productID"]
+    assert result["schema:name"] == "240709_svfe_gen8_01"
+    assert result["schema:productID"] == "empa__ccid000605"
     assert result["schema:dateCreated"] == "2024-07-11"
-    assert (
-        result["hasNegativeElectrode"]["hasCoating"]["hasActiveMaterial"]["hasMeasuredProperty"]["@type"]
-        == "MassLoading"
-    )
-    assert result["hasNegativeElectrode"]["hasMeasuredProperty"] == {
+    anode_am_props = result["hasNegativeElectrode"]["hasCoating"]["hasActiveMaterial"]["hasMeasuredProperty"]
+    assert isinstance(anode_am_props, list)
+    anode_am_prop_types = [prop["@type"] for prop in anode_am_props]
+    assert "MassLoading" in anode_am_prop_types
+    assert "MassFraction" in anode_am_prop_types
+    assert {
         "@type": "Diameter",
         "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 15.0},
         "hasMeasurementUnit": "unit:MilliM",
-    }
-    assert (
-        result["hasPositiveElectrode"]["hasCoating"]["hasActiveMaterial"]["hasMeasuredProperty"]["@type"]
-        == "MassLoading"
-    )
-    assert result["hasPositiveElectrode"]["hasMeasuredProperty"] == {
+    } in result["hasNegativeElectrode"]["hasMeasuredProperty"]
+    assert {
+        "@type": "MassLoading",
+        "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 6.70010395749819},
+        "hasMeasurementUnit": "unit:MilliGM-PER-CentiM2",
+    } in result["hasPositiveElectrode"]["hasCoating"]["hasActiveMaterial"]["hasMeasuredProperty"]
+    assert {
+        "@type": "MassFraction",
+        "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 0.955},
+        "hasMeasurementUnit": "unit:FRACTION",
+    } in result["hasPositiveElectrode"]["hasCoating"]["hasActiveMaterial"]["hasMeasuredProperty"]
+    assert {
         "@type": "Diameter",
         "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 14.0},
         "hasMeasurementUnit": "unit:MilliM",
-    }
+    } in result["hasPositiveElectrode"]["hasMeasuredProperty"]
 
     # Try with a more complicated file
     sample_file = test_dir / "samples" / "test_battinfo.jsonld"
@@ -193,27 +200,34 @@ def test_merge_battinfo_with_db(test_dir: Path) -> None:
         battinfo_jsonld = json.load(f)
     result = merge_battinfo_with_db_data(battinfo_jsonld, sample_data)
     result = result["@graph"][0]["hasTestObject"]  # Get to the CoinCell, then it should have the same info as before
-    assert "240709_svfe_gen8_01" in result["schema:productID"]
-    assert "empa__ccid000605" in result["schema:productID"]
+    assert result["schema:name"] == "240709_svfe_gen8_01"
+    assert result["schema:productID"] == "empa__ccid000605"
     assert result["schema:dateCreated"] == "2024-07-11"
-    assert (
-        result["hasNegativeElectrode"]["hasCoating"]["hasActiveMaterial"]["hasMeasuredProperty"][-1]["@type"]
-        == "MassLoading"
-    )
-    assert result["hasNegativeElectrode"]["hasMeasuredProperty"][-1] == {
+    assert {
+        "@type": "MassFraction",
+        "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 0.95},
+        "hasMeasurementUnit": "unit:FRACTION",
+    } in result["hasNegativeElectrode"]["hasCoating"]["hasActiveMaterial"]["hasMeasuredProperty"]
+    assert {
+        "@type": "MassLoading",
+        "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 4.84369026158375},
+        "hasMeasurementUnit": "unit:MilliGM-PER-CentiM2",
+    } in result["hasNegativeElectrode"]["hasCoating"]["hasActiveMaterial"]["hasMeasuredProperty"]
+    assert {
         "@type": "Diameter",
         "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 15.0},
         "hasMeasurementUnit": "unit:MilliM",
-    }
-    assert (
-        result["hasPositiveElectrode"]["hasCoating"]["hasActiveMaterial"]["hasMeasuredProperty"][-1]["@type"]
-        == "MassLoading"
-    )
-    assert result["hasPositiveElectrode"]["hasMeasuredProperty"][-1] == {
+    } in result["hasNegativeElectrode"]["hasMeasuredProperty"]
+    assert {
+        "@type": "Mass",
+        "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 28.01},
+        "hasMeasurementUnit": "unit:MilliGM",
+    } in result["hasNegativeElectrode"]["hasMeasuredProperty"]
+    assert {
         "@type": "Diameter",
         "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 14.0},
         "hasMeasurementUnit": "unit:MilliM",
-    }
+    } in result["hasPositiveElectrode"]["hasMeasuredProperty"]
 
     # If you have no sample information, it should not change anything
     result = merge_battinfo_with_db_data(
@@ -279,8 +293,8 @@ def test_merge_battinfo_with_db(test_dir: Path) -> None:
     result = merge_battinfo_with_db_data(battinfo_jsonld, sample_data)
 
     # Should be able to handle dicts and lists
-    assert "240709_svfe_gen8_01" in result["schema:productID"]
-    assert "empa__ccid000605" in result["schema:productID"]
+    assert result["schema:name"] == "240709_svfe_gen8_01"
+    assert result["schema:productID"] == "empa__ccid000605"
     assert result["schema:dateCreated"] == "2024-07-11"
     assert result["hasNegativeElectrode"]["hasMeasuredProperty"][-1] == {
         "@type": "Diameter",
