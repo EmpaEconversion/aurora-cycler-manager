@@ -34,6 +34,7 @@ from sqlalchemy import (
     exists,
     func,
     inspect,
+    literal,
     select,
     text,
     update,
@@ -762,7 +763,7 @@ def get_unicycler_protocols(sample_id: str) -> list[dict]:
         sort_timestamp = func.coalesce(
             j["Submitted"],
             select(func.min(d["Data start"])).where(d["Job ID"] == j["Job ID"]).scalar_subquery(),
-            9999,
+            literal(datetime(9999, 12, 31), type_=j["Submitted"].type),  # noqa: DTZ001
         ).label("sort_timestamp")
 
         result = conn.execute(

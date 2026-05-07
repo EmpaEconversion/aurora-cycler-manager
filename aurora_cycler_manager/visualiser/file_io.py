@@ -3,7 +3,6 @@
 Functions for file upload and download.
 """
 
-import contextlib
 import io
 import json
 import logging
@@ -22,12 +21,9 @@ import aurora_cycler_manager.battinfo_utils as bu
 from aurora_cycler_manager.analysis import analyse_sample
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.data_parse import (
+    SampleDataBundle,
     aurora_to_bdf,
     bdf_to_aurora,
-    get_cycles_summary,
-    get_cycling,
-    get_eis,
-    get_metadata,
     get_sample_folder,
 )
 from aurora_cycler_manager.database_funcs import (
@@ -37,11 +33,9 @@ from aurora_cycler_manager.database_funcs import (
     get_all_sampleids,
     get_job_data,
     get_sample_data,
-    get_unicycler_protocols,
 )
 from aurora_cycler_manager.eclab_harvester import convert_mpr
 from aurora_cycler_manager.server_manager import _Sample
-from aurora_cycler_manager.stdlib_utils import run_from_sample
 from aurora_cycler_manager.visualiser.notifications import (
     error_notification,
     success_notification,
@@ -181,10 +175,11 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
         # It is probably a battinfo xlsx file
         excel_file = pd.ExcelFile(filepath)
         sheet_names = [str(s) for s in excel_file.sheet_names]
-        expected_sheets = ["@Schema", "@Context", "@Predicates", "@Classes", "@Units"]
-        if not all(sheet in expected_sheets for sheet in sheet_names):
+        expected_sheets = {"@Schema", "@Context", "@Predicates", "@Classes", "@Units"}
+        old_expected_sheets = {"Schema", "@context-TopLevel", "@context-Connector", "Ontology - Unit", "Unique ID"}
+        if not all(sheet in expected_sheets | old_expected_sheets for sheet in sheet_names):
             return (
-                "Excel file does not have the expected sheets"
+                "Excel file does not have the expected sheets. "
                 "Found: " + ", ".join(sheet_names) + "\n"
                 "Expected: " + ", ".join(expected_sheets),
                 "red",
@@ -540,16 +535,11 @@ def create_rocrate(
             sample_id: str = sample.get("Sample ID")
             ccid: str = sample.get("Barcode")
             identifier = ccid or sample_id  # fallback on normal sample ID
-            run_id = run_from_sample(sample_id)
-            data_folder = CONFIG["Data folder path"]
-            sample_folder = str(data_folder / run_id / sample_id)
             battinfo_files = []
             messages += f"{sample_id} - "
             warnings = []
             errors = []
-            df = None
-            eis_df = None
-            metadata = None
+            data = SampleDataBundle(sample_id)
 
             rocrate["@graph"].append(
                 {
@@ -560,28 +550,19 @@ def create_rocrate(
                 }
             )
 
-            # If bdf is requested, convert the file
-            if {"bdf-csv", "bdf-parquet"} & filetypes:
-                with contextlib.suppress(FileNotFoundError):
-                    df = aurora_to_bdf(get_cycling(sample_id))
-                    eis_df = get_eis(sample_id)
-                    if eis_df is not None:
-                        eis_df = aurora_to_bdf(eis_df)
-                    metadata = get_metadata(sample_id)
             # Loop through requested files
             for filetype in filetypes:
                 i += 1
                 try:
                     if filetype == "cycles-csv":
-                        cycles_df = get_cycles_summary(sample_id)
-                        if cycles_df is None:
+                        if data.cycles_summary is None:
                             logger.warning("No cycles summary file found for %s", sample_id)
                             messages += "⚠️"
                             warnings.append(filetype)
                             color = "orange"
                             continue
                         buffer = io.BytesIO()
-                        cycles_df.write_csv(buffer)
+                        data.cycles_summary.write_csv(buffer)
                         buffer.seek(0)
                         rel_file_path = sample_id + f"/cycles.{sample_id}.csv"
                         zf.writestr(rel_file_path, buffer.read())
@@ -605,15 +586,14 @@ def create_rocrate(
                         battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
 
                     if filetype == "cycles-parquet":
-                        cycles_df = get_cycles_summary(sample_id)
-                        if cycles_df is None:
+                        if data.cycles_summary is None:
                             logger.warning("No cycles summary file found for %s", sample_id)
                             messages += "⚠️"
                             warnings.append(filetype)
                             color = "orange"
                             continue
                         buffer = io.BytesIO()
-                        cycles_df.write_parquet(buffer)
+                        data.cycles_summary.write_parquet(buffer)
                         buffer.seek(0)
                         rel_file_path = sample_id + f"/cycles.{sample_id}.parquet"
                         zf.writestr(rel_file_path, buffer.read())
@@ -637,7 +617,7 @@ def create_rocrate(
                         battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
 
                     if filetype == "bdf-csv":
-                        if df is None:
+                        if data.cycling is None:
                             logger.warning("No time-series data for %s", sample_id)
                             messages += "⚠️"
                             warnings.append(filetype)
@@ -645,7 +625,7 @@ def create_rocrate(
                             continue
                         # convert to csv file and write to zip
                         buffer = io.BytesIO()
-                        df.write_csv(buffer)
+                        aurora_to_bdf(data.cycling).write_csv(buffer)
                         buffer.seek(0)
                         rel_file_path = sample_id + f"/full.{sample_id}.bdf.csv"
                         zf.writestr(rel_file_path, buffer.read())
@@ -667,9 +647,9 @@ def create_rocrate(
                         )
                         battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
 
-                        if eis_df is not None:
+                        if data.eis is not None:
                             buffer = io.BytesIO()
-                            eis_df.write_csv(buffer)
+                            aurora_to_bdf(data.eis).write_csv(buffer)
                             buffer.seek(0)
                             rel_file_path = sample_id + f"/eis.{sample_id}.bdf.csv"
                             zf.writestr(rel_file_path, buffer.read())
@@ -692,7 +672,7 @@ def create_rocrate(
                             battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
 
                     if filetype == "bdf-parquet":
-                        if df is None:
+                        if data.cycling is None:
                             logger.warning("No time-series data for %s", sample_id)
                             messages += "⚠️"
                             warnings.append(filetype)
@@ -700,9 +680,9 @@ def create_rocrate(
                             continue
                         # convert to parquet file and write to zip
                         buffer = io.BytesIO()
-                        df.write_parquet(
+                        aurora_to_bdf(data.cycling).write_parquet(
                             buffer,
-                            metadata={"AURORA:metadata": json.dumps(metadata)} if metadata else None,
+                            metadata={"AURORA:metadata": json.dumps(data.metadata)} if data.metadata else None,
                         )
                         buffer.seek(0)
                         parquet_name = f"full.{sample_id}.bdf.parquet"
@@ -726,11 +706,11 @@ def create_rocrate(
                         )
                         battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
 
-                        if eis_df is not None:
+                        if data.eis is not None:
                             buffer = io.BytesIO()
-                            eis_df.write_parquet(
+                            aurora_to_bdf(data.eis).write_parquet(
                                 buffer,
-                                metadata={"AURORA:metadata": json.dumps(metadata)} if metadata else None,
+                                metadata={"AURORA:metadata": json.dumps(data.metadata)} if data.metadata else None,
                             )
                             buffer.seek(0)
                             rel_file_path = sample_id + f"/eis.{sample_id}.bdf.parquet"
@@ -754,44 +734,8 @@ def create_rocrate(
                             battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
 
                     if filetype == "metadata-jsonld":
-                        # Get the BattINFO file
-                        battinfo_file = next(Path(sample_folder).glob("battinfo.*.jsonld"), None)
-                        aux_file = next(Path(sample_folder).glob("aux.*.jsonld"), None)
-                        if battinfo_file is None:
-                            logger.warning("No BattINFO file for %s", sample_id)
-                            sample_data = get_sample_data(sample_id)
-                            battinfo_json = bu.merge_battinfo_with_db_data({}, sample_data, allow_empty_battinfo=True)
-                        else:
-                            with battinfo_file.open("r") as f:
-                                battinfo_json = json.load(f)
-                        battinfo_json = bu.make_test_object(battinfo_json)
-
-                        # Check for auxiliary jsonld file
-                        if aux_file:
-                            with aux_file.open("r") as f:
-                                aux_json = json.load(f)
-                            try:
-                                bu.merge_jsonld_on_type([battinfo_json, aux_json])
-                            except ValueError:
-                                bu.merge_jsonld_on_type(
-                                    [battinfo_json["hasTestObject"], aux_json],
-                                    target_type="CoinCell",
-                                )
-
-                        # Add unicycler protocols
-                        db_jobs = get_unicycler_protocols(sample_id)
-                        if db_jobs:
-                            ontologized_protocols = []
-                            for db_job in db_jobs:
-                                protocol = Protocol.from_dict(json.loads(db_job["Unicycler protocol"]))
-                                ontologized_protocols.append(
-                                    protocol.to_battinfo_jsonld(
-                                        capacity_mAh=db_job["Capacity (mAh)"],
-                                        include_context=False,
-                                    )
-                                )
-                            test_jsonld = bu.generate_battery_test(ontologized_protocols)
-                            battinfo_json = bu.merge_jsonld_on_type([battinfo_json, test_jsonld])
+                        # Get the BattINFO dict
+                        battinfo_json = data.battinfo
 
                         # Add data files
                         if battinfo_files:

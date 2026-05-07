@@ -13,6 +13,7 @@ from dash import callback_context as ctx
 from dash.exceptions import PreventUpdate
 
 import aurora_cycler_manager.database_funcs as dbf
+from aurora_cycler_manager.data_parse import SampleDataBundle
 
 logger = logging.getLogger(__name__)
 
@@ -67,10 +68,44 @@ def _strip_datetimes(data: dict) -> dict:
     return {k: v.isoformat() if isinstance(v, datetime) else v for k, v in data.items()}
 
 
+def _json_block(json_str: str) -> html.Div:
+    """Scrollable JSON code block with a copy button pinned to the top-right corner."""
+    return html.Div(
+        [
+            dmc.CopyButton(
+                value=json_str,
+                children=html.I(className="bi bi-copy"),
+                copiedChildren=html.I(className="bi bi-clipboard-check"),
+                variant="subtle",
+                style={"position": "absolute", "top": 8, "right": 8, "zIndex": 10},
+            ),
+            dmc.CodeHighlight(
+                json_str,
+                language="json",
+                withCopyButton=False,
+                styles={"pre": {"maxHeight": "calc(90vh - 360px)", "overflow": "auto"}},
+            ),
+        ],
+        style={"position": "relative", "width": "100%"},
+    )
+
+
 def generate_sample_info(sample_id: str) -> dmc.Accordion:
     """Create info modal content from a Sample ID."""
+    # Sample data
     sample_data = dbf.get_sample_data(sample_id)
-    results = dbf.get_results_from_sample(sample_id)
+    sample_data_str = json.dumps(_strip_datetimes(sample_data), indent=2)
+
+    # BattINFO metadata
+    data = SampleDataBundle(sample_id)
+    battinfo_str = json.dumps(_strip_datetimes(data.battinfo), indent=2)
+
+    # Results summary
+    results = data.overall_summary
+    results = {k: v for k, v in results.items() if k not in sample_data} if results else {}
+    results_str = json.dumps(_strip_datetimes(results), indent=2) if results else ""
+
+    # Links
     jobs = dbf.get_jobs_from_sample(sample_id)
     pipeline = dbf.get_pipeline_from_sample(sample_id)
     batches = dbf.get_batches_from_sample(sample_id)
@@ -119,20 +154,21 @@ def generate_sample_info(sample_id: str) -> dmc.Accordion:
                 value="sample_data",
                 children=[
                     dmc.AccordionControl("Sample data"),
-                    dmc.AccordionPanel(
-                        dmc.CodeHighlight(json.dumps(_strip_datetimes(sample_data), indent=4), language="json")
-                    ),
+                    dmc.AccordionPanel(_json_block(sample_data_str)),
+                ],
+            ),
+            dmc.AccordionItem(
+                value="battinfo_data",
+                children=[
+                    dmc.AccordionControl("BattINFO metadata"),
+                    dmc.AccordionPanel(_json_block(battinfo_str)),
                 ],
             ),
             dmc.AccordionItem(
                 value="results",
                 children=[
                     dmc.AccordionControl("Results summary"),
-                    dmc.AccordionPanel(
-                        dmc.CodeHighlight(json.dumps(_strip_datetimes(results), indent=4), language="json")
-                        if results
-                        else dmc.Text("No results.")
-                    ),
+                    dmc.AccordionPanel(_json_block(results_str) if results else dmc.Text("No results.")),
                 ],
             ),
         ],
@@ -142,6 +178,7 @@ def generate_sample_info(sample_id: str) -> dmc.Accordion:
 def generate_pipeline_info(pipeline_id: str) -> dmc.Accordion:
     """Create info modal content from a Pipeline."""
     pipeline_data = dbf.get_pipeline(pipeline_id)
+    pipeline_data_str = json.dumps(_strip_datetimes(pipeline_data), indent=2) if pipeline_data else "No information."
     sample_id = dbf.get_sample_from_pipeline(pipeline_id)
     sample_element = (
         [dmc.Text("Has sample loaded:"), _nav_link(sample_id, "Sample ID", sample_id)]
@@ -168,9 +205,7 @@ def generate_pipeline_info(pipeline_id: str) -> dmc.Accordion:
                 value="pipeline_data",
                 children=[
                     dmc.AccordionControl("Pipeline data"),
-                    dmc.AccordionPanel(
-                        dmc.CodeHighlight(json.dumps(_strip_datetimes(pipeline_data), indent=4), language="json")
-                    ),
+                    dmc.AccordionPanel(_json_block(pipeline_data_str)),
                 ],
             ),
         ],
@@ -180,6 +215,7 @@ def generate_pipeline_info(pipeline_id: str) -> dmc.Accordion:
 def generate_job_info(job_id: str) -> dmc.Accordion:
     """Generate info modal content from a Job ID."""
     job_data = dbf.get_job_data(job_id)
+    job_data_str = json.dumps(_strip_datetimes(job_data), indent=2)
     sample_id = job_data["Sample ID"]
     pipeline = job_data.get("Pipeline")
 
@@ -217,9 +253,7 @@ def generate_job_info(job_id: str) -> dmc.Accordion:
                 value="job_data",
                 children=[
                     dmc.AccordionControl("Job metadata"),
-                    dmc.AccordionPanel(
-                        dmc.CodeHighlight(json.dumps(_strip_datetimes(job_data), indent=4), language="json")
-                    ),
+                    dmc.AccordionPanel(_json_block(job_data_str)),
                 ],
             ),
         ],

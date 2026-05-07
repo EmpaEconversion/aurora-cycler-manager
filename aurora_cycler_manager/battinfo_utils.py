@@ -7,6 +7,7 @@ import logging
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 import pandas as pd
 
@@ -27,7 +28,6 @@ blank_coin_cell = coin_cell = {
         },
     ],
     "@type": "CoinCell",
-    "schema:version": "1.1.16",
     "hasPositiveElectrode": {
         "@type": "Electrode",
         "hasCurrentCollector": {"@type": "CurrentCollector"},
@@ -37,6 +37,10 @@ blank_coin_cell = coin_cell = {
         "@type": "Electrode",
         "hasCurrentCollector": {"@type": "CurrentCollector"},
         "hasCoating": {"@type": "ElectrodeCoating"},
+    },
+    "hasElectrolyte": {"@type": "OrganicElectrolyte"},
+    "hasSeparator": {
+        "@type": "Separator",
     },
     "hasCase": {
         "@type": "R2032",
@@ -162,15 +166,9 @@ def merge_battinfo_with_db_data(
             raise ValueError(msg)
 
     # Sample ID and CCID (barcode)
-    if sample_data.get("Barcode"):
-        coin_cell["schema:productID"] = [
-            sample_data["Sample ID"],
-            sample_data["Barcode"],
-        ]
-        logger.info("Added: productID (Sample ID and CCID)")
-    else:
-        coin_cell["schema:productID"] = sample_data["Sample ID"]
-        logger.info("Skipped: productID (CCID)")
+    coin_cell["schema:name"] = sample_data["Sample ID"]
+    if val := sample_data.get("Barcode"):
+        coin_cell["schema:productID"] = val
 
     # Date created
     if sample_data.get("Assembly history"):
@@ -184,29 +182,51 @@ def merge_battinfo_with_db_data(
                 break
         if date:
             coin_cell["schema:dateCreated"] = date
-            logger.info("Added: dateCreated")
-        else:
-            logger.info("Skipped: dateCreated")
 
         # Cell assembly sequence
         if "rdfs:comment" not in coin_cell:
             coin_cell["rdfs:comment"] = summarise_assembly(assembly_history, sample_data)
-            logger.info("Added: rdfs:comment")
         elif not any(s.startswith("Cell assembly sequence: ") for s in coin_cell["rdfs:comment"]):
             coin_cell["rdfs:comment"].append(summarise_assembly(assembly_history, sample_data))
-        else:
-            logger.info("Skipped: cell assembly - already present")
-    else:
-        logger.info("Skipped: dateCreated - no assembly history")
-        logger.info("Skipped: cell assembly - no assembly history")
 
-    # Electrode mass loading
+    # Electrode specific quantities
     for xode in ("Anode", "Cathode"):
         key = "hasPositiveElectrode" if xode == "Cathode" else "hasNegativeElectrode"
+
+        # Name, description
+        if name := sample_data.get(f"{xode} type"):
+            coin_cell.setdefault(key, {"@type": "Electrode"})["schema:name"] = name
+        if desc := sample_data.get(f"{xode} description"):
+            coin_cell.setdefault(key, {"@type": "Electrode"})["schema:description"] = desc
+
+        # Electrode mass
+        if electrode_mass_mg := sample_data.get(f"{xode} mass (mg)"):
+            insert_dict_in_jsonld(
+                coin_cell,
+                [(key, "Electrode"), ("hasMeasuredProperty", "Mass")],
+                {
+                    "@type": "Mass",
+                    "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": electrode_mass_mg},
+                    "hasMeasurementUnit": "unit:MilliGM",
+                },
+            )
+
+        if electrode_cc_mass_mg := sample_data.get(f"{xode} current collector mass (mg)"):
+            insert_dict_in_jsonld(
+                coin_cell,
+                [(key, "Electrode"), ("hasCurrentCollector", "CurrentCollector"), ("hasMeasuredProperty", "Mass")],
+                {
+                    "@type": "Mass",
+                    "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": electrode_cc_mass_mg},
+                    "hasMeasurementUnit": "unit:MilliGM",
+                },
+            )
+
+        # Electrode active material mass loading
         if sample_data.get(f"{xode} active material mass (mg)") and sample_data.get(f"{xode} diameter (mm)"):
             mass_g = sample_data[f"{xode} active material mass (mg)"] / 1000
-            area_cm = 3.14159 * (sample_data[f"{xode} diameter (mm)"] / 10) ** 2
-            mass_loading_g_per_cm2 = mass_g / area_cm
+            area_cm = 3.14159 * (sample_data[f"{xode} diameter (mm)"] / 20) ** 2
+            mass_loading_g_per_cm2 = 1000 * mass_g / area_cm
             mass_dict = {
                 "@type": "MassLoading",
                 "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": mass_loading_g_per_cm2},
@@ -222,10 +242,8 @@ def merge_battinfo_with_db_data(
                 ],
                 mass_dict,
             )
-            logger.info("Added: %s mass loading", xode)
-        else:
-            logger.info("Skipped: %s mass loading", xode)
 
+        # Electrode diameter
         if sample_data.get(f"{xode} diameter (mm)"):
             diameter_dict = {
                 "@type": "Diameter",
@@ -237,9 +255,250 @@ def merge_battinfo_with_db_data(
                 [(key, "Electrode"), ("hasMeasuredProperty", "Diameter")],
                 diameter_dict,
             )
-            logger.info("Added: %s diameter", xode)
+
+        # Active material mass fraction
+        if am_mass_frac := sample_data.get(f"{xode} active material mass fraction"):
+            insert_dict_in_jsonld(
+                coin_cell,
+                [
+                    (key, "Electrode"),
+                    ("hasCoating", "Coating"),
+                    ("hasActiveMaterial", None),
+                    ("hasMeasuredProperty", "MassFraction"),
+                ],
+                {
+                    "@type": "MassFraction",
+                    "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": am_mass_frac},
+                    "hasMeasurementUnit": "unit:FRACTION",
+                },
+            )
+
+        # Areal capacity
+        if a_cap := sample_data.get(f"{xode} C-rate definition areal capacity (mAh/cm2)"):
+            insert_dict_in_jsonld(
+                coin_cell,
+                [
+                    (key, "Electrode"),
+                    ("hasCoating", "Coating"),
+                    ("hasMeasuredProperty", "RatedCapacity"),
+                ],
+                {
+                    "@type": "RatedCapacity",
+                    "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": a_cap},
+                    "hasMeasurementUnit": "emmo:MilliAmpereHourPerSquareCentiMetre",
+                    "rdfs:comment": "Areal capacity provided by user to define C-rate",
+                },
+            )
+
+        if a_cap := sample_data.get(f"{xode} C-rate definition areal capacity (mAh/cm2)"):
+            insert_dict_in_jsonld(
+                coin_cell,
+                [
+                    (key, "Electrode"),
+                    ("hasCoating", "Coating"),
+                    ("hasMeasuredProperty", "RatedCapacity"),
+                ],
+                {
+                    "@type": "RatedCapacity",
+                    "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": a_cap},
+                    "hasMeasurementUnit": "emmo:MilliAmpereHourPerSquareCentiMetre",
+                    "rdfs:comment": "Areal capacity provided by user to define C-rate",
+                },
+            )
+
+        # Specific capacity
+        m_cap1 = sample_data.get(f"{xode} C-rate definition specific capacity (mAh/g)")
+        m_cap2 = sample_data.get(f"{xode} balancing specific capacity (mAh/g)")
+        if (m_cap1 == m_cap2) or (bool(m_cap1) ^ bool(m_cap2)):
+            m_cap = m_cap1 or m_cap2
+            insert_dict_in_jsonld(
+                coin_cell,
+                [
+                    (key, "Electrode"),
+                    ("hasCoating", "Coating"),
+                    ("hasMeasuredProperty", "RatedCapacity"),
+                ],
+                {
+                    "@type": "RatedCapacity",
+                    "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": m_cap},
+                    "hasMeasurementUnit": "unit:MilliA-HR-PER-GM",
+                    "rdfs:comment": "Specific capacity provided by user to define C-rate",
+                },
+            )
+        elif m_cap1 != m_cap2:
+            insert_dict_in_jsonld(
+                coin_cell,
+                [
+                    (key, "Electrode"),
+                    ("hasCoating", "Coating"),
+                    ("hasMeasuredProperty", "RatedCapacity"),
+                ],
+                {
+                    "@type": "RatedCapacity",
+                    "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": m_cap1},
+                    "hasMeasurementUnit": "unit:MilliA-HR-PER-GM",
+                    "rdfs:comment": "Specific capacity provided by user to define C-rate",
+                },
+            )
+            insert_dict_in_jsonld(
+                coin_cell,
+                [
+                    (key, "Electrode"),
+                    ("hasCoating", "Coating"),
+                    ("hasMeasuredProperty", "RatedCapacity"),
+                ],
+                {
+                    "@type": "RatedCapacity",
+                    "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": m_cap1},
+                    "hasMeasurementUnit": "unit:MilliA-HR-PER-GM",
+                    "rdfs:comment": "Specific capacity provided by user for calculating N:P ratio",
+                },
+            )
+
+    # Electrolyte volume
+    if vol := sample_data.get("Electrolyte amount (uL)"):
+        insert_dict_in_jsonld(
+            coin_cell,
+            [
+                ("hasElectrolyte", "OrganicElectrolyte"),
+                ("hasMeasuredProperty", "Volume"),
+            ],
+            {
+                "@type": "Volume",
+                "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": vol},
+                "hasMeasurementUnit": "unit:MicroL",
+            },
+        )
+
+    # Electrolyte name, desc
+    if name := sample_data.get("Electrolyte name"):
+        insert_dict_in_jsonld(coin_cell, [("hasElectrolyte", "OrganicElectrolyte")], {"schema:name": name})
+    if desc := sample_data.get("Electrolyte description"):
+        insert_dict_in_jsonld(coin_cell, [("hasElectrolyte", "OrganicElectrolyte")], {"schema:description": desc})
+
+    # Separator
+    if name := sample_data.get("Separator type"):
+        insert_dict_in_jsonld(coin_cell, [("hasSeparator", "Separator")], {"schema:name": name})
+    if diam := sample_data.get("Separator diameter (mm)"):
+        insert_dict_in_jsonld(
+            coin_cell,
+            [("hasSeparator", "Separator"), ("hasMeasuredProperty", "Diameter")],
+            {
+                "@type": "Diameter",
+                "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": diam},
+                "hasMeasurementUnit": "unit:MilliM",
+            },
+        )
+    if thick := sample_data.get("Separator  thickness (mm)"):
+        insert_dict_in_jsonld(
+            coin_cell,
+            [("hasSeparator", "Separator"), ("hasMeasuredProperty", "Thickness")],
+            {
+                "@type": "Thickness",
+                "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": thick},
+                "hasMeasurementUnit": "unit:MilliM",
+            },
+        )
+
+    # Casing
+    if name := sample_data.get("Casing type"):
+        insert_dict_in_jsonld(
+            coin_cell,
+            [("hasCase", None)],
+            {
+                "schema:name": name,
+            },
+        )
+    if material := sample_data.get("Casing material"):
+        insert_dict_in_jsonld(
+            coin_cell,
+            [("hasCase", None)],
+            {
+                "rdfs:comment": f"Material: {material}",
+            },
+        )
+
+    # Spacers
+    bottom_electrode: str | None = None
+    if history := sample_data.get("Assembly history"):
+        bottom_electrode = next((a["Step"] for a in history if a["Step"] in {"Anode", "Cathode"}), None)
+    top_electrode = {"Anode": "Cathode", "Cathode": "Anode"}.get(bottom_electrode)
+    rename = {"Anode": "PositiveElectrode", "Cathode": "NegativeElectrode"}
+    bottom_electrode = rename.get(bottom_electrode)
+    top_electrode = rename.get(top_electrode)
+
+    # Check for existing spacers
+    existing_spacers = [
+        (i, el) for i, el in enumerate(coin_cell.get("hasComponent", [])) if el.get("@type") == "Spacer"
+    ]
+
+    for sp, electrode in (("Top spacer", top_electrode), ("Bottom spacer", bottom_electrode)):
+        name = sample_data.get(f"{sp} type")
+        thickness = (
+            {
+                "@type": "Thickness",
+                "hasNumericalPart": {
+                    "@type": "emmo:RealData",
+                    "hasNumberValue": sample_data.get(f"{sp} thickness (mm)"),
+                },
+                "hasMeasurementUnit": "unit:MilliM",
+            }
+            if sample_data.get(f"{sp} thickness (mm)")
+            else None
+        )
+        if not name and not thickness:
+            continue
+        diameter = (
+            {
+                "@type": "Diameter",
+                "hasNumericalPart": {
+                    "@type": "emmo:RealData",
+                    "hasNumberValue": sample_data.get(f"{sp} diameter (mm)"),
+                },
+                "hasMeasurementUnit": "unit:MilliM",
+            }
+            if sample_data.get(f"{sp} diameter (mm)")
+            else None
+        )
+        spacer_dict: dict[str, str | list | dict] = {"@type": "Spacer", "rdfs:comment": f"{sp} during assembly"}
+        if name:
+            spacer_dict["schema:name"] = name
+        if electrode:
+            spacer_dict["contacts"] = {"@type": electrode}
+        if mat := sample_data.get(f"{sp} material"):
+            spacer_dict["rdfs:comment"] = [spacer_dict["rdfs:comment"], f"Material: {mat}"]
+        if thickness and diameter:
+            spacer_dict["hasMeasuredProperty"] = [thickness, diameter]
+        elif thickness:
+            spacer_dict["hasMeasuredProperty"] = thickness
+        elif diameter:
+            spacer_dict["hasMeasuredProperty"] = diameter
+
+        if existing_spacers:
+            for idx, spacer in existing_spacers:
+                if spacer.get("contacts") == electrode:
+                    coin_cell["hasComponent"][idx] = {**spacer, **spacer_dict}
+                    break
+            else:
+                coin_cell.setdefault("hasComponent", []).append(spacer_dict)
         else:
-            logger.info("Skipped: %s diameter", xode)
+            coin_cell.setdefault("hasComponent", []).append(spacer_dict)
+
+    # N:P Ratio
+    if np := sample_data.get("N:P ratio"):
+        insert_dict_in_jsonld(
+            coin_cell,
+            [("hasMeasuredProperty", "NPRatio")],
+            {
+                "@type": "NPRatio",
+                "hasNumericalPart": {
+                    "@type": "emmo:RealData",
+                    "hasNumberValue": np,
+                },
+                "hasMeasurementUnit": "unit:FRACTION",
+                "rdfs:comment": "Based on active material mass, accounting for the overlapping area.",
+            },
+        )
 
     return battinfo_jsonld
 
@@ -362,15 +621,19 @@ def make_type_parent(data: dict, target_type: str) -> dict:
     return result
 
 
-def merge_contexts_strict(ctx1: str | list | dict, ctx2: str | list | dict) -> list:
+def merge_contexts_strict(
+    ctx1: str | list | dict,
+    ctx2: str | list | dict,
+    on_conflict: Literal["raise", "keep_left", "keep_right"] = "raise",
+) -> list:
     """Merge the top level @context blocks of two JSON-LD."""
     ctx1_list = ctx1 if isinstance(ctx1, list) else [ctx1]
     ctx2_list = ctx2 if isinstance(ctx2, list) else [ctx2]
 
     def process_context_list(ctx_list: list) -> tuple[list, dict]:
-        """Process a context list, split terms and remotes."""
+        """Process a context list, split remotes and terms."""
         remotes = []
-        terms = {}
+        terms: dict[str, str] = {}
         for ctx in ctx_list:
             if isinstance(ctx, str):
                 remotes.append(ctx)
@@ -384,20 +647,25 @@ def merge_contexts_strict(ctx1: str | list | dict, ctx2: str | list | dict) -> l
     # Merge remote contexts (keep unique)
     merged_remotes = list(dict.fromkeys(remotes1 + remotes2))  # preserves order, unique
 
-    # Check for conflicts in term definitions
-    for term, iri in terms2.items():
-        if term in terms1 and terms1[term] != iri:
-            msg = f"Conflict for term '{term}': '{terms1[term]}' != '{iri}'"
-            raise ValueError(msg)
+    # Check for conflicts in namespace definitions
+    for term, url in terms2.items():
+        if term in terms1 and terms1[term] != url:
+            if on_conflict == "raise":
+                msg = f"Merging context: conflict for term '{term}': '{terms1[term]}' != '{url}'"
+                raise ValueError(msg)
+            logger.warning(
+                "Merging context: conflict for term '%s': '%s' != '%s', keeping %s",
+                term,
+                terms1[term],
+                url,
+                "left" if on_conflict == "keep_left" else "right",
+            )
 
-    # Merge term definitions (terms2 overrides terms1, but no conflicts allowed)
-    merged_terms = dict(terms1)
-    merged_terms.update(terms2)
+    # Merge term definitions
+    merged_terms = {**terms2, **terms1} if on_conflict == "keep_left" else {**terms1, **terms2}
 
     # Construct merged context list
-    merged_context = []
-    if merged_remotes:
-        merged_context.extend(merged_remotes)
+    merged_context = [*merged_remotes]
     if merged_terms:
         merged_context.append(merged_terms)
 
@@ -473,15 +741,33 @@ def merge_jsonld(json1: dict, json2: dict) -> dict:
 
 
 def merge_jsonld_on_type(jsons: list[dict], target_type: str = "BatteryTest") -> dict:
-    """Transform two json-ld, make target_type parent and merge."""
-    jsons = [make_type_parent(json, target_type) for json in jsons]
+    """Transform list of json-ld dicts, make target_type parent and merge."""
+    jsons = deepcopy(jsons)  # Don't modify originals
+    contexts = [j.pop("@context") for j in jsons if "@context" in j]
+    jsons = [make_type_parent(j, target_type) for j in jsons]
 
-    def repeated_merge(jsons: list[dict]) -> dict:
-        if len(jsons) == 1:
-            return jsons[0]
-        return recursive_merge(jsons[0], repeated_merge(jsons[1:]))
+    def repeated_context_merge(contexts: list[str | list | dict]) -> None | str | list | dict:
+        if len(contexts) == 0:
+            return None
+        if len(contexts) == 1:
+            return contexts[0]
+        merged = merge_contexts_strict(contexts[0], contexts[1], on_conflict="keep_right")
+        if len(contexts) == 2:
+            return merged
+        return repeated_context_merge([merged, *contexts[2:]])
 
-    return repeated_merge(jsons)
+    def repeated_merge(jsonld_list: list[dict]) -> dict:
+        if len(jsonld_list) == 1:
+            return jsonld_list[0]
+        return recursive_merge(jsonld_list[0], repeated_merge(jsonld_list[1:]))
+
+    merged_context = repeated_context_merge(contexts)
+    merged_content = repeated_merge(jsons)
+
+    return {
+        **({"@context": merged_context} if merged_context else {}),
+        **merged_content,
+    }
 
 
 def generate_battery_test(ontologized_protocols: dict | list[dict]) -> dict:
