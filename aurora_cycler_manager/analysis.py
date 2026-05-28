@@ -64,6 +64,17 @@ SAMPLE_METADATA_TO_DATA = [
     "Label",
 ]
 
+ECLAB_CURR_UNIT_MAP = {
+    0: 1e3,  # A -> mA | Ah -> mAh
+    1: 1,  # mA -> mA | mAh -> mAh
+    2: 1e-3,  # uA -> mA | uAh -> mAh
+}
+
+ECLAB_VOLT_UNIT_MAP = {
+    0: 1,  # V -> V
+    1: 1e-3,  # mV -> V
+}
+
 
 def _sort_times(start_times: list | np.ndarray, end_times: list | np.ndarray) -> np.ndarray:
     """Sort by start time, if equal only keep the longest. Skip None values."""
@@ -341,11 +352,11 @@ def extract_voltage_crates(job_data: list[dict]) -> dict:
 
         # EC-lab mpr
         elif job_type == "eclab_mpr":
-            capacity = 0
+            capacity = job.get("settings", {}).get("battery_capacity", 0)
             capacity_units = job.get("settings", {}).get("battery_capacity_unit")
-            if capacity_units == 1:  # mAh
-                capacity = job.get("settings", {}).get("battery_capacity", 0)  # in mAh
-            if capacity_units and capacity_units != 1:
+            if capacity_units in ECLAB_CURR_UNIT_MAP:
+                capacity = capacity * ECLAB_CURR_UNIT_MAP[capacity_units]
+            else:
                 logger.warning("Unknown capacity units from ec-lab: %s", capacity_units)
 
             if isinstance(job.get("params", []), dict):  # it may be a dict of lists instead of a list of dicts
@@ -426,11 +437,11 @@ def extract_voltage_crates(job_data: list[dict]) -> dict:
                             current = method.get("ctrl1_val") or method.get("ctrl1_value")
                             current_unit = method.get("ctrl1_val_unit") or method.get("ctrl1_value_unit")
                             if current and current_unit:
-                                if current_unit == 1:  # mA
-                                    pass
+                                if current_unit in ECLAB_CURR_UNIT_MAP:
+                                    current *= ECLAB_CURR_UNIT_MAP[current_unit]
+                                    rate = abs(current) / capacity
                                 else:
                                     logger.warning("EC-lab current unit unknown: %s", current_unit)
-                                rate = abs(current) / capacity
                         # Get voltage limits
                         for lim in [1, 2, 3]:
                             if method.get(f"lim{lim}_type") == 1:  # Voltage limit
@@ -438,8 +449,8 @@ def extract_voltage_crates(job_data: list[dict]) -> dict:
                                 voltage_unit = method.get(f"lim{lim}_val_unit") or method.get(f"lim{lim}_value_unit")
                                 lim_comp = method.get(f"lim{lim}_comp")
                                 if voltage:
-                                    if voltage_unit == 0:  # V
-                                        pass
+                                    if voltage_unit in ECLAB_VOLT_UNIT_MAP:
+                                        voltage = voltage * ECLAB_VOLT_UNIT_MAP[voltage_unit]
                                     else:
                                         logger.warning("EC-lab voltage unit unknown: %s", voltage_unit)
                                 if lim_comp == 0:  # Charge
