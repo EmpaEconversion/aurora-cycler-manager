@@ -185,6 +185,12 @@ def generate_pipeline_info(pipeline_id: str) -> dmc.Accordion:
         if sample_id
         else [dmc.Text("Has no sample loaded")]
     )
+    job_id = dbf.get_job_from_pipeline(pipeline_id)
+    job_element = (
+        [dmc.Text("Is running job:"), _nav_link(job_id, "Job ID", job_id)]
+        if job_id
+        else [dmc.Text("Is not running a job")]
+    )
     return dmc.Accordion(
         value="links",
         variant="separated",
@@ -196,7 +202,10 @@ def generate_pipeline_info(pipeline_id: str) -> dmc.Accordion:
                     dmc.AccordionControl("Links"),
                     dmc.AccordionPanel(
                         dmc.Stack(
-                            sample_element,
+                            [
+                                *sample_element,
+                                *job_element,
+                            ]
                         )
                     ),
                 ],
