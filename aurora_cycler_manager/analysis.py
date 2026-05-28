@@ -203,6 +203,8 @@ def merge_dfs(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, pl.DataFrame | Non
         eis_mask = (df["f (Hz)"].is_not_null()) & (df["f (Hz)"] != 0)
         eis_df = df.filter(eis_mask)
         df = df.filter(~eis_mask).drop("f (Hz)", "Re(Z) (ohm)", "Im(Z) (ohm)")
+        # Drop columns
+        eis_df = eis_df.drop("job_number", "cycle_number", "loop_number", "index", strict=False)
         if eis_df.is_empty():
             eis_df = None
 
