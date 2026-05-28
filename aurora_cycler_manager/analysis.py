@@ -64,15 +64,21 @@ SAMPLE_METADATA_TO_DATA = [
     "Label",
 ]
 
-ECLAB_CURR_UNIT_MAP = {
-    0: 1e3,  # A -> mA | Ah -> mAh
-    1: 1,  # mA -> mA | mAh -> mAh
-    2: 1e-3,  # uA -> mA | uAh -> mAh
+ECLAB_CURR_UNIT_MAP = {  # normalize to mA / mAh
+    0: 1e3,  # A
+    1: 1,  # mA
+    2: 1e-3,  # uA
+    "A": 1e3,
+    "mA": 1,
+    "uA": 1e-3,
+    "μA": 1e-3,
 }
 
-ECLAB_VOLT_UNIT_MAP = {
+ECLAB_VOLT_UNIT_MAP = {  # normalize to V
     0: 1,  # V -> V
     1: 1e-3,  # mV -> V
+    "V": 1,
+    "mV": 1e-3,
 }
 
 
@@ -378,11 +384,11 @@ def extract_voltage_crates(job_data: list[dict]) -> dict:
                     elif current_mode == "I" and capacity:
                         current_units = method.get("I_unit") or method.get("unit Is")
                         if current and current_units:
-                            if current_units == "A":
-                                current = current * 1000
-                            elif current_units != "mA":
+                            if current_units in ECLAB_CURR_UNIT_MAP:
+                                current = current * ECLAB_CURR_UNIT_MAP[current_units]
+                                rate = abs(current) / capacity
+                            else:
                                 logger.warning("EC-lab current unit unknown: %s", current_units)
-                            rate = abs(current) / capacity
                     # Get voltage
                     discharging = None
                     Isign = method.get("I_sign") or method.get("I sign")
