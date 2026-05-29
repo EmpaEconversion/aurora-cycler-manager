@@ -29,6 +29,10 @@ callback is running.
 
 """
 
+import logging
+from collections.abc import Generator
+from contextlib import contextmanager
+
 from dash import Dash, Input, Output, html
 from dash.dcc import Interval
 from dash_mantine_components import NotificationContainer
@@ -107,6 +111,32 @@ notifications_layout = html.Div(
         Interval(id="trigger-interval", interval=trigger_time, n_intervals=0, disabled=True),
     ],
 )
+
+
+class _QueueingHandler(logging.Handler):
+    """Log handler whose emit creates a mantine notification on warning or higher."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.levelno == logging.WARNING:
+            warning_notification(record.levelname.capitalize(), record.getMessage(), queue=True)
+        elif record.levelno in {logging.CRITICAL, logging.ERROR}:
+            error_notification(record.levelname.capitalize(), record.getMessage(), queue=True)
+
+
+@contextmanager
+def notify_on_warnings(logger: logging.Logger | None = None) -> Generator[None, None, None]:
+    """Context manager that queues a notification for any warning/error/critical log."""
+    target = logger or logging.getLogger()
+    handler = _QueueingHandler()
+    handler.setLevel(logging.WARNING)
+    target.addHandler(handler)
+    try:
+        yield
+    except Exception as e:
+        error_notification("Error", str(e), queue=True)
+        raise
+    finally:
+        target.removeHandler(handler)
 
 
 # When in a 'listening' state, a function will set the interval to e.g. 1 second
