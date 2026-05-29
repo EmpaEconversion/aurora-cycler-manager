@@ -51,6 +51,7 @@ from aurora_cycler_manager.visualiser.notifications import (
     active_time,
     error_notification,
     idle_time,
+    notify_on_warnings,
     success_notification,
 )
 
@@ -1150,7 +1151,10 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Output("notifications-container", "sendNotifications", allow_duplicate=True),
         Input("update-database", "n_clicks"),
-        running=[(Output("loading-message-store", "data"), "Updating database - querying servers...", "")],
+        running=[
+            (Output("loading-message-store", "data"), "Updating database - querying servers...", ""),
+            (Output("notify-interval", "interval"), active_time, idle_time),
+        ],
         prevent_initial_call=True,
     )
     def update_database(n_clicks: int) -> tuple:
@@ -1158,12 +1162,13 @@ def register_db_view_callbacks(app: Dash) -> None:
             raise PreventUpdate
         if not sm or not sm.servers:
             return 0, [error_notification("Error", "You do not have access to any cycling servers.")]
-        try:
-            sm.update_db()
-        except Exception as e:
-            return 0, [error_notification("Error", str(e))]
-        else:
-            return 1, NoUpdate
+        with notify_on_warnings():
+            try:
+                sm.update_db()
+            except Exception as e:
+                return 0, [error_notification("Error", str(e))]
+            else:
+                return 1, NoUpdate
 
     # Open database settings when the cog icon is clicked
     @app.callback(
@@ -1262,15 +1267,22 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("eject-yes-close", "n_clicks"),
         State("selected-rows-store", "data"),
-        running=[(Output("loading-message-store", "data"), "Ejecting samples...", "")],
+        running=[
+            (Output("loading-message-store", "data"), "Ejecting samples...", ""),
+            (Output("notify-interval", "interval"), active_time, idle_time),
+        ],
         prevent_initial_call=True,
     )
     def eject_sample(yes_clicks: int, selected_rows: list) -> int:
         if not yes_clicks:
             return 0
-        for row in selected_rows:
-            logger.info("Ejecting Sample %s from the Pipeline %s", row["Sample ID"], row["Pipeline"])
-            sm.eject(row["Pipeline"], row["Sample ID"])
+        if sm is None:
+            error_notification("Error", "You do not have access to any servers", queue=True)
+            return 0
+        with notify_on_warnings():
+            for row in selected_rows:
+                logger.info("Ejecting Sample %s from the Pipeline %s", row["Sample ID"], row["Pipeline"])
+                sm.eject(row["Pipeline"], row["Sample ID"])
         return 1
 
     # Load button pop up, includes dynamic dropdowns for selecting samples to load
@@ -1361,19 +1373,26 @@ def register_db_view_callbacks(app: Dash) -> None:
         Input("load-yes-close", "n_clicks"),
         State("selected-rows-store", "data"),
         State({"type": "load-dropdown", "index": ALL}, "value"),
-        running=[(Output("loading-message-store", "data"), "Loading samples...", "")],
+        running=[
+            (Output("loading-message-store", "data"), "Loading samples...", ""),
+            (Output("notify-interval", "interval"), active_time, idle_time),
+        ],
         prevent_initial_call=True,
     )
     def load_sample(yes_clicks: int, selected_rows: list, selected_samples: list) -> int:
         if not yes_clicks:
             return 0
+        if sm is None:
+            error_notification("Error", "You do not have access to any servers", queue=True)
+            return 0
         pipelines = [s["Pipeline"] for s in selected_rows]
         pipelines = [s for _, s in sorted(zip(make_pipelines_comparable(pipelines), pipelines, strict=True))]
-        for sample, pipeline in zip(selected_samples, pipelines, strict=True):
-            if not sample:
-                continue
-            logger.info("Loading %s to %s", sample, pipeline)
-            sm.load(pipeline, sample)
+        with notify_on_warnings():
+            for sample, pipeline in zip(selected_samples, pipelines, strict=True):
+                if not sample:
+                    continue
+                logger.info("Loading %s to %s", sample, pipeline)
+                sm.load(pipeline, sample)
         return 1
 
     # Submit button pop up
@@ -1516,17 +1535,21 @@ def register_db_view_callbacks(app: Dash) -> None:
     ) -> int:
         if not yes_clicks:
             return 0
+        if sm is None:
+            error_notification("Error", "You do not have access to any servers", queue=True)
+            return 0
         # capacity_Ah: float | 'areal','mass','nominal'
         capacity_Ah = capacity / 1000 if crate_calc == "custom" else crate_calc
         if not isinstance(capacity_Ah, float) and capacity_Ah not in ["areal", "mass", "nominal"]:
             logger.error("Invalid capacity calculation method: %s", capacity_Ah)
             return 0
-        for row in selected_rows:
-            try:
-                sm.submit(row["Sample ID"], payload, capacity_Ah)
-                success_notification("", f"Sample {row['Sample ID']} submitted", queue=True)
-            except Exception as e:
-                error_notification("", f"Error submitting sample {row['Sample ID']}: {e}", queue=True)
+        with notify_on_warnings():
+            for row in selected_rows:
+                try:
+                    sm.submit(row["Sample ID"], payload, capacity_Ah)
+                    success_notification("", f"Sample {row['Sample ID']} submitted", queue=True)
+                except Exception as e:
+                    error_notification("", f"Error submitting sample {row['Sample ID']}: {e}", queue=True)
         return 1
 
     # When selecting create batch, switch to batch sub-tab with samples selected
@@ -1563,15 +1586,22 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("cancel-yes-close", "n_clicks"),
         State("selected-rows-store", "data"),
-        running=[(Output("loading-message-store", "data"), "Cancelling jobs...", "")],
+        running=[
+            (Output("loading-message-store", "data"), "Cancelling jobs...", ""),
+            (Output("notify-interval", "interval"), active_time, idle_time),
+        ],
         prevent_initial_call=True,
     )
     def cancel_job(yes_clicks: int, selected_rows: list) -> int:
         if not yes_clicks:
             return 0
-        for row in selected_rows:
-            logger.info("Cancelling job %s", row["Job ID"])
-            sm.cancel(row["Job ID"])
+        if sm is None:
+            error_notification("Error", "You do not have access to any servers", queue=True)
+            return 0
+        with notify_on_warnings():
+            for row in selected_rows:
+                logger.info("Cancelling job %s", row["Job ID"])
+                sm.cancel(row["Job ID"])
         return 1
 
     # View data
@@ -1614,19 +1644,30 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("refresh-database", "n_clicks", allow_duplicate=True),
         Input("snapshot-yes-close", "n_clicks"),
         State("selected-rows-store", "data"),
-        running=[(Output("loading-message-store", "data"), "Snapshotting data...", "")],
+        running=[
+            (Output("loading-message-store", "data"), "Snapshotting data...", ""),
+            (Output("notify-interval", "interval"), active_time, idle_time),
+        ],
         prevent_initial_call=True,
     )
     def snapshot_sample(yes_clicks: int, selected_rows: list) -> NoUpdate:
+        if sm is None:
+            error_notification("Error", "You do not have access to any servers", queue=True)
+            return no_update
         if yes_clicks:
-            for row in selected_rows:
-                if row:
-                    if row.get("Job ID"):
-                        logger.info("Snapshotting %s", row["Job ID"])
-                        sm.snapshot(row["Job ID"])
-                    else:
-                        logger.info("Snapshotting %s", row["Sample ID"])
-                        sm.snapshot(row["Sample ID"])
+            with notify_on_warnings():
+                for row in selected_rows:
+                    if row:
+                        if row.get("Job ID"):
+                            logger.info("Snapshotting %s", row["Job ID"])
+                            snapshotee = row["Job ID"]
+                        else:
+                            logger.info("Snapshotting %s", row["Sample ID"])
+                            snapshotee = row["Sample ID"]
+                        try:
+                            sm.snapshot(snapshotee)
+                        except Exception:
+                            logger.exception("Error snapshotting %s", snapshotee)
         return no_update  # Needs any output to trigger loading spinner
 
     # Delete button pop up
