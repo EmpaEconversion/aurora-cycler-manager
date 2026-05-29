@@ -95,23 +95,31 @@ def get_all_mprs(*, force_copy: bool = False) -> list[Path]:
         if server.get("server_type") in {"biologic", "biologic_harvester"}:
             # Check active data path folder
             if server.get("data_path"):
-                new_files = get_mprs(
-                    server,
-                    server["data_path"],
-                    snapshot_folder,
-                    force_copy=force_copy,
-                )
-                all_new_files.extend(new_files)
+                try:
+                    new_files = get_mprs(
+                        server,
+                        server["data_path"],
+                        snapshot_folder,
+                        force_copy=force_copy,
+                    )
+                except Exception:
+                    logger.exception("Error downloading files from server %s", server.get("label"))
+                else:
+                    all_new_files.extend(new_files)
 
             # Check passive harvesters
             for folder in server.get("harvester_folders", []):
-                new_files = get_mprs(
-                    server,
-                    folder,
-                    snapshot_folder,
-                    force_copy=force_copy,
-                )
-                all_new_files.extend(new_files)
+                try:
+                    new_files = get_mprs(
+                        server,
+                        folder,
+                        snapshot_folder,
+                        force_copy=force_copy,
+                    )
+                except Exception:
+                    logger.exception("Error downloading files from server %s", server.get("label"))
+                else:
+                    all_new_files.extend(new_files)
 
     return all_new_files
 

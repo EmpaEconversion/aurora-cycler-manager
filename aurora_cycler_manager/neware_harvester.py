@@ -229,23 +229,30 @@ def harvest_all_neware_files(*, force_copy: bool = False) -> list[Path]:
         if server.get("server_type") in {"neware", "neware_harvester"}:
             # Check activate data path folder
             if server.get("data_path"):
-                new_files = harvest_neware_files(
-                    server,
-                    server["data_path"],
-                    snapshots_folder,
-                    force_copy=force_copy,
-                )
-                all_new_files.extend(new_files)
-
+                try:
+                    new_files = harvest_neware_files(
+                        server,
+                        server["data_path"],
+                        snapshots_folder,
+                        force_copy=force_copy,
+                    )
+                except Exception:
+                    logger.exception("Error downloading files from server %s", server.get("label"))
+                else:
+                    all_new_files.extend(new_files)
             # Check passive harvesters
             for folder in server.get("harvester_folders", []):
-                new_files = harvest_neware_files(
-                    server,
-                    folder,
-                    snapshots_folder,
-                    force_copy=force_copy,
-                )
-                all_new_files.extend(new_files)
+                try:
+                    new_files = harvest_neware_files(
+                        server,
+                        folder,
+                        snapshots_folder,
+                        force_copy=force_copy,
+                    )
+                except Exception:
+                    logger.exception("Error downloading files from server %s", server.get("label"))
+                else:
+                    all_new_files.extend(new_files)
 
     return all_new_files
 
