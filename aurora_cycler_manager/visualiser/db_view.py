@@ -269,6 +269,7 @@ visibility_settings = {
         "download-button",
         "upload-button",
         "info-button",
+        "snapshot-button",
     },
 }
 
@@ -1199,8 +1200,10 @@ def register_db_view_callbacks(app: Dash) -> None:
                 enabled |= {"download-button"}
             if sm is not None:
                 if table == "samples":
-                    if all(s.get("Sample ID") is not None for s in selected_rows):
-                        enabled |= {"delete-button", "label-button", "create-batch-button"}
+                    all_samples = all(s.get("Sample ID") is not None for s in selected_rows)
+                    all_servers = all(s.get("Server label") in sm.servers for s in selected_rows)
+                    if all_samples:
+                        enabled |= {"delete-button", "label-button", "create-batch-button", "snapshot-button"}
                 elif table == "pipelines":
                     all_samples = all(s.get("Sample ID") is not None for s in selected_rows)
                     all_servers = all(s.get("Server label") in sm.servers for s in selected_rows)
