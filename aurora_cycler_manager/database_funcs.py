@@ -41,6 +41,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import ProgrammingError
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_engine import get_engine
@@ -51,23 +52,48 @@ CONFIG = get_config()
 logger = logging.getLogger(__name__)
 
 
-def _patch_database(engine: Engine) -> None:
-    """Add missing columns to database, in case users are coming from an older version."""
+def _db_schema_needs_update(engine: Engine) -> bool:
+    """Check if there is anything missing from the db schema."""
     inspector = inspect(engine)
+    needs_update = False
 
-    # Add missing columns to jobs table
+    tables = ["jobs", "pipelines", "samples", "results"]
+    existing_cols = {table: [col["name"] for col in inspector.get_columns(table)] for table in tables}
+
+    if "Capacity (mAh)" not in existing_cols["jobs"]:
+        needs_update = True
+    if "Unicycler protocol" not in existing_cols["jobs"]:
+        needs_update = True
+
+    for table in tables:
+        if "sync_modified" not in existing_cols[table]:
+            needs_update = True
+        if "sync_op" not in existing_cols[table]:
+            needs_update = True
+
+    if "dataframes" not in inspector.get_table_names():
+        needs_update = True
+
+    return needs_update
+
+
+def _update_db_schema(engine: Engine) -> None:
+    """Update db schema with new columns/tables."""
+    inspector = inspect(engine)
+    tables = ["jobs", "pipelines", "samples", "results"]
+    existing_cols = {table: [col["name"] for col in inspector.get_columns(table)] for table in tables}
+
+    logger.info("Patching database")
     with engine.begin() as conn:
-        existing_columns = [col["name"] for col in inspector.get_columns("jobs")]
-        if "Capacity (mAh)" not in existing_columns:
+        if "Capacity (mAh)" not in existing_cols["jobs"]:
             conn.execute(text('ALTER TABLE jobs ADD COLUMN "Capacity (mAh)" FLOAT'))
-        if "Unicycler protocol" not in existing_columns:
+        if "Unicycler protocol" not in existing_cols["jobs"]:
             conn.execute(text('ALTER TABLE jobs ADD COLUMN "Unicycler protocol" TEXT'))
 
         for table in ["jobs", "pipelines", "samples", "results"]:
-            existing_columns = [col["name"] for col in inspector.get_columns(table)]
-            if "sync_modified" not in existing_columns:
+            if "sync_modified" not in existing_cols[table]:
                 conn.execute(text(f'ALTER TABLE {table} ADD COLUMN "sync_modified" FLOAT DEFAULT 0.0'))
-            if "sync_op" not in existing_columns:
+            if "sync_op" not in existing_cols[table]:
                 conn.execute(text(f'ALTER TABLE {table} ADD COLUMN "sync_op" TEXT DEFAULT "add"'))
             conn.execute(text(f'CREATE INDEX IF NOT EXISTS "idx_{table}_sync_modified" ON "{table}" ("sync_modified")'))
             conn.execute(text(f'CREATE INDEX IF NOT EXISTS "idx_{table}_sync_op" ON "{table}" ("sync_op")'))
@@ -92,6 +118,19 @@ def _patch_database(engine: Engine) -> None:
         meta.create_all(engine)
 
 
+def patch_database(engine: Engine) -> None:
+    """Add missing columns to database, in case users are coming from an older version."""
+    if _db_schema_needs_update(engine):
+        try:
+            _update_db_schema(engine)
+        except ProgrammingError as e:
+            msg = (
+                "Database schema needs updating. "
+                "Failed to update. An admin must run 'aurora-app' or 'aurora-setup update' first."
+            )
+            raise PermissionError(msg) from e
+
+
 def stamp_sync(
     row: dict,
     uts: float | None = None,
@@ -106,7 +145,7 @@ def stamp_sync(
 engine = get_engine(CONFIG)
 insert = pg_insert if engine.dialect.name == "postgresql" else sqlite_insert
 
-_patch_database(engine)
+patch_database(engine)
 
 metadata = MetaData()
 samples_table = Table("samples", metadata, autoload_with=engine)
