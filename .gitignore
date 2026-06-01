@@ -167,9 +167,6 @@ config.json
 *.ipynb
 *.code-workspace
 
-# UV lock file
-uv.lock
-
 # diskcache cache folder
 cache/
 

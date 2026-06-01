@@ -7,3 +7,8 @@ repos:
         # Rules that are fully ignored are in pyproject.toml
         args: ["--fix", "--ignore=PTH,C901,PLR0911,PLR0912,PLR0913,PLR0915,PLW0603,BLE001,TRY400,PERF203,FIX002,FBT001,FBT002"]
       - id: ruff-format
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.11.17
+    hooks:
+      - id: uv-lock
