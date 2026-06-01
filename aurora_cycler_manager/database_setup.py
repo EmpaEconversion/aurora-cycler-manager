@@ -39,6 +39,7 @@ from sqlalchemy import (
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.database_engine import get_engine
+from aurora_cycler_manager.setup_logging import setup_logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -400,9 +401,8 @@ def create_database(force: bool = False) -> None:
     if db_type == "sqlite":
         logger.info("Updating sqlite database at %s...", str(config["Database path"]))
     else:
-        logger.info("Update postgresql database '%s'...", config["Database name"])
+        logger.info("Updating postgresql database '%s'...", config["Database name"])
     meta.create_all(engine, checkfirst=True)
-    logger.info("Done. Tables: %s", ", ".join(meta.tables.keys()))
 
     # Handle added/removed columns in samples
     if db_existed:
@@ -432,8 +432,12 @@ def create_database(force: bool = False) -> None:
                         conn.execute(text(f'ALTER TABLE samples ADD COLUMN "{col.name}" {type_str}'))
                 logger.info("Adding new columns: %s", ", ".join(added))
 
-            if not added and not removed:
-                logger.info("No changes to database configuration")
+    # Importing database_funcs runs a db patch, updating any columns
+    import aurora_cycler_manager.database_funcs as dbf  # noqa: PLC0415
+
+    dbf.patch_database(engine)  # In case already imported
+
+    logger.info("Update complete. Tables: %s", ", ".join(meta.tables.keys()))
 
 
 def create_new_setup(base_dir: str | Path, overwrite: bool = False) -> None:
@@ -548,6 +552,7 @@ def print_config(verbose: bool = False) -> dict:
 
 def main() -> None:
     """CLI entry point for aurora cycler manager setup utility."""
+    setup_logging()
     parser = argparse.ArgumentParser(description="aurora-cycler-manager setup utility.")
     subparsers = parser.add_subparsers(dest="command")
 

@@ -6,10 +6,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from sqlalchemy import inspect, types
+from sqlalchemy import inspect, text, types
+from sqlalchemy.exc import ProgrammingError
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.database_funcs import get_engine
+from aurora_cycler_manager.database_funcs import get_engine, patch_database
 from aurora_cycler_manager.database_setup import (
     connect_to_config,
     create_database,
@@ -158,6 +159,92 @@ class TestDatabaseSetup:
         columns = inspector.get_columns("samples")
         # Should be left with 5 required cols + "delete everything else"
         assert len(columns) == 6, "Columns were not deleted successfully"
+
+    def test_db_path(self, reset_all, tmp_path: Path) -> None:
+        """Test running aurora-setup update without write permissions."""
+        if os.getenv("PYTEST_RUNNING") != "1":
+            msg = "This test should not run outside of pytest environment!"
+            raise RuntimeError(msg)
+        test_project_path_1 = tmp_path / "temp_project1"
+
+        # Initialise the setup
+        create_new_setup(test_project_path_1)
+        config = get_config(reload=True)
+        db_path = config["Database path"]
+        assert db_path == test_project_path_1 / "aurora.db"
+
+        # Delete some stuff so that a patch needs to run
+        engine = get_engine(config)
+
+        # Sanity check that we are using the test db
+        assert "sqlite" in engine.url.drivername, "Safety check: expected SQLite engine"
+        assert Path(engine.url.database).resolve() == db_path.resolve(), (
+            f"Safety check: engine points to {engine.url.database}, expected {db_path}"
+        )
+        assert tmp_path.resolve() in Path(engine.url.database).resolve().parents, (
+            "Safety check: DB must be inside tmp_path"
+        )
+
+        def drop_things() -> None:
+            with engine.connect() as conn:
+                for table in ["pipelines", "samples", "jobs", "results"]:
+                    for col in ["sync_modified", "sync_op"]:
+                        conn.execute(text(f'DROP INDEX IF EXISTS "idx_{table}_{col}"'))
+                        conn.execute(text(f'ALTER TABLE "{table}" DROP COLUMN "{col}"'))
+                conn.execute(text("DROP TABLE dataframes"))
+
+        def assert_missing_things() -> None:
+            inspector = inspect(engine)
+            for table in ["pipelines", "samples", "jobs", "results"]:
+                assert "sync_op" not in [c["name"] for c in inspector.get_columns(table)]
+                assert "sync_modified" not in [c["name"] for c in inspector.get_columns(table)]
+            tables = inspector.get_table_names()
+            assert "dataframes" not in tables
+
+        def assert_things_present() -> None:
+            inspector = inspect(engine)
+            for table in ["pipelines", "samples", "jobs", "results"]:
+                assert "sync_op" in [c["name"] for c in inspector.get_columns(table)]
+                assert "sync_modified" in [c["name"] for c in inspector.get_columns(table)]
+            tables = inspector.get_table_names()
+            assert "dataframes" in tables
+
+        permission_denied = patch(
+            "aurora_cycler_manager.database_funcs._update_db_schema",
+            side_effect=ProgrammingError(
+                statement="ALTER TABLE ...",
+                params={},
+                orig=Exception("Permission denied."),
+            ),
+        )
+
+        assert_things_present()
+        # patch_database should skip if things are present, so works even without pemissions
+        with permission_denied:
+            patch_database(engine)
+
+        drop_things()  # Delete some cols/tables
+
+        # patch_database sees there is an issue, errors because of permissions
+        with (
+            permission_denied,
+            pytest.raises(
+                PermissionError,
+                match=r"Failed to update. An admin must run 'aurora-app' or 'aurora-setup update' first.",
+            ),
+        ):
+            patch_database(engine)
+
+        # Things should still be missing, patch_database (with permissions) adds them back
+        assert_missing_things()
+        patch_database(engine)
+        assert_things_present()
+
+        # Should also work with create_database, which calls patch_database
+        drop_things()
+        assert_missing_things()
+        create_database()
+        assert_things_present()
 
     def test_print_status(self, capsys: pytest.CaptureFixture, reset_all) -> None:
         """Check print status CLI works."""
