@@ -1,16 +1,4 @@
-# Installation
-
-With Python >3.10:
-```
-pip install aurora-cycler-manager
-```
-
-To update to the latest version, do:
-```
-pip install aurora-cycler-manager --upgrade
-```
-
-## Projects
+# Projects
 
 An `aurora-cycler-manager` 'project' is a folder on a filesystem containing a configuration file and some data.
 
@@ -33,16 +21,6 @@ To view data from an existing set up, use:
 aurora-setup connect --project-dir="path\to\my-project"
 ```
 
-## Interacting with cyclers
-
-Interacting with cyclers (submitting jobs, pulling data, etc.) works with OpenSSH. Servers must have OpenSSH installed and running, and users must have password-less access.
-
-To get access, run `ssh-keygen`, and copy your public key to `~/.ssh/authorized_keys` on the cycler server.
-
-The cycler machine must also be in your `known_hosts`, the easiest way is to just connect using `ssh user@host` and say yes to adding to known hosts.
-
-(Optional) you can make changes to your user config to change e.g. your SSH key path, or the "Snapshots folder path" where raw data is stored before being converted. These files can become very large.
-
 ## Creating a new project
 
 ```
@@ -51,7 +29,8 @@ aurora-setup init --project-dir="path\to\my-project"
 
 This generates subfolders, a blank sqlite3 database, and a configuration file in the folder.
 
-You must fill in the configuration file with details about the cycler servers.
+You must fill in the configuration file with details about the cycler servers. If you have no
+cyclers and just want to view some data, you can leave the Servers blank: `"Servers": {}`.
 
 An example configuration looks like:
 ```python

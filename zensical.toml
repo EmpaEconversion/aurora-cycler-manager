@@ -9,8 +9,22 @@ repo_name = "aurora-cycler-manager"
 copyright = "Copyright &copy; 2026 Empa"
 nav = [
   "index.md",
-  "installation.md",
-  "usage.md",
+  { "Set up" = [
+    "setup/install.md",
+    "setup/project.md",
+    "setup/cyclers.md",
+    "setup/ssh.md",
+    "setup/multi-user.md"
+  ]},
+  { "Usage" = [
+    "usage/startup.md",
+    "usage/quickstart.md",
+    "usage/add-samples.md",
+    "usage/protocol.md",
+    "usage/experiment.md",
+    "usage/fetch-data.md",
+    "usage/python.md"
+  ]},
   { "API reference" = [
     "api/data_parse.md",
     "api/server_manager.md",
