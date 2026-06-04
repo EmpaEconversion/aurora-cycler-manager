@@ -1938,9 +1938,9 @@ def register_db_view_callbacks(app: Dash) -> None:
         output=Output("upload-filepath", "data"),
         id="dash-uploader",
     )
-    def callback_on_completion(status: du.UploadStatus) -> str:
+    def callback_on_completion(filenames: list[str]) -> str:
         """Update filepath when upload finished."""
-        return str(status.uploaded_files[0])
+        return str(filenames[0])
 
     @app.callback(
         Output("upload-alert", "children"),
