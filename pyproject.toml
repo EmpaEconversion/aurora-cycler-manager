@@ -21,7 +21,7 @@ dynamic = ["version"]
 dependencies = [
     "aurora-unicycler>=0.4.5",
     "battinfoconverter-backend>=3.2.0",
-    "dash-uploader==0.7.0a2",
+    "dash-uploader==0.6.1",
     "dash[diskcache]>=4.1.0",
     "dash_ag_grid>=33.3.3",
     "dash_bootstrap_components>=2.0.3",
