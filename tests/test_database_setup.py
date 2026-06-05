@@ -53,14 +53,13 @@ class TestDatabaseSetup:
             get_sa_type("NUMERIC(5)")
 
     def test_project_init(self, reset_all, tmp_path: Path) -> None:
-        """Test connect command."""
+        """Check init command, should not allow overwriting."""
         # Double check you're not going to delete the prod database!
         if os.getenv("PYTEST_RUNNING") != "1":
             msg = "This test should not run outside of pytest environment!"
             raise RuntimeError(msg)
 
         test_project_path_1 = tmp_path / "temp_project1"
-        shared_config_1 = test_project_path_1 / "shared_config.json"
         generated_files = [
             "shared_config.json",
             "aurora.db",
@@ -77,20 +76,7 @@ class TestDatabaseSetup:
         with pytest.raises(FileExistsError):
             create_new_setup(test_project_path_1)
 
-        # Unless you force it
-        with shared_config_1.open("w", encoding="utf-8") as f:
-            json.dump({"This": "should not be in the next file"}, f)
-
-        create_new_setup(test_project_path_1, overwrite=True)
-
-        with shared_config_1.open(encoding="utf-8") as f:
-            data = json.load(f)
-
-        config = get_config(reload=True)
-        assert "This" not in data
-        assert config["Shared config path"] == shared_config_1
-
-    def test_init_new_project(self, reset_all, tmp_path: Path) -> None:
+    def test_init_connect(self, reset_all, tmp_path: Path) -> None:
         """Test creating a new project and switching between projects."""
         # Double check you're not going to delete the prod database!
         if os.getenv("PYTEST_RUNNING") != "1":
@@ -117,6 +103,57 @@ class TestDatabaseSetup:
         assert config["Shared config path"] == shared_config_1
 
         # Check the status
+        status = print_config()
+        assert Path(status["Shared config path"]) == shared_config_1
+
+        # Switch to second project will full path
+        connect_to_config(shared_config_2)
+        config = get_config(reload=True)
+        assert config["Shared config path"] == shared_config_2
+
+        # Switch to a non-existing project
+        with pytest.raises(FileNotFoundError, match="Could not find a valid shared config file"):
+            connect_to_config(tmp_path / "empty")
+
+        # Switch to a config without the right keys
+        with shared_config_1.open("r") as f:
+            shared_config = json.load(f)
+        shared_config.pop("Database path")
+        with shared_config_1.open("w") as f:
+            json.dump(shared_config, f, indent=4)
+
+        with pytest.raises(ValueError, match="does not look like an Aurora configuration"):
+            connect_to_config(test_project_path_1)
+
+    def test_init_connect_no_user_config(self, reset_all, test_dir: Path, tmp_path: Path) -> None:
+        """Test init/connect commands without a user config."""
+        test_project_path_1 = tmp_path / "temp_project1"
+        shared_config_1 = test_project_path_1 / "shared_config.json"
+        # Delete the user config
+        config_path = test_dir / "test_config.json"
+        config_path.unlink()
+        assert not config_path.exists()
+
+        # Trying to access user config will create it
+        with pytest.raises(ValueError, match="Not connected to any Aurora project"):
+            print_config()
+        assert config_path.exists()
+
+        config_path.unlink()
+        assert not config_path.exists()
+
+        # Initialising a new project will create it and not error
+        create_new_setup(test_project_path_1)
+        assert config_path.exists()
+        status = print_config()
+        assert Path(status["Shared config path"]) == shared_config_1
+
+        config_path.unlink()
+        assert not config_path.exists()
+
+        # Connecting to an existing project will create it and not error
+        connect_to_config(test_project_path_1)
+        assert config_path.exists()
         status = print_config()
         assert Path(status["Shared config path"]) == shared_config_1
 
