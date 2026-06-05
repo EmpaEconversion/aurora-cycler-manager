@@ -177,7 +177,7 @@ def _read_config_file() -> dict:
             _assert_required_keys(config)
         except ValueError as e:
             msg = (
-                "Not connected to any Aurora project."
+                "Not connected to any Aurora project. "
                 'Use `aurora-setup init "path/to/my/project` to create a new project, '
                 'or `aurora-setup connect "path/to/my/project"` to connect to an existing project.'
             )

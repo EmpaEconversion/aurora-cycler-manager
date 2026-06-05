@@ -197,7 +197,7 @@ def calc_dq(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def merge_dfs(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, pl.DataFrame | None]:
-    """Merge cycling dataframes and add cycles. Seperate out EIS."""
+    """Merge cycling dataframes and add cycles. Separate out EIS."""
     for i, df in enumerate(dfs):
         exprs = [pl.lit(i).alias("job_number")]
         if "loop_number" not in df.columns:
