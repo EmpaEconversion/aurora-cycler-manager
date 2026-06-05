@@ -30,7 +30,6 @@ from aurora_cycler_manager.visualiser.notifications import (
 )
 from aurora_cycler_manager.visualiser.samples import register_samples_callbacks, samples_layout
 
-setup_logging()
 logger = logging.getLogger(__name__)
 
 # Need to set this for Mantine notifications to work
@@ -145,4 +144,5 @@ def main(port: int | None = None, host: str = "127.0.0.1", *, open_browser: bool
 
 
 if __name__ == "__main__":
+    setup_logging()
     main()
