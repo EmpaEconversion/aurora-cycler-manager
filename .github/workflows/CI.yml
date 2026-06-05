@@ -61,6 +61,18 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Get history to check if tag is on main
+
+      - name: Verify tag is on main
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Tag commit is on main — proceeding."
+          else
+            echo "::error::Tag $GITHUB_REF_NAME is not on main; refusing to publish."
+            exit 1
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v6
