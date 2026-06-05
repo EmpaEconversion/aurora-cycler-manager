@@ -593,7 +593,7 @@ def get_sampleid_from_metadata(metadata: dict, known_samples: list[str] | None =
 
 
 def get_neware_xlsx_data(file_path: Path) -> pl.DataFrame:
-    """Convert Neware xlsx file to dictionary. DEPRACATED: use ndax not xlsx."""
+    """Convert Neware xlsx file to dictionary. DEPRECATED: use ndax not xlsx."""
     df = pd.read_excel(file_path, sheet_name="record", header=0, engine="calamine")
     required_columns = ["Voltage(V)", "Current(A)", "Step Type", "Date", "Time"]
     if not all(col in df.columns for col in required_columns):

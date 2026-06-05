@@ -64,13 +64,14 @@ def reset_all(test_dir: Path) -> Generator[None, None, None]:
 
     # Restore database
     shutil.copyfile(db_path.with_suffix(".bak"), db_path)
-    # Remove sample files
 
+    # Remove sample files
     for test_file in test_files:
         for file in snapshots_path.rglob(test_file):
             file.unlink()
         for file in batches_path.rglob(test_file):
             file.unlink()
+
     # Reset config
     with (test_dir / "test_config.json").open("w") as f:
         f.write(

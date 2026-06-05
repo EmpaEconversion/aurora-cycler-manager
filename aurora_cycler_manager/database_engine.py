@@ -11,10 +11,6 @@ from sqlalchemy import (
     create_engine,
 )
 
-from aurora_cycler_manager.config import get_config
-
-CONFIG = get_config()
-
 
 def get_engine(config: dict) -> Engine:
     """Create sqlite3 or postgres db engine."""

@@ -258,7 +258,6 @@ def create_database(force: bool = False) -> None:
         db_existed = database_path.exists()
         if not db_existed:
             database_path.parent.mkdir(exist_ok=True)
-            logger.info("Creating new database at %s", database_path)
         else:
             logger.info("Found database at %s", database_path)
     else:
@@ -398,10 +397,11 @@ def create_database(force: bool = False) -> None:
     Index("idx_jobs_sample", jobs_table.c["Sample ID"])
     Index("idx_pipelines_sample_id", pipelines_table.c["Sample ID"])
     Index("idx_pipelines_job_id", pipelines_table.c["Job ID"])
-    if db_type == "sqlite":
-        logger.info("Updating sqlite database at %s...", str(config["Database path"]))
-    else:
-        logger.info("Updating postgresql database '%s'...", config["Database name"])
+    if db_existed:
+        if db_type == "sqlite":
+            logger.info("Updating sqlite database at %s...", str(config["Database path"]))
+        else:
+            logger.info("Updating postgresql database '%s'...", config["Database name"])
     meta.create_all(engine, checkfirst=True)
 
     # Handle added/removed columns in samples
@@ -436,20 +436,19 @@ def create_database(force: bool = False) -> None:
     import aurora_cycler_manager.database_funcs as dbf  # noqa: PLC0415
 
     dbf.patch_database(engine)  # In case already imported
+    if db_existed:
+        logger.info("Update complete. Tables: %s", ", ".join(meta.tables.keys()))
+    elif db_type == "sqlite":
+        logger.info("Created database at %s", str(config["Database path"]))
 
-    logger.info("Update complete. Tables: %s", ", ".join(meta.tables.keys()))
 
-
-def create_new_setup(base_dir: str | Path, overwrite: bool = False) -> None:
+def create_new_setup(base_dir: str | Path) -> None:
     """Create a new aurora setup with a shared config file and database."""
     base_dir = Path(base_dir).resolve()
     shared_config_path = base_dir / "shared_config.json"
     if shared_config_path.exists():
-        if overwrite:
-            logger.warning("Overwriting existing project config file at %s", shared_config_path)
-        else:
-            msg = "A project shared config file already exists at this location. Use --overwrite to overwrite it."
-            raise FileExistsError(msg)
+        msg = "A project already exists at this location, choose another location or delete the old project."
+        raise FileExistsError(msg)
     base_dir.mkdir(parents=True, exist_ok=True)
     (base_dir / "data").mkdir(exist_ok=True)
     (base_dir / "protocols").mkdir(exist_ok=True)
@@ -476,9 +475,11 @@ def create_new_setup(base_dir: str | Path, overwrite: bool = False) -> None:
     create_database(force=False)
 
     logger.critical(
-        "YOU MUST FILL IN THE DETAILS AT %s",
+        "Please fill in the configuration file at %s",
         shared_config_path,
     )
+
+    logger.info("You can now start the app with `aurora-app`")
 
 
 def connect_to_config(shared_config_folder: str | Path) -> None:
@@ -509,22 +510,22 @@ def connect_to_config(shared_config_folder: str | Path) -> None:
 
     logger.info("Using shared config file at %s", str(confirmed_shared_config_path))
 
-    # Check that the shared config has the required keys
-    required_keys = [
-        "Database path",
-        "Protocols folder path",
-        "Data folder path",
-    ]
+    # Load the shared config
     with confirmed_shared_config_path.open("r") as f:
         shared_config = json.load(f)
-    for key in required_keys:
-        if key not in shared_config:
-            msg = f"Shared config file at {confirmed_shared_config_path} is missing required key: {key}"
-            raise ValueError(msg)
 
-    # get_config will generate a default file if it doesn't exist
+    # Check that it looks like an aurora config
+    if "Database path" not in shared_config and "Database name" not in shared_config:
+        msg = (
+            f"The config file at {confirmed_shared_config_path} does not look like an Aurora configuration."
+            "It should at least contain a 'Database path' key (or 'Database name' if using postgres)."
+        )
+        raise ValueError(msg)
+
+    # get_config will generate a default User config file if it doesn't exist
     with contextlib.suppress(Exception):
         get_config(reload=True)
+
     # Update the user config file with the shared config path
     logger.info("Updating user config file at %s", str(USER_CONFIG_PATH))
     with (USER_CONFIG_PATH).open("r") as f:
@@ -558,20 +559,31 @@ def main() -> None:
 
     connect_parser = subparsers.add_parser("connect", help="Connect to existing config")
     connect_parser.add_argument(
+        "project_dir_pos",
+        nargs="?",
+        type=Path,
+        metavar="PROJECT_DIR",
+        help="Path to Aurora project directory (positional shorthand)",
+    )
+    connect_parser.add_argument(
         "--project-dir",
         type=Path,
-        required=True,
         help="Path to Aurora project directory containing configuration, database, data folders",
     )
 
     create_parser = subparsers.add_parser("init", help="Create new config and database")
     create_parser.add_argument(
+        "project_dir_pos",
+        nargs="?",
+        type=Path,
+        metavar="PROJECT_DIR",
+        help="Path to Aurora project directory (positional shorthand)",
+    )
+    create_parser.add_argument(
         "--project-dir",
         type=Path,
-        required=True,
         help="Path to Aurora project directory - subfolders, configuration files and a database will be placed here",
     )
-    create_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing config and database")
 
     update_parser = subparsers.add_parser("update", help="Update the database from the config")
     update_parser.add_argument(
@@ -586,9 +598,18 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "connect":
-        connect_to_config(args.project_dir)
+        project_dir = args.project_dir or args.project_dir_pos
+        if not project_dir:
+            connect_parser.error('A project directory is required (e.g. aurora-setup connect "path/to/my/project")')
+        connect_to_config(project_dir)
     elif args.command == "init":
-        create_new_setup(args.project_dir, args.overwrite)
+        project_dir = args.project_dir or args.project_dir_pos
+        if not project_dir:
+            create_parser.error(
+                'A project directory is required (e.g. aurora-setup init "path/to/my/project"), '
+                "a folder structure and database will be created there"
+            )
+        create_new_setup(project_dir)
     elif args.command == "update":
         create_database(force=args.force)
     elif args.command == "status":

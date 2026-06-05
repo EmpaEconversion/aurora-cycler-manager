@@ -56,12 +56,12 @@ pip install aurora-cycler-manager --upgrade
 
 Connect to an existing project:
 ```shell
-aurora-setup connect --project-dir="path\to\your\setup"
+aurora-setup connect "path/to/your/project"
 ```
 
 Create a new project:
 ```shell
-aurora-setup init --project-dir="path\to\your\setup"
+aurora-setup init "path/to/your/project"
 ```
 You must then fill out the configuration file.
 
