@@ -18,6 +18,69 @@ logger = logging.getLogger(__name__)
 CONFIG = None
 
 
+def _assert_required_keys(config: dict) -> None:
+    """Check if the config has required info."""
+    if config["Database type"] not in ["sqlite", "postgresql"]:
+        msg = f"Unknown database type {config['Database type']}. Supported: 'sqlite' and 'postgresql'"
+        raise ValueError(msg)
+    if config["Database type"] == "sqlite" and "Database path" not in config:
+        msg = "sqlite requires a 'Database path' in the config"
+        raise ValueError(msg)
+    if config["Database type"] == "postgresql" and "Database host" not in config:
+        msg = "postgresql requires at least 'Database host', 'Database name', 'Database user' in the config"
+        raise ValueError(msg)
+    if not config.get("Data folder path"):
+        msg = "Config missing 'Data folder path'"
+        raise ValueError(msg)
+    if not config.get("Protocols folder path"):
+        msg = "Config missing 'Protocols folder path"
+        raise ValueError(msg)
+
+
+def _fixup_config(config: dict) -> dict:
+    """Add any missing config info, defaults, fix types."""
+    # sqlite by default
+    if "Database type" not in config:
+        config["Database type"] = "sqlite"
+
+    # Servers should be transformed to key: dict with valid labels
+    config["Servers"] = _convert_legacy_servers(config)
+
+    # Set timezone
+    if config.get("Time zone"):
+        config["tz"] = ZoneInfo(config["Time zone"])
+    else:
+        config["tz"] = ZoneInfo(get_localzone_name())
+
+    # Add a raw snapshots folder path to USER config if it doesn't exist
+    if not config.get("Snapshots folder path"):
+        config["Snapshots folder path"] = platformdirs.user_data_dir("aurora_cycler_manager", appauthor=False)
+        user_config_path = config["User config path"]
+        with user_config_path.open("w", encoding="utf-8") as f:
+            json.dump(config, f, indent=4)
+            logger.warning(
+                "IMPORTANT: Added default 'Snapshots folder path' to config file at %s. ",
+                user_config_path,
+            )
+            logger.warning("IMPORTANT: Snapshots can add up to many gigabytes if you have 100s of long experiments.")
+
+    # Use "Data folder path" - rename legacy "Processed snapshots folder path"
+    if not config.get("Data folder path"):
+        config["Data folder path"] = config.get("Processed snapshots folder path")
+
+    # For SSH connections, paths must be str | None, does not accept Path
+    if config.get("SSH private key path"):
+        config["SSH private key path"] = str(config["SSH private key path"])
+    else:
+        config["SSH private key path"] = None
+    if config.get("SSH known hosts path"):
+        config["SSH known hosts path"] = str(config["SSH known hosts path"])
+    else:
+        config["SSH known hosts path"] = Path("~/.ssh/known_hosts").expanduser()
+
+    return config
+
+
 def _read_config_file() -> dict:
     """Get the configuration data from the user and shared config files.
 
@@ -51,21 +114,7 @@ def _read_config_file() -> dict:
                 user_config_path = config_dir / "config.json"
                 logger.warning("Moved config file from %s to %s", old_user_config_path, user_config_path)
 
-    err_msg = f"""
-        Please fill in the config file at {user_config_path}.
-
-        REQUIRED:
-        'Shared config path': Path to the shared config file on the network drive.
-
-        OPTIONAL - if you want to interact directly with cyclers (e.g. load, eject, submit jobs):
-        'SSH private key path': Path to the SSH private key file if not in standard location (e.g. '~/.ssh/id_rsa').
-        'SSH known hosts path': Path to the SSH known hosts file if not in standard location ('~/.ssh/known_hosts')
-        'Snapshots folder path': Path to a (local) folder to store unprocessed snapshots e.g. 'C:/aurora-shapshots'.
-
-        You can set the 'Shared config path' by running 'aurora-setup connect --project-dir=<path>'.
-    """
-
-    # if there is no user config file, create one
+    # If there is no user config file, create one
     if not user_config_path.exists():
         config_dir.mkdir(parents=True, exist_ok=True)
         with user_config_path.open("w", encoding="utf-8") as f:
@@ -80,30 +129,20 @@ def _read_config_file() -> dict:
                     indent=4,
                 ),
             )
-            logger.info(
+            logger.critical(
                 "Created new config file at %s.",
                 user_config_path,
             )
-            raise FileNotFoundError(err_msg)
 
     with user_config_path.open(encoding="utf-8") as f:
         try:
             config = json.load(f)
+            config["User config path"] = user_config_path
         except json.JSONDecodeError as e:
             msg = f"Error reading config file {user_config_path}: {e}"
             raise ValueError(msg) from e
 
-    if not config.get("Snapshots folder path"):
-        config["Snapshots folder path"] = platformdirs.user_data_dir("aurora_cycler_manager", appauthor=False)
-        with user_config_path.open("w", encoding="utf-8") as f:
-            json.dump(config, f, indent=4)
-            logger.warning(
-                "IMPORTANT: Added default 'Snapshots folder path' to config file at %s. ",
-                user_config_path,
-            )
-            logger.warning("IMPORTANT: Snapshots can add up to many gigabytes if you have 100s of long experiments.")
-
-    # Check for relative paths and convert to absolute paths
+    # Check for USER CONFIG relative paths and convert to absolute paths
     for key in config:
         if "path" in key.lower() and config[key]:
             if not Path(config[key]).is_absolute():
@@ -117,7 +156,7 @@ def _read_config_file() -> dict:
         with Path(shared_config_path).open(encoding="utf-8") as f:
             shared_config = json.load(f)
 
-        # Check for relative paths and convert to absolute paths
+        # Check for SHARED CONFIG relative paths and convert to absolute paths
         shared_config_dir = shared_config_path.parent
         for key in shared_config:
             if "path" in key.lower():
@@ -127,64 +166,47 @@ def _read_config_file() -> dict:
                     shared_config[key] = Path(shared_config[key])
         config.update(shared_config)
 
-    if "Database type" not in config:
-        config["Database type"] = "sqlite"
-    if config["Database type"] not in ["sqlite", "postgresql"]:
-        msg = f"Unknown database type {config['Database type']}. Supported: 'sqlite' and 'postgresql'"
-        raise ValueError(msg)
-    if config["Database type"] == "sqlite" and "Database path" not in config:
-        msg = "sqlite requires a 'Database path' in the config"
-        raise ValueError(msg)
-    if config["Database type"] == "postgresql" and "Database host" not in config:
-        msg = "postgresql requires at least 'Database host', 'Database name', 'Database user' in the config"
-        raise ValueError(msg)
+    # Fill in any missing details in the config
+    config = _fixup_config(config)
 
-    # Servers should be transformed to key: dict with valid labels
-    config["Servers"] = _convert_legacy_servers(config)
-
-    # Set timezone
-    if config.get("Time zone"):
-        config["tz"] = ZoneInfo(config["Time zone"])
+    # Check that the config is complete
+    if shared_config_path:
+        _assert_required_keys(config)
     else:
-        config["tz"] = ZoneInfo(get_localzone_name())
-
-    config["User config path"] = user_config_path
-
-    # Also accept "Data folder path" - will be prefered in future as it contains more than just snapshots
-    if not config.get("Data folder path"):
-        config["Data folder path"] = config.get("Processed snapshots folder path")
-    if not config.get("Data folder path"):
-        msg = "Config missing 'Data folder path'"
-        raise ValueError(msg)
-    if not config.get("Protocols folder path"):
-        msg = "Config missing 'Protocols folder path"
-        raise ValueError(msg)
-
-    # For SSH connections, paths must be str | None, does not accept Path
-    if config.get("SSH private key path"):
-        config["SSH private key path"] = str(config["SSH private key path"])
-    else:
-        config["SSH private key path"] = None
-    if config.get("SSH known hosts path"):
-        config["SSH known hosts path"] = str(config["SSH known hosts path"])
-    else:
-        config["SSH known hosts path"] = Path("~/.ssh/known_hosts").expanduser()
+        try:
+            _assert_required_keys(config)
+        except ValueError as e:
+            msg = (
+                "Not connected to any Aurora project."
+                'Use `aurora-setup init --project-dir="path/to/my/project` to create a new project, '
+                'or `aurora-setup connect --project-dir="path/to/my/project"` to connect to an existing project.'
+            )
+            raise ValueError(msg) from e
 
     return config
 
 
 def _convert_legacy_servers(config: dict) -> dict:
     """Convert servers from older config styles to single dict."""
-    servers = _convert_servers_to_dict(config.get("Servers"))
+    servers = _convert_servers_to_dict(config.get("Servers", {}))
+
+    # Also convert old harvester lists to new server dict
     neware_harvesters = _convert_servers_to_dict(config.get("Neware harvester", {}).get("Servers", {}))
     for server_config in neware_harvesters.values():
         server_config["server_type"] = "neware_harvester"
     biologic_harvesters = _convert_servers_to_dict(config.get("EC-lab harvester", {}).get("Servers", {}))
     for server_config in biologic_harvesters.values():
         server_config["server_type"] = "biologic_harvester"
-    servers = {**neware_harvesters, **biologic_harvesters, **servers}  # new server style takes priority
+
+    # Merge, new server style takes priority over old harvester style
+    servers = {**neware_harvesters, **biologic_harvesters, **servers}
+
     for server_label in servers:
         check_illegal_text(server_label)
+
+    # Drop example-server if it still exists
+    if servers.get("example-label") and servers["example-label"].get("hostname") == "example-hostname":
+        servers.pop("example-label")
     return servers
 
 
