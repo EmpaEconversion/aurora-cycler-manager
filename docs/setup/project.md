@@ -37,7 +37,7 @@ aurora-setup status      # see where your config files are
 aurora-setup status -v   # see the whole config
 ```
 
-# Editing the config
+## Editing the config
 
 If you want to connect to cyclers or change columns, you need to modify the shared configuration file.
 
