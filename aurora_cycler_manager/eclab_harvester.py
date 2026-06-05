@@ -15,8 +15,6 @@ from pathlib import Path
 
 import numpy as np
 import polars as pl
-import yadg
-from dgbowl_schemas.yadg.dataschema import ExtractorFactory
 
 import aurora_cycler_manager.database_funcs as dbf
 from aurora_cycler_manager.analysis import analyse_sample
@@ -29,11 +27,18 @@ from aurora_cycler_manager.version import __url__, __version__
 
 CONFIG = get_config()
 logger = logging.getLogger(__name__)
-# These warnings from yadg is handled
-logging.getLogger("yadg.extractors.eclab.mpr").addFilter(lambda record: "No 'log' module" not in record.getMessage())
-logging.getLogger("yadg.extractors.eclab.mpr").addFilter(
-    lambda record: "I Range could not be understood" not in record.getMessage()
-)
+
+
+# These warnings from yadg are handled
+def _suppress_logs(logger: str, msg: str) -> None:
+    logging.getLogger(logger).addFilter(lambda record: msg not in str(record))
+
+
+_suppress_logs("yadg.extractors.eclab.mpr", "No 'log' module")
+_suppress_logs("yadg.extractors.eclab.mpr", "I Range could not be understood")
+_suppress_logs("pint.util", "Redefining")
+
+import yadg  # noqa: E402
 
 
 def get_eclab_snapshot_folder() -> Path:
@@ -133,6 +138,8 @@ def get_mpr_data(
         mpr_file = Path(mpr_file)
         data = yadg.extractors.extract("eclab.mpr", mpr_file)
     elif isinstance(mpr_file, bytes):
+        from dgbowl_schemas.yadg.dataschema import ExtractorFactory  # noqa: PLC0415
+
         extractor = ExtractorFactory(extractor={"filetype": "eclab.mpr"}).extractor
         data = yadg.extractors.extract_from_bytes(
             source=mpr_file,
