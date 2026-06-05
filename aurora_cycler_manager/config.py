@@ -178,8 +178,8 @@ def _read_config_file() -> dict:
         except ValueError as e:
             msg = (
                 "Not connected to any Aurora project."
-                'Use `aurora-setup init --project-dir="path/to/my/project` to create a new project, '
-                'or `aurora-setup connect --project-dir="path/to/my/project"` to connect to an existing project.'
+                'Use `aurora-setup init "path/to/my/project` to create a new project, '
+                'or `aurora-setup connect "path/to/my/project"` to connect to an existing project.'
             )
             raise ValueError(msg) from e
 

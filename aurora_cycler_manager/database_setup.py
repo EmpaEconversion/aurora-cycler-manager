@@ -557,17 +557,29 @@ def main() -> None:
 
     connect_parser = subparsers.add_parser("connect", help="Connect to existing config")
     connect_parser.add_argument(
+        "project_dir_pos",
+        nargs="?",
+        type=Path,
+        metavar="PROJECT_DIR",
+        help="Path to Aurora project directory (positional shorthand)",
+    )
+    connect_parser.add_argument(
         "--project-dir",
         type=Path,
-        required=True,
         help="Path to Aurora project directory containing configuration, database, data folders",
     )
 
     create_parser = subparsers.add_parser("init", help="Create new config and database")
     create_parser.add_argument(
+        "project_dir_pos",
+        nargs="?",
+        type=Path,
+        metavar="PROJECT_DIR",
+        help="Path to Aurora project directory (positional shorthand)",
+    )
+    create_parser.add_argument(
         "--project-dir",
         type=Path,
-        required=True,
         help="Path to Aurora project directory - subfolders, configuration files and a database will be placed here",
     )
 
@@ -584,9 +596,18 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "connect":
-        connect_to_config(args.project_dir)
+        project_dir = args.project_dir or args.project_dir_pos
+        if not project_dir:
+            connect_parser.error('A project directory is required (e.g. aurora-setup connect "path/to/my/project")')
+        connect_to_config(project_dir)
     elif args.command == "init":
-        create_new_setup(args.project_dir)
+        project_dir = args.project_dir or args.project_dir_pos
+        if not project_dir:
+            create_parser.error(
+                'A project directory is required (e.g. aurora-setup init "path/to/my/project"), '
+                "a folder structure and database will be created there"
+            )
+        create_new_setup(project_dir)
     elif args.command == "update":
         create_database(force=args.force)
     elif args.command == "status":
