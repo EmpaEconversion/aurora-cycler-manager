@@ -9,6 +9,7 @@ repo_name = "aurora-cycler-manager"
 copyright = "Copyright &copy; 2026 Empa"
 nav = [
   "index.md",
+  "quickstart.md",
   { "Set up" = [
     "setup/install.md",
     "setup/project.md",
@@ -18,7 +19,6 @@ nav = [
   ]},
   { "Usage" = [
     "usage/startup.md",
-    "usage/quickstart.md",
     "usage/add-samples.md",
     "usage/protocol.md",
     "usage/experiment.md",
