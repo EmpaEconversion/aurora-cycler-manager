@@ -15,7 +15,7 @@ nav = [
     "setup/project.md",
     "setup/cyclers.md",
     "setup/ssh.md",
-    "setup/multi-user.md"
+    "setup/deploying.md"
   ]},
   { "Usage" = [
     "usage/startup.md",
