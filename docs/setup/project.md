@@ -18,21 +18,30 @@ As a user you also have a 'user' config file stored in your user data directory 
 
 To view data from an existing set up, use:
 ```
-aurora-setup connect --project-dir="path\to\my-project"
+aurora-setup connect "path\to\my-project"
 ```
 
 ## Creating a new project
 
 ```
-aurora-setup init --project-dir="path\to\my-project"
+aurora-setup init "path\to\my-project"
 ```
 
 This generates subfolders, a blank sqlite3 database, and a configuration file in the folder.
 
-You must fill in the configuration file with details about the cycler servers. If you have no
-cyclers and just want to view some data, you can leave the Servers blank: `"Servers": {}`.
+## Check your project
 
-An example configuration looks like:
+To see where aurora is currently pointing, use
+```
+aurora-setup status      # see where your config files are
+aurora-setup status -v   # see the whole config
+```
+
+# Editing the config
+
+If you want to connect to cyclers or change columns, you need to modify the shared configuration file.
+
+An example shared configuration looks like:
 ```python
 {
     "Database type" : "sqlite",
@@ -83,7 +92,7 @@ An example configuration looks like:
 }
 ```
 
-If you make changes to the database columns, you can update the database with `aurora-setup update`, use the option `--force` if you are permanently deleting columns and their data.
+If you make changes to the database columns, you can update the database with `aurora-setup update`, use the option `--force` if you are permanently deleting columns and their data. You do not need to update after changing server details, just restart the app/daemon.
 
 By default, aurora is set up with sqlite3, if you want to use a postgresql database instead, change your configuration to:
 ```python

@@ -61,3 +61,24 @@ Check that commands run correctly through the daemon using the `--ssh` flag:
 ```bash
 biologic status --ssh
 ```
+
+## Updating the configuration file
+
+For Aurora to connect to the cyclers, you must put the details in config. For example in the config:
+```
+"Servers" : {
+    "nw1": {  # The key / label for the server - should stay the same for one machine after setting
+        "hostname": "neware001",  # or the full IP address
+        "username": "labuser",  # this will connect with 'ssh labuser@neware001'      
+        "server_type": "neware",  # can be 'neware', 'biologic', 'neware_harvester', 'biologic_harvester'
+        "shell_type": "powershell",  # the shell used on ssh, should be 'cmd' or 'powershell'
+        "data_path": "C:/data/",  # data is saved here from Neware BTS
+        "harvester_folders": ["C:/manual_data1/", "C:/manual_data2/"],  # list of other folders whose data is synced
+        "protocol_path": "C:/protocols/",  # protocols are transferred here before being on the machine
+        "neware_raw_data_path": "C:/Program Files (x86)/NEWARE/BTSServer80/NdcFile/"  # neware-specific - probably shouldn't change
+    },
+    ... # more cyclers
+},
+```
+
+The currently available server types are `neware`, `neware_harvester`, `biologic`, and `biologic_harvester`. The `_harvester` server types do not control cyclers, they just search in the data_path for new `.mpr`/`.ndax` data. Use the `harvester_folders` to tell Aurora which folders to check for new data. This works on both normal and harvester server types.
