@@ -506,22 +506,22 @@ def connect_to_config(shared_config_folder: str | Path) -> None:
 
     logger.info("Using shared config file at %s", str(confirmed_shared_config_path))
 
-    # Check that the shared config has the required keys
-    required_keys = [
-        "Database path",
-        "Protocols folder path",
-        "Data folder path",
-    ]
+    # Load the shared config
     with confirmed_shared_config_path.open("r") as f:
         shared_config = json.load(f)
-    for key in required_keys:
-        if key not in shared_config:
-            msg = f"Shared config file at {confirmed_shared_config_path} is missing required key: {key}"
-            raise ValueError(msg)
 
-    # get_config will generate a default file if it doesn't exist
+    # Check that it looks like an aurora config
+    if "Database path" not in shared_config and "Database name" not in shared_config:
+        msg = (
+            f"The config file at {confirmed_shared_config_path} does not look like an Aurora configuration."
+            "It should at least contain a 'Database path' key (or 'Database name' if using postgres)."
+        )
+        raise ValueError(msg)
+
+    # get_config will generate a default User config file if it doesn't exist
     with contextlib.suppress(Exception):
         get_config(reload=True)
+
     # Update the user config file with the shared config path
     logger.info("Updating user config file at %s", str(USER_CONFIG_PATH))
     with (USER_CONFIG_PATH).open("r") as f:
