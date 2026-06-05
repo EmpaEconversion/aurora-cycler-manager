@@ -473,9 +473,11 @@ def create_new_setup(base_dir: str | Path) -> None:
     create_database(force=False)
 
     logger.critical(
-        "YOU MUST FILL IN THE DETAILS AT %s",
+        "Please fill in the configuration file at %s",
         shared_config_path,
     )
+
+    logger.info("You can now start the app with `aurora-app`")
 
 
 def connect_to_config(shared_config_folder: str | Path) -> None:
