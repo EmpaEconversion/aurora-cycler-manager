@@ -258,7 +258,6 @@ def create_database(force: bool = False) -> None:
         db_existed = database_path.exists()
         if not db_existed:
             database_path.parent.mkdir(exist_ok=True)
-            logger.info("Creating new database at %s", database_path)
         else:
             logger.info("Found database at %s", database_path)
     else:
@@ -398,10 +397,11 @@ def create_database(force: bool = False) -> None:
     Index("idx_jobs_sample", jobs_table.c["Sample ID"])
     Index("idx_pipelines_sample_id", pipelines_table.c["Sample ID"])
     Index("idx_pipelines_job_id", pipelines_table.c["Job ID"])
-    if db_type == "sqlite":
-        logger.info("Updating sqlite database at %s...", str(config["Database path"]))
-    else:
-        logger.info("Updating postgresql database '%s'...", config["Database name"])
+    if db_existed:
+        if db_type == "sqlite":
+            logger.info("Updating sqlite database at %s...", str(config["Database path"]))
+        else:
+            logger.info("Updating postgresql database '%s'...", config["Database name"])
     meta.create_all(engine, checkfirst=True)
 
     # Handle added/removed columns in samples
@@ -436,8 +436,10 @@ def create_database(force: bool = False) -> None:
     import aurora_cycler_manager.database_funcs as dbf  # noqa: PLC0415
 
     dbf.patch_database(engine)  # In case already imported
-
-    logger.info("Update complete. Tables: %s", ", ".join(meta.tables.keys()))
+    if db_existed:
+        logger.info("Update complete. Tables: %s", ", ".join(meta.tables.keys()))
+    elif db_type == "sqlite":
+        logger.info("Created database at %s", str(config["Database path"]))
 
 
 def create_new_setup(base_dir: str | Path) -> None:
