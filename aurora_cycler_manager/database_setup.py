@@ -440,16 +440,13 @@ def create_database(force: bool = False) -> None:
     logger.info("Update complete. Tables: %s", ", ".join(meta.tables.keys()))
 
 
-def create_new_setup(base_dir: str | Path, overwrite: bool = False) -> None:
+def create_new_setup(base_dir: str | Path) -> None:
     """Create a new aurora setup with a shared config file and database."""
     base_dir = Path(base_dir).resolve()
     shared_config_path = base_dir / "shared_config.json"
     if shared_config_path.exists():
-        if overwrite:
-            logger.warning("Overwriting existing project config file at %s", shared_config_path)
-        else:
-            msg = "A project shared config file already exists at this location. Use --overwrite to overwrite it."
-            raise FileExistsError(msg)
+        msg = "A project already exists at this location, choose another location or delete the old project."
+        raise FileExistsError(msg)
     base_dir.mkdir(parents=True, exist_ok=True)
     (base_dir / "data").mkdir(exist_ok=True)
     (base_dir / "protocols").mkdir(exist_ok=True)
@@ -571,7 +568,6 @@ def main() -> None:
         required=True,
         help="Path to Aurora project directory - subfolders, configuration files and a database will be placed here",
     )
-    create_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing config and database")
 
     update_parser = subparsers.add_parser("update", help="Update the database from the config")
     update_parser.add_argument(
@@ -588,7 +584,7 @@ def main() -> None:
     if args.command == "connect":
         connect_to_config(args.project_dir)
     elif args.command == "init":
-        create_new_setup(args.project_dir, args.overwrite)
+        create_new_setup(args.project_dir)
     elif args.command == "update":
         create_database(force=args.force)
     elif args.command == "status":
