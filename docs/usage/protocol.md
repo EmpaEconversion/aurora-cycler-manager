@@ -1,9 +1,14 @@
 # Defining a cycling protocol
 
-Go to database tab, then protocols.
+Go to **Database** tab, then click **Protocols**.
 
-Define a protocol - add techniques with the green (+) button at the bottom, select the technique type, fill in the parameters, and press update. Make sure you also fill in safety and measurement parameters.
 
-If the save button is disabled and there is a warning symbol next to it, hover over the symbol to see the issue with the protocol.
 
-Finally, click 'Save as', give it a name and save.
+The right panel shows the full protocol, with add/delete/copy/paste step buttons below. The left panel contains controls for step and global parameters.
+
+
+![Creating a protocol](../assets/app5.webp)
+
+A warning symbol at the top tells you if something is causing the protocol validation to fail, here we tell the protocol to loop back to a tag that does not exist. When warnings are resolved, the 'Save as' button can be used, and we can overwrite the existing protocol file or create a new one.
+
+Protocol files are [`aurora-unicycler`](https://github.com/empaeconversion/aurora-unicycler) JSON files, they can be edited by hand or created with the `aurora-unicycler` python package and loaded into `aurora-cycler-manager` either by putting files directly in the `protocols` folder of the project, or by uploading them through the app interface.

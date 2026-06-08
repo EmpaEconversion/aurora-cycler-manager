@@ -2,12 +2,12 @@
 
 ## Manually fetching data
 
-In database -> pipelines, select your samples, and press 'Snapshot'. This downloads the latest raw data, parses it to an open format, analyses it together with any existing data, and updates the data folder.
+In **Database** -> **Pipelines**, select your samples, and press **Snapshot**. This downloads the latest raw data, parses it to an open format, analyses it together with any existing data, and updates the data folder.
 
 
 ## Automatically fetching data
 
-```
+```shell
 aurora-daemon
 ```
 This starts a process that updates the cycler status every 5 minutes, and fetches and analyses all new data overnight. Only one machine should be running the daemon.
