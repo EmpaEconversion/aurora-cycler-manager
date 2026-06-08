@@ -66,12 +66,12 @@ aurora-setup init "path/to/your/project"
 You must then fill out the configuration file.
 
 Start the app:
-```
+```shell
 aurora-app
 ```
 
 Start the daemon:
-```
+```shell
 aurora-daemon
 ```
 

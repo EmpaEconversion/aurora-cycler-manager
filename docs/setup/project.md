@@ -1,16 +1,4 @@
-# Installation
-
-With Python >3.10:
-```
-pip install aurora-cycler-manager
-```
-
-To update to the latest version, do:
-```
-pip install aurora-cycler-manager --upgrade
-```
-
-## Projects
+# Projects
 
 An `aurora-cycler-manager` 'project' is a folder on a filesystem containing a configuration file and some data.
 
@@ -29,32 +17,34 @@ As a user you also have a 'user' config file stored in your user data directory 
 ## Connecting to an existing project
 
 To view data from an existing set up, use:
+```shell
+aurora-setup connect "path\to\my-project"
 ```
-aurora-setup connect --project-dir="path\to\my-project"
-```
-
-## Interacting with cyclers
-
-Interacting with cyclers (submitting jobs, pulling data, etc.) works with OpenSSH. Servers must have OpenSSH installed and running, and users must have password-less access.
-
-To get access, run `ssh-keygen`, and copy your public key to `~/.ssh/authorized_keys` on the cycler server.
-
-The cycler machine must also be in your `known_hosts`, the easiest way is to just connect using `ssh user@host` and say yes to adding to known hosts.
-
-(Optional) you can make changes to your user config to change e.g. your SSH key path, or the "Snapshots folder path" where raw data is stored before being converted. These files can become very large.
 
 ## Creating a new project
 
-```
-aurora-setup init --project-dir="path\to\my-project"
+```shell
+aurora-setup init "path\to\my-project"
 ```
 
 This generates subfolders, a blank sqlite3 database, and a configuration file in the folder.
 
-You must fill in the configuration file with details about the cycler servers.
+![Create an aurora project](../assets/tut3.webp)
 
-An example configuration looks like:
-```python
+## Check your project
+
+To see where aurora is currently pointing, use
+```shell
+aurora-setup status      # see where your config files are
+aurora-setup status -v   # see the whole config
+```
+
+## Editing the config
+
+If you want to connect to cyclers or change columns, you need to modify the shared configuration file.
+
+An example shared configuration looks like:
+```json
 {
     "Database type" : "sqlite",
     "Database path" : "path/to/my-project/aurora.db",
@@ -62,7 +52,7 @@ An example configuration looks like:
     "Protocols folder path" : "path/to/my-project/protocols",
     "Time zone" : "Europe/Zurich",
     "Servers" : {
-		"nw1": {
+		"neware001": {
 			"hostname": "neware001",
 			"username": "labuser",  # this will connect with 'ssh labuser@neware001'
 			"server_type": "neware",  # can be 'neware', 'biologic', 'neware_harvester', 'biologic_harvester'
@@ -71,8 +61,7 @@ An example configuration looks like:
             "protocol_path": "C:/protocols/",  # protocols are transferred here before being on the machine
             "neware_raw_data_path": "C:/Program Files (x86)/NEWARE/BTSServer80/NdcFile/"  # this probably shouldn't change
 		},
-		{
-			"label": "neware002",
+		"neware002": {
 			"hostname": "neware002",
 			"username": "labuser",
 			"proxy_hostname": "proxypc",
@@ -82,13 +71,12 @@ An example configuration looks like:
             "data_path": "C:/data/",
             "neware_raw_data_path": "C:/Program Files (x86)/NEWARE/BTSServer80/NdcFile/"
 		},
-        {
-			"label": "bio1",
+        "bio1": {
 			"hostname": "biologic001",
 			"username": "labuser",
 			"server_type": "biologic",
 			"shell_type": "powershell",
-            "data_path": "C:/data/",  # biologic does not need a protocol path, the mps is stored in the same folder as the data
+            "data_path": "C:/data/",  # biologic does not need a protocol path, the .mps is stored in the same folder as the data
 		},
     },
     "Sample database" : [
@@ -104,10 +92,10 @@ An example configuration looks like:
 }
 ```
 
-If you make changes to the database columns, you can update the database with `aurora-setup update`, use the option `--force` if you are permanently deleting columns and their data.
+If you make changes to the database columns, you can update the database with `aurora-setup update`, use the option `--force` if you are permanently deleting columns and their data. You do not need to update after changing server details, just restart the app/daemon.
 
 By default, aurora is set up with sqlite3, if you want to use a postgresql database instead, change your configuration to:
-```python
+```json
 {
     "Database type" : "postgresql",
     "Database host" : "<your-hostname>",
@@ -117,4 +105,4 @@ By default, aurora is set up with sqlite3, if you want to use a postgresql datab
     #... everything else is the same
 }
 ```
-Then run `aurora-setup update` to generate the tables. This requires you to have already installed and set up postgres, and created the database and users. Creating table schema requires a superuser.
+Then run `aurora-setup update` to generate the tables. This requires you to have already installed and set up postgres, and created the database and users. Creating the table schema requires a superuser.
