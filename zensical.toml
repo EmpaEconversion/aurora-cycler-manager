@@ -74,6 +74,9 @@ toggle.name = "Switch to light mode"
 # ----------------------------------------------------------------------------
 # The "extra" section contains miscellaneous settings.
 # ----------------------------------------------------------------------------
+[project.extra]
+generator = false
+
 [[project.extra.social]]
 icon = "fontawesome/brands/github"
 link = "https://github.com/empaeconversion/aurora-cycler-manager"
