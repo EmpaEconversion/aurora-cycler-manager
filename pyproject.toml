@@ -21,7 +21,6 @@ dynamic = ["version"]
 dependencies = [
     "aurora-unicycler>=0.4.5",
     "battinfoconverter-backend>=3.2.0",
-    "dash-uploader==0.6.1",
     "dash[diskcache]>=4.1.0",
     "dash_ag_grid>=33.3.3",
     "dash_bootstrap_components>=2.0.3",
@@ -50,6 +49,7 @@ dependencies = [
     "xlsxwriter>=3.2.9",
     "xmltodict>=0.14.2",
     "yadg>=6.2.2",
+    "werkzeug>=3.1.6",
 ]
 
 [project.optional-dependencies]

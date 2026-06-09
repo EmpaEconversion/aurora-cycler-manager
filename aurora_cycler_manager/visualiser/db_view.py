@@ -15,7 +15,6 @@ from typing import Literal
 
 import dash_ag_grid as dag
 import dash_mantine_components as dmc
-import dash_uploader as du
 import paramiko
 from aurora_unicycler import CyclingProtocol
 from dash import ALL, Dash, Input, NoUpdate, Output, State, callback, clientside_callback, dcc, html, no_update
@@ -54,6 +53,10 @@ from aurora_cycler_manager.visualiser.notifications import (
     notify_on_warnings,
     success_notification,
 )
+from aurora_cycler_manager.visualiser.uploader import (
+    register_upload_callbacks,
+    upload_component,
+)
 
 # ------------------------ Initialize server manager ------------------------- #
 
@@ -71,8 +74,6 @@ except (paramiko.SSHException, FileNotFoundError, ValueError) as e:
 
 DOWNLOAD_DIR = Path(tempfile.gettempdir()) / "aurora_download_tmp"
 DOWNLOAD_DIR.mkdir(exist_ok=True, parents=True)
-UPLOAD_DIR = Path(tempfile.gettempdir()) / "aurora_upload_tmp"
-UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
 
 
 def cleanup_temp_folder() -> None:
@@ -753,8 +754,7 @@ upload_modal = dmc.Modal(
                     dmc.ListItem("Unicycler protocols as a .json file"),
                 ]
             ),
-            du.Upload(id="dash-uploader", max_file_size=2048),
-            dcc.Store(id="upload-filepath", data=""),
+            upload_component(),
             dcc.Store(id="upload-store", data={"file": None, "data": None}),
             dmc.Alert(
                 title="File status",
@@ -909,7 +909,7 @@ def register_db_view_callbacks(app: Dash) -> None:
     register_batch_edit_callbacks(app)
     register_protocol_edit_callbacks(app)
     register_db_info_callbacks(app)
-    du.configure_upload(app, UPLOAD_DIR)
+    register_upload_callbacks(app)
 
     # Update the buttons displayed depending on the table selected
     @app.callback(
@@ -1934,15 +1934,8 @@ def register_db_view_callbacks(app: Dash) -> None:
         raise PreventUpdate
 
     # Figure out what was just uploaded and tell the user
-    @du.callback(
-        output=Output("upload-filepath", "data"),
-        id="dash-uploader",
-    )
-    def callback_on_completion(filenames: list[str]) -> str:
-        """Update filepath when upload finished."""
-        return str(filenames[0])
-
     @app.callback(
+        Output("upload-alert", "title"),
         Output("upload-alert", "children"),
         Output("upload-alert", "color"),
         Output("upload-data-confirm-button", "disabled"),
@@ -1955,9 +1948,12 @@ def register_db_view_callbacks(app: Dash) -> None:
         ],
         prevent_initial_call=True,
     )
-    def figure_out_files(filepath: str, opened: bool, selected_rows: list) -> tuple[str, str, bool, dict]:
+    def figure_out_files(filepath: str, opened: bool, selected_rows: list) -> tuple[str, str, str, bool, dict]:
         if opened:
-            return file_io.determine_file(filepath, selected_rows)
+            return (
+                Path(filepath).name,
+                *file_io.determine_file(filepath, selected_rows),
+            )
         raise PreventUpdate
 
     # When hitting confirm, process the file
