@@ -494,9 +494,9 @@ step_edit_menu = dmc.Stack(
                     pt="sm",
                     children=[
                         dmc.Button(
-                            "Update",
+                            "Add",
                             leftSection=html.I(className="bi bi-check2", style={"fontSize": "1.5em"}),
-                            id="submit",
+                            id="technique-submit",
                         ),
                         dmc.Popover(
                             [
@@ -895,20 +895,22 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
     # If user selects a row, show it in the step edit menu
     @app.callback(
         Output("technique-select", "value"),
+        Output("technique-submit", "children"),
         [Output(x, "value", allow_duplicate=True) for x in ALL_TECHNIQUE_INPUTS],
         Input("protocol-edit-grid", "selectedRows"),
         State("protocol-store", "data"),
+        State("technique-select", "value"),
         prevent_initial_call=True,
     )
-    def update_step_edit_menu(selected_rows: list[dict], protocol_dict: dict) -> tuple[str | None, ...]:
+    def update_step_edit_menu(selected_rows: list[dict], protocol_dict: dict, prev_selected: str) -> tuple[str, ...]:
         """Update the step edit menu with the selected row data."""
         if selected_rows is None or not selected_rows:
-            return "", *([""] * len(ALL_TECHNIQUE_INPUTS))
+            return prev_selected, "Add", *([""] * len(ALL_TECHNIQUE_INPUTS))
         selected_row = selected_rows[0]
         index = selected_row["index"]
         technique = protocol_dict["method"][index]
         input_values = [technique.get(x, "") for x in ALL_TECHNIQUE_INPUTS]
-        return selected_row["technique"], *input_values
+        return selected_row["technique"], "Update", *input_values
 
     # If user selects a technique, show the inputs for that technique
     @app.callback(
@@ -964,7 +966,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
     @app.callback(
         Output("step-warning", "style"),
         Output("step-warning-message", "children"),
-        Output("submit", "disabled"),
+        Output("technique-submit", "disabled"),
         Input("technique-select", "value"),
         [Input(x, prop) for x, prop in ALL_TECHNIQUE_INPUT_PROPS.items()],
         prevent_initial_call=True,
@@ -995,7 +997,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
     @app.callback(
         Output("protocol-store", "data", allow_duplicate=True),
         Output("protocol-store-selected", "data", allow_duplicate=True),
-        Input("submit", "n_clicks"),
+        Input("technique-submit", "n_clicks"),
         State("protocol-edit-grid", "selectedRows"),
         State("protocol-edit-grid", "virtualRowData"),
         State("protocol-store", "data"),
