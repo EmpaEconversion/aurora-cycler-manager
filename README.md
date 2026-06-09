@@ -6,7 +6,7 @@
 
 [![Docs](https://img.shields.io/badge/docs-gh--pages-blue.svg)](https://empaeconversion.github.io/aurora-cycler-manager/)
 [![PyPI version](https://img.shields.io/pypi/v/aurora-cycler-manager.svg)](https://pypi.org/project/aurora-cycler-manager/)
-[![License](https://img.shields.io/github/license/empaeconversion/aurora-cycler-manager?color=blue)](https://github.com/empaeconversion/aurora-cycler-manager/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/empaeconversion/aurora-cycler-manager/blob/main/LICENSE)
 [![Python Versions](https://img.shields.io/pypi/pyversions/aurora-cycler-manager.svg)](https://pypi.org/project/aurora-cycler-manager/)
 [![Checks](https://img.shields.io/github/actions/workflow/status/empaeconversion/aurora-cycler-manager/CI.yml)](https://github.com/EmpaEconversion/aurora-cycler-manager/actions/workflows/CI.yml)
 [![Coverage](https://img.shields.io/codecov/c/github/empaeconversion/aurora-cycler-manager)](https://app.codecov.io/gh/EmpaEconversion/aurora-cycler-manager)
