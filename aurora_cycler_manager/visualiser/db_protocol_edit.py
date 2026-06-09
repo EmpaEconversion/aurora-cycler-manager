@@ -47,9 +47,13 @@ ALL_TECHNIQUES = {
     "Tag": Tag,
 }
 ALL_TECHNIQUES_REV = {v: k for k, v in ALL_TECHNIQUES.items()}
+# Set of all possible inputs
 ALL_TECHNIQUE_INPUTS = {k for v in ALL_TECHNIQUES.values() for k in v.model_fields}
 ALL_TECHNIQUE_INPUTS.remove("step")
 ALL_TECHNIQUE_INPUTS.remove("id")
+# Map inputs to the component property - checkboxes use 'checked' not 'value'
+ALL_TECHNIQUE_INPUT_PROPS = dict.fromkeys(ALL_TECHNIQUE_INPUTS, "value")
+ALL_TECHNIQUE_INPUT_PROPS["drift_correction"] = "checked"
 
 column_defs = [
     {
@@ -379,6 +383,7 @@ step_edit_menu = dmc.Stack(
                 html.Div(
                     dmc.Checkbox(
                         id="drift_correction",
+                        checked=False,
                         label="Drift correction",
                     ),
                     id="drift_correction-group",
@@ -954,21 +959,13 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         seconds = int(until_time_s) % 60
         return hours, minutes, seconds
 
-    @app.callback(
-        Output("drift_correction", "value"),
-        Input("drift_correction", "checked"),
-    )
-    def update_drift_correction(checked: bool) -> bool:
-        """Dmc uses 'checked' for checkbox and 'value' for everything else."""
-        return checked
-
     # if you change a value in the step edit menu, check if the technique is valid
     @app.callback(
         Output("step-warning", "style"),
         Output("step-warning-message", "children"),
         Output("submit", "disabled"),
         Input("technique-select", "value"),
-        [Input(x, "value") for x in ALL_TECHNIQUE_INPUTS],
+        [Input(x, prop) for x, prop in ALL_TECHNIQUE_INPUT_PROPS.items()],
         prevent_initial_call=True,
     )
     def validate_step(technique: str, *input_values: list[str | float | None]) -> tuple[dict, str, bool]:
@@ -1002,7 +999,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         State("protocol-edit-grid", "virtualRowData"),
         State("protocol-store", "data"),
         State("technique-select", "value"),
-        [State(x, "value") for x in ALL_TECHNIQUE_INPUTS],
+        [State(x, prop) for x, prop in ALL_TECHNIQUE_INPUT_PROPS.items()],
         prevent_initial_call=True,
     )
     def sync_protocol_dict(
