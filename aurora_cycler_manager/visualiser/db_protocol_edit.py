@@ -658,6 +658,7 @@ protocol_edit_layout = html.Div(
         dcc.Store(id="protocol-store", data={"method": [], "record": {}, "safety": {}}),
         dcc.Store(id="protocol-store-selected", data=[]),  # For selected rows
         dcc.Store(id="protocol-edit-clipboard", data=[]),  # For copy/paste functionality
+        dcc.Store(id="validation-trigger", data=0),  # To trigger validation withotu the grid changing
         html.Div(
             style={"display": "flex", "height": "100%"},
             children=[
@@ -1050,10 +1051,11 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         Output("protocol-warning-message", "children"),
         Output("protocol-warning", "style"),
         Input("protocol-edit-grid", "virtualRowData"),
+        Input("validation-trigger", "data"),
         State("protocol-store", "data"),
         prevent_initial_call=True,
     )
-    def validate_protocol(grid_data: list[dict], protocol_dict: dict) -> tuple[str, dict]:
+    def validate_protocol(grid_data: list[dict], _trigger: int, protocol_dict: dict) -> tuple[str, dict]:
         """Validate the protocol and update the grid data."""
         # Reorder the techniques in case the user has dragged rows around
         if not protocol_dict.get("method"):
@@ -1083,6 +1085,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
     # If any safety or record parameters change, update the protocol store
     @app.callback(
         Output("protocol-store", "data", allow_duplicate=True),
+        Output("validation-trigger", "data"),
         Input("record_interval_s", "value"),
         Input("record_interval_v", "value"),
         Input("record_interval_mA", "value"),
@@ -1092,6 +1095,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         Input("max_current_mA", "value"),
         Input("delay_s", "value"),
         State("protocol-store", "data"),
+        State("validation-trigger", "data"),
         prevent_initial_call=True,
     )
     def update_global_parameters(
@@ -1104,7 +1108,8 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         max_current_mA: float,
         delay_s: float,
         protocol_dict: dict,
-    ) -> dict:
+        validation_trigger: int,
+    ) -> tuple[dict, int]:
         """Update the global parameters in the protocol store."""
         protocol_dict.setdefault("record", {})["time_s"] = record_interval_s
         protocol_dict["record"]["voltage_V"] = record_interval_v
@@ -1114,7 +1119,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         protocol_dict["safety"]["min_current_mA"] = min_current_mA
         protocol_dict["safety"]["max_current_mA"] = max_current_mA
         protocol_dict["safety"]["delay_s"] = delay_s
-        return protocol_dict
+        return protocol_dict, validation_trigger + 1
 
     # Pressing save opens a save modal with the current name
     @app.callback(
