@@ -3,6 +3,7 @@
 File upload element for large files with a progress bar.
 """
 
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from flask import Response, jsonify, request
 from werkzeug.utils import secure_filename
 
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "aurora_upload_tmp"
+if UPLOAD_DIR.exists():
+    shutil.rmtree(UPLOAD_DIR)
 UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
 
 
