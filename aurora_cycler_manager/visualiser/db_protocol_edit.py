@@ -47,9 +47,13 @@ ALL_TECHNIQUES = {
     "Tag": Tag,
 }
 ALL_TECHNIQUES_REV = {v: k for k, v in ALL_TECHNIQUES.items()}
+# Set of all possible inputs
 ALL_TECHNIQUE_INPUTS = {k for v in ALL_TECHNIQUES.values() for k in v.model_fields}
 ALL_TECHNIQUE_INPUTS.remove("step")
 ALL_TECHNIQUE_INPUTS.remove("id")
+# Map inputs to the component property - checkboxes use 'checked' not 'value'
+ALL_TECHNIQUE_INPUT_PROPS = dict.fromkeys(ALL_TECHNIQUE_INPUTS, "value")
+ALL_TECHNIQUE_INPUT_PROPS["drift_correction"] = "checked"
 
 column_defs = [
     {
@@ -193,31 +197,29 @@ protocol_edit_grid = AgGrid(
 
 protocol_edit_buttons = dmc.Group(
     justify="flex-start",
-    align="center",
     gap="xs",
-    pt="xs",
     children=[
-        dmc.ActionIcon(
-            html.I(className="bi bi-plus-circle"),
+        dmc.Button(
+            "Add",
+            leftSection=html.I(className="bi bi-plus-circle"),
             id="add-row-button",
             color="green",
-            size="lg",
         ),
-        dmc.ActionIcon(
-            html.I(className="bi bi-dash-circle"),
+        dmc.Button(
+            "Remove",
+            leftSection=html.I(className="bi bi-dash-circle"),
             id="remove-row-button",
             color="red",
-            size="lg",
         ),
-        dmc.ActionIcon(
-            html.I(className="bi bi-copy"),
+        dmc.Button(
+            "Copy",
+            leftSection=html.I(className="bi bi-copy"),
             id="copy-rows-button",
-            size="lg",
         ),
-        dmc.ActionIcon(
-            html.I(className="bi bi-clipboard-plus"),
+        dmc.Button(
+            "Paste",
+            leftSection=html.I(className="bi bi-clipboard-plus"),
             id="paste-rows-button",
-            size="lg",
         ),
     ],
 )
@@ -379,6 +381,7 @@ step_edit_menu = dmc.Stack(
                 html.Div(
                     dmc.Checkbox(
                         id="drift_correction",
+                        checked=False,
                         label="Drift correction",
                     ),
                     id="drift_correction-group",
@@ -489,9 +492,9 @@ step_edit_menu = dmc.Stack(
                     pt="sm",
                     children=[
                         dmc.Button(
-                            "Update",
+                            "Add",
                             leftSection=html.I(className="bi bi-check2", style={"fontSize": "1.5em"}),
-                            id="submit",
+                            id="technique-submit",
                         ),
                         dmc.Popover(
                             [
@@ -653,6 +656,7 @@ protocol_edit_layout = html.Div(
         dcc.Store(id="protocol-store", data={"method": [], "record": {}, "safety": {}}),
         dcc.Store(id="protocol-store-selected", data=[]),  # For selected rows
         dcc.Store(id="protocol-edit-clipboard", data=[]),  # For copy/paste functionality
+        dcc.Store(id="validation-trigger", data=0),  # To trigger validation withotu the grid changing
         html.Div(
             style={"display": "flex", "height": "100%"},
             children=[
@@ -889,20 +893,22 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
     # If user selects a row, show it in the step edit menu
     @app.callback(
         Output("technique-select", "value"),
+        Output("technique-submit", "children"),
         [Output(x, "value", allow_duplicate=True) for x in ALL_TECHNIQUE_INPUTS],
         Input("protocol-edit-grid", "selectedRows"),
         State("protocol-store", "data"),
+        State("technique-select", "value"),
         prevent_initial_call=True,
     )
-    def update_step_edit_menu(selected_rows: list[dict], protocol_dict: dict) -> tuple[str | None, ...]:
+    def update_step_edit_menu(selected_rows: list[dict], protocol_dict: dict, prev_selected: str) -> tuple[str, ...]:
         """Update the step edit menu with the selected row data."""
         if selected_rows is None or not selected_rows:
-            return "", *([""] * len(ALL_TECHNIQUE_INPUTS))
+            return prev_selected, "Add", *([""] * len(ALL_TECHNIQUE_INPUTS))
         selected_row = selected_rows[0]
         index = selected_row["index"]
         technique = protocol_dict["method"][index]
         input_values = [technique.get(x, "") for x in ALL_TECHNIQUE_INPUTS]
-        return selected_row["technique"], *input_values
+        return selected_row["technique"], "Update", *input_values
 
     # If user selects a technique, show the inputs for that technique
     @app.callback(
@@ -954,21 +960,13 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         seconds = int(until_time_s) % 60
         return hours, minutes, seconds
 
-    @app.callback(
-        Output("drift_correction", "value"),
-        Input("drift_correction", "checked"),
-    )
-    def update_drift_correction(checked: bool) -> bool:
-        """Dmc uses 'checked' for checkbox and 'value' for everything else."""
-        return checked
-
     # if you change a value in the step edit menu, check if the technique is valid
     @app.callback(
         Output("step-warning", "style"),
         Output("step-warning-message", "children"),
-        Output("submit", "disabled"),
+        Output("technique-submit", "disabled"),
         Input("technique-select", "value"),
-        [Input(x, "value") for x in ALL_TECHNIQUE_INPUTS],
+        [Input(x, prop) for x, prop in ALL_TECHNIQUE_INPUT_PROPS.items()],
         prevent_initial_call=True,
     )
     def validate_step(technique: str, *input_values: list[str | float | None]) -> tuple[dict, str, bool]:
@@ -997,12 +995,12 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
     @app.callback(
         Output("protocol-store", "data", allow_duplicate=True),
         Output("protocol-store-selected", "data", allow_duplicate=True),
-        Input("submit", "n_clicks"),
+        Input("technique-submit", "n_clicks"),
         State("protocol-edit-grid", "selectedRows"),
         State("protocol-edit-grid", "virtualRowData"),
         State("protocol-store", "data"),
         State("technique-select", "value"),
-        [State(x, "value") for x in ALL_TECHNIQUE_INPUTS],
+        [State(x, prop) for x, prop in ALL_TECHNIQUE_INPUT_PROPS.items()],
         prevent_initial_call=True,
     )
     def sync_protocol_dict(
@@ -1053,10 +1051,11 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         Output("protocol-warning-message", "children"),
         Output("protocol-warning", "style"),
         Input("protocol-edit-grid", "virtualRowData"),
+        Input("validation-trigger", "data"),
         State("protocol-store", "data"),
         prevent_initial_call=True,
     )
-    def validate_protocol(grid_data: list[dict], protocol_dict: dict) -> tuple[str, dict]:
+    def validate_protocol(grid_data: list[dict], _trigger: int, protocol_dict: dict) -> tuple[str, dict]:
         """Validate the protocol and update the grid data."""
         # Reorder the techniques in case the user has dragged rows around
         if not protocol_dict.get("method"):
@@ -1086,6 +1085,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
     # If any safety or record parameters change, update the protocol store
     @app.callback(
         Output("protocol-store", "data", allow_duplicate=True),
+        Output("validation-trigger", "data"),
         Input("record_interval_s", "value"),
         Input("record_interval_v", "value"),
         Input("record_interval_mA", "value"),
@@ -1095,6 +1095,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         Input("max_current_mA", "value"),
         Input("delay_s", "value"),
         State("protocol-store", "data"),
+        State("validation-trigger", "data"),
         prevent_initial_call=True,
     )
     def update_global_parameters(
@@ -1107,7 +1108,8 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         max_current_mA: float,
         delay_s: float,
         protocol_dict: dict,
-    ) -> dict:
+        validation_trigger: int,
+    ) -> tuple[dict, int]:
         """Update the global parameters in the protocol store."""
         protocol_dict.setdefault("record", {})["time_s"] = record_interval_s
         protocol_dict["record"]["voltage_V"] = record_interval_v
@@ -1117,7 +1119,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         protocol_dict["safety"]["min_current_mA"] = min_current_mA
         protocol_dict["safety"]["max_current_mA"] = max_current_mA
         protocol_dict["safety"]["delay_s"] = delay_s
-        return protocol_dict
+        return protocol_dict, validation_trigger + 1
 
     # Pressing save opens a save modal with the current name
     @app.callback(
