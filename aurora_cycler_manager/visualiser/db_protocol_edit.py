@@ -197,31 +197,29 @@ protocol_edit_grid = AgGrid(
 
 protocol_edit_buttons = dmc.Group(
     justify="flex-start",
-    align="center",
     gap="xs",
-    pt="xs",
     children=[
-        dmc.ActionIcon(
-            html.I(className="bi bi-plus-circle"),
+        dmc.Button(
+            "Add",
+            leftSection=html.I(className="bi bi-plus-circle"),
             id="add-row-button",
             color="green",
-            size="lg",
         ),
-        dmc.ActionIcon(
-            html.I(className="bi bi-dash-circle"),
+        dmc.Button(
+            "Remove",
+            leftSection=html.I(className="bi bi-dash-circle"),
             id="remove-row-button",
             color="red",
-            size="lg",
         ),
-        dmc.ActionIcon(
-            html.I(className="bi bi-copy"),
+        dmc.Button(
+            "Copy",
+            leftSection=html.I(className="bi bi-copy"),
             id="copy-rows-button",
-            size="lg",
         ),
-        dmc.ActionIcon(
-            html.I(className="bi bi-clipboard-plus"),
+        dmc.Button(
+            "Paste",
+            leftSection=html.I(className="bi bi-clipboard-plus"),
             id="paste-rows-button",
-            size="lg",
         ),
     ],
 )
