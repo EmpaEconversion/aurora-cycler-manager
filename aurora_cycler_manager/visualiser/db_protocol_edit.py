@@ -54,6 +54,9 @@ ALL_TECHNIQUE_INPUTS.remove("id")
 # Map inputs to the component property - checkboxes use 'checked' not 'value'
 ALL_TECHNIQUE_INPUT_PROPS = dict.fromkeys(ALL_TECHNIQUE_INPUTS, "value")
 ALL_TECHNIQUE_INPUT_PROPS["drift_correction"] = "checked"
+# Index of "until_time_s" within ALL_TECHNIQUE_INPUT_PROPS
+# used to set its value with the freshly-computed h/m/s total
+UNTIL_TIME_S_INDEX = list(ALL_TECHNIQUE_INPUT_PROPS).index("until_time_s")
 
 column_defs = [
     {
@@ -925,6 +928,20 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
             return [hide for _ in ALL_TECHNIQUE_INPUTS] + [hide]
         return [show if x in ALL_TECHNIQUES[technique].model_fields else hide for x in ALL_TECHNIQUE_INPUTS] + [show]
 
+    def time_inputs_to_seconds(
+        hours: float | str | None,
+        mins: float | str | None,
+        secs: float | str | None,
+    ) -> int:
+        """Convert hour/minute/second input values to a total number of seconds. Ensure no nones or negatives."""
+        hours = hours or 0
+        mins = mins or 0
+        secs = secs or 0
+        hours = max(int(hours), 0)
+        mins = max(int(mins), 0)
+        secs = max(int(secs), 0)
+        return hours * 3600 + mins * 60 + secs
+
     # If user changes time, update the 'real' total time in seconds
     @app.callback(
         Output("until_time_s", "value", allow_duplicate=True),
@@ -934,14 +951,8 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         prevent_initial_call=True,
     )
     def update_until_time_s(hours: float, mins: float, secs: float) -> float:
-        """Update the total time in seconds based on the input fields. Ensure no nones or negatives."""
-        hours = hours or 0
-        mins = mins or 0
-        secs = secs or 0
-        hours = max(int(hours), 0)
-        mins = max(int(mins), 0)
-        secs = max(int(secs), 0)
-        return hours * 3600 + mins * 60 + secs
+        """Update the total time in seconds based on the input fields."""
+        return time_inputs_to_seconds(hours, mins, secs)
 
     # If the real time input changes, update the hour/min/sec inputs
     @app.callback(
@@ -967,15 +978,25 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         Output("technique-submit", "disabled"),
         Input("technique-select", "value"),
         [Input(x, prop) for x, prop in ALL_TECHNIQUE_INPUT_PROPS.items()],
+        Input("input_time_h", "value"),
+        Input("input_time_m", "value"),
+        Input("input_time_s", "value"),
         prevent_initial_call=True,
     )
-    def validate_step(technique: str, *input_values: list[str | float | None]) -> tuple[dict, str, bool]:
+    def validate_step(
+        technique: str,
+        *args: str | float | None,
+    ) -> tuple[dict, str, bool]:
         # If no valid technique, don't validate
         if not technique:
             raise PreventUpdate
         technique_cls = ALL_TECHNIQUES.get(technique)
         if technique_cls is None:
             raise PreventUpdate
+        input_values = list(args[: len(ALL_TECHNIQUE_INPUT_PROPS)])
+        hours, mins, secs = args[len(ALL_TECHNIQUE_INPUT_PROPS) :]
+        # Use the h/m/s fields directly rather than "until_time_s" value, which may still be stale
+        input_values[UNTIL_TIME_S_INDEX] = time_inputs_to_seconds(hours, mins, secs)
         try:
             technique_cls(
                 **{
@@ -1001,6 +1022,9 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         State("protocol-store", "data"),
         State("technique-select", "value"),
         [State(x, prop) for x, prop in ALL_TECHNIQUE_INPUT_PROPS.items()],
+        State("input_time_h", "value"),
+        State("input_time_m", "value"),
+        State("input_time_s", "value"),
         prevent_initial_call=True,
     )
     def sync_protocol_dict(
@@ -1009,7 +1033,7 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         grid_data: list[dict],
         protocol_dict: dict,
         technique: str,
-        *input_values: list[str | float | None],
+        *args: str | float | None,
     ) -> tuple[dict, list[int]]:
         """Update the protocol store with the new data."""
         if n_clicks is None or n_clicks == 0:
@@ -1019,6 +1043,10 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         technique_cls = ALL_TECHNIQUES.get(technique)
         if technique_cls is None:
             raise PreventUpdate  # no valid technique selected
+        input_values = list(args[: len(ALL_TECHNIQUE_INPUT_PROPS)])
+        hours, mins, secs = args[len(ALL_TECHNIQUE_INPUT_PROPS) :]
+        # Use the h/m/s fields directly rather than the debounced "until_time_s" value
+        input_values[UNTIL_TIME_S_INDEX] = time_inputs_to_seconds(hours, mins, secs)
         new_technique = technique_cls(
             **{
                 name: value
