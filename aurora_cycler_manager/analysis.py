@@ -562,11 +562,10 @@ def analyse_cycles(
     # A cycle can exist if there is charge and discharge data
     # If discharge has started, but measurement hasn't finished, then set last discharge to None
     if finished is False and df.filter(pl.col("Cycle") == pl.max("Cycle"), pl.col("I (A)") < 0).height > 5:
+        is_last_row = pl.int_range(pl.len()) == pl.len() - 1
         summary_df = summary_df.with_columns(
-            pl.when(pl.int_range(pl.len()) == pl.len() - 1)
-            .then(None)
-            .otherwise(pl.col("Discharge capacity (mAh)"))
-            .alias("Discharge capacity (mAh)")
+            pl.when(is_last_row).then(None).otherwise(pl.col(c)).alias(c)
+            for c in ["Discharge capacity (mAh)", "Discharge energy (mWh)", "Discharge average current (A)"]
         )
 
     # Create a dictionary with the cycling data
