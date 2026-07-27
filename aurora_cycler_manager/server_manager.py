@@ -367,6 +367,7 @@ class _CyclingJob:
                     "Unicycler protocol": self.unicycler_protocol,
                     "Capacity (mAh)": self.capacity_Ah * 1000,
                     "Comment": self.comment,
+                    "Jobname": self.job_name,
                 },
             )
             self.pipeline.set_jobid(self.job_id, self.jobid_on_server)
@@ -393,6 +394,7 @@ class _CyclingJob:
             if payload.suffix not in {".json", ".mps", ".xml"}:
                 msg = "If payload is a path, it must be a json, mps, or xml file."
                 raise AssertionError(msg)
+            self.payload = payload.stem
             if payload.suffix == ".json":
                 with payload.open("r") as f:
                     payload = json.load(f)
@@ -442,7 +444,7 @@ class _CyclingJob:
         sample = _Sample.from_id(result["Sample ID"])
         job = cls(
             sample=sample,
-            job_name=f"Job for sample {sample.id}",
+            job_name=result["Jobname"],
             capacity_Ah=result["Capacity (mAh)"] * 1e-3,
             comment=result["Comment"],
         )
@@ -542,6 +544,7 @@ class ServerManager:
         payload: str | Path | dict,
         capacity_Ah: float | Literal["areal", "mass", "nominal"],
         comment: str = "",
+        job_name: str = "",
     ) -> None:
         """Submit a job to a server.
 
@@ -558,6 +561,8 @@ class ServerManager:
                 calculated from the sample information
             comment: str, optional
                 A comment to add to the job in the database
+            job_name: str, optional
+                Job name to add to the job in the database
 
         """
         sample = _Sample.from_id(sample_id)
@@ -567,7 +572,7 @@ class ServerManager:
 
         cycling_job = _CyclingJob(
             sample=sample,
-            job_name=f"Job for sample {sample.id}",
+            job_name=job_name or (payload.stem if isinstance(payload, Path) else ""),
             capacity_Ah=capacity_Ah,
             comment=comment,
         )

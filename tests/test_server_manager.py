@@ -198,6 +198,9 @@ def test_start_stop(reset_all, mock_ssh, tmp_path: Path, test_dir: Path) -> None
     assert job_id == "nw-10-1-1-1"
     assert dbf.check_job_running(job_id)
 
+    job_data = dbf.get_job_data(job_id)
+    assert job_data["Jobname"] == "unicycler"
+
     mock_ssh.add_command_response(command="neware stop 10-1-1")  # empty = success
     mock_ssh.add_command_response(
         command="neware status 10-1-1",

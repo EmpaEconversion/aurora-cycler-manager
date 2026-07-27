@@ -1523,6 +1523,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         State("payload", "data"),
         State("submit-crate", "value"),
         State("submit-capacity", "value"),
+        State("submit-select-payload", "value"),
         running=[
             (Output("loading-message-store", "data"), "Submitting protocols...", ""),
             (Output("notify-interval", "interval"), active_time, idle_time),
@@ -1535,6 +1536,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         payload: dict,
         crate_calc: Literal["custom", "areal", "mass", "nominal"],
         capacity: float,
+        filename: str,
     ) -> int:
         if not yes_clicks:
             return 0
@@ -1546,10 +1548,17 @@ def register_db_view_callbacks(app: Dash) -> None:
         if not isinstance(capacity_Ah, float) and capacity_Ah not in ["areal", "mass", "nominal"]:
             logger.error("Invalid capacity calculation method: %s", capacity_Ah)
             return 0
+        job_name = Path(filename).stem
         with notify_on_warnings():
             for row in selected_rows:
                 try:
-                    sm.submit(row["Sample ID"], payload, capacity_Ah)
+                    sm.submit(
+                        sample_id=row["Sample ID"],
+                        payload=payload,
+                        capacity_Ah=capacity_Ah,
+                        comment=None,
+                        job_name=job_name,
+                    )
                     success_notification("", f"Sample {row['Sample ID']} submitted", queue=True)
                 except Exception as e:
                     error_notification("", f"Error submitting sample {row['Sample ID']}: {e}", queue=True)
