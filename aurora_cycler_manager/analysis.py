@@ -850,6 +850,9 @@ def analyse_sample(sample_id: str) -> SampleDataBundle:
         with (sample_folder / f"metadata.{sample_id}.json").open("w") as f:
             json.dump(metadata, f, indent=4)
 
+    if job_data is not None:
+        update_results(overall, job_data)
+
     return SampleDataBundle(
         sample_id=sample_id,
         cycling=df,
