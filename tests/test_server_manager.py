@@ -1,3 +1,4 @@
+# Copyright © 2025-2026, Empa.
 """Test server_manager.py module."""
 
 import json
@@ -197,6 +198,9 @@ def test_start_stop(reset_all, mock_ssh, tmp_path: Path, test_dir: Path) -> None
     job_id = dbf.get_job_from_pipeline(pip1)
     assert job_id == "nw-10-1-1-1"
     assert dbf.check_job_running(job_id)
+
+    job_data = dbf.get_job_data(job_id)
+    assert job_data["Jobname"] == "unicycler"
 
     mock_ssh.add_command_response(command="neware stop 10-1-1")  # empty = success
     mock_ssh.add_command_response(

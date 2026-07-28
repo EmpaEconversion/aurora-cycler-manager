@@ -1,3 +1,4 @@
+# Copyright © 2025-2026, Empa.
 """Test version module."""
 
 from aurora_cycler_manager.version import (

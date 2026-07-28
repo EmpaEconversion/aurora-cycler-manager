@@ -1,3 +1,4 @@
+# Copyright © 2025-2026, Empa.
 """Test for config module."""
 
 from pathlib import Path

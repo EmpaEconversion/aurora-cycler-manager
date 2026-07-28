@@ -1,3 +1,4 @@
+# Copyright © 2025-2026, Empa.
 """Test database_setup.py aurora-setup command line tool."""
 
 import json

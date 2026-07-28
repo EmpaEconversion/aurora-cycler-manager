@@ -1,7 +1,5 @@
-"""Copyright © 2025-2026, Empa.
-
-File upload element for large files with a progress bar.
-"""
+# Copyright © 2025-2026, Empa.
+"""File upload element for large files with a progress bar."""
 
 import shutil
 import tempfile

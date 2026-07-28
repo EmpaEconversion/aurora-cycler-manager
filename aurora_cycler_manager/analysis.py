@@ -1,6 +1,5 @@
-"""Copyright © 2025-2026, Empa.
-
-Functions used for parsing, analysing and plotting.
+# Copyright © 2025-2026, Empa.
+"""Functions used for parsing, analysing and plotting.
 
 Takes partial cycling files and combines into one full DataFrame and parquet file.
 
@@ -562,11 +561,10 @@ def analyse_cycles(
     # A cycle can exist if there is charge and discharge data
     # If discharge has started, but measurement hasn't finished, then set last discharge to None
     if finished is False and df.filter(pl.col("Cycle") == pl.max("Cycle"), pl.col("I (A)") < 0).height > 5:
+        is_last_row = pl.int_range(pl.len()) == pl.len() - 1
         summary_df = summary_df.with_columns(
-            pl.when(pl.int_range(pl.len()) == pl.len() - 1)
-            .then(None)
-            .otherwise(pl.col("Discharge capacity (mAh)"))
-            .alias("Discharge capacity (mAh)")
+            pl.when(is_last_row).then(None).otherwise(pl.col(c)).alias(c)
+            for c in ["Discharge capacity (mAh)", "Discharge energy (mWh)", "Discharge average current (A)"]
         )
 
     # Create a dictionary with the cycling data
@@ -849,6 +847,9 @@ def analyse_sample(sample_id: str) -> SampleDataBundle:
     if metadata is not None:
         with (sample_folder / f"metadata.{sample_id}.json").open("w") as f:
             json.dump(metadata, f, indent=4)
+
+    if job_data is not None:
+        update_results(overall, job_data)
 
     return SampleDataBundle(
         sample_id=sample_id,

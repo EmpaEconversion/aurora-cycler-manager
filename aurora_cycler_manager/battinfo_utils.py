@@ -1,3 +1,4 @@
+# Copyright © 2025-2026, Empa.
 """BattINFO ontology functions."""
 
 import base64
@@ -746,7 +747,7 @@ def merge_jsonld_on_type(jsons: list[dict], target_type: str = "BatteryTest") ->
     contexts = [j.pop("@context") for j in jsons if "@context" in j]
     jsons = [make_type_parent(j, target_type) for j in jsons]
 
-    def repeated_context_merge(contexts: list[str | list | dict]) -> None | str | list | dict:
+    def repeated_context_merge(contexts: list[str | list | dict]) -> str | list | dict | None:
         if len(contexts) == 0:
             return None
         if len(contexts) == 1:

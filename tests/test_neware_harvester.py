@@ -1,3 +1,4 @@
+# Copyright © 2025-2026, Empa.
 """Tests for Neware harvester."""
 
 import logging

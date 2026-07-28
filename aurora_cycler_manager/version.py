@@ -1,3 +1,4 @@
+# Copyright © 2025-2026, Empa.
 """Version information for the Aurora cycler manager package."""
 
 __version__ = "0.11.5"

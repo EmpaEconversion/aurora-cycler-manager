@@ -1,6 +1,5 @@
-"""Copyright © 2025-2026, Empa.
-
-Harvest EC-lab .mpr files and convert to aurora-compatible parquet files.
+# Copyright © 2025-2026, Empa.
+"""Harvest EC-lab .mpr files and convert to aurora-compatible parquet files.
 
 Define the machines to grab files from in the config.json file.
 
@@ -47,7 +46,7 @@ def get_eclab_snapshot_folder() -> Path:
     if not snapshot_parent:
         msg = (
             "No 'Snapshots folder path' in config file. "
-            f"Please fill in the config file at {CONFIG.get('User config path')}.",
+            f"Please fill in the config file at {CONFIG.get('User config path')}."
         )
         raise ValueError(msg)
     snapshot_path = Path(snapshot_parent) / "eclab_snapshots"

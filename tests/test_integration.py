@@ -1,3 +1,4 @@
+# Copyright © 2025-2026, Empa.
 """Test chaining together many high level functions."""
 
 import base64

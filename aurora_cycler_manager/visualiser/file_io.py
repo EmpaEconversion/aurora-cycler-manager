@@ -1,7 +1,5 @@
-"""Copyright © 2026, Empa.
-
-Functions for file upload and download.
-"""
+# Copyright © 2026, Empa.
+"""Functions for file upload and download."""
 
 import io
 import json
@@ -79,8 +77,16 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
 
     if filepath.suffix in {".jsonld", ".json"}:
         # It could be ontology or samples
-        with filepath.open("r") as f:
-            data = json.load(f)
+        try:
+            with filepath.open("r") as f:
+                data = json.load(f)
+        except json.JSONDecodeError as e:
+            return (
+                f"Error decoding JSON file, it is not valid JSON:\n{e}",
+                "red",
+                True,
+                {"file": None, "data": None},
+            )
         if is_samples_json(data):
             samples = [d.get("Sample ID") for d in data]
             known_samples = set(get_all_sampleids())
@@ -139,15 +145,19 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
             if not jobs:
                 if filepath.name in (p.name for p in CONFIG["Protocols folder path"].iterdir()):
                     return (
-                        "Will OVERWRITE unicycler protocol in available protocols.\n"
-                        "To attach a protocol to existing jobs instead, select jobs first then upload protocol.",
+                        (
+                            "Will OVERWRITE unicycler protocol in available protocols.\n"
+                            "To attach a protocol to existing jobs instead, select jobs first then upload protocol."
+                        ),
                         "orange",
                         False,
                         {"file": "unicycler-json", "data": data, "jobs": None},
                     )
                 return (
-                    "Will add unicycler protocol to available protocols.\n"
-                    "To attach a protocol to existing jobs instead, select jobs first then upload protocol.",
+                    (
+                        "Will add unicycler protocol to available protocols.\n"
+                        "To attach a protocol to existing jobs instead, select jobs first then upload protocol."
+                    ),
                     "green",
                     False,
                     {"file": "unicycler-json", "data": data, "jobs": None},
@@ -156,22 +166,36 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
             protocols = [p for p in protocols if p is not None]
             if protocols:
                 return (
-                    f"Will OVERWRITE {len(protocols)} unicycler protocol(s) "
-                    f"attached to {len(selected_rows)} existing job(s).\n"
-                    "To add to available protocols instead, upload without selecting jobs.",
+                    (
+                        f"Will OVERWRITE {len(protocols)} unicycler protocol(s) "
+                        f"attached to {len(selected_rows)} existing job(s).\n"
+                        "To add to available protocols instead, upload without selecting jobs."
+                    ),
                     "orange",
                     False,
                     {"file": "unicycler-json", "data": data, "jobs": jobs},
                 )
             return (
-                f"Will attach unicycler protocol to {len(selected_rows)} existing jobs.\n"
-                "To add to available protocols instead, upload without selecting jobs.",
+                (
+                    f"Will attach unicycler protocol to {len(selected_rows)} existing jobs.\n"
+                    "To add to available protocols instead, upload without selecting jobs."
+                ),
                 "green",
                 False,
                 {"file": "unicycler-json", "data": data, "jobs": jobs},
             )
+        return (
+            (
+                "Got a JSON file, but it does not match any expected format.\n"
+                "A samples JSON should be a list of dicts, each with key value pairs matching the Samples table.\n"
+                "Can also accept a unicycler JSON, a Battinfo JSON-LD, or a general auxiliary JSON-LD."
+            ),
+            "red",
+            True,
+            {"file": None, "data": None},
+        )
 
-    elif filepath.suffix == ".xlsx":
+    if filepath.suffix == ".xlsx":
         # It is probably a battinfo xlsx file
         excel_file = pd.ExcelFile(filepath)
         sheet_names = [str(s) for s in excel_file.sheet_names]
@@ -198,7 +222,7 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
             {"file": "battinfo-xlsx", "data": None},  # Don't copy the content_string
         )
 
-    elif filepath.suffix == ".zip":
+    if filepath.suffix == ".zip":
         # Open the zip archive
         with zipfile.ZipFile(filepath, "r") as zip_file:
             # List the contents

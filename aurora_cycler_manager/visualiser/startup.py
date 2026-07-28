@@ -1,6 +1,6 @@
-"""Copyright © 2025, Empa.
+# Copyright © 2025, Empa.
+"""Minimal script to show a logo and start logging immediately on starting the app.
 
-Minimal script to show a logo and start logging immediately on starting the app.
 Initialization can take a few seconds if connecting to several cyclers.
 Show stuff happening in the terminal to keep users happy :).
 """

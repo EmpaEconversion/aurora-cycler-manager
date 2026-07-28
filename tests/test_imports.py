@@ -1,3 +1,4 @@
+# Copyright © 2025-2026, Empa.
 """Import everything to check coverage and dependencies."""
 
 import importlib

@@ -1,3 +1,4 @@
+# Copyright © 2025-2026, Empa.
 """Tests for file_io module."""
 
 import json

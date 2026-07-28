@@ -1,7 +1,5 @@
-"""Copyright © 2025-2026, Empa.
-
-Mappings for columns names.
-"""
+# Copyright © 2025-2026, Empa.
+"""Mappings for columns names."""
 
 import polars as pl
 

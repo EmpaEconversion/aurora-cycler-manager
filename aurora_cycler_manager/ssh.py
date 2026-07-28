@@ -1,7 +1,5 @@
-"""Copyright © 2026, Empa.
-
-Functions for connecting to instrument servers with SSH.
-"""
+# Copyright © 2026, Empa.
+"""Functions for connecting to instrument servers with SSH."""
 
 import base64
 import logging

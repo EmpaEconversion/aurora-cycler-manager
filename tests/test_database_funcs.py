@@ -1,3 +1,4 @@
+# Copyright © 2025-2026, Empa.
 """Unit tests for database_funcs.py."""
 
 import json

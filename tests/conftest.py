@@ -1,3 +1,4 @@
+# Copyright © 2025-2026, Empa.
 """Before any tests are run, set envionment variable PYTEST_RUNNING."""
 
 import json

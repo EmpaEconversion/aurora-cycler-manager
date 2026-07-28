@@ -1,7 +1,5 @@
-"""Copyright © 2025-2026, Empa.
-
-Functions for interacting with the database.
-"""
+# Copyright © 2025-2026, Empa.
+"""Functions for interacting with the database."""
 
 import os
 from pathlib import Path
