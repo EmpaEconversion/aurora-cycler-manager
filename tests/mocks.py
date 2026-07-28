@@ -1,3 +1,4 @@
+# Copyright © 2025-2026, Empa.
 """Testing ssh module."""
 
 from pathlib import Path

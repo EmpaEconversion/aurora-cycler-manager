@@ -1,6 +1,5 @@
-"""Copyright © 2025-2026, Empa.
-
-Functions for getting and setting data in the database.
+# Copyright © 2025-2026, Empa.
+"""Functions for getting and setting data in the database.
 
 Note that the database does not contain the time-series data and analysed results.
 These data are stored in the file system, use the `data_parse` module to access.

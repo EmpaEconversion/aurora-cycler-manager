@@ -1,6 +1,5 @@
-"""Copyright © 2025-2026, Empa.
-
-Command line utility for setting up the Aurora Cycler Manager.
+# Copyright © 2025-2026, Empa.
+"""Command line utility for setting up the Aurora Cycler Manager.
 
 Connect to an existing configuration:
     aurora-setup connect --config=<path>

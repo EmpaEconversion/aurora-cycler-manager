@@ -1,7 +1,5 @@
-"""Copyright © 2025, Empa.
-
-Set up logging.
-"""
+# Copyright © 2025, Empa.
+"""Set up logging."""
 
 import logging
 import sys

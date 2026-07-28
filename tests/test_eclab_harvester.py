@@ -1,3 +1,4 @@
+# Copyright © 2025-2026, Empa.
 """Testing functions in the eclab_harvester.py."""
 
 from datetime import datetime

@@ -1,7 +1,5 @@
-"""Copyright © 2025-2026, Empa.
-
-Utility functions which depend on config and/or 3rd party imports.
-"""
+# Copyright © 2025-2026, Empa.
+"""Utility functions which depend on config and/or 3rd party imports."""
 
 from contextlib import suppress
 from datetime import datetime, timezone

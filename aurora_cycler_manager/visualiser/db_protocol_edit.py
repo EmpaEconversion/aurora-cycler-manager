@@ -1,7 +1,5 @@
-"""Copyright © 2025-2026, Empa.
-
-Protocol editing sub-layout for the database tab.
-"""
+# Copyright © 2025-2026, Empa.
+"""Protocol editing sub-layout for the database tab."""
 
 import logging
 import uuid

@@ -1,7 +1,5 @@
-"""Copyright © 2026, Empa.
-
-Functions and callbacks for the 'info' functionality in Database tab.
-"""
+# Copyright © 2026, Empa.
+"""Functions and callbacks for the 'info' functionality in Database tab."""
 
 import json
 import logging

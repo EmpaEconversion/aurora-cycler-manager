@@ -1,7 +1,5 @@
-"""Copyright © 2026, Empa.
-
-Utility functions which only depend on standard library.
-"""
+# Copyright © 2026, Empa.
+"""Utility functions which only depend on standard library."""
 
 import json
 import re

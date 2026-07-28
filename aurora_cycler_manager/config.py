@@ -1,7 +1,5 @@
-"""Copyright © 2025-2026, Empa.
-
-Functions for getting the configuration settings.
-"""
+# Copyright © 2025-2026, Empa.
+"""Functions for getting the configuration settings."""
 
 import json
 import logging

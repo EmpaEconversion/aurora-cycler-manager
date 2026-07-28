@@ -1,6 +1,5 @@
-"""Copyright © 2025-2026, Empa.
-
-server_manager manages a database and communicates with multiple cycler servers.
+# Copyright © 2025-2026, Empa.
+"""server_manager manages a database and communicates with multiple cycler servers.
 
 This module defines a ServerManager class. The ServerManager object communicates
 with multiple CyclerServer objects defined in cycler_servers, and manages the

@@ -1,3 +1,4 @@
+# Copyright © 2025-2026, Empa.
 """Unit tests for battinfo_utils.py."""
 
 import json

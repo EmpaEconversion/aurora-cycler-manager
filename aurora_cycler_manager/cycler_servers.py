@@ -1,6 +1,6 @@
-"""Copyright © 2025-2026, Empa.
+# Copyright © 2025-2026, Empa.
+"""Server classes used by server_manager.
 
-Server classes used by server_manager, including:
 - Neware server, designed for Neware BTS 8.0 with aurora-neware CLI
 - Biologic server, designed for Biologic EC-lab with aurora-biologic CLI
 

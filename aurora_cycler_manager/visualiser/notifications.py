@@ -1,6 +1,5 @@
-"""Copyright © 2025, Empa.
-
-Notification system and loading messages for the Aurora cycler manager app.
+# Copyright © 2025, Empa.
+"""Notification system and loading messages for the Aurora cycler manager app.
 
 To send notification in a callback, Output to notifications-container.
 

@@ -1,6 +1,5 @@
-"""Copyright © 2025-2026, Empa.
-
-Functions used for parsing, analysing and plotting.
+# Copyright © 2025-2026, Empa.
+"""Functions used for parsing, analysing and plotting.
 
 Takes partial cycling files and combines into one full DataFrame and parquet file.
 

@@ -1,6 +1,5 @@
-"""Copyright © 2025-2026, Empa.
-
-Functions for reading data from the aurora file structure.
+# Copyright © 2025-2026, Empa.
+"""Functions for reading data from the aurora file structure.
 
 Functions like `get_cycling(sample_id)`, `get_eis(sample_id)` take a sample ID and return a polars dataframe with data.
 

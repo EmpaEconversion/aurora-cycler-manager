@@ -1,3 +1,4 @@
+# Copyright © 2025-2026, Empa.
 """Test server_manager.py module."""
 
 import json

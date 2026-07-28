@@ -1,7 +1,5 @@
-"""Copyright © 2025-2026, Empa.
-
-Database view tab layout and callbacks for the visualiser app.
-"""
+# Copyright © 2025-2026, Empa.
+"""Database view tab layout and callbacks for the visualiser app."""
 
 import json
 import logging
