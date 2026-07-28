@@ -48,7 +48,7 @@ dependencies = [
     "waitress>=3.0.2",
     "xlsxwriter>=3.2.9",
     "xmltodict>=0.14.2",
-    "yadg>=6.2.2",
+    "yadg>=6.2.2,<7.0",
     "werkzeug>=3.1.6",
 ]
 
