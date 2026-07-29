@@ -91,6 +91,11 @@ def reset_all(test_dir: Path) -> Generator[None, None, None]:
 @pytest.fixture
 def mock_ssh() -> Generator[MockSSHClient, None, None]:
     """Mock SSH client."""
+    from aurora_cycler_manager import ssh as ssh_module  # noqa: PLC0415
+
     mock_client = MockSSHClient()
+    # ssh.py caches ssh connections - clear between tests so they don't leak into each other.
+    ssh_module.close_all_connections()
     with patch("aurora_cycler_manager.ssh.paramiko.SSHClient", return_value=mock_client):
         yield mock_client
+    ssh_module.close_all_connections()
