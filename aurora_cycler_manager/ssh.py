@@ -6,8 +6,10 @@ import base64
 import logging
 import posixpath
 import threading
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path, PureWindowsPath
+from time import monotonic, sleep
 
 import paramiko
 from typing_extensions import Self
@@ -18,21 +20,112 @@ CONFIG = get_config()
 
 logger = logging.getLogger(__name__)
 
-# Cache of shared, reused jump-host connections, keyed by (proxy_hostname, proxy_username)
-_jump_clients: dict[tuple[str, str], paramiko.SSHClient] = {}
-_jump_clients_lock = threading.Lock()
+# If a connection does nothing for this long, close it
+_IDLE_TIMEOUT_S = 15 * 60
+# Always close a connection and force a refresh after this time
+_MAX_LIFETIME_S = 12 * 60 * 60
+# Check for any idle/max lifetime connections and close
+_SWEEP_INTERVAL_S = 60
+
+
+class _ClientPool:
+    """Thread-safe cache of live paramiko SSHClients.
+
+    Each key gets its own lock, so connecting under different keys can run in
+    parallel, while concurrent connects to the same key are serialised.
+    """
+
+    def __init__(self, *, idle_timeout: float, max_lifetime: float) -> None:
+        """Initialise empty pool."""
+        self._idle_timeout = idle_timeout
+        self._max_lifetime = max_lifetime
+        self._clients: dict[tuple, paramiko.SSHClient] = {}
+        self._created_at: dict[tuple, float] = {}
+        self._last_used: dict[tuple, float] = {}
+        self._key_locks: dict[tuple, threading.Lock] = {}
+        self._key_locks_guard = threading.Lock()
+
+    def _lock_for(self, key: tuple) -> threading.Lock:
+        with self._key_locks_guard:
+            return self._key_locks.setdefault(key, threading.Lock())
+
+    def _is_expired(self, key: tuple, now: float) -> bool:
+        return now - self._created_at[key] > self._max_lifetime or now - self._last_used[key] > self._idle_timeout
+
+    def get(
+        self,
+        key: tuple,
+        connect: Callable[[], paramiko.SSHClient],
+        *,
+        force_reconnect: bool = False,
+    ) -> paramiko.SSHClient:
+        """Return a cached, live client for `key`, calling `connect` to (re)create it if needed."""
+        with self._lock_for(key):
+            now = monotonic()
+            client = self._clients.get(key)
+            transport = client.get_transport() if client else None
+            if (
+                client is not None
+                and not force_reconnect
+                and transport is not None
+                and transport.is_active()
+                and not self._is_expired(key, now)
+            ):
+                self._last_used[key] = now
+                return client
+            if client is not None:
+                client.close()
+            client = connect()
+            self._clients[key] = client
+            self._created_at[key] = now
+            self._last_used[key] = now
+            return client
+
+    def sweep_expired(self) -> None:
+        """Proactively close any cached client past its idle timeout or max lifetime."""
+        with self._key_locks_guard:
+            keys = list(self._key_locks)
+        for key in keys:
+            with self._lock_for(key):
+                client = self._clients.get(key)
+                if client is not None and self._is_expired(key, monotonic()):
+                    del self._clients[key]
+                    del self._created_at[key]
+                    del self._last_used[key]
+                    client.close()
+
+    def close_all(self) -> None:
+        """Close and forget every cached client."""
+        with self._key_locks_guard:
+            for key, lock in self._key_locks.items():
+                with lock:
+                    client = self._clients.pop(key, None)
+                    self._created_at.pop(key, None)
+                    self._last_used.pop(key, None)
+                    if client is not None:
+                        client.close()
+
+
+# Shared, reused jump-host connections, keyed by (proxy_hostname, proxy_username)
+_jump_pool = _ClientPool(idle_timeout=_IDLE_TIMEOUT_S, max_lifetime=_MAX_LIFETIME_S)
+# Shared, reused connections to target machines, keyed by (hostname, username)
+_target_pool = _ClientPool(idle_timeout=_IDLE_TIMEOUT_S, max_lifetime=_MAX_LIFETIME_S)
+
+
+def _sweep_expired_connections() -> None:
+    while True:
+        sleep(_SWEEP_INTERVAL_S)
+        _jump_pool.sweep_expired()
+        _target_pool.sweep_expired()
+
+
+threading.Thread(target=_sweep_expired_connections, daemon=True, name="aurora-ssh-pool-sweeper").start()
 
 
 def _get_jump_client(proxy_hostname: str, proxy_username: str, *, force_reconnect: bool = False) -> paramiko.SSHClient:
     """Return a cached, connected jump SSHClient for the given proxy, reconnecting if needed."""
-    key = (proxy_hostname, proxy_username)
-    with _jump_clients_lock:
-        jump = _jump_clients.get(key)
-        transport = jump.get_transport() if jump else None
-        if jump is not None and not force_reconnect and transport is not None and transport.is_active():
-            return jump
-        if jump is not None:
-            jump.close()
+
+    def connect() -> paramiko.SSHClient:
         jump = paramiko.SSHClient()
         jump.load_system_host_keys()
         jump.connect(
@@ -45,20 +138,19 @@ def _get_jump_client(proxy_hostname: str, proxy_username: str, *, force_reconnec
             msg = f"Connected to jump host {proxy_hostname} but no transport was created."
             raise paramiko.SSHException(msg)
         transport.set_keepalive(30)
-        _jump_clients[key] = jump
         return jump
 
+    return _jump_pool.get((proxy_hostname, proxy_username), connect, force_reconnect=force_reconnect)
 
-def close_jump_clients() -> None:
-    """Close all cached jump-host connections."""
-    with _jump_clients_lock:
-        for jump in _jump_clients.values():
-            jump.close()
-        _jump_clients.clear()
+
+def close_all_connections() -> None:
+    """Close every cached jump-host and target connection."""
+    _jump_pool.close_all()
+    _target_pool.close_all()
 
 
 # Close connections if Python exits
-atexit.register(close_jump_clients)
+atexit.register(close_all_connections)
 
 
 def _ps_to_cmd(ps_command: str) -> str:
@@ -115,23 +207,34 @@ class SSHConnection:
         raise paramiko.SSHException(msg)
 
     def connect(self) -> Self:
-        """Establish SSH connection."""
-        self.client = paramiko.SSHClient()
-        self.client.load_host_keys(CONFIG["SSH known hosts path"])
-        self.client.load_system_host_keys()
-        self.client.set_missing_host_key_policy(paramiko.RejectPolicy())
-        self.client.connect(
-            hostname=self.server["hostname"].lower(),
-            username=self.server["username"].lower(),
-            key_filename=CONFIG.get("SSH private key path"),
-            sock=self.get_sock(),
-        )
+        """Attach a cached, live SSH connection to the target machine, connecting if needed."""
+        key = (self.server["hostname"].lower(), self.server["username"].lower())
+
+        def make_client() -> paramiko.SSHClient:
+            client = paramiko.SSHClient()
+            client.load_host_keys(CONFIG["SSH known hosts path"])
+            client.load_system_host_keys()
+            client.set_missing_host_key_policy(paramiko.RejectPolicy())
+            client.connect(
+                hostname=self.server["hostname"].lower(),
+                username=self.server["username"].lower(),
+                key_filename=CONFIG.get("SSH private key path"),
+                sock=self.get_sock(),
+            )
+            transport = client.get_transport()
+            if transport is not None:
+                transport.set_keepalive(30)
+            return client
+
+        self.client = _target_pool.get(key, make_client)
         return self
 
     def close(self) -> None:
-        """Close SSH connection."""
-        if self.client:
-            self.client.close()
+        """Do nothing, the underlying connection is managed by the _ClientPool.
+
+        Use close_all_connections() to actually tear down cached connections.
+        This function is kept for backwards compatibility.
+        """
 
     def __enter__(self) -> Self:
         """Context manager entry."""
