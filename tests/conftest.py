@@ -20,9 +20,21 @@ logger = logging.getLogger(__name__)
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Set PYTEST_RUNNING env variable early, before any tests are collected or run."""
+    """Set PYTEST_RUNNING, then verify the database engine actually points at the test database."""
     os.environ["PYTEST_RUNNING"] = "1"
     logger.info("PYTEST_RUNNING set to 1 in pytest_configure")
+
+    from aurora_cycler_manager import database_funcs  # noqa: PLC0415
+
+    expected_db_path = (Path(__file__).parent / "test_data" / "database" / "test_database.db").resolve()
+    actual_db_path = Path(database_funcs.engine.url.database or "").resolve()
+    if actual_db_path != expected_db_path:
+        pytest.exit(
+            f"Refusing to run tests: expected the database engine to point at {expected_db_path}, "
+            f"but it resolved to {actual_db_path} (url={database_funcs.engine.url!r}). "
+            "Some module likely read the config before PYTEST_RUNNING env variable was set.",
+            returncode=1,
+        )
 
 
 @pytest.fixture
