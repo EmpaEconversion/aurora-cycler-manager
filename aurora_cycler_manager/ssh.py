@@ -1,9 +1,11 @@
 # Copyright © 2026, Empa.
 """Functions for connecting to instrument servers with SSH."""
 
+import atexit
 import base64
 import logging
 import posixpath
+import threading
 from datetime import datetime
 from pathlib import Path, PureWindowsPath
 
@@ -15,6 +17,48 @@ from aurora_cycler_manager.config import get_config
 CONFIG = get_config()
 
 logger = logging.getLogger(__name__)
+
+# Cache of shared, reused jump-host connections, keyed by (proxy_hostname, proxy_username)
+_jump_clients: dict[tuple[str, str], paramiko.SSHClient] = {}
+_jump_clients_lock = threading.Lock()
+
+
+def _get_jump_client(proxy_hostname: str, proxy_username: str, *, force_reconnect: bool = False) -> paramiko.SSHClient:
+    """Return a cached, connected jump SSHClient for the given proxy, reconnecting if needed."""
+    key = (proxy_hostname, proxy_username)
+    with _jump_clients_lock:
+        jump = _jump_clients.get(key)
+        transport = jump.get_transport() if jump else None
+        if jump is not None and not force_reconnect and transport is not None and transport.is_active():
+            return jump
+        if jump is not None:
+            jump.close()
+        jump = paramiko.SSHClient()
+        jump.load_system_host_keys()
+        jump.connect(
+            hostname=proxy_hostname,
+            username=proxy_username,
+            key_filename=CONFIG.get("SSH private key path"),
+        )
+        transport = jump.get_transport()
+        if transport is None:
+            msg = f"Connected to jump host {proxy_hostname} but no transport was created."
+            raise paramiko.SSHException(msg)
+        transport.set_keepalive(30)
+        _jump_clients[key] = jump
+        return jump
+
+
+def close_jump_clients() -> None:
+    """Close all cached jump-host connections."""
+    with _jump_clients_lock:
+        for jump in _jump_clients.values():
+            jump.close()
+        _jump_clients.clear()
+
+
+# Close connections if Python exits
+atexit.register(close_jump_clients)
 
 
 def _ps_to_cmd(ps_command: str) -> str:
@@ -45,29 +89,30 @@ class SSHConnection:
         """Store server info."""
         self.server = server
         self.client: paramiko.SSHClient
-        self._jump_client = None
 
     def get_sock(self) -> paramiko.Channel | None:
-        """Return a tunnel channel if a proxy is needed, else None."""
+        """Return a tunnel channel through the shared jump connection, if a proxy is needed."""
         proxy = self.server.get("proxy_hostname")
         if not proxy:
             return None
 
-        jump = paramiko.SSHClient()
-        jump.load_system_host_keys()
-        jump.connect(
-            hostname=proxy,
-            username=self.server.get("proxy_username", self.server["username"]).lower(),
-            key_filename=CONFIG.get("SSH private key path"),
-        )
-        # Keep a reference to avoid garbage collection
-        self._jump_client = jump
+        proxy = proxy.lower()
+        proxy_username = self.server.get("proxy_username", self.server["username"]).lower()
+        target = (self.server["hostname"].lower(), 22)
 
-        return jump.get_transport().open_channel(
-            "direct-tcpip",
-            (self.server["hostname"].lower(), 22),
-            ("127.0.0.1", 0),
-        )
+        # Shared jump connection may have died since the last check - retry once with a fresh one.
+        for force_reconnect in (False, True):
+            jump = _get_jump_client(proxy, proxy_username, force_reconnect=force_reconnect)
+            transport = jump.get_transport()
+            if transport is None:
+                continue
+            try:
+                return transport.open_channel("direct-tcpip", target, ("127.0.0.1", 0))
+            except (OSError, paramiko.SSHException):
+                if force_reconnect:
+                    raise
+        msg = f"Could not establish a transport to jump host {proxy}."
+        raise paramiko.SSHException(msg)
 
     def connect(self) -> Self:
         """Establish SSH connection."""
@@ -87,9 +132,6 @@ class SSHConnection:
         """Close SSH connection."""
         if self.client:
             self.client.close()
-        if self._jump_client:
-            self._jump_client.close()
-            self._jump_client = None
 
     def __enter__(self) -> Self:
         """Context manager entry."""
