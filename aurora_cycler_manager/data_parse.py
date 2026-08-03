@@ -154,9 +154,9 @@ def get_battinfo(sample_id: str) -> dict:
         with data_path.open("r") as f:
             aux_json = json.load(f)
         try:
-            bu.merge_jsonld_on_type([battinfo_json, aux_json])
+            battinfo_json = bu.merge_jsonld_on_type([battinfo_json, aux_json])
         except ValueError:
-            bu.merge_jsonld_on_type(
+            battinfo_json["hasTestObject"] = bu.merge_jsonld_on_type(
                 [battinfo_json["hasTestObject"], aux_json],
                 target_type="CoinCell",
             )
