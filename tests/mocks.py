@@ -39,6 +39,14 @@ class MockSSHClient:
         """Mock close."""
         self.connected = False
 
+    def get_transport(self) -> Mock | None:
+        """Mock get_transport."""
+        if not self.connected:
+            return None
+        transport = Mock()
+        transport.is_active.return_value = self.connected
+        return transport
+
     def exec_command(self, command: str, **kwargs) -> tuple[Mock, Mock, Mock]:  # noqa: ANN003
         """Mock exec_command with configured responses."""
         # Find matching response (exact match or contains)
