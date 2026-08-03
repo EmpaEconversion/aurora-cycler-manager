@@ -42,6 +42,9 @@ from aurora_cycler_manager.visualiser.notifications import (
 logger = logging.getLogger(__name__)
 CONFIG = get_config()
 
+CC_BY_4_URL = "https://creativecommons.org/licenses/by/4.0/"
+BATTINFO_COINCELL_IRI = "https://w3id.org/emmo/domain/battery#battery_b7fdab58_6e91_4c84_b097_b06eff86a124"
+
 
 def is_samples_json(obj: list | str | dict) -> bool:
     """Check if object is a samples file."""
@@ -500,6 +503,79 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
             return 0
 
 
+def _rocrate_author_entities(authors: list[dict], institutions: dict[str, dict]) -> list[dict]:
+    """Build Person and Organization contextual entities from publication info."""
+    entities: list[dict] = []
+    organizations: dict[str, dict] = {}
+    for author in authors:
+        affiliations = []
+        for affil in author.get("affiliation", []):
+            wikidata_url = institutions.get(affil, {}).get("wikidata_url")
+            if not wikidata_url:
+                continue
+            affiliations.append({"@id": wikidata_url})
+            organizations[wikidata_url] = {"@id": wikidata_url, "@type": "Organization", "name": affil}
+        person: dict = {"@id": author["orcid"], "@type": "Person", "name": author["name"]}
+        if affiliations:
+            person["affiliation"] = affiliations[0] if len(affiliations) == 1 else affiliations
+        entities.append(person)
+    entities.extend(organizations.values())
+    return entities
+
+
+def _rocrate_skeleton(pub_info: dict) -> tuple[dict, dict]:
+    """Build RO-Crate metadata skeleton, return the crate and its root dataset entity."""
+    root_dataset: dict = {
+        "@id": "./",
+        "@type": "Dataset",
+        "name": "Aurora Battery Assembly & Cycling Experiments",
+        "description": (
+            "A collection of battery assembly and cycling experiments. "
+            "Data processing, analysis, export, and ro-crate generation completed with "
+            "aurora-cycler-manager (https://github.com/empaeconversion/aurora-cycler-manager)"
+        ),
+        "dateCreated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "datePublished": datetime.now(timezone.utc).date().isoformat(),
+        "license": {"@id": CC_BY_4_URL},
+        "hasPart": [],
+    }
+    contextual_entities: list[dict] = [
+        {
+            "@id": CC_BY_4_URL,
+            "@type": "CreativeWork",
+            "name": "Creative Commons Attribution 4.0 International",
+        },
+    ]
+    if pub_info.get("zenodo_doi_url"):
+        root_dataset["identifier"] = pub_info["zenodo_doi_url"]
+    if pub_info.get("publication_doi_url"):
+        root_dataset["citation"] = {"@id": pub_info["publication_doi_url"]}
+        publication: dict = {"@id": pub_info["publication_doi_url"], "@type": "ScholarlyArticle"}
+        if pub_info.get("citation_string"):
+            publication["name"] = pub_info["citation_string"]
+        contextual_entities.append(publication)
+    elif pub_info.get("citation_string"):
+        root_dataset["citation"] = pub_info["citation_string"]
+    if pub_info.get("authors"):
+        root_dataset["author"] = [{"@id": a["orcid"]} for a in pub_info["authors"]]
+        contextual_entities.extend(_rocrate_author_entities(pub_info["authors"], pub_info.get("institutions", {})))
+
+    rocrate = {
+        "@context": "https://w3id.org/ro/crate/1.1/context",
+        "@graph": [
+            {
+                "@type": "CreativeWork",
+                "@id": "ro-crate-metadata.json",
+                "conformsTo": {"@id": "https://w3id.org/ro/crate/1.1"},
+                "about": {"@id": "./"},
+            },
+            root_dataset,
+            *contextual_entities,
+        ],
+    }
+    return rocrate, root_dataset
+
+
 def create_rocrate(
     sample_ids: list,
     filetypes: set,
@@ -520,31 +596,8 @@ def create_rocrate(
     """
     zip_path = Path(zip_path)
     samples = [_Sample.from_id(s) for s in sample_ids]
-    rocrate = {
-        "@context": "https://w3id.org/ro/crate/1.1/context",
-        "@graph": [
-            {
-                "@type": "CreativeWork",
-                "@id": "ro-crate-metadata.json",
-                "conformsTo": {"@id": "https://w3id.org/ro/crate/1.1"},
-                "about": {"@id": "./"},
-            },
-            {
-                "@id": "./",
-                "@type": "Dataset",
-                "name": "Aurora Battery Assembly & Cycling Experiments",
-                "description": (
-                    "A collection of battery assembly and cycling experiments. "
-                    "Data processing, analysis, export, and ro-crate generation completed with "
-                    "aurora-cycler-manager (https://github.com/empaeconversion/aurora-cycler-manager)"
-                ),
-                "dateCreated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                "hasPart": [],
-            },
-        ],
-    }
-
     pub_info = bu.parse_zenodo_info_xlsx(zenodo_info) if zenodo_info else {}
+    rocrate, root_dataset = _rocrate_skeleton(pub_info)
 
     # Number of files
     n_files = len(samples) * len(filetypes)
@@ -559,6 +612,7 @@ def create_rocrate(
             sample_id: str = sample.get("Sample ID")
             ccid: str = sample.get("Barcode")
             identifier = ccid or sample_id  # fallback on normal sample ID
+            sample_ref = f"#{identifier}"
             battinfo_files = []
             messages += f"{sample_id} - "
             warnings = []
@@ -567,8 +621,8 @@ def create_rocrate(
 
             rocrate["@graph"].append(
                 {
-                    "@id": identifier,
-                    "@type": "https://w3id.org/emmo/domain/battery#coincell",
+                    "@id": sample_ref,
+                    "@type": BATTINFO_COINCELL_IRI,
                     "identifier": identifier,
                     "name": sample_id,
                 }
@@ -592,13 +646,13 @@ def create_rocrate(
                         zf.writestr(rel_file_path, buffer.read())
                         messages += "✅"
 
-                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                        root_dataset["hasPart"].append({"@id": rel_file_path})
                         rocrate["@graph"].append(
                             {
                                 "@id": rel_file_path,
                                 "@type": "File",
                                 "name": f"{sample_id} per-cycle summary data (csv)",
-                                "about": {"@id": identifier},
+                                "about": {"@id": sample_ref},
                                 "encodingFormat": "text/csv",
                                 "description": (
                                     f"Summary data from battery cycling for sample '{sample_id}'"
@@ -623,13 +677,13 @@ def create_rocrate(
                         zf.writestr(rel_file_path, buffer.read())
                         messages += "✅"
 
-                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                        root_dataset["hasPart"].append({"@id": rel_file_path})
                         rocrate["@graph"].append(
                             {
                                 "@id": rel_file_path,
                                 "@type": "File",
                                 "name": f"{sample_id} per-cycle summary data (parquet)",
-                                "about": {"@id": identifier},
+                                "about": {"@id": sample_ref},
                                 "encodingFormat": "application/vnd.apache.parquet",
                                 "description": (
                                     f"Summary data from battery cycling for sample '{sample_id}'"
@@ -654,13 +708,13 @@ def create_rocrate(
                         rel_file_path = sample_id + f"/full.{sample_id}.bdf.csv"
                         zf.writestr(rel_file_path, buffer.read())
                         messages += "✅"
-                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                        root_dataset["hasPart"].append({"@id": rel_file_path})
                         rocrate["@graph"].append(
                             {
                                 "@id": rel_file_path,
                                 "@type": "File",
                                 "name": f"{sample_id} time-series data (csv)",
-                                "about": {"@id": identifier},
+                                "about": {"@id": sample_ref},
                                 "encodingFormat": "text/csv",
                                 "description": (
                                     f"Time-series battery cycling data for sample '{sample_id}'"
@@ -678,13 +732,13 @@ def create_rocrate(
                             rel_file_path = sample_id + f"/eis.{sample_id}.bdf.csv"
                             zf.writestr(rel_file_path, buffer.read())
                             messages += "✅"
-                            rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                            root_dataset["hasPart"].append({"@id": rel_file_path})
                             rocrate["@graph"].append(
                                 {
                                     "@id": rel_file_path,
                                     "@type": "File",
                                     "name": f"{sample_id} EIS data (csv)",
-                                    "about": {"@id": identifier},
+                                    "about": {"@id": sample_ref},
                                     "encodingFormat": "text/csv",
                                     "description": (
                                         f"Frequency-domain electrochemical impedance spectroscopy data "
@@ -713,13 +767,13 @@ def create_rocrate(
                         rel_file_path = sample_id + "/" + parquet_name
                         zf.writestr(rel_file_path, buffer.read())
                         messages += "✅"
-                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                        root_dataset["hasPart"].append({"@id": rel_file_path})
                         rocrate["@graph"].append(
                             {
                                 "@id": rel_file_path,
                                 "@type": "File",
                                 "name": f"{sample_id} time-series data (parquet)",
-                                "about": {"@id": identifier},
+                                "about": {"@id": sample_ref},
                                 "encodingFormat": "application/vnd.apache.parquet",
                                 "description": (
                                     f"Time-series battery cycling data for sample '{sample_id}'"
@@ -740,13 +794,13 @@ def create_rocrate(
                             rel_file_path = sample_id + f"/eis.{sample_id}.bdf.parquet"
                             zf.writestr(rel_file_path, buffer.read())
                             messages += "✅"
-                            rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                            root_dataset["hasPart"].append({"@id": rel_file_path})
                             rocrate["@graph"].append(
                                 {
                                     "@id": rel_file_path,
                                     "@type": "File",
                                     "name": f"{sample_id} EIS data (parquet)",
-                                    "about": {"@id": identifier},
+                                    "about": {"@id": sample_ref},
                                     "encodingFormat": "application/vnd.apache.parquet",
                                     "description": (
                                         f"Frequency-domain electrochemical impedance spectroscopy data "
@@ -798,13 +852,13 @@ def create_rocrate(
                         rel_file_path = sample_id + "/" + jsonld_name
                         zf.writestr(rel_file_path, json.dumps(battinfo_json, indent=4))
                         messages += "✅"
-                        rocrate["@graph"][1]["hasPart"].append({"@id": rel_file_path})
+                        root_dataset["hasPart"].append({"@id": rel_file_path})
                         rocrate["@graph"].append(
                             {
                                 "@id": rel_file_path,
                                 "@type": "File",
                                 "name": f"{sample_id} metadata",
-                                "about": {"@id": identifier},
+                                "about": {"@id": sample_ref},
                                 "encodingFormat": "application/ld+json",
                                 "description": (
                                     f"Metadata for sample '{sample_id}'"
