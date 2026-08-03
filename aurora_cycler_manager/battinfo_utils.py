@@ -827,8 +827,8 @@ def add_ccid_output(
     return {
         "@type": "BatteryTest",
         "hasOutput": {
-            "dc:title": f"Cycling data coin cell {ccid}",
-            "dc:description": f"Cycling data coin cell {ccid}",
+            "dcterms:title": f"Cycling data coin cell {ccid}",
+            "dcterms:description": f"Cycling data coin cell {ccid}",
         },
     }
 
@@ -921,8 +921,8 @@ def add_citation(
         "@type": "BatteryTest",
         "hasOutput": {
             "schema:citation": citation_string,
-            "dc:license": "https://creativecommons.org/licenses/by/4.0/",
-            "dc:issued": datetime.now().date().isoformat(),  # noqa: DTZ005
+            "dcterms:license": "https://creativecommons.org/licenses/by/4.0/",
+            "dcterms:issued": datetime.now().date().isoformat(),  # noqa: DTZ005
             "schema:datePublished": datetime.now().date().isoformat(),  # noqa: DTZ005
         },
     }
@@ -977,7 +977,7 @@ def add_authors(
     return {
         "@type": "BatteryTest",
         "hasOutput": {
-            "dc:creator": authors_jsonld[0] if len(authors_jsonld) == 1 else authors_jsonld,
+            "dcterms:creator": authors_jsonld[0] if len(authors_jsonld) == 1 else authors_jsonld,
         },
     }
 
@@ -990,7 +990,7 @@ def add_institution(
     return {
         "@type": "BatteryTest",
         "hasOutput": {
-            "dc:publisher": {
+            "dcterms:publisher": {
                 "@type": "schema:ResearchOrganization",
                 "@id": wikidata_url,
                 "schema:name": name,
