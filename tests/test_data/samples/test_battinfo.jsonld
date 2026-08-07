@@ -860,9 +860,9 @@
                     "BatteryTestResult",
                     "dcat:Dataset"
                 ],
-                "dc:title": "Cycling data of Empa coin cell 000010",
-                "dc:description": "Cycling data of Empa coin cell 000010",
-                "dc:creator": [
+                "dcterms:title": "Cycling data of Empa coin cell 000010",
+                "dcterms:description": "Cycling data of Empa coin cell 000010",
+                "dcterms:creator": [
                     {
                         "@type": "schema:Person",
                         "@id": "https://orcid.org/0000-0001-9610-3589",
@@ -980,13 +980,13 @@
                         }
                     }
                 ],
-                "dc:publisher": {
+                "dcterms:publisher": {
                     "@type": "schema:ResearchOrganization",
                     "@id": "https://www.wikidata.org/wiki/Q683116",
                     "schema:name": "Empa"
                 },
-                "dc:license": "https://creativecommons.org/licenses/by/4.0/",
-                "dc:issued": "2025-06-16",
+                "dcterms:license": "https://creativecommons.org/licenses/by/4.0/",
+                "dcterms:issued": "2025-06-16",
                 "schema:datePublished": "2025-06-16",
                 "dcat:keyword": [
                     "battery",
