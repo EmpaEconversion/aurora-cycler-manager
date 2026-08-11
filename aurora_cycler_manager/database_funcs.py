@@ -63,6 +63,10 @@ def _db_schema_needs_update(engine: Engine) -> bool:
         needs_update = True
     if "Unicycler protocol" not in existing_cols["jobs"]:
         needs_update = True
+    if "Voltage (V)" not in existing_cols["pipelines"]:
+        needs_update = True
+    if "Status" not in existing_cols["pipelines"]:
+        needs_update = True
 
     for table in tables:
         if "sync_modified" not in existing_cols[table]:
@@ -88,6 +92,11 @@ def _update_db_schema(engine: Engine) -> None:
             conn.execute(text('ALTER TABLE jobs ADD COLUMN "Capacity (mAh)" FLOAT'))
         if "Unicycler protocol" not in existing_cols["jobs"]:
             conn.execute(text('ALTER TABLE jobs ADD COLUMN "Unicycler protocol" TEXT'))
+
+        if "Voltage (V)" not in existing_cols["pipelines"]:
+            conn.execute(text('ALTER TABLE pipelines ADD COLUMN "Voltage (V)" FLOAT'))
+        if "Status" not in existing_cols["pipelines"]:
+            conn.execute(text('ALTER TABLE pipelines ADD COLUMN "Status" TEXT'))
 
         for table in ["jobs", "pipelines", "samples", "results"]:
             if "sync_modified" not in existing_cols[table]:

@@ -30,6 +30,28 @@ from aurora_cycler_manager.stdlib_utils import run_from_sample
 logger = logging.getLogger(__name__)
 CONFIG = get_config()
 
+STATUS_CODES = {
+    # Neware
+    "finish": "Idle",
+    "working": "Running",
+    "pause": "Paused",
+    "protect": "Error",
+    # Biologic
+    "Stop": "Idle",
+    "Run": "Running",
+    "Pause": "Paused",
+    "Sync": "Running (sync)",
+    "Stop_rec1": "Idle",
+    "Stop_rec2": "Idle",
+    "Pause_rec": "Paused",
+}
+
+
+def _round_or_none(v: float | None, ndigits: int = 3) -> float | None:
+    if v is None:
+        return None
+    return round(v, ndigits)
+
 
 class CyclerServer:
     """Base class for server objects, should not be instantiated directly."""
@@ -228,16 +250,20 @@ class NewareServer(CyclerServer):
         """Get the status of all pipelines on the server."""
         with SSHConnection(self.server_config) as ssh:
             result = json.loads(self._command(ssh, "neware status"))
+
         # result is a dict with keys=pipeline and value a dict of stuff
         # need to return in list format with keys 'pipeline', 'sampleid', 'ready', 'jobid'
-        rows = []
-        for k, v in result.items():
+        def _get_row(k: str, v: dict) -> dict:
             ready = v["workstatus"] not in ["working", "pause", "protect"]
-            row = {"Pipeline": k, "Ready": ready}
+            voltage = round(v.get("voltage"), 3) if v.get("voltage") is not None else None
+            raw_status = v.get("workstatus")
+            status = STATUS_CODES.get(raw_status, raw_status)
+            row = {"Pipeline": k, "Ready": ready, "Status": status, "Voltage (V)": voltage}
             if not ready:  # Only write sample id if running
                 row["Sample ID"] = v["barcode"]
-            rows.append(row)
-        return rows
+            return row
+
+        return [_get_row(k, v) for k, v in result.items()]
 
     @override
     def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:
@@ -382,19 +408,32 @@ class BiologicServer(CyclerServer):
         """Get the status of all pipelines on the server."""
         with SSHConnection(self.server_config) as ssh:
             result = json.loads(self._command(ssh, "biologic status --ssh"))
+
         # Result is a dict with keys=pipeline and value a dict of stuff
         # Biologic does not give sample ID or job IDs from status
         # Biologic status can be:
         # Stop/Run/Pause/Sync/Stop_rec1/Stop_rec2/Pause_rec
         # _rec means it is still recording data
         # Pipeline is only ready is status is 'Stop'
-        return [
-            {
+        def _get_row(k: str, v: dict) -> dict:
+            conn = v.get("Connection")
+            if conn != "Ok":
+                status = "Error - disconnected"
+            else:
+                limit = v.get("Safety limit")
+                if limit != "Ok":
+                    status = f"Error - limit {limit}"
+                else:
+                    raw_status = v.get("Status")
+                    status = STATUS_CODES.get(raw_status, raw_status)
+            return {
                 "Pipeline": k,
                 "Ready": v["Status"] == "Stop",
+                "Voltage (V)": round(v.get("Ewe (V)"), 3) if v.get("Ewe (V)") is not None else None,
+                "Status": status,
             }
-            for k, v in result.items()
-        ]
+
+        return [_get_row(k, v) for k, v in result.items()]
 
     @override
     def snapshot(self, sample_id: str, jobid: str, jobid_on_server: str) -> str | None:

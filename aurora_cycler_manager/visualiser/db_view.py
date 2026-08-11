@@ -169,9 +169,10 @@ DEFAULT_COLUMNS = {
         "Sample ID",
         "Job ID",
         "Ready",
+        "Voltage (V)",
+        "Status",
         "Flag",
         "Server label",
-        "Job ID on server",
     ],
     "jobs": [
         "Sample ID",
