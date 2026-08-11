@@ -15,7 +15,7 @@ from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 from plotly.colors import hex_to_rgb, label_rgb, sample_colorscale
 
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_parse import get_cycles_summary, get_overall_summary
+from aurora_cycler_manager.visualiser.data_cache import get_frame, get_summary, prefetch
 from aurora_cycler_manager.visualiser.funcs import correlation_matrix
 
 CONFIG = get_config()
@@ -470,7 +470,6 @@ def register_batches_callbacks(app: Dash) -> None:
         Output("batch-cycle-style", "data"),
         Input("batch-samples-dropdown", "value"),
         Input("batch-batch-dropdown", "value"),
-        State("batches-data-store", "data"),
         State("batches-store", "data"),
         State("batch-cycle-y", "value"),
         running=[(Output("loading-message-store", "data"), "Loading data...", "")],
@@ -479,7 +478,6 @@ def register_batches_callbacks(app: Dash) -> None:
     def load_selected_samples(
         samples: list,
         batches: list,
-        data: dict,
         batch_defs: dict[str, dict],
         y_val: str,
     ) -> tuple:
@@ -488,35 +486,37 @@ def register_batches_callbacks(app: Dash) -> None:
             raise PreventUpdate
 
         # Add the samples from batches to samples
-        sample_set = set(samples)
+        samples = samples or []
+        overall_summaries = {}
         sample_to_batch = {
             sample: batch for batch in batches for sample in batch_defs.get(batch, {}).get("samples", [])
         }
-        sample_set = set(samples) | sample_to_batch.keys()
+        working_set = set(samples) | sample_to_batch.keys()
 
-        # Go through the keys in the data store, if they're not in the samples, remove them
-        del_keys = [key for key in data if key not in sample_set]
-        for key in del_keys:
-            del data[key]
+        # y-axis options are df columns
+        y_vars_set = set()
+
+        # color options are keys in overall
+        if batches:
+            color_vars_set = {"Batch"}
+        color_vars_set = set()
+
+        # Read every sample's files concurrently, they are all small and latency bound
+        prefetch(working_set, ("cycles", "overall"), working_set)
 
         # Go through samples and add to data
-        for s in sample_set:
-            if s in data:
-                continue
-            if (df := get_cycles_summary(s)) is not None and (overall_dict := get_overall_summary(s)) is not None:
-                data[s] = {
-                    **df.to_dict(as_series=False),
+        for s in working_set:
+            df = get_frame(s, "cycles", working_set)
+            overall_dict = get_summary(s, "overall", working_set)
+            if df is not None:
+                y_vars_set.update(df.columns)
+            if overall_dict is not None:
+                color_vars_set.update(overall_dict.keys())
+                overall_summaries[s] = {
                     **overall_dict,
                     "Batch": sample_to_batch.get(s),
                 }
 
-        # y-axis options are lists in data
-        # color options are non-lists
-        y_vars_set = set()
-        color_vars_set = set()
-        for sample in data.values():
-            y_vars_set.update([k for k, v in sample.items() if isinstance(v, list)])
-            color_vars_set.update([k for k, v in sample.items() if v is not None and not isinstance(v, list)])
         y_vars = list(y_vars_set)
         color_vars = list(color_vars_set)
 
@@ -528,8 +528,9 @@ def register_batches_callbacks(app: Dash) -> None:
                 y_val = "Discharge capacity (mAh)"
             else:
                 y_val = y_vars[0]
+
         # return the new data
-        return data, y_vars, y_val, color_vars, color_vars
+        return overall_summaries, y_vars, y_val, color_vars, color_vars
 
     # Create a list of styles and colors corresponding to the traces
     @app.callback(
@@ -671,21 +672,26 @@ def register_batches_callbacks(app: Dash) -> None:
             fig["layout"]["title"] = "No data..."
             return fig
 
+        working_set = set(data.keys())
+
         fig["layout"]["yaxis"]["title"] = yvar
         fig["layout"]["title"] = f"{yvar} vs cycle"
         always_show_legend = False
         show_legend = not sdata["color_mode"] or always_show_legend
         if plot_err == "none":  # Plot a trace for every sample
-            for i, sample in enumerate(data.values()):
-                color_label = sample.get(sdata["color_by"], "") if sdata["color_by"] else ""
+            for i, (sample_id, overall) in enumerate(data.items()):
+                cycles = get_frame(sample_id, "cycles", working_set)
+                if cycles is None:
+                    continue
+                color_label = overall.get(sdata["color_by"], "") if sdata["color_by"] else ""
                 if isinstance(color_label, float):
                     color_label = f"{color_label:.6g}"
-                style_label = sample.get(sdata["style_by"], "") if sdata["style_by"] else ""
+                style_label = overall.get(sdata["style_by"], "") if sdata["style_by"] else ""
                 if isinstance(style_label, float):
                     style_label = f"{style_label:.6g}"
                 hovertemplate = "<br>".join(
                     [
-                        f"<b>{sample['Sample ID']}</b>",
+                        f"<b>{overall['Sample ID']}</b>",
                         "Cycle: %{x}",
                         f"{yvar}: %{{y}}",
                     ]
@@ -697,10 +703,10 @@ def register_batches_callbacks(app: Dash) -> None:
                 if sdata["symbols"]:
                     line["dash"] = sdata["lines"][i]
                 trace = go.Scattergl(
-                    x=sample["Cycle"],
-                    y=sample.get(yvar) if yvar in sample else [np.nan] * len(sample["Cycle"]),
+                    x=cycles["Cycle"].to_numpy(),
+                    y=cycles[yvar].to_numpy() if yvar in cycles else [np.nan] * len(cycles),
                     mode=plot_style,
-                    name=sample["Sample ID"],
+                    name=overall["Sample ID"],
                     line=line,
                     marker={
                         "size": 8,
@@ -728,8 +734,16 @@ def register_batches_callbacks(app: Dash) -> None:
             for key, group_data in groups.items():
                 color_label, style_label = key
                 samples = group_data["samples"]
+                working_set = {s["Sample ID"] for s in samples}
+                dfs = [get_frame(s, "cycles", working_set) for s in working_set]
+                dfs = [df for df in dfs if df is not None]
                 i = group_data["idx"]
-                df = pd.concat([pd.DataFrame({"x": s["Cycle"], "y": s.get(yvar)}) for s in samples])
+                df = pd.concat(
+                    [
+                        pd.DataFrame({"x": df["Cycle"], "y": df[yvar] if yvar in df else None})  # noqa: SIM401
+                        for df in dfs
+                    ]
+                )
                 df = df.groupby("x")["y"].agg(["mean", "std", "max", "min", "count"]).reset_index()
                 df = df.fillna(0)
                 df = df.sort_values(by="x")
