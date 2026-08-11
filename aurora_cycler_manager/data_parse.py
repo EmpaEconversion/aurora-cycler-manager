@@ -47,21 +47,6 @@ def read_cycling(file: str | Path) -> pl.DataFrame:
     raise ValueError(msg)
 
 
-def lazy_read_cycling(file: str | Path) -> pl.LazyFrame:
-    """Read cycling data from aurora-style parquet/hdf5 file to LazyFrame."""
-    file = Path(file)
-    if file.suffix == ".parquet":
-        df = pl.scan_parquet(file)
-        if "voltage_volt" in df.collect_schema().names():  # bdf
-            return bdf_to_aurora(df)
-        return df.cast({k: v for k, v in aurora_dtypes.items() if k in df.collect_schema().names()}, strict=False)
-    if file.suffix == ".h5":
-        df = pl.DataFrame(pd.read_hdf(file))
-        return df.cast({k: v for k, v in aurora_dtypes.items() if k in df.columns}, strict=False).lazy()
-    msg = f"Unsupported file format {file.suffix}"
-    raise ValueError(msg)
-
-
 def read_metadata(file: str | Path) -> dict:
     """Read metadata from aurora-style parquet/hdf5 file."""
     file = Path(file)
@@ -91,17 +76,6 @@ def get_cycling(sample_id: str) -> pl.DataFrame:
     raise FileNotFoundError(msg)
 
 
-def lazy_get_cycling(sample_id: str) -> pl.LazyFrame:
-    """Get cycling data from Sample ID."""
-    folder = get_sample_folder(sample_id)
-    if (data_path := folder / f"full.{sample_id}.parquet").exists():
-        return lazy_read_cycling(data_path)
-    if (data_path := folder / f"full.{sample_id}.h5").exists():
-        return lazy_read_cycling(data_path)
-    msg = "No data found."
-    raise FileNotFoundError(msg)
-
-
 def get_cycling_shrunk(sample_id: str) -> pl.DataFrame | None:
     """Get shrunk cycling data from Sample ID."""
     folder = get_sample_folder(sample_id)
@@ -112,29 +86,11 @@ def get_cycling_shrunk(sample_id: str) -> pl.DataFrame | None:
     return None
 
 
-def lazy_get_cycling_shrunk(sample_id: str) -> pl.LazyFrame | None:
-    """Get shrunk cycling data from Sample ID."""
-    folder = get_sample_folder(sample_id)
-    if (data_path := folder / f"shrunk.{sample_id}.parquet").exists():
-        return lazy_read_cycling(data_path)
-    if (data_path := folder / f"shrunk.{sample_id}.h5").exists():
-        return lazy_read_cycling(data_path)
-    return None
-
-
 def get_eis(sample_id: str) -> pl.DataFrame | None:
     """Get EIS data from Sample ID."""
     folder = get_sample_folder(sample_id)
     if (data_path := folder / f"eis.{sample_id}.parquet").exists():
         return read_cycling(data_path)
-    return None
-
-
-def lazy_get_eis(sample_id: str) -> pl.LazyFrame | None:
-    """Get EIS data from Sample ID."""
-    folder = get_sample_folder(sample_id)
-    if (data_path := folder / f"eis.{sample_id}.parquet").exists():
-        return lazy_read_cycling(data_path)
     return None
 
 
@@ -148,19 +104,6 @@ def get_cycles_summary(sample_id: str) -> pl.DataFrame | None:
             data = json.load(f)["data"]
             data = {k: v for k, v in data.items() if isinstance(v, list)}
         return pl.DataFrame(data).cast({"Cycle": pl.UInt32})
-    return None
-
-
-def lazy_get_cycles_summary(sample_id: str) -> pl.LazyFrame | None:
-    """Get per-cycle summary data from Sample ID."""
-    folder = get_sample_folder(sample_id)
-    if (data_path := folder / f"cycles.{sample_id}.parquet").exists():
-        return pl.scan_parquet(data_path)
-    if (data_path := folder / f"cycles.{sample_id}.json").exists():
-        with data_path.open("r") as f:
-            data = json.load(f)["data"]
-            data = {k: v for k, v in data.items() if isinstance(v, list)}
-        return pl.DataFrame(data).cast({"Cycle": pl.UInt32}).lazy()
     return None
 
 
@@ -316,87 +259,6 @@ class SampleDataBundle:
     @cached_property
     def metadata(self) -> dict | None:
         """Standard metadata."""
-        return get_metadata(self.sample_id)
-
-    @cached_property
-    def battinfo(self) -> dict:
-        """BattINFO ontologized metadata."""
-        return get_battinfo(self.sample_id)
-
-
-class LazySampleDataBundle:
-    """Lazy-loading wrapper for sample data with support for pre-loaded data."""
-
-    def __init__(
-        self,
-        sample_id: str,
-        *,
-        cycling: pl.LazyFrame | None = None,
-        cycling_shrunk: pl.LazyFrame | None = None,
-        eis: pl.LazyFrame | None = None,
-        cycles_summary: pl.LazyFrame | None = None,
-        overall_summary: dict | None = None,
-        metadata: dict | None = None,
-        battinfo: dict | None = None,
-    ) -> None:
-        """Initialize with sample_id and optionally pre-loaded data.
-
-        Args:
-            sample_id: Sample identifier
-            cycling: Pre-loaded cycling data (optional)
-            cycling_shrunk: Pre-loaded shrunk cycling data (optional)
-            eis: Pre-loaded electrochemical impedance (optional)
-            cycles_summary: Pre-loaded cycles summary (optional)
-            overall_summary: Pre-loaded overall summary (optional)
-            metadata: Pre-loaded metadata (optional)
-            battinfo: Pre-loaded BattINFO ontologized metadata (optional)
-
-        """
-        self.sample_id = sample_id
-        # Pre-loaded data
-        if cycling is not None:
-            self.cycling = cycling
-        if cycling_shrunk is not None:
-            self.cycling_shrunk = cycling_shrunk
-        if eis is not None:
-            self.eis = eis
-        if cycles_summary is not None:
-            self.cycles_summary = cycles_summary
-        if overall_summary is not None:
-            self.overall_summary = overall_summary
-        if metadata is not None:
-            self.metadata = metadata
-        if battinfo is not None:
-            self.battinfo = battinfo
-
-    @cached_property
-    def cycling(self) -> pl.LazyFrame | None:
-        """Time series cycling data."""
-        return lazy_get_cycling(self.sample_id)
-
-    @cached_property
-    def cycling_shrunk(self) -> pl.LazyFrame | None:
-        """Shrunk time series cycling data."""
-        return lazy_get_cycling_shrunk(self.sample_id)
-
-    @cached_property
-    def eis(self) -> pl.LazyFrame | None:
-        """Shrunk time series cycling data."""
-        return lazy_get_eis(self.sample_id)
-
-    @cached_property
-    def cycles_summary(self) -> pl.LazyFrame | None:
-        """Per-cycle summary data."""
-        return lazy_get_cycles_summary(self.sample_id)
-
-    @cached_property
-    def overall_summary(self) -> dict | None:
-        """Overall summary stats."""
-        return get_overall_summary(self.sample_id)
-
-    @cached_property
-    def metadata(self) -> dict | None:
-        """Metadata."""
         return get_metadata(self.sample_id)
 
     @cached_property
