@@ -6,12 +6,13 @@ import logging
 import dash_mantine_components as dmc
 import numpy as np
 import plotly.graph_objs as go
+import polars as pl
 from dash import Dash, Input, Output, State, dcc, html
 from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
 from aurora_cycler_manager.analysis import calc_dqdv
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_parse import get_cycles_summary, get_cycling, get_cycling_shrunk, get_metadata
+from aurora_cycler_manager.visualiser.data_cache import get_cycling_frame, get_frame, get_summary, prefetch
 
 CONFIG = get_config()
 logger = logging.getLogger(__name__)
@@ -91,9 +92,9 @@ samples_menu = html.Div(
                         id="samples-cycles-y",
                         label="Y-axis:",
                         data=[
-                            "Specific discharge capacity (mAh/g)",
+                            "Discharge capacity (mAh)",
                         ],
-                        value="Specific discharge capacity (mAh/g)",
+                        value="Discharge capacity (mAh)",
                         searchable=True,
                         checkIconPosition="right",
                         comboboxProps={"offset": 0},
@@ -190,7 +191,7 @@ samples_layout = html.Div(
     children=[
         dcc.Store(
             id="samples-data-store",
-            data={"data_sample_time": {}, "data_sample_cycle": {}, "data_sample_metadata": {}},
+            data={"samples": [], "compressed": True, "metadata": {}},
         ),
         PanelGroup(
             id="samples-panel-group",
@@ -276,71 +277,38 @@ def register_samples_callbacks(app: Dash) -> None:
         Output("samples-cycles-y", "data"),
         Input("samples-dropdown", "value"),
         Input("compressed-files", "checked"),
-        State("samples-data-store", "data"),
         running=[(Output("loading-message-store", "data"), "Loading data...", "")],
         prevent_initial_call=True,
     )
-    def update_sample_data(samples: list, compressed: bool, data: dict) -> tuple[dict, list, list]:
-        """Load data for selected samples and put in data store."""
-        # Get rid of samples that are no longer selected
-        for sample in list(data["data_sample_time"].keys()):
-            if sample not in samples:
-                data["data_sample_time"].pop(sample)
-                data["data_sample_metadata"].pop(sample)
-                if sample in data["data_sample_cycle"]:
-                    data["data_sample_cycle"].pop(sample)
-
-        for sample in samples or []:
-            # Check if already in data store
-            if sample in data["data_sample_time"]:
-                # Check if it's already the correct format
-                if not compressed and not data["data_sample_time"][sample].get("Shrunk"):
-                    continue
-                if compressed and data["data_sample_time"][sample].get("Shrunk"):
-                    continue
-
-            # Otherwise import the data
-            # Get time series data
-            logger.info("Getting time series for %s", sample)
-            if compressed and (df := get_cycling_shrunk(sample)) is not None:
-                data_dict = df.to_dict(as_series=False)
-                data_dict["Shrunk"] = True
-                logger.info("Found shrunk for %s", sample)
-                data["data_sample_time"][sample] = data_dict
-            else:
-                try:
-                    logger.info("Getting full for %s", sample)
-                    df = get_cycling(sample)
-                    data["data_sample_time"][sample] = df.to_dict(as_series=False)
-                except (ValueError, FileNotFoundError):
-                    logger.info("No cycling found for %s", sample)
-                    continue
-
-            # Get metadata
-            logger.info("Getting metadata for %s", sample)
-            metadata = get_metadata(sample)
-            data["data_sample_metadata"][sample] = metadata["sample_data"] if metadata else {}
-
-            # Get cycle summary data
-            logger.info("Getting summary data for %s", sample)
-            df = get_cycles_summary(sample)
-            if df is not None:
-                logger.info("Found summary data for %s", sample)
-                data["data_sample_cycle"][sample] = df.to_dict(as_series=False)
-            else:
-                logger.info("Couldn't get summary data for %s", sample)
-
-        # Update the y-axis options
+    def update_sample_data(samples: list, compressed: bool) -> tuple[dict, list, list]:
+        """Load selected samples into the frame cache and put metadata in store."""
+        samples = samples or []
+        working_set = set(samples)
+        metadata = {}
         time_y_vars = {"V (V)"}
-        for data_dict in data["data_sample_time"].values():
-            time_y_vars.update(data_dict.keys())
-        time_y_vars.discard("Shrunk")
+        cycles_y_vars = {"Discharge capacity (mAh)"}
+        found = []
 
-        cycles_y_vars = {"Specific discharge capacity (mAh/g)"}
-        for data_dict in data["data_sample_cycle"].values():
-            cycles_y_vars.update([k for k, v in data_dict.items() if isinstance(v, list)])
+        # Read every sample's files concurrently, they are all small and latency bound
+        prefetch(samples, ("shrunk" if compressed else "full", "cycles", "metadata"), working_set)
 
-        return data, list(time_y_vars), list(cycles_y_vars)
+        for sample in samples:
+            df = get_cycling_frame(sample, compressed=compressed, working_set=working_set)
+            if df is None:
+                logger.info("No cycling found for %s", sample)
+                continue
+            found.append(sample)
+            time_y_vars.update(df.columns)
+
+            sample_metadata = get_summary(sample, "metadata", working_set)
+            metadata[sample] = sample_metadata["sample_data"] if sample_metadata else {}
+
+            cycles = get_frame(sample, "cycles", working_set)
+            if cycles is not None:
+                cycles_y_vars.update(cycles.columns)
+
+        data = {"samples": found, "compressed": compressed, "metadata": metadata}
+        return data, sorted(time_y_vars), sorted(cycles_y_vars)
 
     # Update the time graph
     @app.callback(
@@ -358,8 +326,8 @@ def register_samples_callbacks(app: Dash) -> None:
         fig["data"] = []
         fig["layout"]["xaxis"]["title"] = f"Time ({xunits.lower()})" if xvar != "Datetime" else "Datetime (UTC)"
         fig["layout"]["yaxis"]["title"] = yvar
-        if not data["data_sample_time"] or not xvar or not yvar or not xunits:
-            if not data["data_sample_time"]:
+        if not data["samples"] or not xvar or not yvar or not xunits:
+            if not data["samples"]:
                 fig["layout"]["title"] = "No data..."
             elif not xvar or not yvar or not xunits:
                 fig["layout"]["title"] = "Select x and y variables"
@@ -371,25 +339,24 @@ def register_samples_callbacks(app: Dash) -> None:
             if xvar != "Datetime"
             else 0.001  # To get UTC datetime from unix time stamp in milliseconds
         )
-        for sample, data_dict in data["data_sample_time"].items():
-            uts = np.array(data_dict["uts"])
+        working_set = set(data["samples"])
+        for sample in data["samples"]:
+            df = get_cycling_frame(sample, compressed=data["compressed"], working_set=working_set)
+            if df is None:
+                continue
+            uts = df["uts"].to_numpy()
             if xvar == "From start":
                 offset = uts[0]
-            elif xvar == "From formation":
-                offset = uts[next(i for i, x in enumerate(data_dict["Cycle"]) if x >= 1)]
-            elif xvar == "From cycling":
-                # grab n formation
-                formation_cycle_count = data["data_sample_metadata"].get(sample, {}).get("Formation cycles", 3)
-                try:
-                    offset = uts[next(i for i, x in enumerate(data_dict["Cycle"]) if x > formation_cycle_count)]
-                except StopIteration:
-                    offset = uts[-1]
+            elif xvar in ("From formation", "From cycling"):
+                thresh = 0 if xvar == "From formation" else data["metadata"].get(sample, {}).get("Formation cycles", 3)
+                past = np.flatnonzero(df["Cycle"].to_numpy() > thresh)
+                offset = uts[past[0]] if past.size else uts[-1]
             else:
                 offset = 0
 
             trace = go.Scattergl(
-                x=(np.array(data_dict["uts"]) - offset) / multiplier,
-                y=data_dict.get(yvar) if yvar in data_dict else [np.nan] * len(data_dict["uts"]),
+                x=(uts - offset) / multiplier,
+                y=df[yvar].to_numpy() if yvar in df.columns else [np.nan] * len(uts),
                 mode="lines",
                 name=sample,
                 hovertemplate=f"{sample}<br>Time: %{{x}}<br>{yvar}: %{{y}}<extra></extra>",
@@ -419,13 +386,18 @@ def register_samples_callbacks(app: Dash) -> None:
         else:
             fig["layout"]["title"] = "Select y variable"
             return fig
-        if not data["data_sample_cycle"]:
+        if not data["samples"]:
             fig["layout"]["title"] = "No data..."
             return fig
-        for sample, cycle_dict in data["data_sample_cycle"].items():
+        working_set = set(data["samples"])
+        for sample in data["samples"]:
+            cycles = get_frame(sample, "cycles", working_set)
+            if cycles is None:
+                continue
+            cycle_numbers = cycles["Cycle"].to_numpy()
             trace = go.Scattergl(
-                x=cycle_dict["Cycle"],
-                y=cycle_dict.get(yvar) if yvar in cycle_dict else [np.nan] * len(cycle_dict["Cycle"]),
+                x=cycle_numbers,
+                y=cycles[yvar].to_numpy() if yvar in cycles.columns else [np.nan] * len(cycle_numbers),
                 mode="lines+markers",
                 name=sample,
                 hovertemplate=f"{sample}<br>Cycle: %{{x}}<br>{yvar}: %{{y}}<extra></extra>",
@@ -462,25 +434,26 @@ def register_samples_callbacks(app: Dash) -> None:
         fig["data"] = []
         fig["layout"]["xaxis"]["title"] = xvar or "Select x variable"
         fig["layout"]["yaxis"]["title"] = yvar or "Select y variable"
-        if not data["data_sample_cycle"]:
+        if not data["samples"]:
             fig["layout"]["title"] = "No data..."
             return fig
         if not xvar or not yvar:
             return fig
-        for sample, data_dict in data["data_sample_time"].items():
-            # find where the cycle = cycle
-            mask = np.array(data_dict["Cycle"]) == cycle
-            if not any(mask):
+        working_set = set(data["samples"])
+        for sample in data["samples"]:
+            df = get_cycling_frame(sample, compressed=data["compressed"], working_set=working_set)
+            one_cycle = df.filter(pl.col("Cycle") == cycle) if df is not None else None
+            if one_cycle is None or one_cycle.is_empty():
                 # increment colour anyway by adding an empty trace
                 fig["data"].append(go.Scattergl())
                 continue
             mask_dict = {}
-            mask_dict["V (V)"] = np.array(data_dict["V (V)"])[mask]
-            mask_dict["Q (mAh)"] = np.array(data_dict["dQ (mAh)"])[mask].cumsum()
-            mask_dict["dQ (mAh)"] = np.array(data_dict["dQ (mAh)"])[mask]
+            mask_dict["V (V)"] = one_cycle["V (V)"].to_numpy()
+            mask_dict["Q (mAh)"] = one_cycle["dQ (mAh)"].to_numpy().cumsum()
+            mask_dict["dQ (mAh)"] = one_cycle["dQ (mAh)"].to_numpy()
             if "dQ/dV (mAh/V)" in [xvar, yvar] or "dQ/dV (mAh/gV)" in [xvar, yvar]:
-                if "dQ/dV (mAh/V)" in data_dict:
-                    mask_dict["dQ/dV (mAh/V)"] = np.array(data_dict["dQ/dV (mAh/V)"], dtype=float)[mask]
+                if "dQ/dV (mAh/V)" in one_cycle.columns:
+                    mask_dict["dQ/dV (mAh/V)"] = one_cycle["dQ/dV (mAh/V)"].to_numpy().astype(float)
                 else:
                     mask_dict["dQ/dV (mAh/V)"] = calc_dqdv(
                         mask_dict["V (V)"],
@@ -489,7 +462,7 @@ def register_samples_callbacks(app: Dash) -> None:
                     )
             m_mg = None
             if "Q (mAh/g)" in [xvar, yvar] or "dQ/dV (mAh/gV)" in [xvar, yvar]:
-                m_mg = data["data_sample_metadata"][sample].get("Cathode active material mass (mg)")
+                m_mg = data["metadata"].get(sample, {}).get("Cathode active material mass (mg)")
                 if "Q (mAh/g)" in [xvar, yvar]:
                     mask_dict["Q (mAh/g)"] = mask_dict["Q (mAh)"] / m_mg * 1000 if m_mg else None
                 if "dQ/dV (mAh/gV)" in [xvar, yvar]:

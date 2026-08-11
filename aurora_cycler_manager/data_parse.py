@@ -267,7 +267,7 @@ class SampleDataBundle:
         return get_battinfo(self.sample_id)
 
 
-##### BDF convertsion #####
+##### BDF conversion #####
 
 
 def aurora_to_bdf(df: pl.DataFrame) -> pl.DataFrame:
