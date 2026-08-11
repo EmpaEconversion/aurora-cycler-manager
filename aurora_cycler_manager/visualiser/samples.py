@@ -12,8 +12,7 @@ from dash_resizable_panels import Panel, PanelGroup, PanelResizeHandle
 
 from aurora_cycler_manager.analysis import calc_dqdv
 from aurora_cycler_manager.config import get_config
-from aurora_cycler_manager.data_parse import get_metadata
-from aurora_cycler_manager.visualiser.data_cache import cache_stats, get_cycling_frame, get_frame
+from aurora_cycler_manager.visualiser.data_cache import get_cycling_frame, get_frame, get_summary, prefetch
 
 CONFIG = get_config()
 logger = logging.getLogger(__name__)
@@ -290,6 +289,9 @@ def register_samples_callbacks(app: Dash) -> None:
         cycles_y_vars = {"Discharge capacity (mAh)"}
         found = []
 
+        # Read every sample's files concurrently, they are all small and latency bound
+        prefetch(samples, ("shrunk" if compressed else "full", "cycles", "metadata"), working_set)
+
         for sample in samples:
             df = get_cycling_frame(sample, compressed=compressed, working_set=working_set)
             if df is None:
@@ -298,14 +300,13 @@ def register_samples_callbacks(app: Dash) -> None:
             found.append(sample)
             time_y_vars.update(df.columns)
 
-            sample_metadata = get_metadata(sample)
+            sample_metadata = get_summary(sample, "metadata", working_set)
             metadata[sample] = sample_metadata["sample_data"] if sample_metadata else {}
 
             cycles = get_frame(sample, "cycles", working_set)
             if cycles is not None:
                 cycles_y_vars.update(cycles.columns)
 
-        logger.info("Frame cache: %s", cache_stats())
         data = {"samples": found, "compressed": compressed, "metadata": metadata}
         return data, sorted(time_y_vars), sorted(cycles_y_vars)
 

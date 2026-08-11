@@ -11,6 +11,7 @@ import logging
 import threading
 import time
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
 
 from aurora_cycler_manager.config import get_config
@@ -19,13 +20,19 @@ from aurora_cycler_manager.data_parse import (
     get_cycling,
     get_cycling_shrunk,
     get_eis,
+    get_metadata,
+    get_overall_summary,
     get_sample_folder,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from pathlib import Path
 
     import polars as pl
+
+    # Time series and summaries are frames, the JSON sidecars are plain dicts
+    Cacheable = pl.DataFrame | dict
 
 logger = logging.getLogger(__name__)
 CONFIG = get_config()
@@ -47,13 +54,26 @@ _LOADERS = {
     "shrunk": get_cycling_shrunk,
     "eis": get_eis,
     "cycles": get_cycles_summary,
+    "overall": get_overall_summary,
+    "metadata": get_metadata,
 }
 _FILENAMES = {
     "full": ("full.{s}.parquet", "full.{s}.h5"),
     "shrunk": ("shrunk.{s}.parquet", "shrunk.{s}.h5"),
     "eis": ("eis.{s}.parquet",),
     "cycles": ("cycles.{s}.parquet", "cycles.{s}.json"),
+    "overall": ("overall.{s}.json", "cycles.{s}.json"),
+    "metadata": ("metadata.{s}.json", "cycles.{s}.json", "full.{s}.h5"),
 }
+# How many samples to load at once. These reads are network-latency bound, not CPU bound,
+# so overlapping them collapses a long sequence of small reads into a few round trips
+PREFETCH_THREADS = 16
+
+
+def _size_of(value: object) -> int:
+    """Bytes held by a cached value, approximated for the small JSON sidecars."""
+    estimated_size = getattr(value, "estimated_size", None)
+    return estimated_size() if estimated_size is not None else len(repr(value))
 
 
 def _locate(sample_id: str, kind: str) -> tuple[Path, Stamp] | None:
@@ -77,7 +97,7 @@ class _FrameCache:
 
     def __init__(self, max_bytes: int) -> None:
         self.max_bytes = max_bytes
-        self._entries: OrderedDict[Key, pl.DataFrame] = OrderedDict()
+        self._entries: OrderedDict[Key, Cacheable] = OrderedDict()
         self._bytes = 0
         self._lock = threading.Lock()
         self._load_locks: dict[tuple[str, str], threading.Lock] = {}
@@ -98,7 +118,7 @@ class _FrameCache:
         self._located[sample_id, kind] = (now, found)
         return found
 
-    def get(self, sample_id: str, kind: str, working_set: set[str] | None = None) -> pl.DataFrame | None:
+    def get(self, sample_id: str, kind: str, working_set: set[str] | None = None) -> Cacheable | None:
         """Return the collected frame for this sample and kind, loading and caching it on miss.
 
         Pass the samples currently being plotted as working_set so a selection larger than
@@ -127,50 +147,49 @@ class _FrameCache:
                     return self._entries[key]
             self.misses += 1
             started = time.perf_counter()
-            df = _LOADERS[kind](sample_id)
-            if df is None:
+            value = _LOADERS[kind](sample_id)
+            if value is None:
                 return None
-            logger.info(
-                "Loaded %s %s: %d rows, %.1f MB, %.2f s",
+            logger.debug(
+                "Loaded %s %s: %.1f MB, %.2f s",
                 kind,
                 sample_id,
-                df.height,
-                df.estimated_size() / 1e6,
+                _size_of(value) / 1e6,
                 time.perf_counter() - started,
             )
-            self._put(key, df, working_set)
-            return df
+            self._put(key, value, working_set)
+            return value
 
-    def _put(self, key: Key, df: pl.DataFrame, working_set: set[str] | None) -> None:
-        """Insert a frame, dropping superseded stamps and then trimming to the byte budget."""
+    def _put(self, key: Key, value: Cacheable, working_set: set[str] | None) -> None:
+        """Insert a value, dropping superseded stamps and then trimming to the byte budget."""
         sample_id, kind, _ = key
-        size = df.estimated_size()
+        size = _size_of(value)
         with self._lock:
             # Older stamps of the same file can never be requested again, so drop them outright
             for stale in [k for k in self._entries if k[0] == sample_id and k[1] == kind and k != key]:
-                self._bytes -= self._entries.pop(stale).estimated_size()
+                self._bytes -= _size_of(self._entries.pop(stale))
                 self.superseded += 1
             if size > MAX_ENTRY_BYTES:
                 logger.warning("%s %s is %.0f MB, too large to cache", kind, sample_id, size / 1e6)
                 return
-            self._entries[key] = df
+            self._entries[key] = value
             self._bytes += size
             while self._bytes > self.max_bytes:
                 victim = next(iter(self._entries))
                 # Evicting a frame the caller still needs this pass would thrash, so decline to
                 # cache this one instead and let the earlier frames keep serving hits
                 if victim == key or (working_set and victim[0] in working_set):
-                    self._bytes -= self._entries.pop(key).estimated_size()
+                    self._bytes -= _size_of(self._entries.pop(key))
                     self.rejected += 1
                     return
-                self._bytes -= self._entries.pop(victim).estimated_size()
+                self._bytes -= _size_of(self._entries.pop(victim))
                 self.evicted += 1
 
     def drop_unused(self, keep: set[str]) -> None:
         """Drop frames for samples outside the given set, freeing memory ahead of LRU pressure."""
         with self._lock:
             for key in [k for k in self._entries if k[0] not in keep]:
-                self._bytes -= self._entries.pop(key).estimated_size()
+                self._bytes -= _size_of(self._entries.pop(key))
                 self.evicted += 1
 
     def stats(self) -> dict:
@@ -203,8 +222,37 @@ cache_stats = _CACHE.stats
 clear_cache = _CACHE.clear
 
 
+def get_summary(sample_id: str, kind: str, working_set: set[str] | None = None) -> dict | None:
+    """Overall summary or metadata dict for a sample."""
+    return _CACHE.get(sample_id, kind, working_set)
+
+
 def get_cycling_frame(sample_id: str, *, compressed: bool, working_set: set[str] | None = None) -> pl.DataFrame | None:
     """Time series for a sample, preferring the shrunk file when asked for."""
     if compressed and (df := get_frame(sample_id, "shrunk", working_set)) is not None:
         return df
     return get_frame(sample_id, "full", working_set)
+
+
+def prefetch(samples: Iterable[str], kinds: Iterable[str], working_set: set[str] | None = None) -> None:
+    """Warm the cache for many samples at once.
+
+    Each read may be a small network round trip, so sequential loading spends
+    most of its time waiting.
+    """
+    jobs = [(sample, kind) for sample in samples for kind in kinds]
+    if not jobs:
+        return
+    started = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=min(PREFETCH_THREADS, len(jobs))) as pool:
+        for future in [pool.submit(_load_quietly, *job, working_set) for job in jobs]:
+            future.result()
+    logger.info("Prefetched %d files in %.2f s: %s", len(jobs), time.perf_counter() - started, cache_stats())
+
+
+def _load_quietly(sample_id: str, kind: str, working_set: set[str] | None) -> None:
+    """Warm one entry, swallowing errors so the real read reports them in context."""
+    try:
+        _CACHE.get(sample_id, kind, working_set)
+    except (OSError, ValueError):
+        logger.debug("Could not prefetch %s %s", kind, sample_id, exc_info=True)
