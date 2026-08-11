@@ -164,10 +164,13 @@ batches_menu = html.Div(
                         label="Error bars",
                         data=[
                             {"label": "Plot all", "value": "none"},
-                            {"label": "Avg, fill err", "value": "fill"},
-                            {"label": "Avg, bar err", "value": "bar"},
-                            {"label": "Avg, fill+bar err", "value": "fill+bar"},
-                            {"label": "Avg, hide error", "value": "hide"},
+                            {"label": "Mean", "value": "hide"},
+                            {"label": "Mean, fill stdev", "value": "fill"},
+                            {"label": "Mean, bar stdev", "value": "bar"},
+                            {"label": "Mean, fill+bar stdev", "value": "fill+bar"},
+                            {"label": "Max", "value": "max-hide"},
+                            {"label": "Max, fill mean", "value": "max-mean-fill"},
+                            {"label": "Max, fill min", "value": "max-min-fill"},
                         ],
                         value="none",
                         checkIconPosition="right",
@@ -727,7 +730,7 @@ def register_batches_callbacks(app: Dash) -> None:
                 samples = group_data["samples"]
                 i = group_data["idx"]
                 df = pd.concat([pd.DataFrame({"x": s["Cycle"], "y": s.get(yvar)}) for s in samples])
-                df = df.groupby("x")["y"].agg(["mean", "std", "count"]).reset_index()
+                df = df.groupby("x")["y"].agg(["mean", "std", "max", "min", "count"]).reset_index()
                 df = df.fillna(0)
                 df = df.sort_values(by="x")
                 # Add the average trace with error bars
@@ -737,20 +740,21 @@ def register_batches_callbacks(app: Dash) -> None:
                 hovertemplate = "<br>".join(
                     [
                         f"<b>{key_str}</b>",
+                        yvar,
                         "Cycle: %{x}",
-                        f"{yvar}: %{{y:.5g}} ± %{{customdata[0]:.2g}}",
-                        "Number of samples: %{customdata[1]}",
+                        "Mean, stdev: %{customdata[1]:.5g} ± %{customdata[2]:.2g}",
+                        "Range: %{customdata[3]:.5g} to %{customdata[4]:.5g}",
+                        "Number of samples: %{customdata[0]}",
                         "<extra></extra>",
                     ],
                 )
                 line = {"width": 3.0} if plot_style == "lines" else {"width": 1.5}
                 if sdata["symbols"]:
                     line["dash"] = sdata["lines"][i]
-
                 trace = go.Scattergl(
                     x=df["x"],
-                    y=df["mean"],
-                    error_y={"type": "data", "array": df["std"], "visible": plot_err in ["bar", "fill+bar"]},
+                    y=df["max"] if plot_err.startswith("max") else df["mean"],
+                    error_y={"type": "data", "array": df["std"]} if plot_err in {"bar", "fill+bar"} else None,
                     mode=plot_style,
                     name=f"{color_label} {style_label}",
                     line=line,
@@ -761,16 +765,22 @@ def register_batches_callbacks(app: Dash) -> None:
                         "line": {"width": 0.5, "color": "black"},
                     },
                     showlegend=show_legend,
-                    customdata=np.stack((df["std"], df["count"]), axis=-1),
+                    customdata=np.stack((df["count"], df["mean"], df["std"], df["min"], df["max"]), axis=-1),
                     hovertemplate=hovertemplate,
                 )
                 fig["data"].append(trace)
 
-                if plot_err in ["fill", "fill+bar"]:  # add fill between errors
+                if plot_err in {"fill", "fill+bar", "max-mean-fill", "max-min-fill"}:  # add fill between errors
                     color = to_rgba(sdata["colors"][i]) if sdata["colors"] else "rgba(0, 0, 0, 0.2)"
+                    if plot_err == "max-min-fill":
+                        y_fill = df["max"].tolist() + df["min"][::-1].tolist()
+                    elif plot_err == "max-mean-fill":
+                        y_fill = df["max"].tolist() + df["mean"][::-1].tolist()
+                    else:  # standard deviations
+                        y_fill = (df["mean"] + df["std"]).tolist() + (df["mean"] - df["std"])[::-1].tolist()
                     trace_fill = go.Scattergl(
                         x=df["x"].tolist() + df["x"][::-1].tolist(),
-                        y=(df["mean"] + df["std"]).tolist() + (df["mean"] - df["std"])[::-1].tolist(),
+                        y=y_fill,
                         fill="toself",
                         fillcolor=color,
                         line={"width": 0},
