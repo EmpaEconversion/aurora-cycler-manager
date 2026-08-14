@@ -33,6 +33,7 @@ CONFIG = get_config()
 STATUS_CODES = {
     # Neware
     "finish": "Idle",
+    "stop": "Idle",
     "working": "Running",
     "pause": "Paused",
     "protect": "Error",
