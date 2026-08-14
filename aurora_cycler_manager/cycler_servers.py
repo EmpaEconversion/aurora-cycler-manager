@@ -236,14 +236,27 @@ class NewareServer(CyclerServer):
                 msg = "Job ID on server does not match Job ID being cancelled"
                 raise ValueError(msg)
             # Stop the pipeline
-            output = self._command(ssh, f"neware stop {pipeline}")
-        # Expect the output to be empty if successful, otherwise raise error
-        if output:
-            msg = (
-                f"Command 'neware stop {pipeline}' failed with response:\n{output}\n"
-                "Check the Neware client logs for more information."
-            )
-            raise ValueError(output)
+            if workstatus == "protect":
+                # If it hit a protection stop, use 'clearflag'
+                output = self._command(ssh, f"neware clearflag {pipeline}")
+                # Expect the output to say "clearflag": "ok"
+                res = json.loads(output)[0].get("clearflag")
+                if res != "ok":
+                    msg = (
+                        f"Command 'neware stop {pipeline}' failed with response:\n{output}\n"
+                        "Check the Neware client logs for more information."
+                    )
+                    raise ValueError(msg)
+            else:
+                # If working or pause, use 'stop'
+                output = self._command(ssh, f"neware stop {pipeline}")
+                # Expect the output to be empty if successful, otherwise raise error
+                if output:
+                    msg = (
+                        f"Command 'neware stop {pipeline}' failed with response:\n{output}\n"
+                        "Check the Neware client logs for more information."
+                    )
+                    raise ValueError(msg)
 
     @override
     def get_pipelines(self) -> list[dict]:
