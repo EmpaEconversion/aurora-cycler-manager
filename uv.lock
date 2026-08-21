@@ -58,6 +58,11 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+pg = [
+    { name = "psycopg2-binary" },
+]
+
+[package.dev-dependencies]
 dev = [
     { name = "mkdocstrings", extra = ["python"] },
     { name = "pre-commit" },
@@ -65,9 +70,6 @@ dev = [
     { name = "ruff" },
     { name = "virtualenv" },
     { name = "zensical" },
-]
-pg = [
-    { name = "psycopg2-binary" },
 ]
 
 [package.metadata]
@@ -83,7 +85,6 @@ requires-dist = [
     { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "fastnda", specifier = ">=1.1.0" },
     { name = "h5py", specifier = ">=3.14.0" },
-    { name = "mkdocstrings", extras = ["python"], marker = "extra == 'dev'", specifier = ">=1.0.4" },
     { name = "msgpack", specifier = ">=1.2.1" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "orjson", specifier = ">=3.11.6" },
@@ -91,12 +92,9 @@ requires-dist = [
     { name = "paramiko", specifier = ">=3.5.1" },
     { name = "platformdirs", specifier = ">=4.3.8" },
     { name = "polars", specifier = ">=1.36.1" },
-    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.6.0" },
     { name = "psycopg2-binary", marker = "extra == 'pg'", specifier = ">=2.9.11" },
     { name = "pyarrow", specifier = ">=23.0.1" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.3" },
     { name = "python-calamine", specifier = ">=0.4.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.15" },
     { name = "scp", specifier = ">=0.15.0" },
     { name = "sqlalchemy", specifier = ">=2.0.46" },
     { name = "tables", specifier = ">=3.10.1" },
@@ -104,15 +102,23 @@ requires-dist = [
     { name = "typing-extensions", specifier = ">=4.15.0" },
     { name = "tzlocal", specifier = ">=5.3.1" },
     { name = "urllib3", specifier = ">=2.7.0" },
-    { name = "virtualenv", marker = "extra == 'dev'", specifier = ">=20.36.1" },
     { name = "waitress", specifier = ">=3.0.2" },
     { name = "werkzeug", specifier = ">=3.1.6" },
     { name = "xlsxwriter", specifier = ">=3.2.9" },
     { name = "xmltodict", specifier = ">=0.14.2" },
     { name = "yadg", specifier = ">=6.2.2,<7.0" },
-    { name = "zensical", marker = "extra == 'dev'", specifier = ">=0.0.53" },
 ]
-provides-extras = ["pg", "dev"]
+provides-extras = ["pg"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.4" },
+    { name = "pre-commit", specifier = ">=4.6.0" },
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "ruff", specifier = ">=0.15.15" },
+    { name = "virtualenv", specifier = ">=20.36.1" },
+    { name = "zensical", specifier = ">=0.0.53" },
+]
 
 [[package]]
 name = "aurora-unicycler"

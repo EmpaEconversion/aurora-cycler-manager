@@ -57,6 +57,8 @@ dependencies = [
 pg = [
     "psycopg2-binary>=2.9.11",
 ]
+
+[dependency-groups]
 dev = [
     "mkdocstrings[python]>=1.0.4",
     "pre-commit>=4.6.0",
@@ -70,6 +72,9 @@ dev = [
 aurora-setup = "aurora_cycler_manager.database_setup:main"
 aurora-app = "aurora_cycler_manager.visualiser.startup:main"
 aurora-daemon = "aurora_cycler_manager.daemon:main"
+
+[tool.uv]
+default-groups = ["dev"]
 
 [tool.setuptools.package-data]
 "aurora_cycler_manager.visualiser" = ["assets/*"]
