@@ -18,6 +18,7 @@ wheels = [
 
 [[package]]
 name = "aurora-cycler-manager"
+version = "0.11.6"
 source = { editable = "." }
 dependencies = [
     { name = "aurora-unicycler" },
@@ -58,7 +59,6 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
-    { name = "bumpver" },
     { name = "mkdocstrings", extra = ["python"] },
     { name = "pre-commit" },
     { name = "pytest" },
@@ -74,7 +74,6 @@ pg = [
 requires-dist = [
     { name = "aurora-unicycler", specifier = ">=0.4.5" },
     { name = "battinfoconverter-backend", specifier = ">=3.2.0" },
-    { name = "bumpver", marker = "extra == 'dev'", specifier = ">=2025.1131" },
     { name = "cryptography", specifier = ">=50.0.0" },
     { name = "dash", extras = ["diskcache"], specifier = ">=4.1.0" },
     { name = "dash-ag-grid", specifier = ">=33.3.3" },
@@ -113,7 +112,7 @@ requires-dist = [
     { name = "yadg", specifier = ">=6.2.2,<7.0" },
     { name = "zensical", marker = "extra == 'dev'", specifier = ">=0.0.53" },
 ]
-provides-extras = ["dev", "pg"]
+provides-extras = ["pg", "dev"]
 
 [[package]]
 name = "aurora-unicycler"
@@ -264,21 +263,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/72/96/4b6ab38437cfd02c2696f3b4a2cb03ab4fdbf4443b9908d8a11c0a39f614/blosc2-3.7.0-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:3c8a282c01a3482d2cb6d54df913a24ae5b4d83e25ff888b6e518a27b3b260c9", size = 4297851, upload-time = "2025-08-12T14:50:46.696Z" },
     { url = "https://files.pythonhosted.org/packages/71/82/fb9ccdc5eeef68e0867ee64c3b07cc25052f600b50811bc7eeadade95ce1/blosc2-3.7.0-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:22f39d9cf4184426adab0910c77c063efb7489ab2e3daa7165d6d631959a266d", size = 4434066, upload-time = "2025-08-12T14:50:49.722Z" },
     { url = "https://files.pythonhosted.org/packages/56/f3/7978275eee5d596a4e772374752d07f85824b17ac75e6868ff73179f2945/blosc2-3.7.0-cp314-cp314t-win_amd64.whl", hash = "sha256:d2a06fd513910c25e02aed735bc6dc2c5a839e10543cfa5a81b412318ec8c665", size = 2331435, upload-time = "2025-08-12T14:50:51.277Z" },
-]
-
-[[package]]
-name = "bumpver"
-version = "2025.1131"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "click" },
-    { name = "colorama" },
-    { name = "lexid" },
-    { name = "toml" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/8f/8a/cc13e816e9f0849dce423b904b06fd91b5444cba6df3200d512a702f2e95/bumpver-2025.1131.tar.gz", hash = "sha256:a35fd2d43a5f65f014035c094866bd3bd6c739606f29fd41246d6ec6e839d3f9", size = 115372, upload-time = "2025-07-02T20:36:11.982Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/1d/5b/2d5ea6802495ee4506721977be522804314aa66ad629d9356e3c7e5af4a6/bumpver-2025.1131-py2.py3-none-any.whl", hash = "sha256:c02527f6ed7887afbc06c07630047b24a9f9d02d544a65639e99bf8b92aaa674", size = 65361, upload-time = "2025-07-02T20:36:10.103Z" },
 ]
 
 [[package]]
@@ -971,15 +955,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d", size = 245115, upload-time = "2025-03-05T20:05:02.478Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl", hash = "sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67", size = 134899, upload-time = "2025-03-05T20:05:00.369Z" },
-]
-
-[[package]]
-name = "lexid"
-version = "2021.1006"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/60/0b/28a3f9abc75abbf1fa996eb2dd77e1e33a5d1aac62566e3f60a8ec8b8a22/lexid-2021.1006.tar.gz", hash = "sha256:509a3a4cc926d3dbf22b203b18a4c66c25e6473fb7c0e0d30374533ac28bafe5", size = 11525, upload-time = "2021-04-02T20:18:34.668Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/cf/e3/35764404a4b7e2021be1f88f42264c2e92e0c4720273559a62461ce64a47/lexid-2021.1006-py2.py3-none-any.whl", hash = "sha256:5526bb5606fd74c7add23320da5f02805bddd7c77916f2dc1943e6bada8605ed", size = 7587, upload-time = "2021-04-02T20:18:33.129Z" },
 ]
 
 [[package]]
@@ -2575,15 +2550,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/72/9b/ea43159eed8f81bfa1ead8fa8201a3c352e84c7220e046bb548736833951/tables-3.10.2-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:aaaea478dcf27dd54679ef2643c26d3b8b15676ad81e4d80a88fd1682d23deb1", size = 7078747, upload-time = "2025-01-04T20:43:59.596Z" },
     { url = "https://files.pythonhosted.org/packages/04/95/b3e88edc674e35d9011b168df0d7a9b1c3ab98733fa26e740ac7964edc2f/tables-3.10.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c5e67a9f901842f9a4b1f3d2307f4bdd94047514fe0d0c558ed19c11f53c402a", size = 7479985, upload-time = "2025-01-04T20:44:04.13Z" },
     { url = "https://files.pythonhosted.org/packages/63/ca/eaa029a43d269bdda6985931d6cfd479e876cd8cf7c887d818bef05ef03b/tables-3.10.2-cp313-cp313-win_amd64.whl", hash = "sha256:5637fdcded5ba5426aa24e0e42d6f990926a4da7f193830df131dfcb7e842900", size = 6385562, upload-time = "2025-01-04T20:44:08.196Z" },
-]
-
-[[package]]
-name = "toml"
-version = "0.10.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/be/ba/1f744cdc819428fc6b5084ec34d9b30660f6f9daaf70eead706e3203ec3c/toml-0.10.2.tar.gz", hash = "sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f", size = 22253, upload-time = "2020-11-01T01:40:22.204Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/44/6f/7120676b6d73228c96e17f1f794d8ab046fc910d781c8d151120c3f1569e/toml-0.10.2-py2.py3-none-any.whl", hash = "sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b", size = 16588, upload-time = "2020-11-01T01:40:20.672Z" },
 ]
 
 [[package]]
