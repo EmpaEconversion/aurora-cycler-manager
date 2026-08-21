@@ -315,6 +315,8 @@ def create_database(force: bool = False) -> None:
         Column("Pipeline", types.Text, primary_key=True),
         Column("Sample ID", types.Text),
         Column("Job ID", types.Text),
+        Column("Voltage (V)", types.Float),
+        Column("Status", types.Text),
         Column("Ready", types.Boolean),
         Column("Flag", types.Text),
         Column("Last checked", types.DateTime),
