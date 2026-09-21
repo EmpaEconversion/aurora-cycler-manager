@@ -564,12 +564,12 @@ def summarise_assembly(assembly: list[dict], sample_data: dict) -> str:
 def make_type_parent(data: dict, target_type: str) -> dict:
     """Promote object with target @type to the top level.
 
-    Anything referencing this type is put in @reversed.
+    Anything referencing this type is put in @reverse.
     """
     if isinstance(data, dict) and has_type(data, target_type):
         return data
-    if isinstance(data, dict) and data.get("@reversed") is not None:
-        msg = "Cannot rearrange object if @reversed in json-ld"
+    if isinstance(data, dict) and data.get("@reverse") is not None:
+        msg = "Cannot rearrange object if @reverse in json-ld"
         raise ValueError(msg)
 
     data = deepcopy(data)
@@ -622,7 +622,7 @@ def make_type_parent(data: dict, target_type: str) -> dict:
         del reversed_obj[key]  # It was a direct object reference
 
     result = deepcopy(target)
-    result["@reversed"] = {key: reversed_obj}
+    result["@reverse"] = {key: reversed_obj}
     if ctx:
         result["@context"] = ctx
     return result
