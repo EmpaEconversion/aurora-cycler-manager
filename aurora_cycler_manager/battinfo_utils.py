@@ -504,9 +504,15 @@ def merge_battinfo_with_db_data(
     return battinfo_jsonld
 
 
+def has_type(jsonld: dict, target_type: str) -> bool:
+    """Check a node's @type, which may be a string or a list of strings."""
+    types = jsonld.get("@type")
+    return types == target_type or (isinstance(types, list) and target_type in types)
+
+
 def find_coin_cell(jsonld: dict) -> dict | None:
     """Search for the CoinCell in a dict."""
-    if "@type" in jsonld and jsonld["@type"] == "CoinCell":
+    if has_type(jsonld, "CoinCell"):
         return jsonld
     for value in jsonld.values():
         if isinstance(value, dict):
@@ -560,7 +566,7 @@ def make_type_parent(data: dict, target_type: str) -> dict:
 
     Anything referencing this type is put in @reversed.
     """
-    if isinstance(data, dict) and data.get("@type") == target_type:
+    if isinstance(data, dict) and has_type(data, target_type):
         return data
     if isinstance(data, dict) and data.get("@reversed") is not None:
         msg = "Cannot rearrange object if @reversed in json-ld"
@@ -576,7 +582,7 @@ def make_type_parent(data: dict, target_type: str) -> dict:
         index: int | None = None,
     ) -> tuple:
         if isinstance(obj, dict):
-            if obj.get("@type") == target_type:
+            if has_type(obj, target_type):
                 return obj, parent, key, index
             for k, v in obj.items():
                 result = find_target_and_parent(v, obj, k, None)
@@ -717,15 +723,33 @@ def dedupe_jsonld_list(lst: list) -> list:
     return deduped
 
 
+def unwrap_graph(jsonld: dict) -> dict:
+    """Replace a single-node @graph wrapper with the node itself."""
+    if "@graph" not in jsonld:
+        return jsonld
+    graph = jsonld["@graph"]
+    if not isinstance(graph, list) or len(graph) != 1:
+        msg = "Multi-node @graph not supported."
+        raise ValueError(msg)
+    node = deepcopy(graph[0])
+    if ctx := jsonld.get("@context"):
+        node["@context"] = (
+            merge_contexts_strict(ctx, node["@context"], on_conflict="keep_right") if node.get("@context") else ctx
+        )
+    return node
+
+
 def make_test_object(battinfo_jsonld: dict) -> dict:
     """Put BattINFO coin cell description inside a BatteryTest object."""
-    if battinfo_jsonld.get("@type") == "CoinCell":
+    battinfo_jsonld = unwrap_graph(battinfo_jsonld)
+    if has_type(battinfo_jsonld, "CoinCell"):
+        ctx = battinfo_jsonld.pop("@context", None)
         return {
-            "@context": battinfo_jsonld.pop("@context"),
+            **({"@context": ctx} if ctx else {}),
             "@type": "BatteryTest",
             "hasTestObject": battinfo_jsonld,
         }
-    if battinfo_jsonld.get("@type") == "BatteryTest":
+    if has_type(battinfo_jsonld, "BatteryTest"):
         return battinfo_jsonld
     msg = "BattINFO JSON-LD must have CoinCell or BatteryTest as top level @type"
     raise ValueError(msg)
