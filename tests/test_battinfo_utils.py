@@ -2,16 +2,21 @@
 """Unit tests for battinfo_utils.py."""
 
 import json
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import pytest
 
 from aurora_cycler_manager.battinfo_utils import (
     find_coin_cell,
     generate_zenodo_info_xlsx_template,
+    has_type,
+    make_test_object,
     merge_battinfo_with_db_data,
     summarise_assembly,
+    unwrap_graph,
 )
 from aurora_cycler_manager.database_funcs import get_sample_data
 
@@ -100,6 +105,63 @@ def test_find_coin_cell() -> None:
         },
     }
     assert find_coin_cell(jsonld) == jsonld["its"]["dict"]["some"][-1]["okay"]["the real thing"]
+
+
+def test_has_type() -> None:
+    """@type may be a string or a list of strings."""
+    assert has_type({"@type": "CoinCell"}, "CoinCell")
+    assert has_type({"@type": ["CoinCell", "Cell"]}, "CoinCell")
+    assert not has_type({"@type": "Electrode"}, "CoinCell")
+    assert not has_type({"@type": ["Electrode"]}, "CoinCell")
+    assert not has_type({}, "CoinCell")
+
+
+def test_find_coin_cell_type_list() -> None:
+    """Should find the CoinCell when @type is a list."""
+    jsonld = {"@type": "BatteryTest", "hasTestObject": {"@type": ["CoinCell", "Cell"]}}
+    assert find_coin_cell(jsonld) == jsonld["hasTestObject"]
+
+
+def test_unwrap_graph() -> None:
+    """Single-node @graph should be replaced by the node, carrying @context down."""
+    ctx = ["https://w3id.org/emmo/domain/battery/context"]
+    assert unwrap_graph({"@context": ctx, "@graph": [{"@type": "BatteryTest"}]}) == {
+        "@context": ctx,
+        "@type": "BatteryTest",
+    }
+
+    # Nothing to unwrap
+    plain = {"@context": ctx, "@type": "CoinCell"}
+    assert unwrap_graph(plain) == plain
+
+    # A node keeping its own @context has the outer one merged in
+    merged = unwrap_graph({"@context": ["outer"], "@graph": [{"@context": ["inner"], "@type": "BatteryTest"}]})
+    assert merged["@context"] == ["outer", "inner"]
+
+    with pytest.raises(ValueError, match="not supported"):
+        unwrap_graph({"@graph": [{"@type": "BatteryTest"}, {"@type": "CoinCell"}]})
+
+
+def test_make_test_object() -> None:
+    """Every accepted root shape should end up as a BatteryTest with the CoinCell inside."""
+    ctx = ["https://w3id.org/emmo/domain/battery/context"]
+    coin_cell = {"@type": "CoinCell", "schema:name": "a sample"}
+
+    shapes = [
+        {"@context": ctx, **coin_cell},
+        {"@context": ctx, "@type": "BatteryTest", "hasTestObject": dict(coin_cell)},
+        {"@context": ctx, "@graph": [{"@type": "BatteryTest", "hasTestObject": dict(coin_cell)}]},
+        {"@context": ctx, "@graph": [dict(coin_cell)]},
+        {"@context": ctx, **coin_cell, "@type": ["CoinCell", "Cell"]},
+    ]
+    for shape in shapes:
+        result = make_test_object(deepcopy(shape))
+        assert result["@type"] == "BatteryTest"
+        assert result["@context"] == ctx
+        assert find_coin_cell(result)["schema:name"] == "a sample"
+
+    with pytest.raises(ValueError, match="must have CoinCell or BatteryTest"):
+        make_test_object({"@context": ctx, "@type": "Electrode"})
 
 
 def test_summarise_assembly() -> None:
