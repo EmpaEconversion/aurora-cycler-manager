@@ -7,6 +7,7 @@ import logging
 import uuid
 import zipfile
 from collections.abc import Callable
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -295,7 +296,9 @@ def save_battinfo(data: dict, file: str | Path | io.BytesIO, sample_ids: list[st
     # Merge json with database info and save
     for s in sample_ids:
         sample_data = get_sample_data(s)
-        merged_jsonld = bu.merge_battinfo_with_db_data(battinfo_jsonld, sample_data, allow_empty_battinfo=True)
+        merged_jsonld = bu.merge_battinfo_with_db_data(
+            deepcopy(battinfo_jsonld), sample_data, allow_empty_battinfo=True
+        )
         save_path = get_sample_folder(s) / f"battinfo.{s}.jsonld"
         logger.info("Saving battinfo json-ld file to %s", save_path)
         save_path.parent.mkdir(parents=True, exist_ok=True)
