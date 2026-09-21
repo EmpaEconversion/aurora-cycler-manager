@@ -57,8 +57,10 @@ def is_battinfo_jsonld(obj: list | str | dict) -> bool:
     if isinstance(obj, dict) and obj.get("@context"):
         coincell = bu.find_coin_cell(obj)
         if coincell:
-            comments = coincell.get("rdfs:comment")
-            return isinstance(comments, list) and len(comments) >= 1 and comments[0].startswith("BattINFO")
+            comments = coincell.get("rdfs:comment", [])
+            if not isinstance(comments, list):
+                comments = [comments]
+            return any("CoinCellSchema" in str(c) for c in comments)
     return False
 
 
