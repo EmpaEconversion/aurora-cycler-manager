@@ -48,7 +48,11 @@ class TestDetermineUploaded:
 
     def test_battinfo_jsonld(self, tmp_path: Path) -> None:
         """BattINFO JSON-LD."""
-        data = {"@context": "some stuff", "@type": "CoinCell", "rdfs:comment": ["BattINFO converter version"]}
+        data = {
+            "@context": "some stuff",
+            "@type": "CoinCell",
+            "rdfs:comment": ["BattINFO Converter version: 3.3.1", "Schema name: CoinCellSchema"],
+        }
         selected_rows = [{"Sample ID": "a sample"}]
         filepath = tmp_path / "battinfo.json"
         with filepath.open("w") as f:
@@ -61,7 +65,11 @@ class TestDetermineUploaded:
 
     def test_battinfo_no_samples(self, tmp_path: Path) -> None:
         """BattINFO JSON-LD without samples."""
-        data = {"@context": "some stuff", "@type": "CoinCell", "rdfs:comment": ["BattINFO converter version"]}
+        data = {
+            "@context": "some stuff",
+            "@type": "CoinCell",
+            "rdfs:comment": ["BattINFO Converter version: 3.3.1", "Schema name: CoinCellSchema"],
+        }
         filepath = tmp_path / "battinfo.json"
         with filepath.open("w") as f:
             f.write(json.dumps(data))
