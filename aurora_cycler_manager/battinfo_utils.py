@@ -160,7 +160,7 @@ def merge_battinfo_with_db_data(
     if coin_cell is None:
         if allow_empty_battinfo:
             # Make a default coin cell
-            battinfo_jsonld = blank_coin_cell.copy()
+            battinfo_jsonld = deepcopy(blank_coin_cell)
             coin_cell = battinfo_jsonld
         else:
             msg = "Could not find CoinCell in JSON-LD"
