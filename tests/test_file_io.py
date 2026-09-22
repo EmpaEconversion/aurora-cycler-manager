@@ -63,6 +63,69 @@ class TestDetermineUploaded:
         assert not res[2]
         assert res[3] == {"data": data, "file": "battinfo-jsonld"}
 
+    def test_battinfo_single_node_graph(self, tmp_path: Path) -> None:
+        """A single-node @graph is unwrapped and accepted."""
+        data = {
+            "@context": "some stuff",
+            "@graph": [
+                {
+                    "@type": "BatteryTest",
+                    "hasTestObject": {
+                        "@type": "CoinCell",
+                        "rdfs:comment": ["Schema name: CoinCellSchema"],
+                    },
+                }
+            ],
+        }
+        filepath = tmp_path / "battinfo.json"
+        with filepath.open("w") as f:
+            f.write(json.dumps(data))
+        res = file_io.determine_file(filepath, [{"Sample ID": "a sample"}])
+        assert "will be merged with" in res[0]
+        assert not res[2]
+        assert res[3] == {"data": data, "file": "battinfo-jsonld"}
+
+    def test_battinfo_multi_node_graph_rejected(self, tmp_path: Path) -> None:
+        """A multi-node @graph is rejected at upload."""
+        data = {
+            "@context": "some stuff",
+            "@graph": [
+                {"@type": "SomethingElse", "note": "an unrelated node"},
+                {
+                    "@type": "BatteryTest",
+                    "hasTestObject": {
+                        "@type": "CoinCell",
+                        "rdfs:comment": ["Schema name: CoinCellSchema"],
+                    },
+                },
+            ],
+        }
+        filepath = tmp_path / "battinfo.json"
+        with filepath.open("w") as f:
+            f.write(json.dumps(data))
+        res = file_io.determine_file(filepath, [{"Sample ID": "a sample"}])
+        assert "unrecognized structure" in res[0]
+        assert "Multi-node @graph" in res[0]
+        assert res[1] == "red"
+        assert res[2]
+        assert res[3] == {"data": None, "file": None}
+
+    def test_battinfo_bad_root_rejected(self, tmp_path: Path) -> None:
+        """A CoinCell under an unexpected root is rejected at upload."""
+        data = {
+            "@context": "some stuff",
+            "@type": "Dataset",
+            "contains": {"@type": "CoinCell", "rdfs:comment": ["Schema name: CoinCellSchema"]},
+        }
+        filepath = tmp_path / "battinfo.json"
+        with filepath.open("w") as f:
+            f.write(json.dumps(data))
+        res = file_io.determine_file(filepath, [{"Sample ID": "a sample"}])
+        assert "unrecognized structure" in res[0]
+        assert res[1] == "red"
+        assert res[2]
+        assert res[3] == {"data": None, "file": None}
+
     def test_battinfo_no_samples(self, tmp_path: Path) -> None:
         """BattINFO JSON-LD without samples."""
         data = {
