@@ -122,6 +122,20 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
                     True,
                     {"file": None, "data": None},
                 )
+            # Check it can be read back, make_test_object fails for unrecognized structures
+            try:
+                bu.make_test_object(deepcopy(data))
+            except ValueError as e:
+                msg = (
+                    "Got a BattINFO json-ld with unrecognized structure: "
+                    f"it cannot be rearranged to have CoinCell or BatteryTest at the root:\n{e}"
+                )
+                return (
+                    msg,
+                    "red",
+                    True,
+                    {"file": None, "data": None},
+                )
             return (
                 "Got a BattINFO json-ld\n"
                 "The metadata will be merged with info from the database\n"
