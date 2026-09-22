@@ -7,6 +7,7 @@ import logging
 import uuid
 import zipfile
 from collections.abc import Callable
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -56,8 +57,10 @@ def is_battinfo_jsonld(obj: list | str | dict) -> bool:
     if isinstance(obj, dict) and obj.get("@context"):
         coincell = bu.find_coin_cell(obj)
         if coincell:
-            comments = coincell.get("rdfs:comment")
-            return isinstance(comments, list) and len(comments) >= 1 and comments[0].startswith("BattINFO")
+            comments = coincell.get("rdfs:comment", [])
+            if not isinstance(comments, list):
+                comments = [comments]
+            return any("CoinCellSchema" in str(c) for c in comments)
     return False
 
 
@@ -115,6 +118,20 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
             if not samples:
                 return (
                     "Got a BattINFO json-ld, but you must select samples.",
+                    "red",
+                    True,
+                    {"file": None, "data": None},
+                )
+            # Check it can be read back, make_test_object fails for unrecognized structures
+            try:
+                bu.make_test_object(deepcopy(data))
+            except ValueError as e:
+                msg = (
+                    "Got a BattINFO json-ld with unrecognized structure: "
+                    f"it cannot be rearranged to have CoinCell or BatteryTest at the root:\n{e}"
+                )
+                return (
+                    msg,
                     "red",
                     True,
                     {"file": None, "data": None},
@@ -295,7 +312,9 @@ def save_battinfo(data: dict, file: str | Path | io.BytesIO, sample_ids: list[st
     # Merge json with database info and save
     for s in sample_ids:
         sample_data = get_sample_data(s)
-        merged_jsonld = bu.merge_battinfo_with_db_data(battinfo_jsonld, sample_data, allow_empty_battinfo=True)
+        merged_jsonld = bu.merge_battinfo_with_db_data(
+            deepcopy(battinfo_jsonld), sample_data, allow_empty_battinfo=True
+        )
         save_path = get_sample_folder(s) / f"battinfo.{s}.jsonld"
         logger.info("Saving battinfo json-ld file to %s", save_path)
         save_path.parent.mkdir(parents=True, exist_ok=True)
