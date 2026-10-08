@@ -7,6 +7,7 @@ These data are stored in the file system, use the `data_parse` module to access.
 
 import json
 import logging
+import re
 import uuid
 from contextlib import suppress
 from datetime import datetime, timezone
@@ -18,6 +19,7 @@ import pandas as pd
 from sqlalchemy import (
     Boolean,
     Column,
+    Connection,
     DateTime,
     Engine,
     Float,
@@ -51,6 +53,36 @@ CONFIG = get_config()
 logger = logging.getLogger(__name__)
 
 
+def _limited_varchar_cols(engine: Engine) -> dict[str, list[str]]:
+    """Find VARCHAR(n) columns to widen (Postgres)."""
+    if engine.dialect.name != "postgresql":
+        return {}
+    inspector = inspect(engine)
+    config_limited = {  # Keep explicit VARCHAR(n) from config
+        col["Name"]
+        for col in CONFIG.get("Sample database", [])
+        if re.fullmatch(r"VARCHAR\(\d+\)", col.get("Type", "").strip(), re.IGNORECASE)
+    } - {"Sample ID", "Run ID", "Label"}  # Always TEXT
+    keep_cols: dict[str, set[str]] = {"jobs": set(), "pipelines": set(), "results": set(), "samples": config_limited}
+    limited: dict[str, list[str]] = {}
+    for table, keep in keep_cols.items():
+        cols = [
+            col["name"]
+            for col in inspector.get_columns(table)
+            if isinstance(col["type"], String) and col["type"].length is not None and col["name"] not in keep
+        ]
+        if cols:
+            limited[table] = cols
+    return limited
+
+
+def _widen_varchar_cols(conn: Connection, cols_by_table: dict[str, list[str]]) -> None:
+    """Convert columns to TEXT."""
+    for table, cols in cols_by_table.items():
+        for col in cols:
+            conn.execute(text(f'ALTER TABLE "{table}" ALTER COLUMN "{col}" TYPE TEXT'))
+
+
 def _db_schema_needs_update(engine: Engine) -> bool:
     """Check if there is anything missing from the db schema."""
     inspector = inspect(engine)
@@ -75,6 +107,9 @@ def _db_schema_needs_update(engine: Engine) -> bool:
             needs_update = True
 
     if "dataframes" not in inspector.get_table_names():
+        needs_update = True
+
+    if _limited_varchar_cols(engine):
         needs_update = True
 
     return needs_update
@@ -107,6 +142,8 @@ def _update_db_schema(engine: Engine) -> None:
             conn.execute(text(f'CREATE INDEX IF NOT EXISTS "idx_{table}_sync_op" ON "{table}" ("sync_op")'))
 
         conn.execute(text('CREATE INDEX IF NOT EXISTS "idx_jobs_sample" ON "jobs" ("Sample ID")'))
+
+        _widen_varchar_cols(conn, _limited_varchar_cols(engine))
 
     # Create dataframes table if it doesn't exist
     if "dataframes" not in inspector.get_table_names():

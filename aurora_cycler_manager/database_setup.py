@@ -347,8 +347,8 @@ def create_database(force: bool = False) -> None:
         Column("Cycling C", types.Float),
         Column("Last snapshot", types.DateTime),
         Column("Last analysis", types.DateTime),
-        Column("Snapshot status", types.String(3)),
-        Column("Snapshot pipeline", types.String(50)),
+        Column("Snapshot status", types.Text),
+        Column("Snapshot pipeline", types.Text),
         Column("sync_modified", types.Float),
         Column("sync_op", types.Text),
     )
