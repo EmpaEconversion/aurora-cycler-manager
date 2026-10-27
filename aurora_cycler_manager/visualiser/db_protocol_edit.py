@@ -23,7 +23,11 @@ from pydantic import ValidationError
 
 from aurora_cycler_manager.config import get_config
 from aurora_cycler_manager.visualiser.file_io import get_existing_protocols, load_existing_protocol, save_protocol
-from aurora_cycler_manager.visualiser.notifications import error_notification, success_notification
+from aurora_cycler_manager.visualiser.notifications import (
+    error_notification,
+    success_notification,
+    warning_notification,
+)
 
 logger = logging.getLogger(__name__)
 CONFIG = get_config()
@@ -49,6 +53,7 @@ ALL_TECHNIQUES_REV = {v: k for k, v in ALL_TECHNIQUES.items()}
 ALL_TECHNIQUE_INPUTS = {k for v in ALL_TECHNIQUES.values() for k in v.model_fields}
 ALL_TECHNIQUE_INPUTS.remove("step")
 ALL_TECHNIQUE_INPUTS.remove("id")
+ALL_TECHNIQUE_INPUTS.discard("record")  # Per-step record params are not yet editable, remove on load
 # Map inputs to the component property - checkboxes use 'checked' not 'value'
 ALL_TECHNIQUE_INPUT_PROPS = dict.fromkeys(ALL_TECHNIQUE_INPUTS, "value")
 ALL_TECHNIQUE_INPUT_PROPS["drift_correction"] = "checked"
@@ -750,6 +755,15 @@ def register_protocol_edit_callbacks(app: Dash) -> None:
         except (ValidationError, AttributeError, ValueError, KeyError):
             err = error_notification("Error", "This is not a valid protocol file.")
         else:
+            # Per-step record params not yet editable in UI, remove and warn user
+            removed = [i for i, step in enumerate(protocol["method"], start=1) if step.pop("record", None)]
+            if removed:
+                warning = warning_notification(
+                    "Per-step recording removed",
+                    f"Step(s) {', '.join(map(str, removed))} had their own recording parameters. "
+                    "These are not supported in the editor, only the global recording parameters are used.",
+                )
+                return protocol, [], [warning]
             return protocol, [], no_update
         return (no_update, no_update, [err])
 
