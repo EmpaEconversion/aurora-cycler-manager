@@ -881,6 +881,7 @@ db_view_layout = html.Div(
         dcc.Clipboard(id="clipboard", style={"display": "none"}),
         dcc.Store(id="selected-columns", data={}),
         dcc.Store(id="selected-rows-store", data={}),
+        dcc.Store(id="download-samples-store", data=[]),
         dcc.Store(id="len-store", data={}),
         dcc.Store(id="last-sync-store", data=0),
         dcc.Store(id="info-store", data={}),
@@ -1752,29 +1753,40 @@ def register_db_view_callbacks(app: Dash) -> None:
         update_sample_metadata(sample_ids)
         return 1
 
-    # When download button is pressed, open the modal
+    # When a download button is pressed, store the samples to download and open the modal
     @app.callback(
         Output("download-modal", "opened"),
+        Output("download-samples-store", "data"),
         Output("download-yes-close", "disabled", allow_duplicate=True),
         Output("process-progress", "value", allow_duplicate=True),
         Output("download-alert", "children", allow_duplicate=True),
         Output("download-alert", "color", allow_duplicate=True),
         Input("download-button", "n_clicks"),
+        Input("batch-edit-download-button", "n_clicks"),
         Input("download-yes-close", "n_clicks"),
+        State("selected-rows-store", "data"),
+        State("batch-edit-samples", "value"),
         State("download-modal", "opened"),
         prevent_initial_call=True,
     )
     def download_data_open_modal(
-        _download_clicks: int, _yes_clicks: int, is_open: bool
-    ) -> tuple[bool, bool, int | NoUpdate, str | NoUpdate, str | NoUpdate]:
+        _download_clicks: int,
+        _batch_download_clicks: int,
+        _yes_clicks: int,
+        selected_rows: list,
+        batch_samples: list[str],
+        is_open: bool,
+    ) -> tuple[bool, list[str] | NoUpdate, bool, int | NoUpdate, str | NoUpdate, str | NoUpdate]:
         if not ctx.triggered:
             raise PreventUpdate
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         if button_id == "download-button":
-            return True, True, 0, "Waiting...", "grey"
+            return True, [s["Sample ID"] for s in selected_rows], True, 0, "Waiting...", "grey"
+        if button_id == "batch-edit-download-button":
+            return True, batch_samples, True, 0, "Waiting...", "grey"
         if button_id == "download-yes-close":
-            return False, True, 0, "Waiting...", "grey"
-        return is_open, True, no_update, no_update, no_update
+            return False, no_update, True, 0, "Waiting...", "grey"
+        return is_open, no_update, True, no_update, no_update, no_update
 
     clientside_callback(
         """
@@ -1791,12 +1803,11 @@ def register_db_view_callbacks(app: Dash) -> None:
     @app.callback(
         Output("download-zenodo-info-link", "data"),
         Input("download-zenodo-info-button-element", "n_clicks"),
-        State("selected-rows-store", "data"),
+        State("download-samples-store", "data"),
         prevent_initial_call=True,
     )
-    def generate_zenodo_info_template(_n_clicks: int, selected_rows: list) -> dict:
+    def generate_zenodo_info_template(_n_clicks: int, sample_ids: list[str]) -> dict:
         """Generate a zenodo info xlsx template and return as data uri."""
-        sample_ids = [s.get("Sample ID") for s in selected_rows]
         ccids = [_Sample.from_id(s).get("Barcode") for s in sample_ids]
         template_bytes = bu.generate_zenodo_info_xlsx_template(sample_ids=sample_ids, ccids=ccids)
         return dcc.send_bytes(template_bytes.getvalue(), "aurora_zenodo_template.xlsx")
@@ -1810,6 +1821,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         Output("download-alert", "color", allow_duplicate=True),
         Output("upload-zenodo-group", "style"),
         Input("download-button", "n_clicks"),
+        Input("batch-edit-download-button", "n_clicks"),
         Input("upload-zenodo-info-button", "contents"),
         Input("download-jsonld", "checked"),
         Input("download-cycles-csv", "checked"),
@@ -1819,7 +1831,7 @@ def register_db_view_callbacks(app: Dash) -> None:
         prevent_initial_call=True,
     )
     def reset_process(
-        _n_clicks: int, _zenodo_info: str, jsonld: bool, *inputs: tuple
+        _n_clicks: int, _batch_n_clicks: int, _zenodo_info: str, jsonld: bool, *inputs: tuple
     ) -> tuple[bool, bool, int, str, str, dict]:
         """If filetypes change, disable download, enable process, reset progress bar."""
         if jsonld or any(inputs):
@@ -1854,7 +1866,7 @@ def register_db_view_callbacks(app: Dash) -> None:
             Input("download-process-button", "n_clicks"),
         ],
         state=[
-            State("selected-rows-store", "data"),
+            State("download-samples-store", "data"),
             State("download-cycles-parquet", "checked"),
             State("download-cycles-csv", "checked"),
             State("download-bdf-parquet", "checked"),
@@ -1883,7 +1895,7 @@ def register_db_view_callbacks(app: Dash) -> None:
     def batch_process_data(
         set_progress: Callable,
         _yes_clicks: int,
-        selected_rows: list,
+        sample_ids: list[str],
         download_cycles_parquet: bool | None,
         download_cycles_csv: bool | None,
         download_bdf_parquet: bool | None,
@@ -1893,7 +1905,6 @@ def register_db_view_callbacks(app: Dash) -> None:
     ) -> tuple[str, bool, bool]:
         """Process the requested data and store in zip in temp folder on server."""
         cleanup_temp_folder()
-        sample_ids = [s["Sample ID"] for s in selected_rows]
         filetypes = {
             "bdf-parquet": download_bdf_parquet,
             "bdf-csv": download_bdf_csv,

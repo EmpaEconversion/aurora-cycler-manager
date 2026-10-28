@@ -61,6 +61,12 @@ batch_edit_layout = dmc.Stack(
                     disabled=True,
                 ),
                 dmc.Button(
+                    "Download",
+                    leftSection=html.I(className="bi bi-download"),
+                    id="batch-edit-download-button",
+                    disabled=True,
+                ),
+                dmc.Button(
                     "Delete",
                     leftSection=html.I(className="bi-trash3"),
                     id="batch-edit-delete-button",
@@ -194,3 +200,12 @@ def register_batch_edit_callbacks(app: Dash) -> None:
         logger.info("Deleting batch %s", name)
         remove_batch(name)
         return 1, ""
+
+    # When there are samples, enable the download button
+    @app.callback(
+        Output("batch-edit-download-button", "disabled"),
+        Input("batch-edit-samples", "value"),
+        prevent_initial_call=True,
+    )
+    def enable_batch_download(samples: list[str]) -> bool:
+        return not samples
