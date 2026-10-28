@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 from zipfile import ZipFile
 
+import openpyxl
 import polars as pl
 import pytest
 from aurora_unicycler import CyclingProtocol
@@ -211,12 +212,22 @@ def test_analyse_download_eclab_sample(
 
     # Wrong xslx complains
     res = file_io.determine_file(zenodoinfo_xlsx, [])
-    assert "does not have the expected sheets" in res[0]
+    assert "is not a BattINFO file" in res[0]
     assert res[3]["file"] is None
 
-    # With selected works
+    # The example describes another cell
     res = file_io.determine_file(battinfo_xlsx, [{"Sample ID": sample_id}])
-    assert "BattINFO" in res[0]
+    assert "Cell ID 'Empa-bco-000007' does not match" in res[0]
+    assert res[3]["file"] is None
+
+    # Without the Cell ID it works
+    workbook = openpyxl.load_workbook(battinfo_xlsx)
+    assert workbook["@Schema"]["A4"].value == "Cell ID"
+    workbook["@Schema"]["B4"] = None
+    battinfo_xlsx = tmp_path / "BattINFO_example.xlsx"
+    workbook.save(battinfo_xlsx)
+    res = file_io.determine_file(battinfo_xlsx, [{"Sample ID": sample_id}])
+    assert "will be merged with" in res[0]
     assert res[3]["file"] == "battinfo-xlsx"
     assert res[3]["data"] is None
 
@@ -264,6 +275,20 @@ def test_analyse_download_eclab_sample(
         assert f"{sample_id}/cycles.{sample_id}.csv" in files
         assert f"{sample_id}/metadata.{sample_id}.json" in files
         assert "ro-crate-metadata.json" in files
+        metadata = json.loads(zf.read(f"{sample_id}/metadata.{sample_id}.json"))
+
+    # Metadata lists every file in the zip, by its path in the zip
+    output = metadata["hasOutput"]
+    assert {d["@id"] for d in output["dcat:distribution"]} == {
+        f"{sample_id}/full.{sample_id}.bdf.parquet",
+        f"{sample_id}/full.{sample_id}.bdf.csv",
+        f"{sample_id}/cycles.{sample_id}.parquet",
+        f"{sample_id}/cycles.{sample_id}.csv",
+    }
+    assert metadata["hasTestObject"]["schema:productID"] == "empa__ccid001114"
+    assert output["schema:associatedMedia"]["rdfs:label"] == ["Fig. 1a", "Fig. 2b"]
+    assert output["dcat:accessURL"] == {"@id": "Enter Zenodo link here, e.g. https://doi.org/10.1234/zenodo.12345678"}
+    assert metadata["@context"][-1]["@base"] == "https://zenodo.org/records/12345678/"
 
     # Test reuploading the files
     res = file_io.determine_file(zip_file, selected_rows=[])

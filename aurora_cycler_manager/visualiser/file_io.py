@@ -11,7 +11,6 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pandas as pd
 import polars as pl
 from aurora_unicycler import Protocol
 from battinfoconverter_backend.json_convert import convert_excel_to_jsonld
@@ -57,9 +56,8 @@ def is_battinfo_jsonld(obj: list | str | dict) -> bool:
     if isinstance(obj, dict) and obj.get("@context"):
         coincell = bu.find_coin_cell(obj)
         if coincell:
-            comments = coincell.get("rdfs:comment", [])
-            if not isinstance(comments, list):
-                comments = [comments]
+            # The converter's comments are on the root, which may be a BatteryTest around the cell
+            comments = [*bu.as_list(coincell.get("rdfs:comment")), *bu.as_list(obj.get("rdfs:comment"))]
             return any("CoinCellSchema" in str(c) for c in comments)
     return False
 
@@ -72,6 +70,47 @@ def is_aux_jsonld(obj: list | str | dict) -> bool:
 def is_unicycler_protocol(obj: list | str | dict) -> bool:
     """Check if object is a unicycler protocol."""
     return isinstance(obj, dict) and bool(obj.get("unicycler"))
+
+
+MAX_UPLOAD_WARNINGS = 30
+
+
+def check_battinfo_upload(
+    jsonld: dict, sample_ids: list[str], file_kind: str, data: dict | None
+) -> tuple[str, str, bool, dict]:
+    """Check a BattINFO JSON-LD can be applied to the selected samples, return the upload message."""
+    kind = "xlsx" if file_kind == "battinfo-xlsx" else "json-ld"
+    nothing = {"file": None, "data": None}
+    if not sample_ids:
+        return f"Got a BattINFO {kind}, but you must select samples.", "red", True, nothing
+    # Check it can be read back, make_test_object fails for unrecognized structures
+    try:
+        bu.make_test_object(deepcopy(jsonld))
+    except ValueError as e:
+        msg = (
+            f"Got a BattINFO {kind} with unrecognized structure: "
+            f"it cannot be rearranged to have CoinCell or BatteryTest at the root:\n{e}"
+        )
+        return msg, "red", True, nothing
+    try:
+        samples = [get_sample_data(s) for s in sample_ids]
+    except ValueError as e:
+        return f"Got a BattINFO {kind}, but {e}", "red", True, nothing
+    errors, warnings = bu.check_battinfo_for_samples(jsonld, samples)
+    if errors:
+        msg = f"Got a BattINFO {kind}, but it cannot be applied to the selected samples:\n" + "\n".join(errors)
+        return msg, "red", True, nothing
+    msg = (
+        f"Got a BattINFO {kind}\n"
+        "The metadata will be merged with info from the database\n"
+        f"It will be applied to {len(samples)} samples:\n" + "\n".join(sample_ids)
+    )
+    if not warnings:
+        return msg, "green", False, {"file": file_kind, "data": data}
+    msg += "\n\nWARNING:\n" + "\n".join(warnings[:MAX_UPLOAD_WARNINGS])
+    if len(warnings) > MAX_UPLOAD_WARNINGS:
+        msg += f"\nand {len(warnings) - MAX_UPLOAD_WARNINGS} more"
+    return msg, "orange", False, {"file": file_kind, "data": data}
 
 
 def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str, bool, dict]:
@@ -115,35 +154,7 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
 
         samples = [s.get("Sample ID") for s in selected_rows if s.get("Sample ID")]
         if is_battinfo_jsonld(data):
-            if not samples:
-                return (
-                    "Got a BattINFO json-ld, but you must select samples.",
-                    "red",
-                    True,
-                    {"file": None, "data": None},
-                )
-            # Check it can be read back, make_test_object fails for unrecognized structures
-            try:
-                bu.make_test_object(deepcopy(data))
-            except ValueError as e:
-                msg = (
-                    "Got a BattINFO json-ld with unrecognized structure: "
-                    f"it cannot be rearranged to have CoinCell or BatteryTest at the root:\n{e}"
-                )
-                return (
-                    msg,
-                    "red",
-                    True,
-                    {"file": None, "data": None},
-                )
-            return (
-                "Got a BattINFO json-ld\n"
-                "The metadata will be merged with info from the database\n"
-                f"It will be applied to {len(samples)} samples:\n" + "\n".join(samples),
-                "green",
-                False,
-                {"file": "battinfo-jsonld", "data": data},
-            )
+            return check_battinfo_upload(data, samples, "battinfo-jsonld", data)
         if is_aux_jsonld(data):
             if not samples:
                 return (
@@ -216,31 +227,23 @@ def determine_file(filepath: str | Path, selected_rows: list) -> tuple[str, str,
         )
 
     if filepath.suffix == ".xlsx":
-        # It is probably a battinfo xlsx file
-        excel_file = pd.ExcelFile(filepath)
-        sheet_names = [str(s) for s in excel_file.sheet_names]
-        expected_sheets = {"@Schema", "@Context", "@Predicates", "@Classes", "@Units"}
-        old_expected_sheets = {"Schema", "@context-TopLevel", "@context-Connector", "Ontology - Unit", "Unique ID"}
-        if not all(sheet in expected_sheets | old_expected_sheets for sheet in sheet_names):
+        # It is probably a battinfo xlsx file, the converter knows every template's sheet names
+        try:
+            jsonld = convert_excel_to_jsonld(filepath, debug_mode=False)
+        except Exception as e:
+            logger.info("Excel file is not a BattINFO file: %s", e)
+            reason = e.args[0] if e.args else e
+            return f"Excel file is not a BattINFO file:\n{reason}", "red", True, {"file": None, "data": None}
+        if not is_battinfo_jsonld(jsonld):
             return (
-                "Excel file does not have the expected sheets. "
-                "Found: " + ", ".join(sheet_names) + "\n"
-                "Expected: " + ", ".join(expected_sheets),
+                "Excel file is a BattINFO file, but not a coin cell (CoinCellSchema) template",
                 "red",
                 True,
                 {"file": None, "data": None},
             )
-        sample_ids = [s.get("Sample ID") for s in selected_rows]
-        if not sample_ids:
-            return "Got a BattINFO xlsx, but you must select samples.", "red", True, {"file": None, "data": None}
-        return (
-            "Got a BattINFO xlsx\n"
-            "The metadata will be merged with info from the database\n"
-            f"It will be applied to {len(sample_ids)} samples:\n" + "\n".join(sample_ids),
-            "green",
-            False,
-            {"file": "battinfo-xlsx", "data": None},  # Don't copy the content_string
-        )
+        sample_ids = [s.get("Sample ID") for s in selected_rows if s.get("Sample ID")]
+        # Converted again on upload, don't copy the content into the browser
+        return check_battinfo_upload(jsonld, sample_ids, "battinfo-xlsx", None)
 
     if filepath.suffix == ".zip":
         # Open the zip archive
@@ -309,6 +312,14 @@ def save_battinfo(data: dict, file: str | Path | io.BytesIO, sample_ids: list[st
     battinfo_jsonld = (
         convert_excel_to_jsonld(file, debug_mode=False) if data["file"] == "battinfo-xlsx" else data["data"]
     )
+    errors, _warnings = bu.check_battinfo_for_samples(battinfo_jsonld, [get_sample_data(s) for s in sample_ids])
+    if errors:
+        msg = "BattINFO cannot be applied to these samples: " + "; ".join(errors)
+        raise ValueError(msg)
+    # Aurora lists the files when exporting
+    battinfo_jsonld = deepcopy(bu.unwrap_graph(battinfo_jsonld))
+    if files := bu.pop_sheet_files(battinfo_jsonld):
+        logger.warning("Ignoring files listed in BattINFO: %s", ", ".join(files))
     # Merge json with database info and save
     for s in sample_ids:
         sample_data = get_sample_data(s)
@@ -617,6 +628,9 @@ def create_rocrate(
     samples = [_Sample.from_id(s) for s in sample_ids]
     pub_info = bu.parse_zenodo_info_xlsx(zenodo_info) if zenodo_info else {}
     rocrate, root_dataset = _rocrate_skeleton(pub_info)
+    zenodo_url = pub_info.get("zenodo_doi_url")
+    # Optional "Zenodo zip filename" row, needed for download URLs into the zip
+    zip_filename = pub_info.get("zenodo_zip_filename")
 
     # Number of files
     n_files = len(samples) * len(filetypes)
@@ -636,6 +650,7 @@ def create_rocrate(
             messages += f"{sample_id} - "
             warnings = []
             errors = []
+            metadata_conflicts: list[str] = []
             data = SampleDataBundle(sample_id)
 
             rocrate["@graph"].append(
@@ -648,7 +663,8 @@ def create_rocrate(
             )
 
             # Loop through requested files
-            for filetype in filetypes:
+            # Metadata last, it lists the files written before it
+            for filetype in sorted(filetypes, key=lambda f: f == "metadata-jsonld"):
                 i += 1
                 try:
                     if filetype == "cycles-csv":
@@ -680,7 +696,7 @@ def create_rocrate(
                                 ),
                             }
                         )
-                        battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
+                        battinfo_files.append(bu.add_data(rel_file_path, zenodo_url, zip_filename=zip_filename))
 
                     if filetype == "cycles-parquet":
                         if data.cycles_summary is None:
@@ -711,7 +727,7 @@ def create_rocrate(
                                 ),
                             }
                         )
-                        battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
+                        battinfo_files.append(bu.add_data(rel_file_path, zenodo_url, zip_filename=zip_filename))
 
                     if filetype == "bdf-csv":
                         if data.cycling is None:
@@ -742,7 +758,7 @@ def create_rocrate(
                                 ),
                             }
                         )
-                        battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
+                        battinfo_files.append(bu.add_data(rel_file_path, zenodo_url, zip_filename=zip_filename))
 
                         if data.eis is not None:
                             buffer = io.BytesIO()
@@ -766,7 +782,7 @@ def create_rocrate(
                                     ),
                                 }
                             )
-                            battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
+                            battinfo_files.append(bu.add_data(rel_file_path, zenodo_url, zip_filename=zip_filename))
 
                     if filetype == "bdf-parquet":
                         if data.cycling is None:
@@ -801,7 +817,7 @@ def create_rocrate(
                                 ),
                             }
                         )
-                        battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
+                        battinfo_files.append(bu.add_data(rel_file_path, zenodo_url, zip_filename=zip_filename))
 
                         if data.eis is not None:
                             buffer = io.BytesIO()
@@ -828,49 +844,27 @@ def create_rocrate(
                                     ),
                                 }
                             )
-                            battinfo_files.append(bu.add_data(rel_file_path, pub_info.get("zenodo_doi_url")))
+                            battinfo_files.append(bu.add_data(rel_file_path, zenodo_url, zip_filename=zip_filename))
 
                     if filetype == "metadata-jsonld":
-                        # Get the BattINFO dict
-                        battinfo_json = data.battinfo
-
-                        # Add data files
-                        if battinfo_files:
-                            battinfo_json = bu.merge_jsonld_on_type([battinfo_json, *battinfo_files])
-
-                        # Add ccid to output
-                        if ccid:
-                            battinfo_json = bu.merge_jsonld_on_type([battinfo_json, bu.add_ccid_output(ccid)])
-
-                        # Add citation string
-                        if pub_info.get("citation_string"):
-                            battinfo_json = bu.merge_jsonld_on_type(
-                                [
-                                    battinfo_json,
-                                    bu.add_citation(pub_info["citation_string"]),
-                                ]
-                            )
-
-                        # Add authors and institutions
-                        if pub_info.get("authors") and pub_info.get("institutions"):
-                            authors = bu.add_authors(pub_info["authors"], pub_info["institutions"])
-                            battinfo_json = bu.merge_jsonld_on_type([battinfo_json, authors])
-
-                        # Add publication info
-                        if pub_info.get("publication_doi_url") and pub_info.get("sample_to_fig") and (identifier):
-                            publication_extras = bu.add_associated_media(
-                                pub_info["publication_doi_url"],
-                                pub_info["sample_to_fig"],
-                                ccid,
-                                sample_id,
-                            )
-                            battinfo_json = bu.merge_jsonld_on_type([battinfo_json, publication_extras])
+                        # Files and publication info from this export win over the stored BattINFO
+                        battinfo_json, metadata_conflicts = bu.build_export_metadata(
+                            data.battinfo,
+                            battinfo_files,
+                            pub_info,
+                            sample_id=sample_id,
+                            ccid=ccid,
+                        )
 
                         # Save the JSON-LD
                         jsonld_name = f"metadata.{sample_id}.json"
                         rel_file_path = sample_id + "/" + jsonld_name
                         zf.writestr(rel_file_path, json.dumps(battinfo_json, indent=4))
-                        messages += "✅"
+                        if metadata_conflicts:
+                            messages += "⚠️"
+                            color = "orange"
+                        else:
+                            messages += "✅"
                         root_dataset["hasPart"].append({"@id": rel_file_path})
                         rocrate["@graph"].append(
                             {
@@ -901,6 +895,8 @@ def create_rocrate(
                 messages += "No data for " + ", ".join(warnings) + "\n"
             if errors:
                 messages += "Error processing " + ", ".join(errors) + "\n"
+            if metadata_conflicts:
+                messages += "Metadata:\n" + "\n".join(f"  {c}" for c in metadata_conflicts) + "\n"
             if set_progress:
                 set_progress((100 * i / n_files, messages, color))
 
