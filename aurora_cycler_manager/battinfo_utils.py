@@ -20,8 +20,8 @@ from aurora_cycler_manager.version import __title__, __url__, __version__
 logger = logging.getLogger(__name__)
 
 BDF_SCHEMA_IRI = "https://w3id.org/battery-data-alliance/ontology/battery-data-format/schema"
-# Same form as the BattINFO converter, so files from both share media type nodes
-IANA_MEDIA_TYPES = "https://www.iana.org/assignments/media-types/"
+# IRI form used in the DCAT 3 examples
+IANA_MEDIA_TYPES = "http://www.iana.org/assignments/media-types/"
 MEDIA_TYPES = {
     ".parquet": "application/vnd.apache.parquet",
     ".csv": "text/csv",

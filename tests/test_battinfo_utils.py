@@ -551,7 +551,7 @@ def test_add_data() -> None:
     snippet = add_data("s/full.s.bdf.csv", "https://doi.org/10.5281/zenodo.42", zip_filename="my data.zip")
     dist = snippet["hasOutput"]["dcat:distribution"]
     assert dist["@id"] == "s/full.s.bdf.csv"
-    assert dist["dcat:mediaType"] == {"@id": "https://www.iana.org/assignments/media-types/text/csv"}
+    assert dist["dcat:mediaType"] == {"@id": "http://www.iana.org/assignments/media-types/text/csv"}
     assert dist["csvw:tableSchema"]["@id"].endswith("battery-data-format/schema")
     assert dist["dcat:downloadURL"] == {"@id": "https://zenodo.org/records/42/files/my%20data.zip#s/full.s.bdf.csv"}
     dist = add_data("s/cycles.s.parquet", None)["hasOutput"]["dcat:distribution"]
