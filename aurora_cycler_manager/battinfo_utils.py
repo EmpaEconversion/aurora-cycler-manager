@@ -187,13 +187,23 @@ def _property_conflicts(old: dict, new: dict) -> list[str]:
     return found
 
 
-def _describes(node: object, new_dict: dict, expected_type: str | None) -> bool:
+def _has_any_type(node: dict, types: str | tuple[str, ...]) -> bool:
+    """Check if a node has one of the given types."""
+    return any(has_type(node, t) for t in ((types,) if isinstance(types, str) else types))
+
+
+def _first_type(types: str | tuple[str, ...]) -> str:
+    """Get the type a new node is created with."""
+    return types if isinstance(types, str) else types[0]
+
+
+def _describes(node: object, new_dict: dict, expected_type: str | tuple[str, ...] | None) -> bool:
     """Check if new_dict describes node, by its @type, or by the expected type if it has none."""
     if not isinstance(node, dict):
         return False
     if new_type := new_dict.get("@type"):
         return has_type(node, new_type) and _compatible(node, new_dict)
-    return expected_type is None or has_type(node, expected_type)
+    return expected_type is None or _has_any_type(node, expected_type)
 
 
 def insert_dict_in_jsonld(
@@ -209,10 +219,11 @@ def insert_dict_in_jsonld(
 
     Args:
         obj: The JSON-LD object to put the thing in.
-        keys: list of tuples with the key and optional exptected type, e.g.
+        keys: list of tuples with the key and optional expected type, or types any of which match,
+            the first is used for a new node, e.g.
             [
-                ("hasPositiveElectrode", "Electrode"),
-                ("hasCoating", "Coating"),
+                ("hasPositiveElectrode", ("PositiveElectrode", "Electrode")),
+                ("hasCoating", ("ElectrodeCoating", "Coating")),
                 ("hasActiveMaterial", None),
                 ("hasMeasuredProperty", "MassLoading"),
             ]
@@ -243,7 +254,7 @@ def insert_dict_in_jsonld(
         if key not in obj or obj[key] is None:
             # A new node gets the expected type, as when descending
             untyped = expected_type and "@type" not in new_dict
-            obj[key] = {"@type": expected_type, **new_dict} if untyped else new_dict
+            obj[key] = {"@type": _first_type(expected_type), **new_dict} if untyped else new_dict
         elif isinstance(obj[key], list):
             for i, o in enumerate(obj[key]):
                 if _describes(o, new_dict, expected_type):
@@ -264,7 +275,7 @@ def insert_dict_in_jsonld(
 
     # Otherwise, recursively descend
     if key not in obj or obj[key] is None:
-        obj[key] = {}
+        obj[key] = {"@type": _first_type(expected_type)} if expected_type else {}
 
     val = obj[key]
 
@@ -272,23 +283,45 @@ def insert_dict_in_jsonld(
     if isinstance(val, dict):
         insert_dict_in_jsonld(val, keys[1:], new_dict, merge=merge, conflicts=conflicts, _path=path)
 
-    # If list, select the dict with the expected type
+    # If list, select the dict with the expected type, or the only dict if no type is expected
     elif isinstance(val, list):
-        target = None
+        nodes = [el for el in val if isinstance(el, dict)]
         if expected_type:
-            for el in val:
-                if isinstance(el, dict) and has_type(el, expected_type):
-                    target = el
-                    break
-        if not target:
+            target = next((el for el in nodes if _has_any_type(el, expected_type)), None)
+        else:
+            target = nodes[0] if len(nodes) == 1 else None
+        if target is None:
             # If no match found, create a new dict with that type
-            target = {"@type": expected_type} if expected_type else {}
+            target = {"@type": _first_type(expected_type)} if expected_type else {}
             val.append(target)
         insert_dict_in_jsonld(target, keys[1:], new_dict, merge=merge, conflicts=conflicts, _path=path)
 
     else:
         msg = f"Unexpected type in path: {type(val)}"
         raise TypeError(msg)
+
+
+# Classes a node may have on aurora's paths, the first is used for a new node
+COATING_TYPES = ("ElectrodeCoating", "Coating")
+ELECTROLYTE_TYPES = ("OrganicElectrolyte", "Electrolyte")
+
+
+def _mix_active_materials(cell: dict, electrode_key: str) -> list[str]:
+    """Group an electrode's active materials under one ActiveMaterialMix, return a note for each blend.
+
+    Aurora's active material values are totals, so a blend needs one node to describe it.
+    """
+    notes = []
+    for electrode in as_list(cell.get(electrode_key)):
+        for coating in as_list(electrode.get("hasCoating")) if isinstance(electrode, dict) else []:
+            materials = as_list(coating.get("hasActiveMaterial")) if isinstance(coating, dict) else []
+            if len(materials) > 1:
+                coating["hasActiveMaterial"] = {"@type": "ActiveMaterialMix", "hasConstituent": materials}
+                notes.append(
+                    f"{electrode_key}/hasCoating/hasActiveMaterial: {len(materials)} active materials grouped "
+                    "as constituents of an ActiveMaterialMix, for the total values"
+                )
+    return notes
 
 
 def assembly_date(sample_data: dict) -> str | None:
@@ -347,17 +380,28 @@ def merge_battinfo_with_db_data(
     # Electrode specific quantities
     for xode in ("Anode", "Cathode"):
         key = "hasPositiveElectrode" if xode == "Cathode" else "hasNegativeElectrode"
+        electrode_types = (
+            ("PositiveElectrode", "Electrode") if xode == "Cathode" else ("NegativeElectrode", "Electrode")
+        )
+
+        has_am_values = sample_data.get(f"{xode} active material mass fraction") or (
+            sample_data.get(f"{xode} active material mass (mg)") and sample_data.get(f"{xode} diameter (mm)")
+        )
+        if has_am_values:
+            notes = _mix_active_materials(coin_cell, key)
+            if conflicts is not None:
+                conflicts.extend(notes)
 
         # Name, description
         if name := sample_data.get(f"{xode} type"):
-            insert([(key, "Electrode")], {"schema:name": name})
+            insert([(key, electrode_types)], {"schema:name": name})
         if desc := sample_data.get(f"{xode} description"):
-            insert([(key, "Electrode")], {"schema:description": desc})
+            insert([(key, electrode_types)], {"schema:description": desc})
 
         # Electrode mass
         if electrode_mass_mg := sample_data.get(f"{xode} mass (mg)"):
             insert(
-                [(key, "Electrode"), ("hasMeasuredProperty", "Mass")],
+                [(key, electrode_types), ("hasMeasuredProperty", "Mass")],
                 {
                     "@type": "Mass",
                     "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": electrode_mass_mg},
@@ -367,7 +411,7 @@ def merge_battinfo_with_db_data(
 
         if electrode_cc_mass_mg := sample_data.get(f"{xode} current collector mass (mg)"):
             insert(
-                [(key, "Electrode"), ("hasCurrentCollector", "CurrentCollector"), ("hasMeasuredProperty", "Mass")],
+                [(key, electrode_types), ("hasCurrentCollector", "CurrentCollector"), ("hasMeasuredProperty", "Mass")],
                 {
                     "@type": "Mass",
                     "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": electrode_cc_mass_mg},
@@ -387,8 +431,8 @@ def merge_battinfo_with_db_data(
             }
             insert(
                 [
-                    (key, "Electrode"),
-                    ("hasCoating", "Coating"),
+                    (key, electrode_types),
+                    ("hasCoating", COATING_TYPES),
                     ("hasActiveMaterial", None),
                     ("hasMeasuredProperty", "MassLoading"),
                 ],
@@ -403,7 +447,7 @@ def merge_battinfo_with_db_data(
                 "hasMeasurementUnit": "unit:MilliM",
             }
             insert(
-                [(key, "Electrode"), ("hasMeasuredProperty", "Diameter")],
+                [(key, electrode_types), ("hasMeasuredProperty", "Diameter")],
                 diameter_dict,
             )
 
@@ -411,8 +455,8 @@ def merge_battinfo_with_db_data(
         if am_mass_frac := sample_data.get(f"{xode} active material mass fraction"):
             insert(
                 [
-                    (key, "Electrode"),
-                    ("hasCoating", "Coating"),
+                    (key, electrode_types),
+                    ("hasCoating", COATING_TYPES),
                     ("hasActiveMaterial", None),
                     ("hasMeasuredProperty", "MassFraction"),
                 ],
@@ -427,8 +471,8 @@ def merge_battinfo_with_db_data(
         if a_cap := sample_data.get(f"{xode} C-rate definition areal capacity (mAh/cm2)"):
             insert(
                 [
-                    (key, "Electrode"),
-                    ("hasCoating", "Coating"),
+                    (key, electrode_types),
+                    ("hasCoating", COATING_TYPES),
                     ("hasMeasuredProperty", "RatedCapacity"),
                 ],
                 {
@@ -446,8 +490,8 @@ def merge_battinfo_with_db_data(
             m_cap = m_cap1 or m_cap2
             insert(
                 [
-                    (key, "Electrode"),
-                    ("hasCoating", "Coating"),
+                    (key, electrode_types),
+                    ("hasCoating", COATING_TYPES),
                     ("hasMeasuredProperty", "RatedCapacity"),
                 ],
                 {
@@ -460,8 +504,8 @@ def merge_battinfo_with_db_data(
         elif m_cap1 != m_cap2:
             insert(
                 [
-                    (key, "Electrode"),
-                    ("hasCoating", "Coating"),
+                    (key, electrode_types),
+                    ("hasCoating", COATING_TYPES),
                     ("hasMeasuredProperty", "RatedCapacity"),
                 ],
                 {
@@ -473,8 +517,8 @@ def merge_battinfo_with_db_data(
             )
             insert(
                 [
-                    (key, "Electrode"),
-                    ("hasCoating", "Coating"),
+                    (key, electrode_types),
+                    ("hasCoating", COATING_TYPES),
                     ("hasMeasuredProperty", "RatedCapacity"),
                 ],
                 {
@@ -489,7 +533,7 @@ def merge_battinfo_with_db_data(
     if vol := sample_data.get("Electrolyte amount (uL)"):
         insert(
             [
-                ("hasElectrolyte", "OrganicElectrolyte"),
+                ("hasElectrolyte", ELECTROLYTE_TYPES),
                 ("hasMeasuredProperty", "Volume"),
             ],
             {
@@ -501,9 +545,9 @@ def merge_battinfo_with_db_data(
 
     # Electrolyte name, desc
     if name := sample_data.get("Electrolyte name"):
-        insert([("hasElectrolyte", "OrganicElectrolyte")], {"schema:name": name})
+        insert([("hasElectrolyte", ELECTROLYTE_TYPES)], {"schema:name": name})
     if desc := sample_data.get("Electrolyte description"):
-        insert([("hasElectrolyte", "OrganicElectrolyte")], {"schema:description": desc})
+        insert([("hasElectrolyte", ELECTROLYTE_TYPES)], {"schema:description": desc})
 
     # Separator
     if name := sample_data.get("Separator type"):

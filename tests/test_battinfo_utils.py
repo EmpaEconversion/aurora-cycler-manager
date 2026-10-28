@@ -632,3 +632,60 @@ def test_merge_keeps_sheet_comments_and_types() -> None:
     }
     assert result["hasElectrolyte"] == {"@type": "Electrolyte", "schema:name": "LP57"}
     assert conflicts == ["hasElectrolyte/schema:name: 'LP30' replaced by 'LP57'"]
+
+
+AM_SAMPLE = {
+    "Sample ID": "s",
+    "Cathode active material mass (mg)": 10.0,
+    "Cathode diameter (mm)": 14.0,
+    "Cathode active material mass fraction": 0.9,
+}
+
+
+def test_merge_active_material_blend() -> None:
+    """Several active materials become constituents of one ActiveMaterialMix holding the totals."""
+    nmc = {"@type": ["ActiveMaterial", "NMC811"], "hasMeasuredProperty": quantity("MassFraction", 60, "unit:PERCENT")}
+    lfp = {"@type": ["ActiveMaterial", "LFP"]}
+    cell = {
+        "@type": "CoinCell",
+        "hasPositiveElectrode": {
+            "@type": "PositiveElectrode",
+            "hasCoating": {"@type": ["Coating", "ElectrodeCoating"], "hasActiveMaterial": [nmc, lfp]},
+        },
+    }
+    conflicts: list[str] = []
+    result = merge_battinfo_with_db_data(deepcopy(cell), dict(AM_SAMPLE), conflicts=conflicts)
+    mix = result["hasPositiveElectrode"]["hasCoating"]["hasActiveMaterial"]
+    assert mix["@type"] == "ActiveMaterialMix"
+    assert mix["hasConstituent"] == [nmc, lfp]
+    assert [p["@type"] for p in mix["hasMeasuredProperty"]] == ["MassLoading", "MassFraction"]
+    assert conflicts == [
+        (
+            "hasPositiveElectrode/hasCoating/hasActiveMaterial: 2 active materials grouped "
+            "as constituents of an ActiveMaterialMix, for the total values"
+        )
+    ]
+
+    # Without active material values from the database the blend is left alone
+    result = merge_battinfo_with_db_data(deepcopy(cell), {"Sample ID": "s"})
+    assert result["hasPositiveElectrode"]["hasCoating"]["hasActiveMaterial"] == [nmc, lfp]
+
+
+def test_merge_finds_nodes_in_lists() -> None:
+    """In a list, a node is found by any of its accepted classes, or is the only node."""
+    cell = {
+        "@type": "CoinCell",
+        "hasPositiveElectrode": {
+            "@type": "PositiveElectrode",
+            "hasCoating": [
+                {"@type": "Primer"},
+                {"@type": "ElectrodeCoating", "hasActiveMaterial": [{"@type": ["ActiveMaterial", "NMC811"]}]},
+            ],
+        },
+    }
+    result = merge_battinfo_with_db_data(cell, dict(AM_SAMPLE))
+    coatings = result["hasPositiveElectrode"]["hasCoating"]
+    assert [c["@type"] for c in coatings] == ["Primer", "ElectrodeCoating"]
+    materials = coatings[1]["hasActiveMaterial"]
+    assert len(materials) == 1
+    assert [p["@type"] for p in materials[0]["hasMeasuredProperty"]] == ["MassLoading", "MassFraction"]
