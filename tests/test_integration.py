@@ -276,15 +276,19 @@ def test_analyse_download_eclab_sample(
         assert f"{sample_id}/metadata.{sample_id}.json" in files
         assert "ro-crate-metadata.json" in files
         metadata = json.loads(zf.read(f"{sample_id}/metadata.{sample_id}.json"))
+        rocrate = json.loads(zf.read("ro-crate-metadata.json"))
 
     # Metadata lists every file in the zip, by its path in the zip
     output = metadata["hasOutput"]
-    assert {d["@id"] for d in output["dcat:distribution"]} == {
+    file_ids = {d["@id"] for d in output["dcat:distribution"]}
+    assert file_ids == {
         f"{sample_id}/full.{sample_id}.bdf.parquet",
         f"{sample_id}/full.{sample_id}.bdf.csv",
         f"{sample_id}/cycles.{sample_id}.parquet",
         f"{sample_id}/cycles.{sample_id}.csv",
     }
+    # The same files have the same @id in the RO-Crate
+    assert file_ids <= {entity["@id"] for entity in rocrate["@graph"]}
     assert metadata["hasTestObject"]["schema:productID"] == "empa__ccid001114"
     assert output["schema:associatedMedia"]["rdfs:label"] == ["Fig. 1a", "Fig. 2b"]
     assert output["dcat:accessURL"] == {"@id": "Enter Zenodo link here, e.g. https://doi.org/10.1234/zenodo.12345678"}

@@ -10,6 +10,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import polars as pl
 from aurora_unicycler import Protocol
@@ -645,7 +646,7 @@ def create_rocrate(
             sample_id: str = sample.get("Sample ID")
             ccid: str = sample.get("Barcode")
             identifier = ccid or sample_id  # fallback on normal sample ID
-            sample_ref = f"#{identifier}"
+            sample_ref = f"#{quote(identifier, safe='')}"
             battinfo_files = []
             messages += f"{sample_id} - "
             warnings = []
@@ -681,10 +682,10 @@ def create_rocrate(
                         zf.writestr(rel_file_path, buffer.read())
                         messages += "✅"
 
-                        root_dataset["hasPart"].append({"@id": rel_file_path})
+                        root_dataset["hasPart"].append({"@id": quote(rel_file_path)})
                         rocrate["@graph"].append(
                             {
-                                "@id": rel_file_path,
+                                "@id": quote(rel_file_path),
                                 "@type": "File",
                                 "name": f"{sample_id} per-cycle summary data (csv)",
                                 "about": {"@id": sample_ref},
@@ -712,10 +713,10 @@ def create_rocrate(
                         zf.writestr(rel_file_path, buffer.read())
                         messages += "✅"
 
-                        root_dataset["hasPart"].append({"@id": rel_file_path})
+                        root_dataset["hasPart"].append({"@id": quote(rel_file_path)})
                         rocrate["@graph"].append(
                             {
-                                "@id": rel_file_path,
+                                "@id": quote(rel_file_path),
                                 "@type": "File",
                                 "name": f"{sample_id} per-cycle summary data (parquet)",
                                 "about": {"@id": sample_ref},
@@ -743,10 +744,10 @@ def create_rocrate(
                         rel_file_path = sample_id + f"/full.{sample_id}.bdf.csv"
                         zf.writestr(rel_file_path, buffer.read())
                         messages += "✅"
-                        root_dataset["hasPart"].append({"@id": rel_file_path})
+                        root_dataset["hasPart"].append({"@id": quote(rel_file_path)})
                         rocrate["@graph"].append(
                             {
-                                "@id": rel_file_path,
+                                "@id": quote(rel_file_path),
                                 "@type": "File",
                                 "name": f"{sample_id} time-series data (csv)",
                                 "about": {"@id": sample_ref},
@@ -767,10 +768,10 @@ def create_rocrate(
                             rel_file_path = sample_id + f"/eis.{sample_id}.bdf.csv"
                             zf.writestr(rel_file_path, buffer.read())
                             messages += "✅"
-                            root_dataset["hasPart"].append({"@id": rel_file_path})
+                            root_dataset["hasPart"].append({"@id": quote(rel_file_path)})
                             rocrate["@graph"].append(
                                 {
-                                    "@id": rel_file_path,
+                                    "@id": quote(rel_file_path),
                                     "@type": "File",
                                     "name": f"{sample_id} EIS data (csv)",
                                     "about": {"@id": sample_ref},
@@ -802,10 +803,10 @@ def create_rocrate(
                         rel_file_path = sample_id + "/" + parquet_name
                         zf.writestr(rel_file_path, buffer.read())
                         messages += "✅"
-                        root_dataset["hasPart"].append({"@id": rel_file_path})
+                        root_dataset["hasPart"].append({"@id": quote(rel_file_path)})
                         rocrate["@graph"].append(
                             {
-                                "@id": rel_file_path,
+                                "@id": quote(rel_file_path),
                                 "@type": "File",
                                 "name": f"{sample_id} time-series data (parquet)",
                                 "about": {"@id": sample_ref},
@@ -829,10 +830,10 @@ def create_rocrate(
                             rel_file_path = sample_id + f"/eis.{sample_id}.bdf.parquet"
                             zf.writestr(rel_file_path, buffer.read())
                             messages += "✅"
-                            root_dataset["hasPart"].append({"@id": rel_file_path})
+                            root_dataset["hasPart"].append({"@id": quote(rel_file_path)})
                             rocrate["@graph"].append(
                                 {
-                                    "@id": rel_file_path,
+                                    "@id": quote(rel_file_path),
                                     "@type": "File",
                                     "name": f"{sample_id} EIS data (parquet)",
                                     "about": {"@id": sample_ref},
@@ -865,10 +866,10 @@ def create_rocrate(
                             color = "orange"
                         else:
                             messages += "✅"
-                        root_dataset["hasPart"].append({"@id": rel_file_path})
+                        root_dataset["hasPart"].append({"@id": quote(rel_file_path)})
                         rocrate["@graph"].append(
                             {
-                                "@id": rel_file_path,
+                                "@id": quote(rel_file_path),
                                 "@type": "File",
                                 "name": f"{sample_id} metadata",
                                 "about": {"@id": sample_ref},
