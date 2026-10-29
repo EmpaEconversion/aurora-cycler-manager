@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.12'",
@@ -83,7 +83,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aurora-unicycler", specifier = ">=0.4.5" },
-    { name = "battinfoconverter-backend", specifier = ">=3.4.0" },
+    { name = "battinfoconverter-backend", specifier = ">=3.4.1" },
     { name = "certifi", specifier = ">=2026.10.19" },
     { name = "cryptography", specifier = ">=50.0.0" },
     { name = "dash", extras = ["diskcache"], specifier = ">=4.1.0" },
@@ -158,16 +158,16 @@ wheels = [
 
 [[package]]
 name = "battinfoconverter-backend"
-version = "3.4.0"
+version = "3.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "openpyxl" },
     { name = "pandas" },
     { name = "simplejson" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/36/91/467a79d7d9acebc997942031e9243c6900680efc5ec6125a0d5f64282f01/battinfoconverter_backend-3.4.0.tar.gz", hash = "sha256:b42d0fb85515ae94ae1d5558ab424a0637bffbf7fc998bdd98fc8b5cc36b2a04", size = 152286, upload-time = "2026-10-16T13:34:01.767Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dd/3b/d6636374dcbc3a913e865616625ff74fd2d12a2734f11efa42d49e1d6e3a/battinfoconverter_backend-3.4.1.tar.gz", hash = "sha256:d9756f893decb84893621d958c3793eaf169868741d85633f441fc5711f23565", size = 156406, upload-time = "2026-10-29T12:44:22.395Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4c/49/d3adeb042c3b5b4331946be2f9239be08ec4d3ddd95dbdcc12a791de16e3/battinfoconverter_backend-3.4.0-py3-none-any.whl", hash = "sha256:a25ad5b33fc0a0c41e0ead9ed570f574f09082999d79fc10abc1685c7dc6677c", size = 143728, upload-time = "2026-10-16T13:34:00.402Z" },
+    { url = "https://files.pythonhosted.org/packages/16/a6/c692495318b2615a26894f3fb933b731d7d392ffb195f12f2aeaa3ce93bf/battinfoconverter_backend-3.4.1-py3-none-any.whl", hash = "sha256:6e70d8dce42dcfb7beef7d08fc7e3e490c534968708911f89f562dab1702d17c", size = 145719, upload-time = "2026-10-29T12:44:21.096Z" },
 ]
 
 [[package]]
