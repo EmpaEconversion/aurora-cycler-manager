@@ -29,7 +29,7 @@
                 },
                 "schema:manufacturer": {
                     "@type": "schema:Organization",
-                    "@id": "https://www.wikidata.org/entity/Q683116",
+                    "@id": "http://www.wikidata.org/entity/Q683116",
                     "schema:name": "Empa"
                 },
                 "rdfs:comment": [
@@ -604,7 +604,7 @@
                 },
                 "hasLaboratory": {
                     "@type": "Laboratory",
-                    "@id": "https://www.wikidata.org/entity/Q683116",
+                    "@id": "http://www.wikidata.org/entity/Q683116",
                     "rdfs:label": "Empa"
                 },
                 "hasCharacterisationEnvironment": {
@@ -869,7 +869,7 @@
                         "schema:name": "Graham Kimbell",
                         "schema:affiliation": {
                             "@type": "schema:ResearchOrganization",
-                            "@id": "https://www.wikidata.org/entity/Q683116",
+                            "@id": "http://www.wikidata.org/entity/Q683116",
                             "schema:name": "Empa"
                         }
                     },
@@ -879,7 +879,7 @@
                         "schema:name": "Enea Svaluto-Ferro",
                         "schema:affiliation": {
                             "@type": "schema:ResearchOrganization",
-                            "@id": "https://www.wikidata.org/entity/Q683116",
+                            "@id": "http://www.wikidata.org/entity/Q683116",
                             "schema:name": "Empa"
                         }
                     },
@@ -889,7 +889,7 @@
                         "schema:name": "YeonJu Kim",
                         "schema:affiliation": {
                             "@type": "schema:ResearchOrganization",
-                            "@id": "https://www.wikidata.org/entity/Q683116",
+                            "@id": "http://www.wikidata.org/entity/Q683116",
                             "schema:name": "Empa"
                         }
                     },
@@ -899,7 +899,7 @@
                         "schema:name": "Nukorn Plainpan",
                         "schema:affiliation": {
                             "@type": "schema:ResearchOrganization",
-                            "@id": "https://www.wikidata.org/entity/Q683116",
+                            "@id": "http://www.wikidata.org/entity/Q683116",
                             "schema:name": "Empa"
                         }
                     },
@@ -908,7 +908,7 @@
                         "schema:name": "Benjamin Kunz",
                         "schema:affiliation": {
                             "@type": "schema:ResearchOrganization",
-                            "@id": "https://www.wikidata.org/entity/Q683116",
+                            "@id": "http://www.wikidata.org/entity/Q683116",
                             "schema:name": "Empa"
                         }
                     },
@@ -917,7 +917,7 @@
                         "schema:name": "Lina Scholz",
                         "schema:affiliation": {
                             "@type": "schema:ResearchOrganization",
-                            "@id": "https://www.wikidata.org/entity/Q683116",
+                            "@id": "http://www.wikidata.org/entity/Q683116",
                             "schema:name": "Empa"
                         }
                     },
@@ -926,7 +926,7 @@
                         "schema:name": "Raphael Laeubli",
                         "schema:affiliation": {
                             "@type": "schema:ResearchOrganization",
-                            "@id": "https://www.wikidata.org/entity/Q683116",
+                            "@id": "http://www.wikidata.org/entity/Q683116",
                             "schema:name": "Empa"
                         }
                     },
@@ -935,7 +935,7 @@
                         "schema:name": "Maximilian Becker",
                         "schema:affiliation": {
                             "@type": "schema:ResearchOrganization",
-                            "@id": "https://www.wikidata.org/entity/Q683116",
+                            "@id": "http://www.wikidata.org/entity/Q683116",
                             "schema:name": "Empa"
                         }
                     },
@@ -945,7 +945,7 @@
                         "schema:name": "David Reber",
                         "schema:affiliation": {
                             "@type": "schema:ResearchOrganization",
-                            "@id": "https://www.wikidata.org/entity/Q683116",
+                            "@id": "http://www.wikidata.org/entity/Q683116",
                             "schema:name": "Empa"
                         }
                     },
@@ -955,7 +955,7 @@
                         "schema:name": "Peter Kraus",
                         "schema:affiliation": {
                             "@type": "schema:ResearchOrganization",
-                            "@id": "https://www.wikidata.org/entity/Q683116",
+                            "@id": "http://www.wikidata.org/entity/Q683116",
                             "schema:name": "Empa"
                         }
                     },
@@ -965,7 +965,7 @@
                         "schema:name": "Ruben-Simon K\u00fchnel",
                         "schema:affiliation": {
                             "@type": "schema:ResearchOrganization",
-                            "@id": "https://www.wikidata.org/entity/Q683116",
+                            "@id": "http://www.wikidata.org/entity/Q683116",
                             "schema:name": "Empa"
                         }
                     },
@@ -975,14 +975,14 @@
                         "schema:name": "Corsin Battaglia",
                         "schema:affiliation": {
                             "@type": "schema:ResearchOrganization",
-                            "@id": "https://www.wikidata.org/entity/Q683116",
+                            "@id": "http://www.wikidata.org/entity/Q683116",
                             "schema:name": "Empa"
                         }
                     }
                 ],
                 "dcterms:publisher": {
                     "@type": "schema:ResearchOrganization",
-                    "@id": "https://www.wikidata.org/entity/Q683116",
+                    "@id": "http://www.wikidata.org/entity/Q683116",
                     "schema:name": "Empa"
                 },
                 "dcterms:license": "https://creativecommons.org/licenses/by/4.0/",

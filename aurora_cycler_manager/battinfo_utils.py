@@ -1116,7 +1116,7 @@ def generate_battery_test(ontologized_protocols: dict | list[dict]) -> dict:
         "@type": "BatteryTest",
         "hasLaboratory": {
             "@type": "Laboratory",
-            "@id": "https://www.wikidata.org/entity/Q683116",
+            "@id": "http://www.wikidata.org/entity/Q683116",
             "rdfs:label": "Empa",
         },
         "hasMeasurementParameter": recursive_protocol(ontologized_protocols),
@@ -1289,9 +1289,9 @@ def add_authors(
         institutions: a dict of dictionaries, each describing one institution
             e.g.
                 {
-                    "Empa": {"wikidata_url": "https://www.wikidata.org/entity/Q683116"}
-                    "ETH Zurich": {"wikidata_url": "https://www.wikidata.org/entity/Q11942"}
-                    "EPFL": {"wikidata_url": "https://www.wikidata.org/entity/Q262760"}
+                    "Empa": {"wikidata_url": "http://www.wikidata.org/entity/Q683116"}
+                    "ETH Zurich": {"wikidata_url": "http://www.wikidata.org/entity/Q11942"}
+                    "EPFL": {"wikidata_url": "http://www.wikidata.org/entity/Q262760"}
                 }
 
     Returns:
@@ -1557,12 +1557,12 @@ def generate_zenodo_info_xlsx_template(
         "Affiliations": ["Must be a name from the institutions sheet"],
     }
     institutions_sheet = [
-        {"Name": "Empa", "Wikidata URL": "https://www.wikidata.org/entity/Q683116"},
-        {"Name": "ETH Zurich", "Wikidata URL": "https://www.wikidata.org/entity/Q11942"},
-        {"Name": "EPFL", "Wikidata URL": "https://www.wikidata.org/entity/Q262760"},
-        {"Name": "University of Bern", "Wikidata URL": "https://www.wikidata.org/entity/Q659080"},
-        {"Name": "UNIL", "Wikidata URL": "https://www.wikidata.org/entity/Q658975"},
-        {"Name": "University of Geneva", "Wikidata URL": "https://www.wikidata.org/entity/Q503473"},
+        {"Name": "Empa", "Wikidata URL": "http://www.wikidata.org/entity/Q683116"},
+        {"Name": "ETH Zurich", "Wikidata URL": "http://www.wikidata.org/entity/Q11942"},
+        {"Name": "EPFL", "Wikidata URL": "http://www.wikidata.org/entity/Q262760"},
+        {"Name": "University of Bern", "Wikidata URL": "http://www.wikidata.org/entity/Q659080"},
+        {"Name": "UNIL", "Wikidata URL": "http://www.wikidata.org/entity/Q658975"},
+        {"Name": "University of Geneva", "Wikidata URL": "http://www.wikidata.org/entity/Q503473"},
     ]
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
