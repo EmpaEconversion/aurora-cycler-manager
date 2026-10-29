@@ -1116,7 +1116,7 @@ def generate_battery_test(ontologized_protocols: dict | list[dict]) -> dict:
         "@type": "BatteryTest",
         "hasLaboratory": {
             "@type": "Laboratory",
-            "@id": "https://www.wikidata.org/wiki/Q683116",
+            "@id": "https://www.wikidata.org/entity/Q683116",
             "rdfs:label": "Empa",
         },
         "hasMeasurementParameter": recursive_protocol(ontologized_protocols),
@@ -1289,9 +1289,9 @@ def add_authors(
         institutions: a dict of dictionaries, each describing one institution
             e.g.
                 {
-                    "Empa": {"wikidata_url": "https://www.wikidata.org/wiki/Q683116"}
-                    "ETH Zurich": {"wikidata_url": "https://www.wikidata.org/wiki/Q11942"}
-                    "EPFL": {"wikidata_url": "https://www.wikidata.org/wiki/Q262760"}
+                    "Empa": {"wikidata_url": "https://www.wikidata.org/entity/Q683116"}
+                    "ETH Zurich": {"wikidata_url": "https://www.wikidata.org/entity/Q11942"}
+                    "EPFL": {"wikidata_url": "https://www.wikidata.org/entity/Q262760"}
                 }
 
     Returns:
@@ -1351,7 +1351,7 @@ def add_software(
 
 def add_institution(
     name: str = "Empa",
-    wikidata_url: str = "https://www.wikidata.org/wiki/Q683116",
+    wikidata_url: str = "https://www.wikidata.org/entity/Q683116",
 ) -> dict:
     """Add publishing details to output section of json-ld."""
     return {
@@ -1574,12 +1574,12 @@ def generate_zenodo_info_xlsx_template(
         "Affiliations": ["Must be a name from the institutions sheet"],
     }
     institutions_sheet = [
-        {"Name": "Empa", "Wikidata URL": "https://www.wikidata.org/wiki/Q683116"},
-        {"Name": "ETH Zurich", "Wikidata URL": "https://www.wikidata.org/wiki/Q11942"},
-        {"Name": "EPFL", "Wikidata URL": "https://www.wikidata.org/wiki/Q262760"},
-        {"Name": "University of Bern", "Wikidata URL": "https://www.wikidata.org/wiki/Q659080"},
-        {"Name": "UNIL", "Wikidata URL": "https://www.wikidata.org/wiki/Q658975"},
-        {"Name": "University of Geneva", "Wikidata URL": "https://www.wikidata.org/wiki/Q503473"},
+        {"Name": "Empa", "Wikidata URL": "https://www.wikidata.org/entity/Q683116"},
+        {"Name": "ETH Zurich", "Wikidata URL": "https://www.wikidata.org/entity/Q11942"},
+        {"Name": "EPFL", "Wikidata URL": "https://www.wikidata.org/entity/Q262760"},
+        {"Name": "University of Bern", "Wikidata URL": "https://www.wikidata.org/entity/Q659080"},
+        {"Name": "UNIL", "Wikidata URL": "https://www.wikidata.org/entity/Q658975"},
+        {"Name": "University of Geneva", "Wikidata URL": "https://www.wikidata.org/entity/Q503473"},
     ]
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:

@@ -220,7 +220,7 @@ def test_merge_battinfo_with_db(test_dir: Path) -> None:
         "schema:creator": {"@type": "schema:Person", "schema:name": "Mr Blobby"},
         "schema:manufacturer": {
             "@type": "schema:Organization",
-            "@id": "https://www.wikidata.org/wiki/Q683116",
+            "@id": "https://www.wikidata.org/entity/Q683116",
             "schema:name": "Empa",
         },
         "rdfs:comment": [
@@ -320,7 +320,7 @@ def test_merge_battinfo_with_db(test_dir: Path) -> None:
         "schema:creator": {"@type": "schema:Person", "schema:name": "Mr Blobby"},
         "schema:manufacturer": {
             "@type": "schema:Organization",
-            "@id": "https://www.wikidata.org/wiki/Q683116",
+            "@id": "https://www.wikidata.org/entity/Q683116",
             "schema:name": "Empa",
         },
         "rdfs:comment": [
