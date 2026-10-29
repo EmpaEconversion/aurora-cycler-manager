@@ -176,17 +176,6 @@ def _touches(component: dict, electrode: str | None) -> bool:
     )
 
 
-def _property_conflicts(old: dict, new: dict) -> list[str]:
-    """Describe measured properties of new that disagree with those of the same type in old."""
-    old_props = [p for p in as_list(old.get("hasMeasuredProperty")) if isinstance(p, dict)]
-    found = []
-    for prop in as_list(new.get("hasMeasuredProperty")):
-        match = next((p for p in old_props if _describes(p, prop, None)), None)
-        if match is not None and (conflict := quantity_conflict(match, prop)):
-            found.append(f"{prop['@type']}: {conflict}")
-    return found
-
-
 def _has_any_type(node: dict, types: str | tuple[str, ...]) -> bool:
     """Check if a node has one of the given types."""
     return any(has_type(node, t) for t in ((types,) if isinstance(types, str) else types))
@@ -643,7 +632,7 @@ def merge_battinfo_with_db_data(
         elif diameter:
             spacer_dict["hasMeasuredProperty"] = diameter
 
-        # Replace the spacer touching the same electrode, else one with no electrode given
+        # Fill the spacer touching the same electrode, else one with no electrode given
         idx = next((i for i in unclaimed if _touches(components[i], electrode)), None)
         if idx is None:
             idx = next((i for i in unclaimed if not components[i].get("contacts")), None)
@@ -651,9 +640,18 @@ def merge_battinfo_with_db_data(
             components.append(spacer_dict)
         else:
             unclaimed.remove(idx)
+            spacer = components[idx]
+            for prop in as_list(spacer_dict.pop("hasMeasuredProperty", None)):
+                insert_dict_in_jsonld(
+                    spacer,
+                    [("hasMeasuredProperty", prop["@type"])],
+                    prop,
+                    conflicts=conflicts,
+                    _path="hasComponent/Spacer",
+                )
             if conflicts is not None:
-                conflicts.extend(f"hasComponent/Spacer/{c}" for c in _property_conflicts(components[idx], spacer_dict))
-            components[idx] = {**components[idx], **spacer_dict}
+                conflicts.extend(f"hasComponent/Spacer/{c}" for c in _text_conflicts(spacer, spacer_dict))
+            _deep_merge_dicts(spacer, spacer_dict)
         coin_cell["hasComponent"] = components
 
     # N:P Ratio

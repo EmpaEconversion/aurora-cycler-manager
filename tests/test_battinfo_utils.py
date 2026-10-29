@@ -464,14 +464,14 @@ def test_merge_keeps_capacities_apart() -> None:
 
 
 def test_merge_spacers() -> None:
-    """A spacer without an electrode is replaced, not duplicated, and contacts the right electrode."""
-    cell = {
-        "@type": "CoinCell",
-        "hasComponent": [
-            {"@type": "Spring"},
-            {"@type": "Spacer", "hasMeasuredProperty": quantity("Thickness", 1, "MilliMetre")},
-        ],
+    """A spacer without an electrode is filled, not duplicated, and contacts the right electrode."""
+    sheet_spacer = {
+        "@type": "Spacer",
+        "schema:name": "Steel spacer",
+        "rdfs:comment": "From the sheet",
+        "hasMeasuredProperty": [quantity("Diameter", 16, "MilliMetre"), quantity("Thickness", 1, "MilliMetre")],
     }
+    cell = {"@type": "CoinCell", "hasComponent": [{"@type": "Spring"}, sheet_spacer]}
     sample = {
         "Sample ID": "s",
         "Assembly history": [{"Step": "Anode", "Description": ""}, {"Step": "Cathode", "Description": ""}],
@@ -484,7 +484,21 @@ def test_merge_spacers() -> None:
     assert len(spacers) == 1
     # The cathode goes on top, and it is the positive electrode
     assert spacers[0]["contacts"] == {"@type": "PositiveElectrode"}
-    assert "hasComponent/Spacer/Thickness: 1 MilliMetre replaced by 0.5 unit:MilliM" in conflicts
+    # The database replaces what it knows, the rest of the sheet is kept
+    assert spacers[0]["hasMeasuredProperty"] == [
+        quantity("Diameter", 16, "MilliMetre"),
+        {
+            "@type": "Thickness",
+            "hasNumericalPart": {"@type": "emmo:RealData", "hasNumberValue": 0.5},
+            "hasMeasurementUnit": "unit:MilliM",
+        },
+    ]
+    assert spacers[0]["schema:name"] == "SS"
+    assert spacers[0]["rdfs:comment"] == ["From the sheet", "Top spacer during assembly"]
+    assert conflicts == [
+        "hasComponent/Spacer/hasMeasuredProperty/Thickness: 1 MilliMetre replaced by 0.5 unit:MilliM",
+        "hasComponent/Spacer/schema:name: 'Steel spacer' replaced by 'SS'",
+    ]
 
 
 def test_merge_replaces_assembly_sequence() -> None:
@@ -557,6 +571,9 @@ def test_add_data() -> None:
     dist = add_data("s/cycles.s.parquet", None)["hasOutput"]["dcat:distribution"]
     assert "csvw:tableSchema" not in dist
     assert "dcat:downloadURL" not in dist
+    # Any UTF-8 sample ID gives a valid relative IRI
+    dist = add_data("é 1/full.é 1.bdf.parquet", None)["hasOutput"]["dcat:distribution"]
+    assert dist["@id"] == "%C3%A9%201/full.%C3%A9%201.bdf.parquet"
 
 
 def test_build_export_metadata() -> None:
