@@ -4,6 +4,7 @@
     "Data folder path" : "data",
     "Protocols folder path" : "protocols",
     "Time zone" : "Europe/Zurich",
+    "Laboratory" : {"Name": "Empa", "Wikidata URL": "http://www.wikidata.org/entity/Q683116"},
     "Batches folder path": "batches",
     
     "Servers" : [

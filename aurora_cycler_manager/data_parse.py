@@ -173,7 +173,7 @@ def get_battinfo(sample_id: str) -> dict:
                     include_context=False,
                 )
             )
-        test_jsonld = bu.generate_battery_test(ontologized_protocols)
+        test_jsonld = bu.generate_battery_test(ontologized_protocols, CONFIG.get("Laboratory"))
         if battinfo_json.get("hasMeasurementParameter", {}).get("hasTask"):
             if battinfo_json["hasMeasurementParameter"]["hasTask"] != test_jsonld["hasMeasurementParameter"]["hasTask"]:
                 logger.warning("Conflicting experiments in %s, using unicycler protocol from db", sample_id)

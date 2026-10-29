@@ -51,6 +51,7 @@ An example shared configuration looks like:
 	"Data folder path" : "path/to/my-project/data",
     "Protocols folder path" : "path/to/my-project/protocols",
     "Time zone" : "Europe/Zurich",
+    "Laboratory" : {"Name": "Empa", "Wikidata URL": "http://www.wikidata.org/entity/Q683116"},  # optional, for exports
     "Servers" : {
 		"neware001": {
 			"hostname": "neware001",
