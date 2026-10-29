@@ -4,7 +4,7 @@ build-backend = "flit_core.buildapi"
 
 [project]
 name = "aurora-cycler-manager"
-version = "0.11.6"
+version = "0.11.7"
 description = "Battery cycler management, data analysis and visualisation."
 license = "MIT"
 readme = "README.md"
