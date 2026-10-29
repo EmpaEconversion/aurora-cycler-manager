@@ -1085,8 +1085,20 @@ def merge_jsonld_on_type(jsons: list[dict], target_type: str = "BatteryTest") ->
     }
 
 
-def generate_battery_test(ontologized_protocols: dict | list[dict]) -> dict:
-    """Generate test json-ld based on protocols."""
+def laboratory_node(laboratory: dict | None) -> dict | None:
+    """Laboratory node from the config's {"Name": ..., "Wikidata URL": ...}, None if not set."""
+    if not laboratory or not (laboratory.get("Name") or laboratory.get("Wikidata URL")):
+        return None
+    node: dict = {"@type": "Laboratory"}
+    if laboratory.get("Wikidata URL"):
+        node["@id"] = laboratory["Wikidata URL"]
+    if laboratory.get("Name"):
+        node["schema:name"] = laboratory["Name"]
+    return node
+
+
+def generate_battery_test(ontologized_protocols: dict | list[dict], laboratory: dict | None = None) -> dict:
+    """Generate test json-ld based on protocols, with the laboratory if given."""
     if isinstance(ontologized_protocols, dict):
         ontologized_protocols = [ontologized_protocols]
 
@@ -1100,7 +1112,7 @@ def generate_battery_test(ontologized_protocols: dict | list[dict]) -> dict:
             test["hasNext"] = recursive_protocol(ontologized_protocols[1:])
         return test
 
-    return {
+    test: dict = {
         "@context": [
             "https://w3id.org/emmo/domain/battery/context",
             {
@@ -1114,13 +1126,11 @@ def generate_battery_test(ontologized_protocols: dict | list[dict]) -> dict:
             },
         ],
         "@type": "BatteryTest",
-        "hasLaboratory": {
-            "@type": "Laboratory",
-            "@id": "http://www.wikidata.org/entity/Q683116",
-            "rdfs:label": "Empa",
-        },
-        "hasMeasurementParameter": recursive_protocol(ontologized_protocols),
     }
+    if lab := laboratory_node(laboratory):
+        test["hasLaboratory"] = lab
+    test["hasMeasurementParameter"] = recursive_protocol(ontologized_protocols)
+    return test
 
 
 def generate_basic_output_jsonld() -> dict:

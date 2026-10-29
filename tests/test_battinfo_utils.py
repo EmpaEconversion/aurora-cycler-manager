@@ -14,6 +14,7 @@ from aurora_cycler_manager.battinfo_utils import (
     build_export_metadata,
     check_battinfo_for_samples,
     find_coin_cell,
+    generate_battery_test,
     generate_zenodo_info_xlsx_template,
     has_type,
     insert_dict_in_jsonld,
@@ -169,6 +170,25 @@ def test_make_test_object() -> None:
 
     with pytest.raises(ValueError, match="must have CoinCell or BatteryTest"):
         make_test_object({"@context": ctx, "@type": "Electrode"})
+
+
+def test_generate_battery_test_laboratory() -> None:
+    """The laboratory comes from the config, and is left out if not set."""
+    protocol = {"@type": "ConstantCurrentCharging"}
+    lab = {"Name": "Empa", "Wikidata URL": "http://www.wikidata.org/entity/Q683116"}
+    test = generate_battery_test(protocol, lab)
+    assert test["hasLaboratory"] == {
+        "@type": "Laboratory",
+        "@id": "http://www.wikidata.org/entity/Q683116",
+        "schema:name": "Empa",
+    }
+    assert test["hasMeasurementParameter"]["hasTask"] == protocol
+    assert generate_battery_test(protocol, {"Name": "Empa"})["hasLaboratory"] == {
+        "@type": "Laboratory",
+        "schema:name": "Empa",
+    }
+    assert "hasLaboratory" not in generate_battery_test(protocol)
+    assert "hasLaboratory" not in generate_battery_test(protocol, {"Name": "", "Wikidata URL": ""})
 
 
 def test_summarise_assembly() -> None:
