@@ -1349,23 +1349,6 @@ def add_software(
     }
 
 
-def add_institution(
-    name: str = "Empa",
-    wikidata_url: str = "https://www.wikidata.org/entity/Q683116",
-) -> dict:
-    """Add publishing details to output section of json-ld."""
-    return {
-        "@type": "BatteryTest",
-        "hasOutput": {
-            "dcterms:publisher": {
-                "@type": "schema:ResearchOrganization",
-                "@id": wikidata_url,
-                "schema:name": name,
-            },
-        },
-    }
-
-
 # Cell values specific to one sample: BattINFO key, label in the BattINFO sheet, the sample's value
 SAMPLE_SPECIFIC_FIELDS = (
     ("schema:productID", "Cell ID", lambda s: s.get("Barcode")),
