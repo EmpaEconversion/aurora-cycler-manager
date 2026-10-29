@@ -96,7 +96,7 @@ def _deep_merge_dicts(target: dict, source: dict) -> dict:
         if k in target and isinstance(target[k], dict) and isinstance(v, dict):
             _deep_merge_dicts(target[k], v)
         elif k in target and isinstance(target[k], list) and isinstance(v, list):
-            target[k].extend(v)
+            target[k].extend(x for x in v if x not in target[k])
         elif k in target and (isinstance(target[k], list) or k == "rdfs:comment"):
             values = as_list(target[k])
             values += [x for x in as_list(v) if x not in values]
@@ -171,9 +171,9 @@ def as_list(value: object) -> list:
 
 def _touches(component: dict, electrode: str | None) -> bool:
     """Check if a component's contacts node is the given electrode."""
-    return bool(electrode) and any(
-        isinstance(c, dict) and has_type(c, electrode) for c in as_list(component.get("contacts"))
-    )
+    if not electrode:
+        return False
+    return any(isinstance(c, dict) and has_type(c, electrode) for c in as_list(component.get("contacts")))
 
 
 def _has_any_type(node: dict, types: str | tuple[str, ...]) -> bool:

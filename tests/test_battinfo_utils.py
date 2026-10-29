@@ -501,6 +501,25 @@ def test_merge_spacers() -> None:
     ]
 
 
+def test_merge_twice_is_unchanged() -> None:
+    """Merging the database into aurora's own output again changes nothing."""
+    sample = {
+        "Sample ID": "s",
+        "Assembly history": [{"Step": "Anode", "Description": ""}, {"Step": "Cathode", "Description": ""}],
+        "Top spacer type": "SS",
+        "Top spacer thickness (mm)": 1.0,
+        "Top spacer material": "Steel",
+        "Casing material": "SS316",
+        "Cathode mass (mg)": 12.0,
+        "Electrolyte name": "LP57",
+    }
+    once = merge_battinfo_with_db_data({}, deepcopy(sample), allow_empty_battinfo=True)
+    conflicts: list[str] = []
+    twice = merge_battinfo_with_db_data(deepcopy(once), deepcopy(sample), conflicts=conflicts)
+    assert twice == once
+    assert conflicts == []
+
+
 def test_merge_replaces_assembly_sequence() -> None:
     """The database's assembly sequence replaces the sheet's, also when the comment is a string."""
     sample = {"Sample ID": "s", "Assembly history": [{"Step": "Bottom"}, {"Step": "Top"}]}
