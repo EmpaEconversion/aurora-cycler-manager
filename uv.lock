@@ -82,7 +82,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aurora-unicycler", specifier = ">=0.4.5" },
+    { name = "aurora-unicycler", specifier = ">=0.5.0" },
     { name = "battinfoconverter-backend", specifier = ">=3.4.1" },
     { name = "certifi", specifier = ">=2026.10.19" },
     { name = "cryptography", specifier = ">=50.0.0" },
@@ -136,15 +136,15 @@ dev = [
 
 [[package]]
 name = "aurora-unicycler"
-version = "0.4.6"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "defusedxml" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/19/d8/406abcfcb947f95cb6d5c39225114d95ff0a9d48590a8b54e53963f8f356/aurora_unicycler-0.4.6.tar.gz", hash = "sha256:829e12831288610432f438d1a557c58c4aad562b6a6982afb9f545c77bcae58d", size = 136525, upload-time = "2026-04-13T08:10:09.513Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/85/0e/33d1778e8ab3695c061ad84d72f7b988d929e38b8652039c48a9bb7aaf9b/aurora_unicycler-0.5.0.tar.gz", hash = "sha256:673c773ca0efb0f876adbf640ddf04f1afe3c5776177ef48c8f47fa728a050ee", size = 25285, upload-time = "2026-10-29T15:35:29.47Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ca/bc/3aa19cb2f2344b3db180f62e3774ffcf63ba5264add44156fa31f0403c06/aurora_unicycler-0.4.6-py3-none-any.whl", hash = "sha256:6c41cde34f3d8546557ac284d655833a80935c02fc6c6f57f16dd83a3848d7ba", size = 26756, upload-time = "2026-04-13T08:10:07.957Z" },
+    { url = "https://files.pythonhosted.org/packages/85/ca/a8d8ec5d5119e26326b2645f1aa183eb3071ebca5ea3673366c2689121ce/aurora_unicycler-0.5.0-py3-none-any.whl", hash = "sha256:1ac9a6a1afc1ce112bb0c007297d56b9aae5c591b943995eaae5519f7f11bcc4", size = 29552, upload-time = "2026-10-29T15:35:28.502Z" },
 ]
 
 [[package]]
