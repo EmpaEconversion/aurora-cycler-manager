@@ -534,6 +534,11 @@ def process_file(data: dict, filepath: str | Path, selected_rows: list) -> int:
             return 0
 
 
+def _author_id(author: dict) -> str:
+    """ORCID of an author, or a local id from their name."""
+    return author.get("orcid") or f"#{quote(author['name'], safe='')}"
+
+
 def _rocrate_author_entities(authors: list[dict], institutions: dict[str, dict]) -> list[dict]:
     """Build Person and Organization contextual entities from publication info."""
     entities: list[dict] = []
@@ -546,7 +551,7 @@ def _rocrate_author_entities(authors: list[dict], institutions: dict[str, dict])
                 continue
             affiliations.append({"@id": wikidata_url})
             organizations[wikidata_url] = {"@id": wikidata_url, "@type": "Organization", "name": affil}
-        person: dict = {"@id": author["orcid"], "@type": "Person", "name": author["name"]}
+        person: dict = {"@id": _author_id(author), "@type": "Person", "name": author["name"]}
         if affiliations:
             person["affiliation"] = affiliations[0] if len(affiliations) == 1 else affiliations
         entities.append(person)
@@ -588,7 +593,7 @@ def _rocrate_skeleton(pub_info: dict) -> tuple[dict, dict]:
     elif pub_info.get("citation_string"):
         root_dataset["citation"] = pub_info["citation_string"]
     if pub_info.get("authors"):
-        root_dataset["author"] = [{"@id": a["orcid"]} for a in pub_info["authors"]]
+        root_dataset["author"] = [{"@id": _author_id(a)} for a in pub_info["authors"]]
         contextual_entities.extend(_rocrate_author_entities(pub_info["authors"], pub_info.get("institutions", {})))
 
     rocrate = {

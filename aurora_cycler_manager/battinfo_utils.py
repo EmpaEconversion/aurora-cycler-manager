@@ -1258,11 +1258,11 @@ def add_associated_media(
     sample_id: str,
 ) -> dict:
     """Add associated media to output section of json-ld output."""
-    figs = [v for k, v in sample_to_fig.items() if k in (sample_id, ccid)]  # e.g. ["Fig. 3a", "Fig. 3b"]
+    figs = [f for k, v in sample_to_fig.items() if k in (sample_id, ccid) for f in v]  # e.g. ["Fig. 3a", "Fig. 3b"]
     if not figs:
         return {"@type": "BatteryTest"}
     associated_media: dict[str, str | list] = {"@id": paper_doi_url} if paper_doi_url else {}
-    associated_media["rdfs:label"] = figs[0] if len(figs) == 1 else figs
+    associated_media["rdfs:label"] = figs
     associated_media["rdfs:comment"] = FIGURE_COMMENT
     return {
         "@type": "BatteryTest",
@@ -1314,14 +1314,13 @@ def add_authors(
         if author.get("orcid"):
             auth_dict["@id"] = author["orcid"]
         auth_dict["schema:name"] = author["name"]
-        affiliations = [
-            {
-                "@type": "schema:ResearchOrganization",
-                "@id": institutions[affil]["wikidata_url"],
-                "schema:name": affil,
-            }
-            for affil in author["affiliation"]
-        ]
+        affiliations = []
+        for affil in author["affiliation"]:
+            org: dict[str, str] = {"@type": "schema:ResearchOrganization"}
+            if wikidata_url := institutions.get(affil, {}).get("wikidata_url"):
+                org["@id"] = wikidata_url
+            org["schema:name"] = affil
+            affiliations.append(org)
         if affiliations:
             auth_dict["schema:affiliation"] = affiliations[0] if len(affiliations) == 1 else affiliations
         return auth_dict
@@ -1496,38 +1495,54 @@ def parse_zenodo_info_xlsx(
         msg = "Uploaded xlsx does not have expected sheets for Zenodo info."
         raise ValueError(msg)
 
+    def clean(x: object) -> object:
+        """Empty cells become None, strings are stripped."""
+        if isinstance(x, str):
+            return x.strip() or None
+        return None if pd.isna(x) else x
+
+    def cell_list(row: pd.Series, drop: list[str]) -> list[str]:
+        return [f.strip() for f in row.drop(labels=drop).dropna().astype(str) if f.strip()]
+
     # Read General sheet
     general_df = pd.read_excel(excel_file, sheet_name="General", engine="openpyxl", header=None)
-    keys = general_df[0].to_numpy()
-    keys = [k.lower().replace(" ", "_") for k in keys]
-    values = general_df[1].to_numpy()
+    keys = [k.strip().lower().replace(" ", "_") for k in general_df[0].to_numpy()]
+    values = [clean(v) for v in general_df[1].to_numpy()]
     general_dict = dict(zip(keys, values, strict=True))
 
     # Read Figures sheet
     figures_df = pd.read_excel(excel_file, sheet_name="Figures", engine="openpyxl")
     figures_dict = {}
     for _, row in figures_df.iterrows():
-        key = row["Barcode"] if pd.notna(row["Barcode"]) else row["Sample ID"]
-        figures = row.drop(labels=["Sample ID", "Barcode"]).dropna().astype(str).tolist()
-        figures_dict[key] = figures
+        key = clean(row["Barcode"]) or clean(row["Sample ID"])
+        figures = cell_list(row, ["Sample ID", "Barcode"])
+        if key and figures:
+            figures_dict[key] = figures
 
     # Read Institutions sheet
     institutions_df = pd.read_excel(excel_file, sheet_name="Institutions", engine="openpyxl")
-    institutions_df.columns = [col.lower().replace(" ", "_") for col in institutions_df.columns]
-    institutions_dict = institutions_df.set_index("name").to_dict(orient="index")
+    institutions_df.columns = [col.strip().lower().replace(" ", "_") for col in institutions_df.columns]
+    institutions_dict = {
+        name: {k: clean(v) for k, v in attrs.items()}
+        for name, attrs in zip(
+            (clean(n) for n in institutions_df["name"]),
+            institutions_df.drop(columns="name").to_dict(orient="records"),
+            strict=True,
+        )
+        if name
+    }
 
     # Read Authors sheet
     authors_df = pd.read_excel(excel_file, sheet_name="Authors", engine="openpyxl")
-    authors_list = []
-    for _, row in authors_df.iterrows():
-        affil_list = row.drop(labels=["ORCID", "Name"]).dropna().astype(str).tolist()
-        authors_list.append(
-            {
-                "name": row["Name"],
-                "orcid": row["ORCID"],
-                "affiliation": affil_list,
-            }
-        )
+    authors_list = [
+        {
+            "name": clean(row["Name"]),
+            "orcid": clean(row["ORCID"]),
+            "affiliation": cell_list(row, ["ORCID", "Name"]),
+        }
+        for _, row in authors_df.iterrows()
+        if clean(row["Name"])
+    ]
 
     return {
         **general_dict,
