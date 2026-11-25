@@ -4,9 +4,11 @@
 import json
 from pathlib import Path
 
+import openpyxl
 import pandas as pd
 import pytest
 
+from aurora_cycler_manager import battinfo_utils as bu
 from aurora_cycler_manager.database_funcs import get_sample_data
 from aurora_cycler_manager.visualiser import file_io
 
@@ -316,3 +318,38 @@ class TestCreateRocrate:
         zip_path = tmp_path / "file.zip"
         with pytest.raises(ValueError):
             file_io.create_rocrate([], set(), zip_path)
+
+    def test_blank_pub_info(self, tmp_path: Path) -> None:
+        """Blank cells in the Zenodo info sheet are left out, not written as NaN."""
+        path = tmp_path / "zenodo_info.xlsx"
+        path.write_bytes(bu.generate_zenodo_info_xlsx_template(["sample1", "sample2"], ["ccid1", "ccid2"]).getvalue())
+        wb = openpyxl.load_workbook(path)
+        wb["General"]["B1"] = None
+        wb["General"]["B3"] = "  "
+        wb["Authors"]["A4"] = "No Orcid"
+        wb.save(path)
+
+        pub_info = bu.parse_zenodo_info_xlsx(path)
+        assert pub_info["citation_string"] is None
+        assert pub_info["publication_doi_url"] is None
+        assert pub_info["sample_to_fig"] == {"ccid1": ["Fig. 1a", "Fig. 2b"]}
+        assert pub_info["authors"][-1] == {"name": "No Orcid", "orcid": None, "affiliation": []}
+
+        rocrate, root_dataset = file_io._rocrate_skeleton(pub_info)  # noqa: SLF001
+        json.dumps(rocrate, allow_nan=False)
+        assert "citation" not in root_dataset
+        assert {"@id": "#No%20Orcid"} in root_dataset["author"]
+        assert not [e for e in rocrate["@graph"] if e.get("@type") == "ScholarlyArticle"]
+
+        metadata, _ = bu.build_export_metadata(
+            {"@type": "BatteryTest", "hasTestObject": {"@type": "CoinCell"}},
+            [],
+            pub_info,
+            sample_id="sample1",
+            ccid="ccid1",
+        )
+        json.dumps(metadata, allow_nan=False)
+        media = metadata["hasOutput"]["schema:associatedMedia"]
+        assert "@id" not in media
+        assert media["rdfs:label"] == ["Fig. 1a", "Fig. 2b"]
+        assert "schema:citation" not in metadata["hasOutput"]
