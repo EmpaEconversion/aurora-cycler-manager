@@ -1,6 +1,7 @@
 # Copyright © 2025-2026, Empa.
 """Functions for getting the configuration settings."""
 
+import getpass
 import json
 import logging
 import os
@@ -75,6 +76,14 @@ def _fixup_config(config: dict) -> dict:
         config["SSH known hosts path"] = str(config["SSH known hosts path"])
     else:
         config["SSH known hosts path"] = Path("~/.ssh/known_hosts").expanduser()
+
+    # Username from the user config, otherwise the OS account name
+    if not config.get("Username"):
+        try:
+            config["Username"] = getpass.getuser()
+        except (OSError, KeyError):
+            config["Username"] = None
+        logger.debug("No 'Username' in user config, using OS account name %r", config["Username"])
 
     return config
 
@@ -162,6 +171,9 @@ def _read_config_file() -> dict:
                     shared_config[key] = Path(shared_config_dir / shared_config[key])
                 else:
                     shared_config[key] = Path(shared_config[key])
+        # Username is per-user, never taken from the shared config
+        if shared_config.pop("Username", None) is not None:
+            logger.warning("Ignoring 'Username' in shared config %s, set in user config", shared_config_path)
         config.update(shared_config)
 
     # Fill in any missing details in the config

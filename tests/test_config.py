@@ -1,9 +1,12 @@
 # Copyright © 2025-2026, Empa.
 """Test for config module."""
 
+import getpass
 from pathlib import Path
 
-from aurora_cycler_manager.config import _convert_legacy_servers, _read_config_file, get_config
+import pytest
+
+from aurora_cycler_manager.config import _convert_legacy_servers, _fixup_config, _read_config_file, get_config
 
 
 class TestGetConfig:
@@ -41,6 +44,18 @@ class TestGetConfig:
         path_keys = [k for k in config if "path" in k.lower() and "ssh" not in k.lower()]
         assert all(isinstance(config[key], Path) for key in path_keys)
         assert all(config[key].is_absolute() for key in path_keys)
+
+    def test_username(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Username comes from the config, otherwise the OS account name."""
+        monkeypatch.setattr(getpass, "getuser", lambda: "osuser")
+        assert _fixup_config({"Snapshots folder path": "x", "Username": "abcd"})["Username"] == "abcd"
+        assert _fixup_config({"Snapshots folder path": "x"})["Username"] == "osuser"
+
+        def no_user() -> str:
+            raise OSError
+
+        monkeypatch.setattr(getpass, "getuser", no_user)
+        assert _fixup_config({"Snapshots folder path": "x"})["Username"] is None
 
     def test_convert_legacy_servers(self) -> None:
         """Test converting old style server configs."""
