@@ -15,7 +15,7 @@ from time import monotonic, sleep
 import paramiko
 from typing_extensions import Self
 
-from aurora_cycler_manager.config import get_config
+from aurora_cycler_manager.config import get_config, normalise_username
 
 CONFIG = get_config()
 
@@ -208,6 +208,17 @@ def close_all_connections() -> None:
 atexit.register(close_all_connections)
 
 
+def _resolve_username(username: str) -> str:
+    """If 'username' is "$USERNAME", get it from the config, otherwise it pass through."""
+    if username != "$USERNAME":
+        return username
+    value = CONFIG.get("Username")
+    if not value:
+        msg = "Connection needs a username, but 'Username' is not set and couldn't be retrieved automatically."
+        raise ValueError(msg)
+    return normalise_username(value)
+
+
 def _ps_to_cmd(ps_command: str) -> str:
     """Convert powershell command to command prompt."""
     encoded_ps_command = base64.b64encode(ps_command.encode("utf-16le")).decode("ascii")
@@ -245,7 +256,7 @@ class SSHConnection:
             return None, None
 
         proxy = proxy.lower()
-        proxy_username = self.server.get("proxy_username", self.server["username"]).lower()
+        proxy_username = _resolve_username(self.server.get("proxy_username", self.server["username"])).lower()
         target = (self.server["hostname"].lower(), 22)
 
         # Shared jump connection may have died since the last check - retry once with a fresh one.
@@ -274,7 +285,9 @@ class SSHConnection:
         """Attach a cached, live SSH connection to the target machine, connecting if needed."""
         if self._entry is not None:  # reconnect on a live instance: return the old checkout first
             self.close()
-        key = (self.server["hostname"].lower(), self.server["username"].lower())
+        hostname = self.server["hostname"].lower()
+        username = _resolve_username(self.server["username"]).lower()
+        key = (hostname, username)
 
         def make_client() -> tuple[paramiko.SSHClient, Callable[[], None] | None]:
             sock, jump = self._open_sock()
@@ -285,8 +298,8 @@ class SSHConnection:
                 client.load_system_host_keys()
                 client.set_missing_host_key_policy(paramiko.RejectPolicy())
                 client.connect(
-                    hostname=self.server["hostname"].lower(),
-                    username=self.server["username"].lower(),
+                    hostname=hostname,
+                    username=username,
                     key_filename=CONFIG.get("SSH private key path"),
                     sock=sock,
                 )
