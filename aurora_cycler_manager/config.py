@@ -1,9 +1,11 @@
 # Copyright © 2025-2026, Empa.
 """Functions for getting the configuration settings."""
 
+import getpass
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -14,6 +16,17 @@ from aurora_cycler_manager.stdlib_utils import check_illegal_text
 
 logger = logging.getLogger(__name__)
 CONFIG = None
+
+# Limit characters allowed by a username
+_USERNAME_RE = re.compile(r"[a-z0-9][a-z0-9._-]{0,31}")
+
+
+def normalise_username(username: object) -> str:
+    """Get lowercase username, raise if too long or invalid characters."""
+    if not isinstance(username, str) or not _USERNAME_RE.fullmatch(username := username.lower()):
+        msg = f"Username {username!r} must be 1-32 letters, digits, '.', '_' or '-', starting with a letter or digit."
+        raise ValueError(msg)
+    return username
 
 
 def _assert_required_keys(config: dict) -> None:
@@ -76,7 +89,25 @@ def _fixup_config(config: dict) -> dict:
     else:
         config["SSH known hosts path"] = Path("~/.ssh/known_hosts").expanduser()
 
+    config["Username"] = _get_username(config)
+
     return config
+
+
+def _get_username(config: dict) -> str | None:
+    """Get 'Username' from the user config, otherwise use the OS account name."""
+    if config.get("Username"):
+        try:
+            return normalise_username(config["Username"])
+        except ValueError as e:
+            msg = f"Invalid 'Username' in user config: {e}"
+            raise ValueError(msg) from e
+    try:
+        username = normalise_username(getpass.getuser())
+    except (OSError, KeyError, ValueError):
+        username = None
+    logger.debug("No 'Username' in user config, using OS account name %r", username)
+    return username
 
 
 def _read_config_file() -> dict:
@@ -162,6 +193,9 @@ def _read_config_file() -> dict:
                     shared_config[key] = Path(shared_config_dir / shared_config[key])
                 else:
                     shared_config[key] = Path(shared_config[key])
+        # Username should be from user config, not shared config
+        if shared_config.pop("Username", None) is not None:
+            logger.warning("Ignoring 'Username' in shared config %s, set in user config", shared_config_path)
         config.update(shared_config)
 
     # Fill in any missing details in the config

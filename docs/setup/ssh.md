@@ -14,3 +14,8 @@ In **Services**, make sure OpenSSH server is running and set to automatic start 
 On your PC running aurora-cycler-manager, run `ssh-keygen`, and copy your public key to `~/.ssh/authorized_keys` on the cycler PC.
 
 The cycler PC must also be in your `known_hosts`, the easiest way is to just connect using `ssh user@host` and say yes to adding to known hosts. If your public key is on the cycler PC, you should not be asked for a password. If you are asked for a password, it is probably a Windows permission issue on the cycler PC.
+
+## Per-user usernames
+
+If users must log in to a jump host with their own username, set `"proxy_username": "$USERNAME"`.
+This will fetch the username either from their user config `"Username"` key, or fallback to the OS account name.
