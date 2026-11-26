@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from aurora_cycler_manager.config import _convert_legacy_servers, _fixup_config, _read_config_file, get_config
+from aurora_cycler_manager.config import (
+    _convert_legacy_servers,
+    _fixup_config,
+    _read_config_file,
+    get_config,
+    normalise_username,
+)
 
 
 class TestGetConfig:
@@ -47,8 +53,8 @@ class TestGetConfig:
 
     def test_username(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Username comes from the config, otherwise the OS account name."""
-        monkeypatch.setattr(getpass, "getuser", lambda: "osuser")
-        assert _fixup_config({"Snapshots folder path": "x", "Username": "abcd"})["Username"] == "abcd"
+        monkeypatch.setattr(getpass, "getuser", lambda: "OSUser")
+        assert _fixup_config({"Snapshots folder path": "x", "Username": "AbCd"})["Username"] == "abcd"
         assert _fixup_config({"Snapshots folder path": "x"})["Username"] == "osuser"
 
         def no_user() -> str:
@@ -56,6 +62,28 @@ class TestGetConfig:
 
         monkeypatch.setattr(getpass, "getuser", no_user)
         assert _fixup_config({"Snapshots folder path": "x"})["Username"] is None
+
+    def test_invalid_username(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Invalid supplied usernames raise, invalid OS account names are dropped."""
+        with pytest.raises(ValueError, match="Invalid 'Username' in user config"):
+            _fixup_config({"Snapshots folder path": "x", "Username": "-oProxyCommand=hackserver"})
+        monkeypatch.setattr(getpass, "getuser", lambda: "Graham Kimbell")
+        assert _fixup_config({"Snapshots folder path": "x"})["Username"] is None
+
+    @pytest.mark.parametrize(
+        "value",
+        ["-oProxyCommand=x", ".hidden", "a b", "a@evil.host", "a;b", "a\nb", "a\\b", "$USERNAME", "é", "x" * 33, 123],
+    )
+    def test_normalise_username_rejects(self, value: object) -> None:
+        """Values outside the allowed character set raise."""
+        with pytest.raises(ValueError, match="must be 1-32"):
+            normalise_username(value)
+
+    def test_normalise_username(self) -> None:
+        """Valid usernames are lowercased."""
+        assert normalise_username("KiGr") == "kigr"
+        assert normalise_username("a.b-c_1") == "a.b-c_1"
+        assert normalise_username("x" * 32) == "x" * 32
 
     def test_convert_legacy_servers(self) -> None:
         """Test converting old style server configs."""
